@@ -1,6 +1,7 @@
 <script lang="ts">
-  import { Mail, ShieldCheck } from '@lucide/svelte';
+  import { CalendarDays, Mail, ShieldCheck } from '@lucide/svelte';
   import Panel from '$lib/components/Panel.svelte';
+  import { buildDemoCalendarSection } from '$lib/demoCalendar';
   import { renderDailySummary, type DailySummaryInput } from '$lib/dailySummaryRenderer';
   import {
     defaultSummaryConfiguration,
@@ -19,29 +20,6 @@
   ];
   const userTimeZones: UserTimeZone[] = ['Europe/Warsaw', 'America/New_York', 'UTC'];
   const initialSummaryConfiguration = summaryConfigurationSchema.parse(defaultSummaryConfiguration);
-  const previewSections: DailySummaryInput['sections'] = {
-    weather: {
-      status: 'available',
-      label: 'Mock Weather',
-      detail: 'Mock provider data: 18C, clear, light wind.'
-    },
-    commute: {
-      status: 'available',
-      label: 'Mock Commute',
-      detail: 'Mock provider data: 24 minutes by tram to the office.'
-    },
-    calendar: {
-      status: 'unavailable',
-      label: 'Calendar',
-      reason: 'Calendar is not connected yet.'
-    },
-    todo: {
-      status: 'unavailable',
-      label: 'Todo',
-      reason: 'Todo source is not connected yet.'
-    }
-  };
-
   let summaryTime = $state(initialSummaryConfiguration.summaryTime);
   let summaryTimeInput = $state(initialSummaryConfiguration.summaryTime);
   let userTimeZone = $state<UserTimeZone>(initialSummaryConfiguration.userTimeZone);
@@ -56,7 +34,7 @@
     userTimeZone,
     summaryTheme,
     summaryDeliveryEnabled,
-    sections: enabledSections
+    sections: { ...enabledSections }
   });
 
   const updateSummaryConfiguration = (nextConfiguration: SummaryConfiguration) => {
@@ -82,23 +60,85 @@
   };
 
   const toggleSection = (section: SummarySection, enabled: boolean) => {
-    patchSummaryConfiguration({
+    const result = summaryConfigurationSchema.safeParse({
+      ...currentSummaryConfiguration(),
       sections: { ...enabledSections, [section]: enabled }
     });
+
+    if (!result.success) {
+      return;
+    }
+
+    enabledSections = { ...result.data.sections };
+  };
+
+  const updateSummaryTimeInput = (value: string) => {
+    summaryTimeInput = value;
+
+    const result = summaryConfigurationSchema.safeParse({
+      ...currentSummaryConfiguration(),
+      summaryTime: value
+    });
+
+    if (result.success) {
+      summaryTime = result.data.summaryTime;
+    }
   };
 
   const readInputChecked = (event: Event) => (event.currentTarget as HTMLInputElement).checked;
   const readInputValue = (event: Event) => (event.currentTarget as HTMLInputElement).value;
-  const renderedSummary = $derived(
-    renderDailySummary({
-      configuration: currentSummaryConfiguration(),
-      sections: previewSections
-    })
-  );
+  const demoCalendar = $derived(buildDemoCalendarSection({ userTimeZone }));
+  const previewSections: DailySummaryInput['sections'] = $derived({
+    weather: {
+      status: 'available',
+      label: 'Mock Weather',
+      detail: 'Mock provider data: 18C, clear, light wind.'
+    },
+    commute: {
+      status: 'available',
+      label: 'Mock Commute',
+      detail: 'Mock provider data: 24 minutes by tram to the office.'
+    },
+    calendar: {
+      status: 'available',
+      label: demoCalendar.label,
+      detail: demoCalendar.summaryDetail
+    },
+    todo: {
+      status: 'unavailable',
+      label: 'Todo',
+      reason: 'Todo source is not connected yet.'
+    }
+  });
+  const previewConfiguration: SummaryConfiguration = $derived({
+    summaryTime,
+    userTimeZone,
+    summaryTheme,
+    summaryDeliveryEnabled,
+    sections: {
+      weather: enabledSections.weather,
+      commute: enabledSections.commute,
+      calendar: enabledSections.calendar,
+      todo: enabledSections.todo
+    }
+  });
+  let renderedSummaryHtml = $state('');
 
   $effect(() => {
-    if (summaryTimeInput !== summaryTime) {
-      patchSummaryConfiguration({ summaryTime: summaryTimeInput });
+    renderedSummaryHtml = renderDailySummary({
+      configuration: previewConfiguration,
+      sections: previewSections
+    }).html;
+  });
+
+  $effect(() => {
+    const result = summaryConfigurationSchema.safeParse({
+      ...currentSummaryConfiguration(),
+      summaryTime: summaryTimeInput
+    });
+
+    if (result.success && result.data.summaryTime !== summaryTime) {
+      summaryTime = result.data.summaryTime;
     }
   });
 </script>
@@ -145,10 +185,10 @@
                 type="time"
                 bind:value={summaryTimeInput}
                 oninput={(event) => {
-                  patchSummaryConfiguration({ summaryTime: readInputValue(event) });
+                  updateSummaryTimeInput(readInputValue(event));
                 }}
                 onchange={(event) => {
-                  patchSummaryConfiguration({ summaryTime: readInputValue(event) });
+                  updateSummaryTimeInput(readInputValue(event));
                 }}
               />
             </label>
@@ -164,7 +204,8 @@
                       id={`time-zone-${timeZone}`}
                       name="user-time-zone"
                       type="radio"
-                      checked={userTimeZone === timeZone}
+                      bind:group={userTimeZone}
+                      value={timeZone}
                       onchange={() => {
                         patchSummaryConfiguration({ userTimeZone: timeZone });
                       }}
@@ -185,7 +226,8 @@
                     id="summary-theme-light"
                     name="summary-theme"
                     type="radio"
-                    checked={summaryTheme === 'light'}
+                    bind:group={summaryTheme}
+                    value="light"
                     onchange={() => {
                       patchSummaryConfiguration({ summaryTheme: 'light' });
                     }}
@@ -200,7 +242,8 @@
                     id="summary-theme-dark"
                     name="summary-theme"
                     type="radio"
-                    checked={summaryTheme === 'dark'}
+                    bind:group={summaryTheme}
+                    value="dark"
                     onchange={() => {
                       patchSummaryConfiguration({ summaryTheme: 'dark' });
                     }}
@@ -237,7 +280,7 @@
                 <input
                   id={`${section.key}-section`}
                   type="checkbox"
-                  checked={enabledSections[section.key]}
+                  bind:checked={enabledSections[section.key]}
                   onchange={(event) => {
                     toggleSection(section.key, readInputChecked(event));
                   }}
@@ -248,6 +291,42 @@
         </Panel>
       </div>
 
+      {#if enabledSections.calendar}
+        <Panel title="Demo Calendar" eyebrow="Sample Calendar Events for Visitor mode">
+          <div class="space-y-4">
+            <div class="flex flex-wrap items-center justify-between gap-3">
+              <p class="font-medium text-stone-900">Week Ahead</p>
+              <p class="rounded-md bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-950">
+                Demo Calendar
+              </p>
+            </div>
+            <div class="grid gap-2">
+              {#each demoCalendar.weekAhead as day}
+                <section class="rounded-md border border-stone-200 px-3 py-2">
+                  <div class="flex items-center gap-2 text-sm font-semibold text-stone-900">
+                    <CalendarDays size={16} aria-hidden="true" />
+                    <span>{day.label}</span>
+                    <span class="text-stone-500">{day.date}</span>
+                  </div>
+                  {#if day.events.length > 0}
+                    <ul class="mt-2 grid gap-1">
+                      {#each day.events as event}
+                        <li class="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-stone-700">
+                          <span class="font-medium text-stone-950">{event.timeLabel}</span>
+                          <span>{event.title}</span>
+                        </li>
+                      {/each}
+                    </ul>
+                  {:else}
+                    <p class="mt-2 text-sm text-stone-500">No demo Calendar Events.</p>
+                  {/if}
+                </section>
+              {/each}
+            </div>
+          </div>
+        </Panel>
+      {/if}
+
       <Panel title="Daily Summary Preview" eyebrow="Preview">
         <div class="space-y-4">
           <div class="flex flex-wrap items-center justify-between gap-2">
@@ -257,7 +336,9 @@
             </p>
           </div>
           <div class="overflow-hidden rounded-md border border-stone-200">
-            {@html renderedSummary.html}
+            {#key renderedSummaryHtml}
+              {@html renderedSummaryHtml}
+            {/key}
           </div>
           <button
             class="inline-flex h-10 items-center gap-2 rounded-md bg-emerald-700 px-4 text-sm font-semibold text-white hover:bg-emerald-800"
