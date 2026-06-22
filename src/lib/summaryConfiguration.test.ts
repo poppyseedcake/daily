@@ -1,7 +1,11 @@
 import { describe, expect, test } from 'vitest';
-import { summaryConfigurationSchema } from './summaryConfiguration';
+import { defaultSummaryConfiguration, summaryConfigurationSchema } from './summaryConfiguration';
 
 describe('summary configuration validation', () => {
+  test('defaults User Time Zone to the database persistence contract', () => {
+    expect(defaultSummaryConfiguration.userTimeZone).toBe('UTC');
+  });
+
   test('accepts editable Summary Configuration controls', () => {
     const configuration = summaryConfigurationSchema.parse({
       summaryTime: '18:45',

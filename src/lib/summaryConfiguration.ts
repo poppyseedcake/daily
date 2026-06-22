@@ -26,7 +26,7 @@ export type UserTimeZone = SummaryConfiguration['userTimeZone'];
 
 export const defaultSummaryConfiguration = summaryConfigurationSchema.parse({
   summaryTime: '07:00',
-  userTimeZone: 'Europe/Warsaw',
+  userTimeZone: 'UTC',
   summaryTheme: 'light',
   summaryDeliveryEnabled: true,
   sections: {

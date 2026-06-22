@@ -4,6 +4,7 @@
   import {
     defaultSummaryConfiguration,
     summaryConfigurationSchema,
+    type SummaryConfiguration,
     type SummarySection,
     type SummaryTheme,
     type UserTimeZone
@@ -19,6 +20,7 @@
   const initialSummaryConfiguration = summaryConfigurationSchema.parse(defaultSummaryConfiguration);
 
   let summaryTime = $state(initialSummaryConfiguration.summaryTime);
+  let summaryTimeInput = $state(initialSummaryConfiguration.summaryTime);
   let userTimeZone = $state<UserTimeZone>(initialSummaryConfiguration.userTimeZone);
   let summaryTheme = $state<SummaryTheme>(initialSummaryConfiguration.summaryTheme);
   let summaryDeliveryEnabled = $state(initialSummaryConfiguration.summaryDeliveryEnabled);
@@ -26,11 +28,50 @@
     ...initialSummaryConfiguration.sections
   });
 
+  const currentSummaryConfiguration = (): SummaryConfiguration => ({
+    summaryTime,
+    userTimeZone,
+    summaryTheme,
+    summaryDeliveryEnabled,
+    sections: enabledSections
+  });
+
+  const updateSummaryConfiguration = (nextConfiguration: SummaryConfiguration) => {
+    const result = summaryConfigurationSchema.safeParse(nextConfiguration);
+
+    if (!result.success) {
+      return;
+    }
+
+    summaryTime = result.data.summaryTime;
+    summaryTimeInput = result.data.summaryTime;
+    userTimeZone = result.data.userTimeZone;
+    summaryTheme = result.data.summaryTheme;
+    summaryDeliveryEnabled = result.data.summaryDeliveryEnabled;
+    enabledSections = { ...result.data.sections };
+  };
+
+  const patchSummaryConfiguration = (patch: Partial<SummaryConfiguration>) => {
+    updateSummaryConfiguration({
+      ...currentSummaryConfiguration(),
+      ...patch
+    });
+  };
+
   const toggleSection = (section: SummarySection, enabled: boolean) => {
-    enabledSections = { ...enabledSections, [section]: enabled };
+    patchSummaryConfiguration({
+      sections: { ...enabledSections, [section]: enabled }
+    });
   };
 
   const readInputChecked = (event: Event) => (event.currentTarget as HTMLInputElement).checked;
+  const readInputValue = (event: Event) => (event.currentTarget as HTMLInputElement).value;
+
+  $effect(() => {
+    if (summaryTimeInput !== summaryTime) {
+      patchSummaryConfiguration({ summaryTime: summaryTimeInput });
+    }
+  });
 </script>
 
 <svelte:head>
@@ -73,7 +114,13 @@
                 aria-labelledby="summary-time-label"
                 class="h-10 rounded-md border border-stone-300 px-3"
                 type="time"
-                bind:value={summaryTime}
+                bind:value={summaryTimeInput}
+                oninput={(event) => {
+                  patchSummaryConfiguration({ summaryTime: readInputValue(event) });
+                }}
+                onchange={(event) => {
+                  patchSummaryConfiguration({ summaryTime: readInputValue(event) });
+                }}
               />
             </label>
             <fieldset class="grid gap-2">
@@ -90,7 +137,7 @@
                       type="radio"
                       checked={userTimeZone === timeZone}
                       onchange={() => {
-                        userTimeZone = timeZone;
+                        patchSummaryConfiguration({ userTimeZone: timeZone });
                       }}
                     />
                     <span>{timeZone}</span>
@@ -111,7 +158,7 @@
                     type="radio"
                     checked={summaryTheme === 'light'}
                     onchange={() => {
-                      summaryTheme = 'light';
+                      patchSummaryConfiguration({ summaryTheme: 'light' });
                     }}
                   />
                   <span>Light Theme</span>
@@ -126,7 +173,7 @@
                     type="radio"
                     checked={summaryTheme === 'dark'}
                     onchange={() => {
-                      summaryTheme = 'dark';
+                      patchSummaryConfiguration({ summaryTheme: 'dark' });
                     }}
                   />
                   <span>Dark Theme</span>
@@ -143,7 +190,7 @@
                 type="checkbox"
                 checked={summaryDeliveryEnabled}
                 onchange={(event) => {
-                  summaryDeliveryEnabled = readInputChecked(event);
+                  patchSummaryConfiguration({ summaryDeliveryEnabled: readInputChecked(event) });
                 }}
               />
             </label>
