@@ -23,6 +23,8 @@ CREATE TABLE `summary_configurations` (
   FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON UPDATE no action ON DELETE cascade
 );
 
+CREATE UNIQUE INDEX `summary_configurations_user_id_unique` ON `summary_configurations` (`user_id`);
+
 CREATE TABLE `todo_categories` (
   `id` text PRIMARY KEY NOT NULL,
   `user_id` text NOT NULL,

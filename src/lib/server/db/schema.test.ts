@@ -24,5 +24,8 @@ describe('Daily database schema', () => {
     expect(migration).toContain('CREATE TABLE `summary_configurations`');
     expect(migration).toContain('CREATE TABLE `todo_categories`');
     expect(migration).toContain('CREATE TABLE `todo_tasks`');
+    expect(migration).toContain(
+      'CREATE UNIQUE INDEX `summary_configurations_user_id_unique` ON `summary_configurations` (`user_id`)'
+    );
   });
 });

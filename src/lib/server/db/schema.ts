@@ -24,7 +24,8 @@ export const summaryConfigurations = sqliteTable('summary_configurations', {
   id: text('id').primaryKey(),
   userId: text('user_id')
     .notNull()
-    .references(() => users.id, { onDelete: 'cascade' }),
+    .references(() => users.id, { onDelete: 'cascade' })
+    .unique(),
   summaryTime: text('summary_time').notNull().default('07:00'),
   userTimeZone: text('user_time_zone').notNull().default('UTC'),
   summaryTheme: text('summary_theme', { enum: ['light', 'dark'] }).notNull().default('light'),
