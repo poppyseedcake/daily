@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import { defaultSummaryConfiguration } from './summaryConfiguration';
 import { renderDailySummary } from './dailySummaryRenderer';
+import { buildDemoCalendarSection } from './demoCalendar';
 
 describe('Daily Summary renderer', () => {
   test('returns HTML and plain text from the same Daily Summary input in section order', () => {
@@ -82,5 +83,41 @@ describe('Daily Summary renderer', () => {
     expect(rendered.html).not.toContain('<b>bold</b>');
     expect(rendered.text).toContain(`<script>&"'</script>`);
     expect(rendered.text).toContain(`Use <b>bold</b> & "quotes" plus 'apostrophes'.`);
+  });
+
+  test('renders Demo Calendar Events separately from Todo Tasks in the Daily Summary preview', () => {
+    const demoCalendar = buildDemoCalendarSection({
+      userTimeZone: 'UTC',
+      now: new Date('2026-06-22T12:00:00.000Z')
+    });
+    const rendered = renderDailySummary({
+      configuration: {
+        ...defaultSummaryConfiguration,
+        sections: {
+          weather: false,
+          commute: false,
+          calendar: true,
+          todo: true
+        }
+      },
+      sections: {
+        weather: { status: 'available', label: 'Weather', detail: 'Hidden.' },
+        commute: { status: 'available', label: 'Commute', detail: 'Hidden.' },
+        calendar: {
+          status: 'available',
+          label: demoCalendar.label,
+          detail: demoCalendar.summaryDetail
+        },
+        todo: { status: 'available', label: 'Todo Tasks', detail: 'Ship the renderer.' }
+      }
+    });
+
+    expect(rendered.html).toContain('Demo Calendar');
+    expect(rendered.html).toContain('Planning check-in');
+    expect(rendered.html).toContain('Todo Tasks');
+    expect(rendered.html.indexOf('Demo Calendar')).toBeLessThan(rendered.html.indexOf('Todo Tasks'));
+    expect(rendered.text).toContain('Demo Calendar');
+    expect(rendered.text).toContain('Planning check-in');
+    expect(rendered.text.indexOf('Demo Calendar')).toBeLessThan(rendered.text.indexOf('Todo Tasks'));
   });
 });
