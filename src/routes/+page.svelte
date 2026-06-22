@@ -165,7 +165,7 @@
                       name="user-time-zone"
                       type="radio"
                       checked={userTimeZone === timeZone}
-                      onclick={() => {
+                      onchange={() => {
                         patchSummaryConfiguration({ userTimeZone: timeZone });
                       }}
                     />
@@ -186,7 +186,7 @@
                     name="summary-theme"
                     type="radio"
                     checked={summaryTheme === 'light'}
-                    onclick={() => {
+                    onchange={() => {
                       patchSummaryConfiguration({ summaryTheme: 'light' });
                     }}
                   />
@@ -201,7 +201,7 @@
                     name="summary-theme"
                     type="radio"
                     checked={summaryTheme === 'dark'}
-                    onclick={() => {
+                    onchange={() => {
                       patchSummaryConfiguration({ summaryTheme: 'dark' });
                     }}
                   />

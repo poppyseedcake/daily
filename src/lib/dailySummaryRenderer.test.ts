@@ -50,4 +50,37 @@ describe('Daily Summary renderer', () => {
     expect(rendered.html).not.toContain('Mock Commute');
     expect(rendered.text).not.toContain('Mock Commute');
   });
+
+  test('escapes special characters in HTML while preserving plain text output', () => {
+    const rendered = renderDailySummary({
+      configuration: {
+        ...defaultSummaryConfiguration,
+        sections: {
+          weather: true,
+          commute: false,
+          calendar: false,
+          todo: false
+        }
+      },
+      sections: {
+        weather: {
+          status: 'available',
+          label: `<script>&"'</script>`,
+          detail: `Use <b>bold</b> & "quotes" plus 'apostrophes'.`
+        },
+        commute: { status: 'available', label: 'Commute', detail: 'Hidden.' },
+        calendar: { status: 'available', label: 'Calendar', detail: 'Hidden.' },
+        todo: { status: 'available', label: 'Todo', detail: 'Hidden.' }
+      }
+    });
+
+    expect(rendered.html).toContain('&lt;script&gt;&amp;&quot;&#39;&lt;/script&gt;');
+    expect(rendered.html).toContain(
+      'Use &lt;b&gt;bold&lt;/b&gt; &amp; &quot;quotes&quot; plus &#39;apostrophes&#39;.'
+    );
+    expect(rendered.html).not.toContain('<script>');
+    expect(rendered.html).not.toContain('<b>bold</b>');
+    expect(rendered.text).toContain(`<script>&"'</script>`);
+    expect(rendered.text).toContain(`Use <b>bold</b> & "quotes" plus 'apostrophes'.`);
+  });
 });
