@@ -41,5 +41,12 @@ describe('summary configuration validation', () => {
     });
 
     expect(result.success).toBe(false);
+    if (!result.success) {
+      const errorPaths = result.error.issues.map((issue) => issue.path.join('.'));
+
+      expect(errorPaths).toContain('summaryTime');
+      expect(errorPaths).toContain('userTimeZone');
+      expect(errorPaths).toContain('summaryTheme');
+    }
   });
 });
