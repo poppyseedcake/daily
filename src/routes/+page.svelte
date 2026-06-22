@@ -1,6 +1,7 @@
 <script lang="ts">
-  import { CalendarDays, CloudSun, ListTodo, Mail, Settings, ShieldCheck } from '@lucide/svelte';
+  import { Mail, ShieldCheck } from '@lucide/svelte';
   import Panel from '$lib/components/Panel.svelte';
+  import { renderDailySummary, type DailySummaryInput } from '$lib/dailySummaryRenderer';
   import {
     defaultSummaryConfiguration,
     summaryConfigurationSchema,
@@ -18,6 +19,28 @@
   ];
   const userTimeZones: UserTimeZone[] = ['Europe/Warsaw', 'America/New_York', 'UTC'];
   const initialSummaryConfiguration = summaryConfigurationSchema.parse(defaultSummaryConfiguration);
+  const previewSections: DailySummaryInput['sections'] = {
+    weather: {
+      status: 'available',
+      label: 'Mock Weather',
+      detail: 'Mock provider data: 18C, clear, light wind.'
+    },
+    commute: {
+      status: 'available',
+      label: 'Mock Commute',
+      detail: 'Mock provider data: 24 minutes by tram to the office.'
+    },
+    calendar: {
+      status: 'unavailable',
+      label: 'Calendar',
+      reason: 'Calendar is not connected yet.'
+    },
+    todo: {
+      status: 'unavailable',
+      label: 'Todo',
+      reason: 'Todo source is not connected yet.'
+    }
+  };
 
   let summaryTime = $state(initialSummaryConfiguration.summaryTime);
   let summaryTimeInput = $state(initialSummaryConfiguration.summaryTime);
@@ -66,6 +89,12 @@
 
   const readInputChecked = (event: Event) => (event.currentTarget as HTMLInputElement).checked;
   const readInputValue = (event: Event) => (event.currentTarget as HTMLInputElement).value;
+  const renderedSummary = $derived(
+    renderDailySummary({
+      configuration: currentSummaryConfiguration(),
+      sections: previewSections
+    })
+  );
 
   $effect(() => {
     if (summaryTimeInput !== summaryTime) {
@@ -136,7 +165,7 @@
                       name="user-time-zone"
                       type="radio"
                       checked={userTimeZone === timeZone}
-                      onchange={() => {
+                      onclick={() => {
                         patchSummaryConfiguration({ userTimeZone: timeZone });
                       }}
                     />
@@ -157,7 +186,7 @@
                     name="summary-theme"
                     type="radio"
                     checked={summaryTheme === 'light'}
-                    onchange={() => {
+                    onclick={() => {
                       patchSummaryConfiguration({ summaryTheme: 'light' });
                     }}
                   />
@@ -172,7 +201,7 @@
                     name="summary-theme"
                     type="radio"
                     checked={summaryTheme === 'dark'}
-                    onchange={() => {
+                    onclick={() => {
                       patchSummaryConfiguration({ summaryTheme: 'dark' });
                     }}
                   />
@@ -227,35 +256,8 @@
               {summaryTheme === 'dark' ? 'Dark preview' : 'Light preview'}
             </p>
           </div>
-          <div class="grid gap-3 md:grid-cols-3">
-            {#if enabledSections.weather}
-              <div class="rounded-md bg-sky-50 p-3">
-                <CloudSun size={20} aria-hidden="true" />
-                <p class="mt-2 font-medium text-stone-900">Weather Snapshot</p>
-                <p class="mt-1 text-stone-700">A placeholder forecast keeps the preview scannable.</p>
-              </div>
-            {/if}
-            {#if enabledSections.commute}
-              <div class="rounded-md bg-indigo-50 p-3">
-                <Settings size={20} aria-hidden="true" />
-                <p class="mt-2 font-medium text-stone-900">Mock Commute</p>
-                <p class="mt-1 text-stone-700">A placeholder estimate keeps the preview usable.</p>
-              </div>
-            {/if}
-            {#if enabledSections.calendar}
-              <div class="rounded-md bg-amber-50 p-3">
-                <CalendarDays size={20} aria-hidden="true" />
-                <p class="mt-2 font-medium text-stone-900">Demo Calendar</p>
-                <p class="mt-1 text-stone-700">Sample events show how a connected calendar will appear.</p>
-              </div>
-            {/if}
-            {#if enabledSections.todo}
-              <div class="rounded-md bg-emerald-50 p-3">
-                <ListTodo size={20} aria-hidden="true" />
-                <p class="mt-2 font-medium text-stone-900">Todo Focus</p>
-                <p class="mt-1 text-stone-700">Top local tasks will appear here after setup.</p>
-              </div>
-            {/if}
+          <div class="overflow-hidden rounded-md border border-stone-200">
+            {@html renderedSummary.html}
           </div>
           <button
             class="inline-flex h-10 items-center gap-2 rounded-md bg-emerald-700 px-4 text-sm font-semibold text-white hover:bg-emerald-800"
