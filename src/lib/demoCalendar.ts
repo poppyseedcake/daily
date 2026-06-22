@@ -114,6 +114,7 @@ const formatDateKey = (date: LocalDateParts) =>
 
 const formatDayLabel = (date: LocalDateParts) =>
   new Intl.DateTimeFormat('en-US', {
+    timeZone: 'UTC',
     weekday: 'short',
     month: 'short',
     day: 'numeric'

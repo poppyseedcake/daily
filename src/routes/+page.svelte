@@ -110,50 +110,25 @@
       reason: 'Todo source is not connected yet.'
     }
   });
-  let renderedSummary = $state(
-    renderDailySummary({
-      configuration: currentSummaryConfiguration(),
-      sections: {
-        weather: {
-          status: 'available',
-          label: 'Mock Weather',
-          detail: 'Mock provider data: 18C, clear, light wind.'
-        },
-        commute: {
-          status: 'available',
-          label: 'Mock Commute',
-          detail: 'Mock provider data: 24 minutes by tram to the office.'
-        },
-        calendar: {
-          status: 'available',
-          label: 'Demo Calendar',
-          detail: ''
-        },
-        todo: {
-          status: 'unavailable',
-          label: 'Todo',
-          reason: 'Todo source is not connected yet.'
-        }
-      }
-    })
-  );
+  const previewConfiguration: SummaryConfiguration = $derived({
+    summaryTime,
+    userTimeZone,
+    summaryTheme,
+    summaryDeliveryEnabled,
+    sections: {
+      weather: enabledSections.weather,
+      commute: enabledSections.commute,
+      calendar: enabledSections.calendar,
+      todo: enabledSections.todo
+    }
+  });
+  let renderedSummaryHtml = $state('');
 
   $effect(() => {
-    renderedSummary = renderDailySummary({
-      configuration: {
-        summaryTime,
-        userTimeZone,
-        summaryTheme,
-        summaryDeliveryEnabled,
-        sections: {
-          weather: enabledSections.weather,
-          commute: enabledSections.commute,
-          calendar: enabledSections.calendar,
-          todo: enabledSections.todo
-        }
-      },
+    renderedSummaryHtml = renderDailySummary({
+      configuration: previewConfiguration,
       sections: previewSections
-    });
+    }).html;
   });
 
   $effect(() => {
@@ -361,8 +336,8 @@
             </p>
           </div>
           <div class="overflow-hidden rounded-md border border-stone-200">
-            {#key renderedSummary.html}
-              {@html renderedSummary.html}
+            {#key renderedSummaryHtml}
+              {@html renderedSummaryHtml}
             {/key}
           </div>
           <button
