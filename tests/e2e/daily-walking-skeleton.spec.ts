@@ -28,10 +28,10 @@ test('Visitor configures Daily Summary state from the main panel', async ({ page
 
   await expect(page.getByText('Next summary: 18:45 America/New_York')).toBeVisible();
   await expect(page.getByText('Dark preview')).toBeVisible();
-  await expect(page.getByText('Weather Snapshot')).not.toBeVisible();
-  await expect(page.getByText('Todo Focus')).not.toBeVisible();
+  await expect(page.getByText('Mock Weather')).not.toBeVisible();
+  await expect(page.getByText('Todo source is not connected yet.')).not.toBeVisible();
   await expect(page.getByText('Mock Commute')).toBeVisible();
-  await expect(page.getByText('Demo Calendar')).toBeVisible();
+  await expect(page.getByText('Calendar is not connected yet.')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Preview Daily Summary' })).toBeDisabled();
 });
 
@@ -46,5 +46,5 @@ test('Administrator route shows a minimal shell without private Visitor or User 
   await expect(page.getByRole('heading', { name: 'Admin Panel' })).toBeVisible();
   await expect(page.getByText('Operational shell')).toBeVisible();
   await expect(page.getByText('No Visitor Local Setup or User summary content is shown here.')).toBeVisible();
-  await expect(page.getByText('Demo Calendar')).not.toBeVisible();
+  await expect(page.getByText('Calendar is not connected yet.')).not.toBeVisible();
 });
