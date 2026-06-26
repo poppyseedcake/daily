@@ -109,6 +109,7 @@ test('Visitor manages Todo Categories with urgency and confirmed deletion', asyn
   await page.getByRole('button', { name: 'Add Todo Task' }).click();
   await expect(apartmentTasks.getByText('Call plumber')).toBeVisible();
   await expect(apartmentTasks.getByText('Water plants')).toBeVisible();
+  await expect(apartmentTasks.getByLabel('Medium urgency')).toHaveText('!');
   await expect(apartmentTasks.locator('li').nth(0)).toContainText('Call plumber');
   await expect(apartmentTasks.locator('li').nth(1)).toContainText('Water plants');
 

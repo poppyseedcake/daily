@@ -222,6 +222,9 @@
 
     todoCategories = todoCategories.filter((item) => item.id !== category.id);
     todoTasks = todoTasks.filter((task) => task.categoryId !== category.id);
+    if (newTodoCategoryId === category.id) {
+      newTodoCategoryId = '';
+    }
   };
   const demoCalendar = $derived(buildDemoCalendarSection({ userTimeZone }));
   const previewSections: DailySummaryInput['sections'] = $derived({
