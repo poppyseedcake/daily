@@ -60,6 +60,76 @@ test('Visitor sees Demo Calendar content for the Week Ahead and can hide it from
   await expect(page.getByText('Todo source is not connected yet.')).toBeVisible();
 });
 
+test('Visitor creates edits and completes an active uncategorized Todo Task', async ({ page }) => {
+  await page.goto('/');
+
+  await page.getByLabel('New Todo Task').fill('Buy breakfast oats');
+  await page.getByRole('button', { name: 'Add Todo Task' }).click();
+
+  await expect(page.getByRole('listitem').filter({ hasText: 'Buy breakfast oats' })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Edit Buy breakfast oats' }).click();
+  await page.getByLabel('Edit Todo Task').fill('Buy breakfast oats and fruit');
+  await page.getByRole('button', { name: 'Save Todo Task' }).click();
+
+  await expect(page.getByText('Buy breakfast oats and fruit')).toBeVisible();
+  await expect(page.getByText('Buy breakfast oats', { exact: true })).not.toBeVisible();
+
+  await page.getByRole('checkbox', { name: 'Complete Buy breakfast oats and fruit' }).click();
+  await expect(page.getByText('Buy breakfast oats and fruit')).not.toBeVisible();
+});
+
+test('Visitor manages Todo Categories with urgency and confirmed deletion', async ({ page }) => {
+  const pageErrors: string[] = [];
+  page.on('pageerror', (error) => pageErrors.push(error.message));
+  await page.goto('/');
+
+  await page.getByLabel('New Todo Category').fill('Home');
+  await page.getByRole('button', { name: 'Add Todo Category' }).click();
+  expect(pageErrors).toEqual([]);
+  await expect(page.getByRole('heading', { name: 'Home' })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Rename Home' }).click();
+  await page.getByLabel('Edit Todo Category').fill('Apartment');
+  await page.getByRole('button', { name: 'Save Todo Category' }).click();
+  await expect(page.getByRole('heading', { name: 'Apartment' })).toBeVisible();
+
+  await page.getByLabel('New Todo Task').fill('Call plumber');
+  await page.getByLabel('Todo Category', { exact: true }).selectOption({ label: 'Apartment' });
+  await page.getByLabel('Urgency', { exact: true }).selectOption('high');
+  await page.getByRole('button', { name: 'Add Todo Task' }).click();
+
+  const apartmentTasks = page.getByRole('list', { name: 'Apartment Todo Tasks' });
+  await expect(apartmentTasks.getByText('Call plumber')).toBeVisible();
+  await expect(apartmentTasks.getByLabel('High urgency')).toHaveText('!');
+
+  await page.getByLabel('New Todo Task').fill('Water plants');
+  await page.getByLabel('Todo Category', { exact: true }).selectOption({ label: 'Apartment' });
+  await page.getByLabel('Urgency', { exact: true }).selectOption('medium');
+  await page.getByRole('button', { name: 'Add Todo Task' }).click();
+  await expect(apartmentTasks.getByText('Call plumber')).toBeVisible();
+  await expect(apartmentTasks.getByText('Water plants')).toBeVisible();
+  await expect(apartmentTasks.getByLabel('Medium urgency')).toHaveText('!');
+  await expect(apartmentTasks.locator('li').nth(0)).toContainText('Call plumber');
+  await expect(apartmentTasks.locator('li').nth(1)).toContainText('Water plants');
+
+  page.once('dialog', async (dialog) => {
+    expect(dialog.message()).toContain('Delete Apartment and all Todo Tasks inside it?');
+    await dialog.dismiss();
+  });
+  await page.getByRole('button', { name: 'Delete Apartment' }).click();
+  await expect(page.getByRole('heading', { name: 'Apartment' })).toBeVisible();
+  await expect(page.getByText('Call plumber')).toBeVisible();
+
+  page.once('dialog', async (dialog) => {
+    await dialog.accept();
+  });
+  await page.getByRole('button', { name: 'Delete Apartment' }).click();
+  await expect(page.getByRole('heading', { name: 'Apartment' })).not.toBeVisible();
+  await expect(page.getByText('Call plumber')).not.toBeVisible();
+  await expect(page.getByText('Water plants')).not.toBeVisible();
+});
+
 test('Administrator route shows a minimal shell without private Visitor or User content', async ({
   page
 }) => {
