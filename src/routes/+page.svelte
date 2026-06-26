@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { CalendarDays, Mail, ShieldCheck } from '@lucide/svelte';
+  import { CalendarDays, Check, Mail, Pencil, ShieldCheck, Trash2 } from '@lucide/svelte';
+  import { onMount } from 'svelte';
   import Panel from '$lib/components/Panel.svelte';
   import { buildDemoCalendarSection } from '$lib/demoCalendar';
   import { renderDailySummary, type DailySummaryInput } from '$lib/dailySummaryRenderer';
@@ -11,6 +12,14 @@
     type SummaryTheme,
     type UserTimeZone
   } from '$lib/summaryConfiguration';
+  import {
+    createTodoTaskSchema,
+    todoCategoryMutationSchema,
+    updateTodoTaskSchema,
+    type TodoCategory,
+    type TodoTask,
+    type TodoUrgency
+  } from '$lib/todo';
 
   const summarySections: Array<{ key: SummarySection; label: string }> = [
     { key: 'weather', label: 'Weather' },
@@ -27,6 +36,23 @@
   let summaryDeliveryEnabled = $state(initialSummaryConfiguration.summaryDeliveryEnabled);
   let enabledSections = $state<Record<SummarySection, boolean>>({
     ...initialSummaryConfiguration.sections
+  });
+  let todoTasks = $state<TodoTask[]>([]);
+  let todoCategories = $state<TodoCategory[]>([]);
+  let newTodoTitle = $state('');
+  let newTodoCategoryId = $state('');
+  let newTodoUrgency = $state<TodoUrgency>('low');
+  let newCategoryName = $state('');
+  let editingTaskId = $state<string | null>(null);
+  let editingTaskTitle = $state('');
+  let editingTaskUrgency = $state<TodoUrgency>('low');
+  let editingCategoryId = $state<string | null>(null);
+  let editingCategoryName = $state('');
+  let todoControlsReady = $state(false);
+  let nextTodoId = 1;
+
+  onMount(() => {
+    todoControlsReady = true;
   });
 
   const currentSummaryConfiguration = (): SummaryConfiguration => ({
@@ -87,6 +113,116 @@
 
   const readInputChecked = (event: Event) => (event.currentTarget as HTMLInputElement).checked;
   const readInputValue = (event: Event) => (event.currentTarget as HTMLInputElement).value;
+  const nextId = (prefix: string) => `${prefix}-${nextTodoId++}`;
+  const urgencyLabel = (urgency: TodoUrgency) =>
+    urgency === 'high' ? 'High urgency' : urgency === 'medium' ? 'Medium urgency' : 'Low urgency';
+  const urgencyMark = (urgency: TodoUrgency) =>
+    urgency === 'high' ? '!' : urgency === 'medium' ? '!' : '';
+  const tasksForCategory = (categoryId: string | null) =>
+    todoTasks.filter((task) => task.categoryId === categoryId);
+
+  const createTodoTask = () => {
+    const result = createTodoTaskSchema.safeParse({
+      title: newTodoTitle,
+      categoryId: newTodoCategoryId === '' ? null : newTodoCategoryId,
+      urgency: newTodoUrgency
+    });
+
+    if (!result.success) {
+      return;
+    }
+
+    todoTasks = [
+      ...todoTasks,
+      {
+        id: nextId('todo'),
+        title: result.data.title,
+        categoryId: result.data.categoryId,
+        urgency: result.data.urgency
+      }
+    ];
+    newTodoTitle = '';
+    newTodoCategoryId = '';
+    newTodoUrgency = 'low';
+  };
+
+  const startEditingTodoTask = (task: TodoTask) => {
+    editingTaskId = task.id;
+    editingTaskTitle = task.title;
+    editingTaskUrgency = task.urgency;
+  };
+
+  const saveEditingTodoTask = () => {
+    if (!editingTaskId) {
+      return;
+    }
+
+    const result = updateTodoTaskSchema.safeParse({
+      id: editingTaskId,
+      title: editingTaskTitle,
+      urgency: editingTaskUrgency
+    });
+
+    if (!result.success) {
+      return;
+    }
+
+    todoTasks = todoTasks.map((task) =>
+      task.id === result.data.id
+        ? { ...task, title: result.data.title, urgency: result.data.urgency }
+        : task
+    );
+    editingTaskId = null;
+    editingTaskTitle = '';
+    editingTaskUrgency = 'low';
+  };
+
+  const completeTodoTask = (taskId: string) => {
+    todoTasks = todoTasks.filter((task) => task.id !== taskId);
+  };
+
+  const createTodoCategory = () => {
+    const result = todoCategoryMutationSchema.safeParse({ name: newCategoryName });
+
+    if (!result.success) {
+      return;
+    }
+
+    todoCategories = [...todoCategories, { id: nextId('category'), name: result.data.name }];
+    newCategoryName = '';
+  };
+
+  const startEditingTodoCategory = (category: TodoCategory) => {
+    editingCategoryId = category.id;
+    editingCategoryName = category.name;
+  };
+
+  const saveEditingTodoCategory = () => {
+    if (!editingCategoryId) {
+      return;
+    }
+
+    const result = todoCategoryMutationSchema.safeParse({ name: editingCategoryName });
+
+    if (!result.success) {
+      return;
+    }
+
+    todoCategories = todoCategories.map((category) =>
+      category.id === editingCategoryId ? { ...category, name: result.data.name } : category
+    );
+    editingCategoryId = null;
+    editingCategoryName = '';
+  };
+
+  const deleteTodoCategory = (category: TodoCategory) => {
+    if (!globalThis.confirm(`Delete ${category.name} and all Todo Tasks inside it?`)) {
+      return;
+    }
+
+    todoCategories = todoCategories.filter((item) => item.id !== category.id);
+    todoTasks = todoTasks.filter((task) => task.categoryId !== category.id);
+  };
   const demoCalendar = $derived(buildDemoCalendarSection({ userTimeZone }));
   const previewSections: DailySummaryInput['sections'] = $derived({
     weather: {
@@ -326,6 +462,249 @@
           </div>
         </Panel>
       {/if}
+
+      <Panel title="Todo Tasks" eyebrow="Todo">
+        <div class="space-y-5">
+          <div class="grid gap-3 rounded-md border border-stone-200 p-3">
+            <label class="grid gap-1">
+              <span class="font-medium text-stone-800">New Todo Task</span>
+              <input
+                class="h-10 rounded-md border border-stone-300 px-3"
+                bind:value={newTodoTitle}
+                aria-label="New Todo Task"
+              />
+            </label>
+            <div class="grid gap-3 sm:grid-cols-2">
+              <label class="grid gap-1">
+                <span class="font-medium text-stone-800">Todo Category</span>
+                <select
+                  class="h-10 rounded-md border border-stone-300 px-3"
+                  bind:value={newTodoCategoryId}
+                  aria-label="Todo Category"
+                >
+                  <option value="">No Category</option>
+                  {#each todoCategories as category}
+                    <option value={category.id}>{category.name}</option>
+                  {/each}
+                </select>
+              </label>
+              <label class="grid gap-1">
+                <span class="font-medium text-stone-800">Urgency</span>
+                <select
+                  class="h-10 rounded-md border border-stone-300 px-3"
+                  bind:value={newTodoUrgency}
+                  aria-label="Urgency"
+                >
+                  <option value="low">Low</option>
+                  <option value="medium">Medium</option>
+                  <option value="high">High</option>
+                </select>
+              </label>
+            </div>
+            <button
+              class="inline-flex h-10 w-fit items-center gap-2 rounded-md bg-emerald-700 px-4 text-sm font-semibold text-white hover:bg-emerald-800"
+              type="button"
+              disabled={!todoControlsReady}
+              onclick={createTodoTask}
+            >
+              <Check size={18} aria-hidden="true" />
+              Add Todo Task
+            </button>
+          </div>
+
+          <div class="grid gap-3 rounded-md border border-stone-200 p-3">
+            <label class="grid gap-1">
+              <span class="font-medium text-stone-800">New Todo Category</span>
+              <input
+                class="h-10 rounded-md border border-stone-300 px-3"
+                bind:value={newCategoryName}
+                aria-label="New Todo Category"
+              />
+            </label>
+            <button
+              class="inline-flex h-10 w-fit items-center gap-2 rounded-md border border-stone-300 px-4 text-sm font-semibold text-stone-800 hover:bg-stone-50"
+              type="button"
+              disabled={!todoControlsReady}
+              onclick={createTodoCategory}
+            >
+              <Check size={18} aria-hidden="true" />
+              Add Todo Category
+            </button>
+          </div>
+
+          <div class="grid gap-4">
+            <section class="grid gap-2">
+              <h3 class="font-semibold text-stone-950">No Category</h3>
+              <ul class="grid gap-2" aria-label="No Category Todo Tasks">
+                {#each tasksForCategory(null) as task}
+                  <li class="rounded-md border border-stone-200 px-3 py-2">
+                    {#if editingTaskId === task.id}
+                      <div class="grid gap-2">
+                        <input
+                          class="h-10 rounded-md border border-stone-300 px-3"
+                          bind:value={editingTaskTitle}
+                          aria-label="Edit Todo Task"
+                        />
+                        <select
+                          class="h-10 rounded-md border border-stone-300 px-3"
+                          bind:value={editingTaskUrgency}
+                          aria-label="Edit Urgency"
+                        >
+                          <option value="low">Low</option>
+                          <option value="medium">Medium</option>
+                          <option value="high">High</option>
+                        </select>
+                        <button
+                          class="h-10 w-fit rounded-md bg-emerald-700 px-4 text-sm font-semibold text-white"
+                          type="button"
+                          disabled={!todoControlsReady}
+                          onclick={saveEditingTodoTask}
+                        >
+                          Save Todo Task
+                        </button>
+                      </div>
+                    {:else}
+                      <div class="flex flex-wrap items-center justify-between gap-3">
+                        <label class="flex min-w-0 items-center gap-3">
+                          <input
+                            type="checkbox"
+                            aria-label={`Complete ${task.title}`}
+                            onchange={() => completeTodoTask(task.id)}
+                          />
+                          <span class="break-words text-stone-950">{task.title}</span>
+                          {#if urgencyMark(task.urgency)}
+                            <span
+                              class={`inline-flex size-6 items-center justify-center rounded-full text-sm font-bold ${task.urgency === 'high' ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'}`}
+                              aria-label={urgencyLabel(task.urgency)}
+                            >
+                              {urgencyMark(task.urgency)}
+                            </span>
+                          {/if}
+                        </label>
+                        <button
+                          class="inline-flex size-9 items-center justify-center rounded-md border border-stone-300 text-stone-700 hover:bg-stone-50"
+                          type="button"
+                          disabled={!todoControlsReady}
+                          aria-label={`Edit ${task.title}`}
+                          onclick={() => startEditingTodoTask(task)}
+                        >
+                          <Pencil size={16} aria-hidden="true" />
+                        </button>
+                      </div>
+                    {/if}
+                  </li>
+                {/each}
+              </ul>
+            </section>
+
+            {#each todoCategories as category}
+              <section class="grid gap-2">
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                  {#if editingCategoryId === category.id}
+                    <div class="flex flex-wrap items-center gap-2">
+                      <input
+                        class="h-10 rounded-md border border-stone-300 px-3"
+                        bind:value={editingCategoryName}
+                        aria-label="Edit Todo Category"
+                      />
+                      <button
+                        class="h-10 rounded-md bg-emerald-700 px-4 text-sm font-semibold text-white"
+                        type="button"
+                        disabled={!todoControlsReady}
+                        onclick={saveEditingTodoCategory}
+                      >
+                        Save Todo Category
+                      </button>
+                    </div>
+                  {:else}
+                    <h3 class="font-semibold text-stone-950">{category.name}</h3>
+                    <div class="flex items-center gap-2">
+                      <button
+                        class="inline-flex size-9 items-center justify-center rounded-md border border-stone-300 text-stone-700 hover:bg-stone-50"
+                        type="button"
+                        disabled={!todoControlsReady}
+                        aria-label={`Rename ${category.name}`}
+                        onclick={() => startEditingTodoCategory(category)}
+                      >
+                        <Pencil size={16} aria-hidden="true" />
+                      </button>
+                      <button
+                        class="inline-flex size-9 items-center justify-center rounded-md border border-red-200 text-red-700 hover:bg-red-50"
+                        type="button"
+                        disabled={!todoControlsReady}
+                        aria-label={`Delete ${category.name}`}
+                        onclick={() => deleteTodoCategory(category)}
+                      >
+                        <Trash2 size={16} aria-hidden="true" />
+                      </button>
+                    </div>
+                  {/if}
+                </div>
+                <ul class="grid gap-2" aria-label={`${category.name} Todo Tasks`}>
+                  {#each tasksForCategory(category.id) as task}
+                    <li class="rounded-md border border-stone-200 px-3 py-2">
+                      {#if editingTaskId === task.id}
+                        <div class="grid gap-2">
+                          <input
+                            class="h-10 rounded-md border border-stone-300 px-3"
+                            bind:value={editingTaskTitle}
+                            aria-label="Edit Todo Task"
+                          />
+                          <select
+                            class="h-10 rounded-md border border-stone-300 px-3"
+                            bind:value={editingTaskUrgency}
+                            aria-label="Edit Urgency"
+                          >
+                            <option value="low">Low</option>
+                            <option value="medium">Medium</option>
+                            <option value="high">High</option>
+                          </select>
+                          <button
+                            class="h-10 w-fit rounded-md bg-emerald-700 px-4 text-sm font-semibold text-white"
+                            type="button"
+                            disabled={!todoControlsReady}
+                            onclick={saveEditingTodoTask}
+                          >
+                            Save Todo Task
+                          </button>
+                        </div>
+                      {:else}
+                        <div class="flex flex-wrap items-center justify-between gap-3">
+                          <label class="flex min-w-0 items-center gap-3">
+                            <input
+                              type="checkbox"
+                              aria-label={`Complete ${task.title}`}
+                              onchange={() => completeTodoTask(task.id)}
+                            />
+                            <span class="break-words text-stone-950">{task.title}</span>
+                            {#if urgencyMark(task.urgency)}
+                              <span
+                                class={`inline-flex size-6 items-center justify-center rounded-full text-sm font-bold ${task.urgency === 'high' ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'}`}
+                                aria-label={urgencyLabel(task.urgency)}
+                              >
+                                {urgencyMark(task.urgency)}
+                              </span>
+                            {/if}
+                          </label>
+                          <button
+                            class="inline-flex size-9 items-center justify-center rounded-md border border-stone-300 text-stone-700 hover:bg-stone-50"
+                            type="button"
+                            disabled={!todoControlsReady}
+                            aria-label={`Edit ${task.title}`}
+                            onclick={() => startEditingTodoTask(task)}
+                          >
+                            <Pencil size={16} aria-hidden="true" />
+                          </button>
+                        </div>
+                      {/if}
+                    </li>
+                  {/each}
+                </ul>
+              </section>
+            {/each}
+          </div>
+        </div>
+      </Panel>
 
       <Panel title="Daily Summary Preview" eyebrow="Preview">
         <div class="space-y-4">
