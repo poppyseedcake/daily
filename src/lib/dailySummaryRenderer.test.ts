@@ -154,12 +154,19 @@ describe('Daily Summary renderer', () => {
     expect(rendered.html).toContain('Todo Tasks');
     expect(rendered.html.indexOf('Buy coffee')).toBeLessThan(rendered.html.indexOf('Work'));
     expect(rendered.html.indexOf('Draft update')).toBeLessThan(rendered.html.indexOf('Send agenda'));
+    expect(rendered.html.indexOf('Work')).toBeLessThan(rendered.html.indexOf('Home'));
+    expect(rendered.html.indexOf('Home')).toBeLessThan(rendered.html.indexOf('Water plants'));
     expect(rendered.html).toContain('High urgency');
     expect(rendered.html).toContain('Medium urgency');
     expect(rendered.html).not.toContain('Empty Category');
     expect(rendered.text.indexOf('Buy coffee')).toBeLessThan(rendered.text.indexOf('Work'));
+    expect(rendered.text.indexOf('Work')).toBeLessThan(rendered.text.indexOf('Home'));
+    expect(rendered.text.indexOf('Home')).toBeLessThan(rendered.text.indexOf('Water plants'));
     expect(rendered.text).toContain('Buy coffee !');
+    expect(rendered.text).toContain('Draft update');
+    expect(rendered.text).not.toContain('Draft update !');
     expect(rendered.text).toContain('Send agenda !');
+    expect(rendered.text).toContain('Water plants !');
     expect(rendered.text).not.toContain('Empty Category');
   });
 
