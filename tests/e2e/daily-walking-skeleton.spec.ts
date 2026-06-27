@@ -101,30 +101,32 @@ test('Visitor sees Demo Calendar content for the Week Ahead and can hide it from
   await expect(page.getByText('Week Ahead', { exact: true })).toBeVisible();
   await expect(page.getByText('Planning check-in', { exact: true })).toBeVisible();
   await expect(page.getByText('Design review', { exact: true })).toBeVisible();
-  await expect(page.getByText('Todo source is not connected yet.')).toBeVisible();
+  await expect(page.getByText('Todo source is not connected yet.')).not.toBeVisible();
 
   await page.locator('#calendar-section').uncheck();
   await expect(page.locator('#calendar-section')).not.toBeChecked();
 
   await expect(page.getByRole('heading', { name: 'Demo Calendar' })).toHaveCount(0);
   await expect(page.getByText('Planning check-in')).toHaveCount(0);
-  await expect(page.getByText('Todo source is not connected yet.')).toBeVisible();
+  await expect(page.getByText('Todo source is not connected yet.')).not.toBeVisible();
 });
 
 test('Visitor creates edits and completes an active uncategorized Todo Task', async ({ page }) => {
   await page.goto('/');
 
+  const uncategorizedTasks = page.getByRole('list', { name: 'No Category Todo Tasks' });
+
   await page.getByLabel('New Todo Task').fill('Buy breakfast oats');
   await page.getByRole('button', { name: 'Add Todo Task' }).click();
 
-  await expect(page.getByRole('listitem').filter({ hasText: 'Buy breakfast oats' })).toBeVisible();
+  await expect(uncategorizedTasks.getByRole('listitem').filter({ hasText: 'Buy breakfast oats' })).toBeVisible();
 
   await page.getByRole('button', { name: 'Edit Buy breakfast oats' }).click();
   await page.getByLabel('Edit Todo Task').fill('Buy breakfast oats and fruit');
   await page.getByRole('button', { name: 'Save Todo Task' }).click();
 
-  await expect(page.getByText('Buy breakfast oats and fruit')).toBeVisible();
-  await expect(page.getByText('Buy breakfast oats', { exact: true })).not.toBeVisible();
+  await expect(uncategorizedTasks.getByText('Buy breakfast oats and fruit')).toBeVisible();
+  await expect(uncategorizedTasks.getByText('Buy breakfast oats', { exact: true })).not.toBeVisible();
 
   await page.getByRole('checkbox', { name: 'Complete Buy breakfast oats and fruit' }).click();
   await expect(page.getByText('Buy breakfast oats and fruit')).not.toBeVisible();
@@ -134,16 +136,17 @@ test('Visitor manages Todo Categories with urgency and confirmed deletion', asyn
   const pageErrors: string[] = [];
   page.on('pageerror', (error) => pageErrors.push(error.message));
   await page.goto('/');
+  const todoPanel = page.locator('section.rounded-lg:has(> h2:text("Todo Tasks"))');
 
   await page.getByLabel('New Todo Category').fill('Home');
   await page.getByRole('button', { name: 'Add Todo Category' }).click();
   expect(pageErrors).toEqual([]);
-  await expect(page.getByRole('heading', { name: 'Home' })).toBeVisible();
+  await expect(todoPanel.getByRole('heading', { name: 'Home' })).toBeVisible();
 
   await page.getByRole('button', { name: 'Rename Home' }).click();
   await page.getByLabel('Edit Todo Category').fill('Apartment');
   await page.getByRole('button', { name: 'Save Todo Category' }).click();
-  await expect(page.getByRole('heading', { name: 'Apartment' })).toBeVisible();
+  await expect(todoPanel.getByRole('heading', { name: 'Apartment' })).toBeVisible();
 
   await page.getByLabel('New Todo Task').fill('Call plumber');
   await page.getByLabel('Todo Category', { exact: true }).selectOption({ label: 'Apartment' });
@@ -169,16 +172,52 @@ test('Visitor manages Todo Categories with urgency and confirmed deletion', asyn
     await dialog.dismiss();
   });
   await page.getByRole('button', { name: 'Delete Apartment' }).click();
-  await expect(page.getByRole('heading', { name: 'Apartment' })).toBeVisible();
-  await expect(page.getByText('Call plumber')).toBeVisible();
+  await expect(todoPanel.getByRole('heading', { name: 'Apartment' })).toBeVisible();
+  await expect(apartmentTasks.getByText('Call plumber')).toBeVisible();
 
   page.once('dialog', async (dialog) => {
     await dialog.accept();
   });
   await page.getByRole('button', { name: 'Delete Apartment' }).click();
-  await expect(page.getByRole('heading', { name: 'Apartment' })).not.toBeVisible();
+  await expect(todoPanel.getByRole('heading', { name: 'Apartment' })).not.toBeVisible();
   await expect(page.getByText('Call plumber')).not.toBeVisible();
   await expect(page.getByText('Water plants')).not.toBeVisible();
+});
+
+test('Visitor sees active Todo Tasks grouped in the Daily Summary preview', async ({ page }) => {
+  await page.goto('/');
+
+  const preview = page.locator('section.rounded-lg').filter({
+    has: page.getByRole('heading', { name: 'Daily Summary Preview' })
+  });
+  await expect(preview.getByText('Todo Tasks')).toHaveCount(0);
+
+  await page.getByLabel('New Todo Category').fill('Work');
+  await page.getByRole('button', { name: 'Add Todo Category' }).click();
+  await page.getByLabel('New Todo Category').fill('Empty Category');
+  await page.getByRole('button', { name: 'Add Todo Category' }).click();
+
+  await page.getByLabel('New Todo Task').fill('Buy coffee');
+  await page.getByLabel('Urgency', { exact: true }).selectOption('high');
+  await page.getByRole('button', { name: 'Add Todo Task' }).click();
+
+  await page.getByLabel('New Todo Task').fill('Draft update');
+  await page.getByLabel('Todo Category', { exact: true }).selectOption({ label: 'Work' });
+  await page.getByRole('button', { name: 'Add Todo Task' }).click();
+
+  await expect(preview.getByText('Todo Tasks')).toBeVisible();
+  await expect(preview.getByText('Buy coffee')).toBeVisible();
+  await expect(preview.getByText('Work')).toBeVisible();
+  await expect(preview.getByText('Draft update')).toBeVisible();
+  await expect(preview.getByLabel('High urgency')).toHaveText('!');
+  await expect(preview.getByText('Empty Category')).toHaveCount(0);
+
+  const previewText = await preview.textContent();
+  expect(previewText?.indexOf('Buy coffee')).toBeLessThan(previewText?.indexOf('Work') ?? -1);
+
+  await page.getByRole('checkbox', { name: 'Todo Section' }).uncheck();
+  await expect(preview.getByText('Todo Tasks')).toHaveCount(0);
+  await expect(preview.getByText('Buy coffee')).toHaveCount(0);
 });
 
 test('Visitor reorders uncategorized Todo Tasks with accessible drag controls', async ({ page }) => {

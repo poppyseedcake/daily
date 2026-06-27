@@ -120,4 +120,86 @@ describe('Daily Summary renderer', () => {
     expect(rendered.text).toContain('Planning check-in');
     expect(rendered.text.indexOf('Demo Calendar')).toBeLessThan(rendered.text.indexOf('Todo Tasks'));
   });
+
+  test('renders active Todo Tasks with uncategorized tasks first, category groups, and urgency marks', () => {
+    const rendered = renderDailySummary({
+      configuration: {
+        ...defaultSummaryConfiguration,
+        sections: {
+          weather: false,
+          commute: false,
+          calendar: false,
+          todo: true
+        }
+      },
+      sections: {
+        weather: { status: 'available', label: 'Weather', detail: 'Hidden.' },
+        commute: { status: 'available', label: 'Commute', detail: 'Hidden.' },
+        calendar: { status: 'available', label: 'Calendar', detail: 'Hidden.' },
+        todo: { status: 'unavailable', label: 'Todo', reason: 'Todo source is not connected yet.' }
+      },
+      todoCategories: [
+        { id: 'work', name: 'Work' },
+        { id: 'home', name: 'Home' },
+        { id: 'empty', name: 'Empty Category' }
+      ],
+      todoTasks: [
+        { id: 'work-2', title: 'Send agenda', categoryId: 'work', urgency: 'medium', position: 2 },
+        { id: 'uncat-1', title: 'Buy coffee', categoryId: null, urgency: 'high', position: 1 },
+        { id: 'work-1', title: 'Draft update', categoryId: 'work', urgency: 'low', position: 1 },
+        { id: 'home-1', title: 'Water plants', categoryId: 'home', urgency: 'medium', position: 1 }
+      ]
+    });
+
+    expect(rendered.html).toContain('Todo Tasks');
+    expect(rendered.html.indexOf('Buy coffee')).toBeLessThan(rendered.html.indexOf('Work'));
+    expect(rendered.html.indexOf('Draft update')).toBeLessThan(rendered.html.indexOf('Send agenda'));
+    expect(rendered.html.indexOf('Work')).toBeLessThan(rendered.html.indexOf('Home'));
+    expect(rendered.html.indexOf('Home')).toBeLessThan(rendered.html.indexOf('Water plants'));
+    expect(rendered.html).toContain('High urgency');
+    expect(rendered.html).toContain('Medium urgency');
+    expect(rendered.html).not.toContain('Empty Category');
+    expect(rendered.text.indexOf('Buy coffee')).toBeLessThan(rendered.text.indexOf('Work'));
+    expect(rendered.text.indexOf('Work')).toBeLessThan(rendered.text.indexOf('Home'));
+    expect(rendered.text.indexOf('Home')).toBeLessThan(rendered.text.indexOf('Water plants'));
+    expect(rendered.text).toContain('Buy coffee !');
+    expect(rendered.text).toContain('Draft update');
+    expect(rendered.text).not.toContain('Draft update !');
+    expect(rendered.text).toContain('Send agenda !');
+    expect(rendered.text).toContain('Water plants !');
+    expect(rendered.text).not.toContain('Empty Category');
+  });
+
+  test('keeps Todo Tasks visible when category metadata is missing', () => {
+    const rendered = renderDailySummary({
+      configuration: {
+        ...defaultSummaryConfiguration,
+        sections: {
+          weather: false,
+          commute: false,
+          calendar: false,
+          todo: true
+        }
+      },
+      sections: {
+        weather: { status: 'available', label: 'Weather', detail: 'Hidden.' },
+        commute: { status: 'available', label: 'Commute', detail: 'Hidden.' },
+        calendar: { status: 'available', label: 'Calendar', detail: 'Hidden.' },
+        todo: { status: 'unavailable', label: 'Todo', reason: 'Todo source is not connected yet.' }
+      },
+      todoTasks: [
+        {
+          id: 'unknown-category-task',
+          title: 'Recover orphaned task',
+          categoryId: 'missing-category',
+          urgency: 'high',
+          position: 1
+        }
+      ]
+    });
+
+    expect(rendered.html).toContain('Todo Tasks');
+    expect(rendered.html).toContain('Recover orphaned task');
+    expect(rendered.text).toContain('Recover orphaned task !');
+  });
 });
