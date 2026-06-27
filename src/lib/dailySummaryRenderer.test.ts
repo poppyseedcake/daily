@@ -162,4 +162,37 @@ describe('Daily Summary renderer', () => {
     expect(rendered.text).toContain('Send agenda !');
     expect(rendered.text).not.toContain('Empty Category');
   });
+
+  test('keeps Todo Tasks visible when category metadata is missing', () => {
+    const rendered = renderDailySummary({
+      configuration: {
+        ...defaultSummaryConfiguration,
+        sections: {
+          weather: false,
+          commute: false,
+          calendar: false,
+          todo: true
+        }
+      },
+      sections: {
+        weather: { status: 'available', label: 'Weather', detail: 'Hidden.' },
+        commute: { status: 'available', label: 'Commute', detail: 'Hidden.' },
+        calendar: { status: 'available', label: 'Calendar', detail: 'Hidden.' },
+        todo: { status: 'unavailable', label: 'Todo', reason: 'Todo source is not connected yet.' }
+      },
+      todoTasks: [
+        {
+          id: 'unknown-category-task',
+          title: 'Recover orphaned task',
+          categoryId: 'missing-category',
+          urgency: 'high',
+          position: 1
+        }
+      ]
+    });
+
+    expect(rendered.html).toContain('Todo Tasks');
+    expect(rendered.html).toContain('Recover orphaned task');
+    expect(rendered.text).toContain('Recover orphaned task !');
+  });
 });

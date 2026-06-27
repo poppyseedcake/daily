@@ -94,7 +94,10 @@ const buildTodoSection = (
     return null;
   }
 
-  const uncategorizedTasks = tasksForCategory(tasks, null);
+  const knownCategoryIds = new Set(categories.map((category) => category.id));
+  const uncategorizedTasks = tasks
+    .filter((task) => task.categoryId === null || !knownCategoryIds.has(task.categoryId))
+    .toSorted((first, second) => first.position - second.position);
   const categoryGroups = categories
     .map((category) => ({
       category,
