@@ -1,5 +1,26 @@
 import { expect, test } from '@playwright/test';
 
+const dragHandleIntoList = async (
+  page: import('@playwright/test').Page,
+  handle: import('@playwright/test').Locator,
+  list: import('@playwright/test').Locator
+) => {
+  const handleBox = await handle.boundingBox();
+  const listBox = await list.boundingBox();
+
+  if (!handleBox || !listBox) {
+    throw new Error('Cannot drag Todo Task without visible handle and target list boxes.');
+  }
+
+  await page.mouse.move(handleBox.x + handleBox.width / 2, handleBox.y + handleBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(listBox.x + listBox.width / 2, listBox.y + Math.max(12, listBox.height / 2), {
+    steps: 16
+  });
+  await page.waitForTimeout(150);
+  await page.mouse.up();
+};
+
 test('Visitor opens Daily into the usable main panel', async ({ page }) => {
   await page.goto('/');
 
@@ -128,6 +149,111 @@ test('Visitor manages Todo Categories with urgency and confirmed deletion', asyn
   await expect(page.getByRole('heading', { name: 'Apartment' })).not.toBeVisible();
   await expect(page.getByText('Call plumber')).not.toBeVisible();
   await expect(page.getByText('Water plants')).not.toBeVisible();
+});
+
+test('Visitor reorders uncategorized Todo Tasks with accessible drag controls', async ({ page }) => {
+  await page.goto('/');
+
+  for (const title of ['Plan meals', 'Buy groceries', 'Cook dinner']) {
+    await page.getByLabel('New Todo Task').fill(title);
+    await page.getByRole('button', { name: 'Add Todo Task' }).click();
+  }
+
+  const uncategorizedTasks = page.getByRole('list', { name: 'No Category Todo Tasks' });
+  await expect(uncategorizedTasks.locator('li').nth(0)).toContainText('Plan meals');
+  await expect(uncategorizedTasks.locator('li').nth(1)).toContainText('Buy groceries');
+  await expect(uncategorizedTasks.locator('li').nth(2)).toContainText('Cook dinner');
+
+  await uncategorizedTasks.getByRole('button', { name: 'Move Cook dinner' }).focus();
+  await page.keyboard.press('Space');
+  await page.keyboard.press('ArrowUp');
+  await page.keyboard.press('ArrowUp');
+  await page.keyboard.press('Space');
+
+  await expect(uncategorizedTasks.locator('li').nth(0)).toContainText('Cook dinner');
+  await expect(uncategorizedTasks.locator('li').nth(1)).toContainText('Plan meals');
+  await expect(uncategorizedTasks.locator('li').nth(2)).toContainText('Buy groceries');
+});
+
+test('Visitor reorders Todo Tasks inside a category without urgency resorting', async ({ page }) => {
+  await page.goto('/');
+
+  await page.getByLabel('New Todo Category').fill('Work');
+  await page.getByRole('button', { name: 'Add Todo Category' }).click();
+
+  for (const [title, urgency] of [
+    ['Draft update', 'low'],
+    ['Review launch notes', 'high'],
+    ['Send agenda', 'medium']
+  ] as const) {
+    await page.getByLabel('New Todo Task').fill(title);
+    await page.getByLabel('Todo Category', { exact: true }).selectOption({ label: 'Work' });
+    await page.getByLabel('Urgency', { exact: true }).selectOption(urgency);
+    await page.getByRole('button', { name: 'Add Todo Task' }).click();
+  }
+
+  const workTasks = page.getByRole('list', { name: 'Work Todo Tasks' });
+  await expect(workTasks.locator('li').nth(0)).toContainText('Draft update');
+  await expect(workTasks.locator('li').nth(1)).toContainText('Review launch notes');
+  await expect(workTasks.locator('li').nth(2)).toContainText('Send agenda');
+
+  await workTasks.getByRole('button', { name: 'Move Send agenda' }).focus();
+  await page.keyboard.press('Space');
+  await page.keyboard.press('ArrowUp');
+  await page.keyboard.press('ArrowUp');
+  await page.keyboard.press('Space');
+
+  await expect(workTasks.locator('li').nth(0)).toContainText('Send agenda');
+  await expect(workTasks.locator('li').nth(1)).toContainText('Draft update');
+  await expect(workTasks.locator('li').nth(2)).toContainText('Review launch notes');
+
+  await page.getByRole('button', { name: 'Edit Draft update' }).click();
+  await page.getByLabel('Edit Urgency').selectOption('high');
+  await page.getByRole('button', { name: 'Save Todo Task' }).click();
+
+  await expect(workTasks.locator('li').nth(0)).toContainText('Send agenda');
+  await expect(workTasks.locator('li').nth(1)).toContainText('Draft update');
+  await expect(workTasks.locator('li').nth(2)).toContainText('Review launch notes');
+});
+
+test('Visitor moves Todo Tasks between categories and the uncategorized list', async ({ page }) => {
+  await page.goto('/');
+
+  for (const category of ['Work', 'Home']) {
+    await page.getByLabel('New Todo Category').fill(category);
+    await page.getByRole('button', { name: 'Add Todo Category' }).click();
+  }
+
+  await page.getByLabel('New Todo Task').fill('File invoice');
+  await page.getByLabel('Todo Category', { exact: true }).selectOption({ label: 'Work' });
+  await page.getByLabel('Urgency', { exact: true }).selectOption('high');
+  await page.getByRole('button', { name: 'Add Todo Task' }).click();
+
+  await page.getByLabel('New Todo Task').fill('Wash mugs');
+  await page.getByLabel('Todo Category', { exact: true }).selectOption({ label: 'Home' });
+  await page.getByLabel('Urgency', { exact: true }).selectOption('medium');
+  await page.getByRole('button', { name: 'Add Todo Task' }).click();
+
+  const uncategorizedTasks = page.getByRole('list', { name: 'No Category Todo Tasks' });
+  const workTasks = page.getByRole('list', { name: 'Work Todo Tasks' });
+  const homeTasks = page.getByRole('list', { name: 'Home Todo Tasks' });
+
+  await dragHandleIntoList(page, workTasks.getByRole('button', { name: 'Move File invoice' }), homeTasks);
+  await expect(workTasks.getByText('File invoice')).toHaveCount(0);
+  await expect(homeTasks.getByRole('listitem').filter({ hasText: 'File invoice' })).toBeVisible();
+  await expect(homeTasks.getByRole('listitem').filter({ hasText: 'File invoice' }).getByLabel('High urgency')).toHaveText('!');
+
+  await homeTasks.getByRole('button', { name: 'Move Wash mugs' }).focus();
+  await page.keyboard.press('Space');
+  for (let index = 0; index < 8; index += 1) {
+    await page.keyboard.press('Shift+Tab');
+  }
+  await page.keyboard.press('Space');
+  await expect(homeTasks.getByText('Wash mugs')).toHaveCount(0);
+  await expect(uncategorizedTasks.getByRole('listitem').filter({ hasText: 'Wash mugs' })).toBeVisible();
+  await expect(
+    uncategorizedTasks.getByRole('listitem').filter({ hasText: 'Wash mugs' }).getByLabel('Medium urgency')
+  ).toHaveText('!');
 });
 
 test('Administrator route shows a minimal shell without private Visitor or User content', async ({

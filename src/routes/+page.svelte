@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { CalendarDays, Check, Mail, Pencil, ShieldCheck, Trash2 } from '@lucide/svelte';
+  import { CalendarDays, Check, GripVertical, Mail, Pencil, ShieldCheck, Trash2 } from '@lucide/svelte';
+  import { dragHandle, dragHandleZone, SHADOW_ITEM_MARKER_PROPERTY_NAME } from 'svelte-dnd-action';
   import { onMount } from 'svelte';
   import Panel from '$lib/components/Panel.svelte';
   import { buildDemoCalendarSection } from '$lib/demoCalendar';
@@ -119,7 +120,59 @@
   const urgencyMark = (urgency: TodoUrgency) =>
     urgency === 'high' ? '!' : urgency === 'medium' ? '!' : '';
   const tasksForCategory = (categoryId: string | null) =>
-    todoTasks.filter((task) => task.categoryId === categoryId);
+    todoTasks
+      .filter((task) => task.categoryId === categoryId)
+      .toSorted((first, second) => first.position - second.position);
+  const nextPositionForCategory = (categoryId: string | null) =>
+    Math.max(0, ...tasksForCategory(categoryId).map((task) => task.position)) + 1;
+  const isDndShadowTask = (task: TodoTask) =>
+    Boolean((task as TodoTask & { [SHADOW_ITEM_MARKER_PROPERTY_NAME]?: boolean })[SHADOW_ITEM_MARKER_PROPERTY_NAME]);
+  const realTodoDropTasks = (orderedTasks: TodoTask[], draggedTaskId: string | undefined = undefined) =>
+    orderedTasks.flatMap((task) => {
+      if (!isDndShadowTask(task)) {
+        return [task];
+      }
+
+      const realTask = todoTasks.find((candidate) => candidate.id === task.id || candidate.id === draggedTaskId);
+      return realTask ? [realTask] : [];
+    });
+  const reorderTodoTasks = (
+    categoryId: string | null,
+    orderedTasks: TodoTask[],
+    draggedTaskId: string | undefined = undefined,
+    detachMissingTasks = false
+  ) => {
+    const realOrderedTasks = realTodoDropTasks(orderedTasks, draggedTaskId);
+    const reorderedTaskIds = new Set(realOrderedTasks.map((task) => task.id));
+    const movedTasks = new Map(
+      realOrderedTasks.map((task, index) => [task.id, { categoryId, position: index + 1 }])
+    );
+
+    todoTasks = todoTasks.map((task) => {
+      const movedTask = movedTasks.get(task.id);
+
+      if (movedTask) {
+        return { ...task, ...movedTask };
+      }
+
+      if (detachMissingTasks && task.categoryId === categoryId && !reorderedTaskIds.has(task.id)) {
+        return { ...task, categoryId: null };
+      }
+
+      return task;
+    });
+  };
+  const handleTodoDrop = (
+    categoryId: string | null,
+    event: CustomEvent<{ items: TodoTask[]; info?: { id?: string; trigger?: string } }>,
+    detachMissingTasks = false
+  ) => {
+    if (event.detail.info?.trigger === 'dragStarted') {
+      return;
+    }
+
+    reorderTodoTasks(categoryId, event.detail.items, event.detail.info?.id, detachMissingTasks);
+  };
 
   const createTodoTask = () => {
     const result = createTodoTaskSchema.safeParse({
@@ -138,7 +191,8 @@
         id: nextId('todo'),
         title: result.data.title,
         categoryId: result.data.categoryId,
-        urgency: result.data.urgency
+        urgency: result.data.urgency,
+        position: nextPositionForCategory(result.data.categoryId)
       }
     ];
     newTodoTitle = '';
@@ -538,9 +592,20 @@
           <div class="grid gap-4">
             <section class="grid gap-2">
               <h3 class="font-semibold text-stone-950">No Category</h3>
-              <ul class="grid gap-2" aria-label="No Category Todo Tasks">
-                {#each tasksForCategory(null) as task}
-                  <li class="rounded-md border border-stone-200 px-3 py-2">
+              <ul
+                class="grid min-h-12 gap-2 rounded-md"
+                aria-label="No Category Todo Tasks"
+                use:dragHandleZone={{
+                  items: tasksForCategory(null),
+                  flipDurationMs: 150,
+                  type: 'todo-task',
+                  useCursorForDetection: true
+                }}
+                onconsider={(event) => handleTodoDrop(null, event)}
+                onfinalize={(event) => handleTodoDrop(null, event, true)}
+              >
+                {#each tasksForCategory(null) as task (task.id)}
+                  <li class="rounded-md border border-stone-200 px-3 py-2" aria-label={task.title}>
                     {#if editingTaskId === task.id}
                       <div class="grid gap-2">
                         <input
@@ -568,22 +633,33 @@
                       </div>
                     {:else}
                       <div class="flex flex-wrap items-center justify-between gap-3">
-                        <label class="flex min-w-0 items-center gap-3">
-                          <input
-                            type="checkbox"
-                            aria-label={`Complete ${task.title}`}
-                            onchange={() => completeTodoTask(task.id)}
-                          />
-                          <span class="break-words text-stone-950">{task.title}</span>
-                          {#if urgencyMark(task.urgency)}
-                            <span
-                              class={`inline-flex size-6 items-center justify-center rounded-full text-sm font-bold ${task.urgency === 'high' ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'}`}
-                              aria-label={urgencyLabel(task.urgency)}
-                            >
-                              {urgencyMark(task.urgency)}
-                            </span>
-                          {/if}
-                        </label>
+                        <div class="flex min-w-0 items-center gap-3">
+                          <span
+                            class="inline-flex size-9 cursor-grab items-center justify-center rounded-md border border-stone-200 text-stone-500 active:cursor-grabbing"
+                            role="button"
+                            tabindex="0"
+                            aria-label={`Move ${task.title}`}
+                            use:dragHandle
+                          >
+                            <GripVertical size={16} aria-hidden="true" />
+                          </span>
+                          <label class="flex min-w-0 items-center gap-3">
+                            <input
+                              type="checkbox"
+                              aria-label={`Complete ${task.title}`}
+                              onchange={() => completeTodoTask(task.id)}
+                            />
+                            <span class="break-words text-stone-950">{task.title}</span>
+                            {#if urgencyMark(task.urgency)}
+                              <span
+                                class={`inline-flex size-6 items-center justify-center rounded-full text-sm font-bold ${task.urgency === 'high' ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'}`}
+                                aria-label={urgencyLabel(task.urgency)}
+                              >
+                                {urgencyMark(task.urgency)}
+                              </span>
+                            {/if}
+                          </label>
+                        </div>
                         <button
                           class="inline-flex size-9 items-center justify-center rounded-md border border-stone-300 text-stone-700 hover:bg-stone-50"
                           type="button"
@@ -600,7 +676,7 @@
               </ul>
             </section>
 
-            {#each todoCategories as category}
+            {#each todoCategories as category (category.id)}
               <section class="grid gap-2">
                 <div class="flex flex-wrap items-center justify-between gap-2">
                   {#if editingCategoryId === category.id}
@@ -643,9 +719,20 @@
                     </div>
                   {/if}
                 </div>
-                <ul class="grid gap-2" aria-label={`${category.name} Todo Tasks`}>
-                  {#each tasksForCategory(category.id) as task}
-                    <li class="rounded-md border border-stone-200 px-3 py-2">
+                <ul
+                  class="grid min-h-12 gap-2 rounded-md"
+                  aria-label={`${category.name} Todo Tasks`}
+                  use:dragHandleZone={{
+                    items: tasksForCategory(category.id),
+                    flipDurationMs: 150,
+                    type: 'todo-task',
+                    useCursorForDetection: true
+                  }}
+                  onconsider={(event) => handleTodoDrop(category.id, event)}
+                  onfinalize={(event) => handleTodoDrop(category.id, event, true)}
+                >
+                  {#each tasksForCategory(category.id) as task (task.id)}
+                    <li class="rounded-md border border-stone-200 px-3 py-2" aria-label={task.title}>
                       {#if editingTaskId === task.id}
                         <div class="grid gap-2">
                           <input
@@ -673,22 +760,33 @@
                         </div>
                       {:else}
                         <div class="flex flex-wrap items-center justify-between gap-3">
-                          <label class="flex min-w-0 items-center gap-3">
-                            <input
-                              type="checkbox"
-                              aria-label={`Complete ${task.title}`}
-                              onchange={() => completeTodoTask(task.id)}
-                            />
-                            <span class="break-words text-stone-950">{task.title}</span>
-                            {#if urgencyMark(task.urgency)}
-                              <span
-                                class={`inline-flex size-6 items-center justify-center rounded-full text-sm font-bold ${task.urgency === 'high' ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'}`}
-                                aria-label={urgencyLabel(task.urgency)}
-                              >
-                                {urgencyMark(task.urgency)}
-                              </span>
-                            {/if}
-                          </label>
+                          <div class="flex min-w-0 items-center gap-3">
+                            <span
+                              class="inline-flex size-9 cursor-grab items-center justify-center rounded-md border border-stone-200 text-stone-500 active:cursor-grabbing"
+                              role="button"
+                              tabindex="0"
+                              aria-label={`Move ${task.title}`}
+                              use:dragHandle
+                            >
+                              <GripVertical size={16} aria-hidden="true" />
+                            </span>
+                            <label class="flex min-w-0 items-center gap-3">
+                              <input
+                                type="checkbox"
+                                aria-label={`Complete ${task.title}`}
+                                onchange={() => completeTodoTask(task.id)}
+                              />
+                              <span class="break-words text-stone-950">{task.title}</span>
+                              {#if urgencyMark(task.urgency)}
+                                <span
+                                  class={`inline-flex size-6 items-center justify-center rounded-full text-sm font-bold ${task.urgency === 'high' ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'}`}
+                                  aria-label={urgencyLabel(task.urgency)}
+                                >
+                                  {urgencyMark(task.urgency)}
+                                </span>
+                              {/if}
+                            </label>
+                          </div>
                           <button
                             class="inline-flex size-9 items-center justify-center rounded-md border border-stone-300 text-stone-700 hover:bg-stone-50"
                             type="button"

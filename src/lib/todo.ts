@@ -27,9 +27,9 @@ export type TodoTask = {
   title: string;
   categoryId: string | null;
   urgency: TodoUrgency;
+  position: number;
 };
 export type TodoCategory = {
   id: string;
   name: string;
 };
-
