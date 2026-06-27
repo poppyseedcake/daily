@@ -2,6 +2,7 @@
   import { CalendarDays, Check, GripVertical, Mail, Pencil, ShieldCheck, Trash2 } from '@lucide/svelte';
   import { dragHandle, dragHandleZone, SHADOW_ITEM_MARKER_PROPERTY_NAME } from 'svelte-dnd-action';
   import { onMount } from 'svelte';
+  import { z } from 'zod';
   import Panel from '$lib/components/Panel.svelte';
   import { buildDemoCalendarSection } from '$lib/demoCalendar';
   import { renderDailySummary, type DailySummaryInput } from '$lib/dailySummaryRenderer';
@@ -15,7 +16,9 @@
   } from '$lib/summaryConfiguration';
   import {
     createTodoTaskSchema,
+    todoCategorySchema,
     todoCategoryMutationSchema,
+    todoTaskSchema,
     updateTodoTaskSchema,
     type TodoCategory,
     type TodoTask,
@@ -29,6 +32,13 @@
     { key: 'todo', label: 'Todo' }
   ];
   const userTimeZones: UserTimeZone[] = ['Europe/Warsaw', 'America/New_York', 'UTC'];
+  const visitorLocalSetupStorageKey = 'daily.visitorLocalSetup.v1';
+  const visitorLocalSetupSchema = z.object({
+    summaryConfiguration: summaryConfigurationSchema,
+    todoCategories: z.array(todoCategorySchema),
+    todoTasks: z.array(todoTaskSchema),
+    nextTodoId: z.number().int().positive()
+  });
   const initialSummaryConfiguration = summaryConfigurationSchema.parse(defaultSummaryConfiguration);
   let summaryTime = $state(initialSummaryConfiguration.summaryTime);
   let summaryTimeInput = $state(initialSummaryConfiguration.summaryTime);
@@ -50,9 +60,12 @@
   let editingCategoryId = $state<string | null>(null);
   let editingCategoryName = $state('');
   let todoControlsReady = $state(false);
+  let localSetupHydrated = $state(false);
   let nextTodoId = 1;
 
   onMount(() => {
+    restoreVisitorLocalSetup();
+    localSetupHydrated = true;
     todoControlsReady = true;
   });
 
@@ -115,6 +128,52 @@
   const readInputChecked = (event: Event) => (event.currentTarget as HTMLInputElement).checked;
   const readInputValue = (event: Event) => (event.currentTarget as HTMLInputElement).value;
   const nextId = (prefix: string) => `${prefix}-${nextTodoId++}`;
+  const restoreVisitorLocalSetup = () => {
+    let storedSetup: string | null | undefined;
+
+    try {
+      storedSetup = globalThis.localStorage?.getItem(visitorLocalSetupStorageKey);
+    } catch {
+      return;
+    }
+
+    if (!storedSetup) {
+      return;
+    }
+
+    let parsedSetup: unknown;
+    try {
+      parsedSetup = JSON.parse(storedSetup);
+    } catch {
+      return;
+    }
+
+    const result = visitorLocalSetupSchema.safeParse(parsedSetup);
+
+    if (!result.success) {
+      return;
+    }
+
+    updateSummaryConfiguration(result.data.summaryConfiguration);
+    todoCategories = result.data.todoCategories;
+    todoTasks = result.data.todoTasks;
+    nextTodoId = result.data.nextTodoId;
+  };
+  const persistVisitorLocalSetup = () => {
+    try {
+      globalThis.localStorage?.setItem(
+        visitorLocalSetupStorageKey,
+        JSON.stringify({
+          summaryConfiguration: currentSummaryConfiguration(),
+          todoCategories,
+          todoTasks,
+          nextTodoId
+        })
+      );
+    } catch {
+      return;
+    }
+  };
   const urgencyLabel = (urgency: TodoUrgency) =>
     urgency === 'high' ? 'High urgency' : urgency === 'medium' ? 'Medium urgency' : 'Low urgency';
   const urgencyMark = (urgency: TodoUrgency) =>
@@ -334,6 +393,12 @@
       summaryTime = result.data.summaryTime;
     }
   });
+
+  $effect(() => {
+    if (localSetupHydrated) {
+      persistVisitorLocalSetup();
+    }
+  });
 </script>
 
 <svelte:head>
@@ -453,7 +518,7 @@
               <input
                 id="summary-delivery"
                 type="checkbox"
-                checked={summaryDeliveryEnabled}
+                bind:checked={summaryDeliveryEnabled}
                 onchange={(event) => {
                   patchSummaryConfiguration({ summaryDeliveryEnabled: readInputChecked(event) });
                 }}
@@ -833,6 +898,13 @@
     </section>
 
     <aside class="space-y-4">
+      <Panel title="Local Save" eyebrow="Visitor">
+        <p class="font-medium text-emerald-800">Saved in this browser only</p>
+        <p class="mt-2">
+          This Local Setup stays on this device. It does not create a User account or enable email
+          delivery.
+        </p>
+      </Panel>
       <Panel title="Sending Status" eyebrow="Milestone 1">
         <p>
           Summary Delivery controls are available for setup, but no email can be sent until Google
