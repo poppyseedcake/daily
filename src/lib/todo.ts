@@ -21,15 +21,19 @@ export const todoCategoryMutationSchema = z.object({
   name: todoCategoryNameSchema
 });
 
+export const todoTaskSchema = z.object({
+  id: z.string(),
+  title: todoTaskTitleSchema,
+  categoryId: z.string().nullable(),
+  urgency: todoUrgencySchema,
+  position: z.number().int().positive()
+});
+
+export const todoCategorySchema = z.object({
+  id: z.string(),
+  name: todoCategoryNameSchema
+});
+
 export type TodoUrgency = z.infer<typeof todoUrgencySchema>;
-export type TodoTask = {
-  id: string;
-  title: string;
-  categoryId: string | null;
-  urgency: TodoUrgency;
-  position: number;
-};
-export type TodoCategory = {
-  id: string;
-  name: string;
-};
+export type TodoTask = z.infer<typeof todoTaskSchema>;
+export type TodoCategory = z.infer<typeof todoCategorySchema>;

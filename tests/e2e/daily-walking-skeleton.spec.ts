@@ -1,4 +1,31 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
+
+const tabUntilDropTargetActive = async (
+  page: Page,
+  target: Locator,
+  options: { direction?: 'forward' | 'backward'; maxTabs?: number } = {}
+) => {
+  const direction = options.direction ?? 'forward';
+  const maxTabs = options.maxTabs ?? 20;
+  const key = direction === 'forward' ? 'Tab' : 'Shift+Tab';
+
+  for (let index = 0; index < maxTabs; index += 1) {
+    if (
+      await target.evaluate(
+        (element) =>
+          element.getAttribute('aria-describedby') === 'dnd-zone-active' &&
+          element.contains(document.activeElement)
+      )
+    ) {
+      await expect(target).toHaveAttribute('aria-describedby', 'dnd-zone-active');
+      return;
+    }
+
+    await page.keyboard.press(key);
+  }
+
+  await expect(target).toHaveAttribute('aria-describedby', 'dnd-zone-active');
+};
 
 test('Visitor opens Daily into the usable main panel', async ({ page }) => {
   await page.goto('/');
@@ -238,9 +265,7 @@ test('Visitor moves Todo Tasks between categories and the uncategorized list', a
 
   await workTasks.getByRole('button', { name: 'Move File invoice' }).focus();
   await page.keyboard.press('Space');
-  for (let index = 0; index < 8; index += 1) {
-    await page.keyboard.press('Tab');
-  }
+  await tabUntilDropTargetActive(page, homeTasks);
   await page.keyboard.press('Space');
   await expect(workTasks.getByText('File invoice')).toHaveCount(0);
   await expect(homeTasks.getByRole('listitem').filter({ hasText: 'File invoice' })).toBeVisible();
@@ -253,9 +278,7 @@ test('Visitor moves Todo Tasks between categories and the uncategorized list', a
 
   await homeTasks.getByRole('button', { name: 'Move Wash mugs' }).focus();
   await page.keyboard.press('Space');
-  for (let index = 0; index < 8; index += 1) {
-    await page.keyboard.press('Shift+Tab');
-  }
+  await tabUntilDropTargetActive(page, uncategorizedTasks, { direction: 'backward' });
   await page.keyboard.press('Space');
   await expect(homeTasks.getByText('Wash mugs')).toHaveCount(0);
   await expect(uncategorizedTasks.getByRole('listitem').filter({ hasText: 'Wash mugs' })).toBeVisible();
@@ -312,6 +335,16 @@ test('Visitor Todo data and local-save status persist after page refresh', async
     restoredWorkTasks.getByRole('listitem').filter({ hasText: 'Review deploy checklist' }).getByLabel('High urgency')
   ).toHaveText('!');
   await expect(homeTasks.getByRole('listitem').filter({ hasText: 'Water plants' })).toBeVisible();
+
+  await page.getByLabel('New Todo Category').fill('Errands');
+  await page.getByRole('button', { name: 'Add Todo Category' }).click();
+  await expect(page.getByRole('heading', { name: 'Errands' })).toBeVisible();
+
+  await page.getByLabel('New Todo Task').fill('Schedule retro');
+  await page.getByLabel('Todo Category', { exact: true }).selectOption({ label: 'Work' });
+  await page.getByRole('button', { name: 'Add Todo Task' }).click();
+  await expect(restoredWorkTasks.getByRole('listitem').filter({ hasText: 'Schedule retro' })).toBeVisible();
+  await expect(restoredWorkTasks.getByRole('listitem').filter({ hasText: 'Schedule retro' })).toHaveCount(1);
 });
 
 test('Administrator route shows a minimal shell without private Visitor or User content', async ({

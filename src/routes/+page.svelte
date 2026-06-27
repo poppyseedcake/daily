@@ -16,7 +16,9 @@
   } from '$lib/summaryConfiguration';
   import {
     createTodoTaskSchema,
+    todoCategorySchema,
     todoCategoryMutationSchema,
+    todoTaskSchema,
     updateTodoTaskSchema,
     type TodoCategory,
     type TodoTask,
@@ -31,17 +33,6 @@
   ];
   const userTimeZones: UserTimeZone[] = ['Europe/Warsaw', 'America/New_York', 'UTC'];
   const visitorLocalSetupStorageKey = 'daily.visitorLocalSetup.v1';
-  const todoTaskSchema = z.object({
-    id: z.string(),
-    title: z.string().trim().min(1).max(120),
-    categoryId: z.string().nullable(),
-    urgency: z.enum(['low', 'medium', 'high']),
-    position: z.number().int().positive()
-  });
-  const todoCategorySchema = z.object({
-    id: z.string(),
-    name: z.string().trim().min(1).max(80)
-  });
   const visitorLocalSetupSchema = z.object({
     summaryConfiguration: summaryConfigurationSchema,
     todoCategories: z.array(todoCategorySchema),
@@ -138,7 +129,13 @@
   const readInputValue = (event: Event) => (event.currentTarget as HTMLInputElement).value;
   const nextId = (prefix: string) => `${prefix}-${nextTodoId++}`;
   const restoreVisitorLocalSetup = () => {
-    const storedSetup = globalThis.localStorage?.getItem(visitorLocalSetupStorageKey);
+    let storedSetup: string | null | undefined;
+
+    try {
+      storedSetup = globalThis.localStorage?.getItem(visitorLocalSetupStorageKey);
+    } catch {
+      return;
+    }
 
     if (!storedSetup) {
       return;
@@ -163,15 +160,19 @@
     nextTodoId = result.data.nextTodoId;
   };
   const persistVisitorLocalSetup = () => {
-    globalThis.localStorage?.setItem(
-      visitorLocalSetupStorageKey,
-      JSON.stringify({
-        summaryConfiguration: currentSummaryConfiguration(),
-        todoCategories,
-        todoTasks,
-        nextTodoId
-      })
-    );
+    try {
+      globalThis.localStorage?.setItem(
+        visitorLocalSetupStorageKey,
+        JSON.stringify({
+          summaryConfiguration: currentSummaryConfiguration(),
+          todoCategories,
+          todoTasks,
+          nextTodoId
+        })
+      );
+    } catch {
+      return;
+    }
   };
   const urgencyLabel = (urgency: TodoUrgency) =>
     urgency === 'high' ? 'High urgency' : urgency === 'medium' ? 'Medium urgency' : 'Low urgency';
