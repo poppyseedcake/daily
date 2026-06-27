@@ -1,26 +1,5 @@
 import { expect, test } from '@playwright/test';
 
-const dragHandleIntoList = async (
-  page: import('@playwright/test').Page,
-  handle: import('@playwright/test').Locator,
-  list: import('@playwright/test').Locator
-) => {
-  const handleBox = await handle.boundingBox();
-  const listBox = await list.boundingBox();
-
-  if (!handleBox || !listBox) {
-    throw new Error('Cannot drag Todo Task without visible handle and target list boxes.');
-  }
-
-  await page.mouse.move(handleBox.x + handleBox.width / 2, handleBox.y + handleBox.height / 2);
-  await page.mouse.down();
-  await page.mouse.move(listBox.x + listBox.width / 2, listBox.y + Math.max(12, listBox.height / 2), {
-    steps: 16
-  });
-  await page.waitForTimeout(150);
-  await page.mouse.up();
-};
-
 test('Visitor opens Daily into the usable main panel', async ({ page }) => {
   await page.goto('/');
 
@@ -59,6 +38,30 @@ test('Visitor configures Daily Summary state from the main panel', async ({ page
   await expect(page.getByText('Mock Commute')).toBeVisible();
   await expect(page.getByText('Demo Calendar - sample Calendar Events for the Week Ahead.')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Preview Daily Summary' })).toBeDisabled();
+});
+
+test('Visitor Summary Configuration persists after page refresh', async ({ page }) => {
+  await page.goto('/');
+
+  await page.getByLabel('Summary Time').fill('18:45');
+  await page.getByRole('radio', { name: 'America/New_York' }).check();
+  await page.getByRole('radio', { name: 'Dark Theme' }).check();
+  await page.getByRole('checkbox', { name: 'Summary Delivery' }).uncheck();
+  await page.getByRole('checkbox', { name: 'Weather Section' }).uncheck();
+  await page.getByRole('checkbox', { name: 'Todo Section' }).uncheck();
+
+  await page.reload();
+
+  await expect(page.getByLabel('Summary Time')).toHaveValue('18:45');
+  await expect(page.getByRole('radio', { name: 'America/New_York' })).toBeChecked();
+  await expect(page.getByRole('radio', { name: 'Dark Theme' })).toBeChecked();
+  await expect(page.getByRole('checkbox', { name: 'Summary Delivery' })).not.toBeChecked();
+  await expect(page.getByRole('checkbox', { name: 'Weather Section' })).not.toBeChecked();
+  await expect(page.getByRole('checkbox', { name: 'Todo Section' })).not.toBeChecked();
+  await expect(page.getByText('Next summary: 18:45 America/New_York')).toBeVisible();
+  await expect(page.getByText('Dark preview')).toBeVisible();
+  await expect(page.getByText('Mock Weather')).not.toBeVisible();
+  await expect(page.getByText('Todo source is not connected yet.')).not.toBeVisible();
 });
 
 test('Visitor sees Demo Calendar content for the Week Ahead and can hide it from the preview', async ({
@@ -229,19 +232,24 @@ test('Visitor moves Todo Tasks between categories and the uncategorized list', a
   await page.getByLabel('Urgency', { exact: true }).selectOption('high');
   await page.getByRole('button', { name: 'Add Todo Task' }).click();
 
-  await page.getByLabel('New Todo Task').fill('Wash mugs');
-  await page.getByLabel('Todo Category', { exact: true }).selectOption({ label: 'Home' });
-  await page.getByLabel('Urgency', { exact: true }).selectOption('medium');
-  await page.getByRole('button', { name: 'Add Todo Task' }).click();
-
   const uncategorizedTasks = page.getByRole('list', { name: 'No Category Todo Tasks' });
   const workTasks = page.getByRole('list', { name: 'Work Todo Tasks' });
   const homeTasks = page.getByRole('list', { name: 'Home Todo Tasks' });
 
-  await dragHandleIntoList(page, workTasks.getByRole('button', { name: 'Move File invoice' }), homeTasks);
+  await workTasks.getByRole('button', { name: 'Move File invoice' }).focus();
+  await page.keyboard.press('Space');
+  for (let index = 0; index < 8; index += 1) {
+    await page.keyboard.press('Tab');
+  }
+  await page.keyboard.press('Space');
   await expect(workTasks.getByText('File invoice')).toHaveCount(0);
   await expect(homeTasks.getByRole('listitem').filter({ hasText: 'File invoice' })).toBeVisible();
   await expect(homeTasks.getByRole('listitem').filter({ hasText: 'File invoice' }).getByLabel('High urgency')).toHaveText('!');
+
+  await page.getByLabel('New Todo Task').fill('Wash mugs');
+  await page.getByLabel('Todo Category', { exact: true }).selectOption({ label: 'Home' });
+  await page.getByLabel('Urgency', { exact: true }).selectOption('medium');
+  await page.getByRole('button', { name: 'Add Todo Task' }).click();
 
   await homeTasks.getByRole('button', { name: 'Move Wash mugs' }).focus();
   await page.keyboard.press('Space');
@@ -254,6 +262,56 @@ test('Visitor moves Todo Tasks between categories and the uncategorized list', a
   await expect(
     uncategorizedTasks.getByRole('listitem').filter({ hasText: 'Wash mugs' }).getByLabel('Medium urgency')
   ).toHaveText('!');
+});
+
+test('Visitor Todo data and local-save status persist after page refresh', async ({ page }) => {
+  await page.goto('/');
+
+  await expect(page.getByText('Saved in this browser only')).toBeVisible();
+
+  await page.getByLabel('New Todo Category').fill('Work');
+  await page.getByRole('button', { name: 'Add Todo Category' }).click();
+  await page.getByLabel('New Todo Category').fill('Home');
+  await page.getByRole('button', { name: 'Add Todo Category' }).click();
+
+  await page.getByLabel('New Todo Task').fill('Buy coffee');
+  await page.getByLabel('Urgency', { exact: true }).selectOption('medium');
+  await page.getByRole('button', { name: 'Add Todo Task' }).click();
+
+  for (const [title, category, urgency] of [
+    ['Write launch note', 'Work', 'low'],
+    ['Review deploy checklist', 'Work', 'high'],
+    ['Water plants', 'Home', 'medium']
+  ] as const) {
+    await page.getByLabel('New Todo Task').fill(title);
+    await page.getByLabel('Todo Category', { exact: true }).selectOption({ label: category });
+    await page.getByLabel('Urgency', { exact: true }).selectOption(urgency);
+    await page.getByRole('button', { name: 'Add Todo Task' }).click();
+  }
+
+  const workTasks = page.getByRole('list', { name: 'Work Todo Tasks' });
+  await workTasks.getByRole('button', { name: 'Move Review deploy checklist' }).focus();
+  await page.keyboard.press('Space');
+  await page.keyboard.press('ArrowUp');
+  await page.keyboard.press('Space');
+
+  await page.reload();
+
+  const uncategorizedTasks = page.getByRole('list', { name: 'No Category Todo Tasks' });
+  const restoredWorkTasks = page.getByRole('list', { name: 'Work Todo Tasks' });
+  const homeTasks = page.getByRole('list', { name: 'Home Todo Tasks' });
+
+  await expect(page.getByText('Saved in this browser only')).toBeVisible();
+  await expect(uncategorizedTasks.getByRole('listitem').filter({ hasText: 'Buy coffee' })).toBeVisible();
+  await expect(
+    uncategorizedTasks.getByRole('listitem').filter({ hasText: 'Buy coffee' }).getByLabel('Medium urgency')
+  ).toHaveText('!');
+  await expect(restoredWorkTasks.locator('li').nth(0)).toContainText('Review deploy checklist');
+  await expect(restoredWorkTasks.locator('li').nth(1)).toContainText('Write launch note');
+  await expect(
+    restoredWorkTasks.getByRole('listitem').filter({ hasText: 'Review deploy checklist' }).getByLabel('High urgency')
+  ).toHaveText('!');
+  await expect(homeTasks.getByRole('listitem').filter({ hasText: 'Water plants' })).toBeVisible();
 });
 
 test('Administrator route shows a minimal shell without private Visitor or User content', async ({
