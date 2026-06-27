@@ -379,7 +379,9 @@
   $effect(() => {
     renderedSummaryHtml = renderDailySummary({
       configuration: previewConfiguration,
-      sections: previewSections
+      sections: previewSections,
+      todoCategories,
+      todoTasks
     }).html;
   });
 
