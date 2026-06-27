@@ -1,6 +1,6 @@
 <script lang="ts">
   import { CalendarDays, Check, GripVertical, Mail, Pencil, ShieldCheck, Trash2 } from '@lucide/svelte';
-  import { dragHandle, dragHandleZone } from 'svelte-dnd-action';
+  import { dragHandle, dragHandleZone, SHADOW_ITEM_MARKER_PROPERTY_NAME } from 'svelte-dnd-action';
   import { onMount } from 'svelte';
   import Panel from '$lib/components/Panel.svelte';
   import { buildDemoCalendarSection } from '$lib/demoCalendar';
@@ -123,11 +123,29 @@
     todoTasks
       .filter((task) => task.categoryId === categoryId)
       .toSorted((first, second) => first.position - second.position);
-  const nextPositionForCategory = (categoryId: string | null) => tasksForCategory(categoryId).length + 1;
-  const reorderTodoTasks = (categoryId: string | null, orderedTasks: TodoTask[]) => {
-    const reorderedTaskIds = new Set(orderedTasks.map((task) => task.id));
+  const nextPositionForCategory = (categoryId: string | null) =>
+    Math.max(0, ...tasksForCategory(categoryId).map((task) => task.position)) + 1;
+  const isDndShadowTask = (task: TodoTask) =>
+    Boolean((task as TodoTask & { [SHADOW_ITEM_MARKER_PROPERTY_NAME]?: boolean })[SHADOW_ITEM_MARKER_PROPERTY_NAME]);
+  const realTodoDropTasks = (orderedTasks: TodoTask[], draggedTaskId: string | undefined = undefined) =>
+    orderedTasks.flatMap((task) => {
+      if (!isDndShadowTask(task)) {
+        return [task];
+      }
+
+      const realTask = todoTasks.find((candidate) => candidate.id === task.id || candidate.id === draggedTaskId);
+      return realTask ? [realTask] : [];
+    });
+  const reorderTodoTasks = (
+    categoryId: string | null,
+    orderedTasks: TodoTask[],
+    draggedTaskId: string | undefined = undefined,
+    detachMissingTasks = false
+  ) => {
+    const realOrderedTasks = realTodoDropTasks(orderedTasks, draggedTaskId);
+    const reorderedTaskIds = new Set(realOrderedTasks.map((task) => task.id));
     const movedTasks = new Map(
-      orderedTasks.map((task, index) => [task.id, { categoryId, position: index + 1 }])
+      realOrderedTasks.map((task, index) => [task.id, { categoryId, position: index + 1 }])
     );
 
     todoTasks = todoTasks.map((task) => {
@@ -137,15 +155,23 @@
         return { ...task, ...movedTask };
       }
 
-      if (task.categoryId === categoryId && !reorderedTaskIds.has(task.id)) {
+      if (detachMissingTasks && task.categoryId === categoryId && !reorderedTaskIds.has(task.id)) {
         return { ...task, categoryId: null };
       }
 
       return task;
     });
   };
-  const handleTodoDrop = (categoryId: string | null, event: CustomEvent<{ items: TodoTask[] }>) => {
-    reorderTodoTasks(categoryId, event.detail.items);
+  const handleTodoDrop = (
+    categoryId: string | null,
+    event: CustomEvent<{ items: TodoTask[]; info?: { id?: string; trigger?: string } }>,
+    detachMissingTasks = false
+  ) => {
+    if (event.detail.info?.trigger === 'dragStarted') {
+      return;
+    }
+
+    reorderTodoTasks(categoryId, event.detail.items, event.detail.info?.id, detachMissingTasks);
   };
 
   const createTodoTask = () => {
@@ -576,7 +602,7 @@
                   useCursorForDetection: true
                 }}
                 onconsider={(event) => handleTodoDrop(null, event)}
-                onfinalize={(event) => handleTodoDrop(null, event)}
+                onfinalize={(event) => handleTodoDrop(null, event, true)}
               >
                 {#each tasksForCategory(null) as task (task.id)}
                   <li class="rounded-md border border-stone-200 px-3 py-2" aria-label={task.title}>
@@ -703,7 +729,7 @@
                     useCursorForDetection: true
                   }}
                   onconsider={(event) => handleTodoDrop(category.id, event)}
-                  onfinalize={(event) => handleTodoDrop(category.id, event)}
+                  onfinalize={(event) => handleTodoDrop(category.id, event, true)}
                 >
                   {#each tasksForCategory(category.id) as task (task.id)}
                     <li class="rounded-md border border-stone-200 px-3 py-2" aria-label={task.title}>
