@@ -36,3 +36,6 @@ export const defaultSummaryConfiguration = summaryConfigurationSchema.parse({
     todo: true
   }
 });
+
+export const canPreviewDailySummary = (configuration: SummaryConfiguration) =>
+  configuration.summaryDeliveryEnabled;

@@ -1,4 +1,6 @@
+import { Temporal } from '@js-temporal/polyfill';
 import type { UserTimeZone } from './summaryConfiguration';
+import { buildWeekAhead, getLocalToday } from './summaryDates';
 
 export type DemoCalendarEvent = {
   kind: 'calendar-event';
@@ -37,10 +39,12 @@ export const buildDemoCalendarSection = ({
   userTimeZone,
   now = new Date()
 }: DemoCalendarInput): DemoCalendarSection => {
-  const today = getLocalDateParts(now, userTimeZone);
-  const weekAhead = Array.from({ length: 7 }, (_, offsetDays) => {
-    const date = addDays(today, offsetDays);
-    const dateKey = formatDateKey(date);
+  const today = getLocalToday({
+    instant: Temporal.Instant.fromEpochMilliseconds(now.getTime()),
+    userTimeZone
+  });
+  const weekAhead = buildWeekAhead(today).map((date, offsetDays) => {
+    const dateKey = date.toString();
     const events = demoEventTemplates
       .filter((event) => event.offsetDays === offsetDays)
       .map((event) => ({
@@ -78,41 +82,7 @@ export const buildDemoCalendarSection = ({
   };
 };
 
-type LocalDateParts = {
-  year: number;
-  month: number;
-  day: number;
-};
-
-const getLocalDateParts = (date: Date, timeZone: UserTimeZone): LocalDateParts => {
-  const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit'
-  }).formatToParts(date);
-
-  return {
-    year: Number(parts.find((part) => part.type === 'year')?.value),
-    month: Number(parts.find((part) => part.type === 'month')?.value),
-    day: Number(parts.find((part) => part.type === 'day')?.value)
-  };
-};
-
-const addDays = (date: LocalDateParts, offsetDays: number): LocalDateParts => {
-  const next = new Date(Date.UTC(date.year, date.month - 1, date.day + offsetDays));
-
-  return {
-    year: next.getUTCFullYear(),
-    month: next.getUTCMonth() + 1,
-    day: next.getUTCDate()
-  };
-};
-
-const formatDateKey = (date: LocalDateParts) =>
-  `${date.year}-${String(date.month).padStart(2, '0')}-${String(date.day).padStart(2, '0')}`;
-
-const formatDayLabel = (date: LocalDateParts) =>
+const formatDayLabel = (date: Temporal.PlainDate) =>
   new Intl.DateTimeFormat('en-US', {
     timeZone: 'UTC',
     weekday: 'short',

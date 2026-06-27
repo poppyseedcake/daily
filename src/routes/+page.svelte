@@ -8,6 +8,7 @@
   import { renderDailySummary, type DailySummaryInput } from '$lib/dailySummaryRenderer';
   import {
     defaultSummaryConfiguration,
+    canPreviewDailySummary,
     summaryConfigurationSchema,
     type SummaryConfiguration,
     type SummarySection,
@@ -890,7 +891,7 @@
           <button
             class="inline-flex h-10 items-center gap-2 rounded-md bg-emerald-700 px-4 text-sm font-semibold text-white hover:bg-emerald-800"
             type="button"
-            disabled={!summaryDeliveryEnabled}
+            disabled={!canPreviewDailySummary(previewConfiguration)}
           >
             <Mail size={18} aria-hidden="true" />
             Preview Daily Summary
