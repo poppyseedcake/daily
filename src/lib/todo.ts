@@ -151,16 +151,22 @@ export const reorderTodoTasks = (
   tasks: TodoTask[],
   {
     categoryId,
-    orderedTasks,
+    orderedTaskIds,
+    sourceCategoryId,
     detachMissingTasks = false
-  }: { categoryId: string | null; orderedTasks: TodoTask[]; detachMissingTasks?: boolean }
+  }: {
+    categoryId: string | null;
+    orderedTaskIds: string[];
+    sourceCategoryId?: string | null;
+    detachMissingTasks?: boolean;
+  }
 ) => {
-  const reorderedTaskIds = new Set(orderedTasks.map((task) => task.id));
+  const reorderedTaskIds = new Set(orderedTaskIds);
   const movedTasks = new Map(
-    orderedTasks.map((task, index) => [task.id, { categoryId, position: index + 1 }])
+    orderedTaskIds.map((taskId, index) => [taskId, { categoryId, position: index + 1 }])
   );
 
-  return tasks.map((task) => {
+  const nextTasks = tasks.map((task) => {
     const movedTask = movedTasks.get(task.id);
 
     if (movedTask) {
@@ -172,5 +178,19 @@ export const reorderTodoTasks = (
     }
 
     return task;
+  });
+
+  if (sourceCategoryId === undefined || sourceCategoryId === categoryId) {
+    return nextTasks;
+  }
+
+  const remainingSourceTasks = tasksForTodoCategory(nextTasks, sourceCategoryId);
+  const sourcePositions = new Map(
+    remainingSourceTasks.map((task, index) => [task.id, index + 1])
+  );
+
+  return nextTasks.map((task) => {
+    const sourcePosition = sourcePositions.get(task.id);
+    return sourcePosition ? { ...task, position: sourcePosition } : task;
   });
 };

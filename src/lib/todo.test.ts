@@ -72,6 +72,26 @@ describe('Todo Module task lifecycle', () => {
     });
   });
 
+  test('keeps Todo Task ordering position-based when Urgency changes', () => {
+    const tasks: TodoTask[] = [
+      { id: 'todo-1', title: 'Draft update', categoryId: 'work', urgency: 'low', position: 1 },
+      { id: 'todo-2', title: 'Review launch notes', categoryId: 'work', urgency: 'medium', position: 2 },
+      { id: 'todo-3', title: 'Send agenda', categoryId: 'work', urgency: 'high', position: 3 }
+    ];
+
+    const result = updateTodoTask(tasks, {
+      id: 'todo-1',
+      title: 'Draft update',
+      urgency: 'high'
+    });
+
+    expect(tasksForTodoCategory(result, 'work').map((task) => task.id)).toEqual([
+      'todo-1',
+      'todo-2',
+      'todo-3'
+    ]);
+  });
+
   test('completes Todo Tasks by removing them from active Todo state', () => {
     expect(completeTodoTask(baseTasks, 'todo-2')).toEqual([
       { id: 'todo-1', title: 'Plan meals', categoryId: null, urgency: 'low', position: 1 },
@@ -101,16 +121,60 @@ describe('Todo Module task lifecycle', () => {
   test('reorders Todo Tasks through the module transition path', () => {
     const result = reorderTodoTasks(baseTasks, {
       categoryId: 'home',
-      orderedTasks: [
-        { id: 'todo-3', title: 'Draft update', categoryId: 'work', urgency: 'high', position: 1 },
-        { id: 'todo-2', title: 'Buy groceries', categoryId: null, urgency: 'medium', position: 2 }
-      ]
+      orderedTaskIds: ['todo-3', 'todo-2']
     });
 
     expect(result).toEqual([
       { id: 'todo-1', title: 'Plan meals', categoryId: null, urgency: 'low', position: 1 },
       { id: 'todo-2', title: 'Buy groceries', categoryId: 'home', urgency: 'medium', position: 2 },
       { id: 'todo-3', title: 'Draft update', categoryId: 'home', urgency: 'high', position: 1 }
+    ]);
+  });
+
+  test('reorders Todo Tasks in one grouping from ordered Todo Task ids', () => {
+    const tasks: TodoTask[] = [
+      { id: 'todo-1', title: 'Plan meals', categoryId: null, urgency: 'low', position: 1 },
+      { id: 'todo-2', title: 'Buy groceries', categoryId: null, urgency: 'medium', position: 2 },
+      { id: 'todo-3', title: 'Cook dinner', categoryId: null, urgency: 'high', position: 3 },
+      { id: 'todo-4', title: 'Draft update', categoryId: 'work', urgency: 'high', position: 1 }
+    ];
+
+    const result = reorderTodoTasks(tasks, {
+      categoryId: null,
+      orderedTaskIds: ['todo-3', 'todo-1', 'todo-2']
+    });
+
+    expect(tasksForTodoCategory(result, null)).toEqual([
+      { id: 'todo-3', title: 'Cook dinner', categoryId: null, urgency: 'high', position: 1 },
+      { id: 'todo-1', title: 'Plan meals', categoryId: null, urgency: 'low', position: 2 },
+      { id: 'todo-2', title: 'Buy groceries', categoryId: null, urgency: 'medium', position: 3 }
+    ]);
+    expect(tasksForTodoCategory(result, 'work')).toEqual([
+      { id: 'todo-4', title: 'Draft update', categoryId: 'work', urgency: 'high', position: 1 }
+    ]);
+  });
+
+  test('moves Todo Tasks between groupings from ordered Todo Task ids while preserving task data', () => {
+    const tasks: TodoTask[] = [
+      { id: 'todo-1', title: 'File invoice', categoryId: 'work', urgency: 'high', position: 1 },
+      { id: 'todo-2', title: 'Send agenda', categoryId: 'work', urgency: 'medium', position: 2 },
+      { id: 'todo-3', title: 'Wash mugs', categoryId: 'home', urgency: 'medium', position: 1 },
+      { id: 'todo-4', title: 'Water plants', categoryId: 'home', urgency: 'low', position: 2 }
+    ];
+
+    const result = reorderTodoTasks(tasks, {
+      categoryId: 'home',
+      orderedTaskIds: ['todo-3', 'todo-1', 'todo-4'],
+      sourceCategoryId: 'work'
+    });
+
+    expect(tasksForTodoCategory(result, 'home')).toEqual([
+      { id: 'todo-3', title: 'Wash mugs', categoryId: 'home', urgency: 'medium', position: 1 },
+      { id: 'todo-1', title: 'File invoice', categoryId: 'home', urgency: 'high', position: 2 },
+      { id: 'todo-4', title: 'Water plants', categoryId: 'home', urgency: 'low', position: 3 }
+    ]);
+    expect(tasksForTodoCategory(result, 'work')).toEqual([
+      { id: 'todo-2', title: 'Send agenda', categoryId: 'work', urgency: 'medium', position: 1 }
     ]);
   });
 });
