@@ -16,10 +16,15 @@
     type UserTimeZone
   } from '$lib/summaryConfiguration';
   import {
+    addTodoTask,
+    completeTodoTask as completeTodoTaskInModule,
     createTodoTaskSchema,
+    reorderTodoTasks as reorderTodoTasksInModule,
+    tasksForTodoCategory,
     todoCategorySchema,
     todoCategoryMutationSchema,
     todoTaskSchema,
+    updateTodoTask,
     updateTodoTaskSchema,
     type TodoCategory,
     type TodoTask,
@@ -179,12 +184,7 @@
     urgency === 'high' ? 'High urgency' : urgency === 'medium' ? 'Medium urgency' : 'Low urgency';
   const urgencyMark = (urgency: TodoUrgency) =>
     urgency === 'high' ? '!' : urgency === 'medium' ? '!' : '';
-  const tasksForCategory = (categoryId: string | null) =>
-    todoTasks
-      .filter((task) => task.categoryId === categoryId)
-      .toSorted((first, second) => first.position - second.position);
-  const nextPositionForCategory = (categoryId: string | null) =>
-    Math.max(0, ...tasksForCategory(categoryId).map((task) => task.position)) + 1;
+  const tasksForCategory = (categoryId: string | null) => tasksForTodoCategory(todoTasks, categoryId);
   const isDndShadowTask = (task: TodoTask) =>
     Boolean((task as TodoTask & { [SHADOW_ITEM_MARKER_PROPERTY_NAME]?: boolean })[SHADOW_ITEM_MARKER_PROPERTY_NAME]);
   const realTodoDropTasks = (orderedTasks: TodoTask[], draggedTaskId: string | undefined = undefined) =>
@@ -203,23 +203,10 @@
     detachMissingTasks = false
   ) => {
     const realOrderedTasks = realTodoDropTasks(orderedTasks, draggedTaskId);
-    const reorderedTaskIds = new Set(realOrderedTasks.map((task) => task.id));
-    const movedTasks = new Map(
-      realOrderedTasks.map((task, index) => [task.id, { categoryId, position: index + 1 }])
-    );
-
-    todoTasks = todoTasks.map((task) => {
-      const movedTask = movedTasks.get(task.id);
-
-      if (movedTask) {
-        return { ...task, ...movedTask };
-      }
-
-      if (detachMissingTasks && task.categoryId === categoryId && !reorderedTaskIds.has(task.id)) {
-        return { ...task, categoryId: null };
-      }
-
-      return task;
+    todoTasks = reorderTodoTasksInModule(todoTasks, {
+      categoryId,
+      orderedTasks: realOrderedTasks,
+      detachMissingTasks
     });
   };
   const handleTodoDrop = (
@@ -245,16 +232,11 @@
       return;
     }
 
-    todoTasks = [
-      ...todoTasks,
-      {
-        id: nextId('todo'),
-        title: result.data.title,
-        categoryId: result.data.categoryId,
-        urgency: result.data.urgency,
-        position: nextPositionForCategory(result.data.categoryId)
-      }
-    ];
+    todoTasks = addTodoTask({
+      tasks: todoTasks,
+      input: result.data,
+      nextId: () => nextId('todo')
+    });
     newTodoTitle = '';
     newTodoCategoryId = '';
     newTodoUrgency = 'low';
@@ -281,18 +263,14 @@
       return;
     }
 
-    todoTasks = todoTasks.map((task) =>
-      task.id === result.data.id
-        ? { ...task, title: result.data.title, urgency: result.data.urgency }
-        : task
-    );
+    todoTasks = updateTodoTask(todoTasks, result.data);
     editingTaskId = null;
     editingTaskTitle = '';
     editingTaskUrgency = 'low';
   };
 
   const completeTodoTask = (taskId: string) => {
-    todoTasks = todoTasks.filter((task) => task.id !== taskId);
+    todoTasks = completeTodoTaskInModule(todoTasks, taskId);
   };
 
   const createTodoCategory = () => {
