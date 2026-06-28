@@ -196,16 +196,21 @@
       const realTask = todoTasks.find((candidate) => candidate.id === task.id || candidate.id === draggedTaskId);
       return realTask ? [realTask] : [];
     });
+  const todoDropTaskIds = (orderedTasks: TodoTask[], draggedTaskId: string | undefined = undefined) =>
+    realTodoDropTasks(orderedTasks, draggedTaskId).map((task) => task.id);
   const reorderTodoTasks = (
     categoryId: string | null,
     orderedTasks: TodoTask[],
     draggedTaskId: string | undefined = undefined,
     detachMissingTasks = false
   ) => {
-    const realOrderedTasks = realTodoDropTasks(orderedTasks, draggedTaskId);
+    const draggedTask = draggedTaskId
+      ? todoTasks.find((candidate) => candidate.id === draggedTaskId)
+      : undefined;
     todoTasks = reorderTodoTasksInModule(todoTasks, {
       categoryId,
-      orderedTasks: realOrderedTasks,
+      orderedTaskIds: todoDropTaskIds(orderedTasks, draggedTaskId),
+      sourceCategoryId: draggedTask?.categoryId,
       detachMissingTasks
     });
   };
