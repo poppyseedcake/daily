@@ -182,7 +182,7 @@ describe('Todo Module task lifecycle', () => {
 
 describe('Todo Module category lifecycle', () => {
   test('creates and renames Todo Categories with trimmed validated names', () => {
-    const categories: TodoCategory[] = [{ id: 'category-1', name: 'Home' }];
+    const categories: TodoCategory[] = [{ id: 'category-1', name: 'Home', position: 1 }];
 
     expect(
       addTodoCategory({
@@ -191,12 +191,12 @@ describe('Todo Module category lifecycle', () => {
         nextId: () => 'category-2'
       })
     ).toEqual([
-      { id: 'category-1', name: 'Home' },
-      { id: 'category-2', name: 'Work' }
+      { id: 'category-1', name: 'Home', position: 1 },
+      { id: 'category-2', name: 'Work', position: 2 }
     ]);
 
     expect(updateTodoCategory(categories, { id: 'category-1', name: '  Apartment  ' })).toEqual([
-      { id: 'category-1', name: 'Apartment' }
+      { id: 'category-1', name: 'Apartment', position: 1 }
     ]);
     expect(addTodoCategory({ categories, input: { name: '   ' }, nextId: () => 'x' })).toBe(
       categories
@@ -211,8 +211,8 @@ describe('Todo Module category lifecycle', () => {
 
   test('deletes a Todo Category with only its contained Todo Tasks', () => {
     const categories: TodoCategory[] = [
-      { id: 'home', name: 'Home' },
-      { id: 'work', name: 'Work' }
+      { id: 'home', name: 'Home', position: 1 },
+      { id: 'work', name: 'Work', position: 2 }
     ];
     const tasks: TodoTask[] = [
       { id: 'todo-1', title: 'Buy oats', categoryId: null, urgency: 'low', position: 1 },
@@ -222,7 +222,7 @@ describe('Todo Module category lifecycle', () => {
     ];
 
     expect(deleteTodoCategory({ categories, tasks, categoryId: 'home' })).toEqual({
-      categories: [{ id: 'work', name: 'Work' }],
+      categories: [{ id: 'work', name: 'Work', position: 2 }],
       tasks: [
         { id: 'todo-1', title: 'Buy oats', categoryId: null, urgency: 'low', position: 1 },
         { id: 'todo-3', title: 'Review PR', categoryId: 'work', urgency: 'medium', position: 1 }
@@ -234,9 +234,9 @@ describe('Todo Module category lifecycle', () => {
 describe('Todo Module Daily Summary output', () => {
   test('prepares render-ready Todo Section content in Daily Summary order', () => {
     const categories: TodoCategory[] = [
-      { id: 'work', name: 'Work' },
-      { id: 'home', name: 'Home' },
-      { id: 'empty', name: 'Empty Category' }
+      { id: 'work', name: 'Work', position: 2 },
+      { id: 'home', name: 'Home', position: 1 },
+      { id: 'empty', name: 'Empty Category', position: 3 }
     ];
     const tasks: TodoTask[] = [
       { id: 'work-2', title: 'Send agenda', categoryId: 'work', urgency: 'medium', position: 2 },
@@ -256,16 +256,16 @@ describe('Todo Module Daily Summary output', () => {
       ],
       categoryGroups: [
         {
-          category: { id: 'work', name: 'Work' },
+          category: { id: 'home', name: 'Home', position: 1 },
           tasks: [
-            { id: 'work-1', title: 'Draft update', categoryId: 'work', urgency: 'low', position: 1 },
-            { id: 'work-2', title: 'Send agenda', categoryId: 'work', urgency: 'medium', position: 2 }
+            { id: 'home-1', title: 'Water plants', categoryId: 'home', urgency: 'medium', position: 1 }
           ]
         },
         {
-          category: { id: 'home', name: 'Home' },
+          category: { id: 'work', name: 'Work', position: 2 },
           tasks: [
-            { id: 'home-1', title: 'Water plants', categoryId: 'home', urgency: 'medium', position: 1 }
+            { id: 'work-1', title: 'Draft update', categoryId: 'work', urgency: 'low', position: 1 },
+            { id: 'work-2', title: 'Send agenda', categoryId: 'work', urgency: 'medium', position: 2 }
           ]
         }
       ]
