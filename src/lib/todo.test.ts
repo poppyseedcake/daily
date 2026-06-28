@@ -1,9 +1,13 @@
 import { describe, expect, test } from 'vitest';
 import {
+  addTodoCategory,
   addTodoTask,
   completeTodoTask,
+  deleteTodoCategory,
   reorderTodoTasks,
   tasksForTodoCategory,
+  updateTodoCategory,
+  type TodoCategory,
   updateTodoTask,
   type TodoTask
 } from './todo';
@@ -108,5 +112,56 @@ describe('Todo Module task lifecycle', () => {
       { id: 'todo-2', title: 'Buy groceries', categoryId: 'home', urgency: 'medium', position: 2 },
       { id: 'todo-3', title: 'Draft update', categoryId: 'home', urgency: 'high', position: 1 }
     ]);
+  });
+});
+
+describe('Todo Module category lifecycle', () => {
+  test('creates and renames Todo Categories with trimmed validated names', () => {
+    const categories: TodoCategory[] = [{ id: 'category-1', name: 'Home' }];
+
+    expect(
+      addTodoCategory({
+        categories,
+        input: { name: '  Work  ' },
+        nextId: () => 'category-2'
+      })
+    ).toEqual([
+      { id: 'category-1', name: 'Home' },
+      { id: 'category-2', name: 'Work' }
+    ]);
+
+    expect(updateTodoCategory(categories, { id: 'category-1', name: '  Apartment  ' })).toEqual([
+      { id: 'category-1', name: 'Apartment' }
+    ]);
+    expect(addTodoCategory({ categories, input: { name: '   ' }, nextId: () => 'x' })).toBe(
+      categories
+    );
+    expect(
+      updateTodoCategory(categories, { id: 'category-1', name: 'x'.repeat(81) })
+    ).toBe(categories);
+    expect(updateTodoCategory(categories, { id: 'missing-category', name: 'Errands' })).toBe(
+      categories
+    );
+  });
+
+  test('deletes a Todo Category with only its contained Todo Tasks', () => {
+    const categories: TodoCategory[] = [
+      { id: 'home', name: 'Home' },
+      { id: 'work', name: 'Work' }
+    ];
+    const tasks: TodoTask[] = [
+      { id: 'todo-1', title: 'Buy oats', categoryId: null, urgency: 'low', position: 1 },
+      { id: 'todo-2', title: 'Call plumber', categoryId: 'home', urgency: 'high', position: 1 },
+      { id: 'todo-3', title: 'Review PR', categoryId: 'work', urgency: 'medium', position: 1 },
+      { id: 'todo-4', title: 'Water plants', categoryId: 'home', urgency: 'low', position: 2 }
+    ];
+
+    expect(deleteTodoCategory({ categories, tasks, categoryId: 'home' })).toEqual({
+      categories: [{ id: 'work', name: 'Work' }],
+      tasks: [
+        { id: 'todo-1', title: 'Buy oats', categoryId: null, urgency: 'low', position: 1 },
+        { id: 'todo-3', title: 'Review PR', categoryId: 'work', urgency: 'medium', position: 1 }
+      ]
+    });
   });
 });

@@ -16,13 +16,15 @@
     type UserTimeZone
   } from '$lib/summaryConfiguration';
   import {
+    addTodoCategory,
     addTodoTask,
     completeTodoTask as completeTodoTaskInModule,
+    deleteTodoCategory as deleteTodoCategoryInModule,
     reorderTodoTasks as reorderTodoTasksInModule,
     tasksForTodoCategory,
     todoCategorySchema,
-    todoCategoryMutationSchema,
     todoTaskSchema,
+    updateTodoCategory,
     updateTodoTask,
     type TodoCategory,
     type TodoTask,
@@ -272,13 +274,17 @@
   };
 
   const createTodoCategory = () => {
-    const result = todoCategoryMutationSchema.safeParse({ name: newCategoryName });
+    const nextCategories = addTodoCategory({
+      categories: todoCategories,
+      input: { name: newCategoryName },
+      nextId: () => nextId('category')
+    });
 
-    if (!result.success) {
+    if (nextCategories === todoCategories) {
       return;
     }
 
-    todoCategories = [...todoCategories, { id: nextId('category'), name: result.data.name }];
+    todoCategories = nextCategories;
     newCategoryName = '';
   };
 
@@ -292,15 +298,16 @@
       return;
     }
 
-    const result = todoCategoryMutationSchema.safeParse({ name: editingCategoryName });
+    const nextCategories = updateTodoCategory(todoCategories, {
+      id: editingCategoryId,
+      name: editingCategoryName
+    });
 
-    if (!result.success) {
+    if (nextCategories === todoCategories) {
       return;
     }
 
-    todoCategories = todoCategories.map((category) =>
-      category.id === editingCategoryId ? { ...category, name: result.data.name } : category
-    );
+    todoCategories = nextCategories;
     editingCategoryId = null;
     editingCategoryName = '';
   };
@@ -310,8 +317,14 @@
       return;
     }
 
-    todoCategories = todoCategories.filter((item) => item.id !== category.id);
-    todoTasks = todoTasks.filter((task) => task.categoryId !== category.id);
+    const nextTodoState = deleteTodoCategoryInModule({
+      categories: todoCategories,
+      tasks: todoTasks,
+      categoryId: category.id
+    });
+
+    todoCategories = nextTodoState.categories;
+    todoTasks = nextTodoState.tasks;
     if (newTodoCategoryId === category.id) {
       newTodoCategoryId = '';
     }
