@@ -93,6 +93,52 @@ export const updateTodoTask = (
 export const completeTodoTask = (tasks: TodoTask[], taskId: string) =>
   tasks.filter((task) => task.id !== taskId);
 
+export const addTodoCategory = ({
+  categories,
+  input,
+  nextId
+}: {
+  categories: TodoCategory[];
+  input: z.input<typeof todoCategoryMutationSchema>;
+  nextId: () => string;
+}) => {
+  const result = todoCategoryMutationSchema.safeParse(input);
+
+  if (!result.success) {
+    return categories;
+  }
+
+  return [...categories, { id: nextId(), name: result.data.name }];
+};
+
+export const updateTodoCategory = (
+  categories: TodoCategory[],
+  input: z.input<typeof todoCategoryMutationSchema> & { id: string }
+) => {
+  const result = todoCategoryMutationSchema.safeParse(input);
+
+  if (!result.success) {
+    return categories;
+  }
+
+  return categories.map((category) =>
+    category.id === input.id ? { ...category, name: result.data.name } : category
+  );
+};
+
+export const deleteTodoCategory = ({
+  categories,
+  tasks,
+  categoryId
+}: {
+  categories: TodoCategory[];
+  tasks: TodoTask[];
+  categoryId: string;
+}) => ({
+  categories: categories.filter((category) => category.id !== categoryId),
+  tasks: tasks.filter((task) => task.categoryId !== categoryId)
+});
+
 export const reorderTodoTasks = (
   tasks: TodoTask[],
   {
