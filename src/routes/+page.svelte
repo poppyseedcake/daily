@@ -18,14 +18,12 @@
   import {
     addTodoTask,
     completeTodoTask as completeTodoTaskInModule,
-    createTodoTaskSchema,
     reorderTodoTasks as reorderTodoTasksInModule,
     tasksForTodoCategory,
     todoCategorySchema,
     todoCategoryMutationSchema,
     todoTaskSchema,
     updateTodoTask,
-    updateTodoTaskSchema,
     type TodoCategory,
     type TodoTask,
     type TodoUrgency
@@ -222,21 +220,21 @@
   };
 
   const createTodoTask = () => {
-    const result = createTodoTaskSchema.safeParse({
-      title: newTodoTitle,
-      categoryId: newTodoCategoryId === '' ? null : newTodoCategoryId,
-      urgency: newTodoUrgency
+    const nextTasks = addTodoTask({
+      tasks: todoTasks,
+      input: {
+        title: newTodoTitle,
+        categoryId: newTodoCategoryId === '' ? null : newTodoCategoryId,
+        urgency: newTodoUrgency
+      },
+      nextId: () => nextId('todo')
     });
 
-    if (!result.success) {
+    if (nextTasks === todoTasks) {
       return;
     }
 
-    todoTasks = addTodoTask({
-      tasks: todoTasks,
-      input: result.data,
-      nextId: () => nextId('todo')
-    });
+    todoTasks = nextTasks;
     newTodoTitle = '';
     newTodoCategoryId = '';
     newTodoUrgency = 'low';
@@ -253,17 +251,17 @@
       return;
     }
 
-    const result = updateTodoTaskSchema.safeParse({
+    const nextTasks = updateTodoTask(todoTasks, {
       id: editingTaskId,
       title: editingTaskTitle,
       urgency: editingTaskUrgency
     });
 
-    if (!result.success) {
+    if (nextTasks === todoTasks) {
       return;
     }
 
-    todoTasks = updateTodoTask(todoTasks, result.data);
+    todoTasks = nextTasks;
     editingTaskId = null;
     editingTaskTitle = '';
     editingTaskUrgency = 'low';
