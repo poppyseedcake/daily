@@ -121,9 +121,17 @@ export const updateTodoCategory = (
     return categories;
   }
 
-  return categories.map((category) =>
-    category.id === input.id ? { ...category, name: result.data.name } : category
-  );
+  let categoryUpdated = false;
+  const nextCategories = categories.map((category) => {
+    if (category.id !== input.id) {
+      return category;
+    }
+
+    categoryUpdated = true;
+    return { ...category, name: result.data.name };
+  });
+
+  return categoryUpdated ? nextCategories : categories;
 };
 
 export const deleteTodoCategory = ({

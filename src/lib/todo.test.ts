@@ -139,6 +139,9 @@ describe('Todo Module category lifecycle', () => {
     expect(
       updateTodoCategory(categories, { id: 'category-1', name: 'x'.repeat(81) })
     ).toBe(categories);
+    expect(updateTodoCategory(categories, { id: 'missing-category', name: 'Errands' })).toBe(
+      categories
+    );
   });
 
   test('deletes a Todo Category with only its contained Todo Tasks', () => {
