@@ -1,5 +1,9 @@
 import type { SummaryConfiguration, SummarySection } from './summaryConfiguration';
-import type { TodoCategory, TodoTask, TodoUrgency } from './todo';
+import {
+  type TodoSection,
+  type TodoTask,
+  type TodoUrgency
+} from './todo';
 
 export type DailySummarySectionState =
   | {
@@ -16,8 +20,7 @@ export type DailySummarySectionState =
 export type DailySummaryInput = {
   configuration: SummaryConfiguration;
   sections: Record<SummarySection, DailySummarySectionState>;
-  todoCategories?: TodoCategory[];
-  todoTasks?: TodoTask[];
+  todoSection?: TodoSection | null;
 };
 
 export type RenderedDailySummary = {
@@ -69,9 +72,8 @@ const buildVisibleSection = (
   input: DailySummaryInput,
   section: SummarySection
 ): RenderedSection[] => {
-  if (section === 'todo' && input.todoTasks) {
-    const todoSection = buildTodoSection(input.todoCategories ?? [], input.todoTasks);
-    return todoSection ? [todoSection] : [];
+  if (section === 'todo' && input.todoSection !== undefined) {
+    return input.todoSection ? [renderTodoSection(input.todoSection)] : [];
   }
 
   const sectionState = input.sections[section];
@@ -86,35 +88,19 @@ const buildVisibleSection = (
   ];
 };
 
-const buildTodoSection = (
-  categories: TodoCategory[],
-  tasks: TodoTask[]
-): RenderedSection | null => {
-  if (tasks.length === 0) {
-    return null;
-  }
-
-  const knownCategoryIds = new Set(categories.map((category) => category.id));
-  const uncategorizedTasks = tasks
-    .filter((task) => task.categoryId === null || !knownCategoryIds.has(task.categoryId))
-    .toSorted((first, second) => first.position - second.position);
-  const categoryGroups = categories
-    .map((category) => ({
-      category,
-      tasks: tasksForCategory(tasks, category.id)
-    }))
-    .filter((group) => group.tasks.length > 0);
-
+const renderTodoSection = (todoSection: TodoSection): RenderedSection => {
   const uncategorizedHtml =
-    uncategorizedTasks.length > 0 ? renderTodoTaskListHtml(uncategorizedTasks) : '';
-  const groupedHtml = categoryGroups
+    todoSection.uncategorizedTasks.length > 0
+      ? renderTodoTaskListHtml(todoSection.uncategorizedTasks)
+      : '';
+  const groupedHtml = todoSection.categoryGroups
     .map(
       (group) =>
         `<h3>${escapeHtml(group.category.name)}</h3>${renderTodoTaskListHtml(group.tasks)}`
     )
     .join('');
-  const uncategorizedText = uncategorizedTasks.map(renderTodoTaskText).join('\n');
-  const groupedText = categoryGroups
+  const uncategorizedText = todoSection.uncategorizedTasks.map(renderTodoTaskText).join('\n');
+  const groupedText = todoSection.categoryGroups
     .map(
       (group) =>
         `${group.category.name}\n${group.tasks.map(renderTodoTaskText).join('\n')}`
@@ -123,16 +109,11 @@ const buildTodoSection = (
   const text = [uncategorizedText, groupedText].filter(Boolean).join('\n\n');
 
   return {
-    label: 'Todo Tasks',
+    label: todoSection.label,
     html: `${uncategorizedHtml}${groupedHtml}`,
     text
   };
 };
-
-const tasksForCategory = (tasks: TodoTask[], categoryId: string | null) =>
-  tasks
-    .filter((task) => task.categoryId === categoryId)
-    .toSorted((first, second) => first.position - second.position);
 
 const renderTodoTaskListHtml = (tasks: TodoTask[]) =>
   `<ul>${tasks.map((task) => `<li>${escapeHtml(task.title)}${renderUrgencyMarkHtml(task.urgency)}</li>`).join('')}</ul>`;

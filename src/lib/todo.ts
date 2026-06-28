@@ -38,6 +38,15 @@ export type TodoUrgency = z.infer<typeof todoUrgencySchema>;
 export type TodoTask = z.infer<typeof todoTaskSchema>;
 export type TodoCategory = z.infer<typeof todoCategorySchema>;
 
+export type TodoSection = {
+  label: 'Todo Tasks';
+  uncategorizedTasks: TodoTask[];
+  categoryGroups: Array<{
+    category: TodoCategory;
+    tasks: TodoTask[];
+  }>;
+};
+
 export const tasksForTodoCategory = (tasks: TodoTask[], categoryId: string | null) =>
   tasks
     .filter((task) => task.categoryId === categoryId)
@@ -146,6 +155,32 @@ export const deleteTodoCategory = ({
   categories: categories.filter((category) => category.id !== categoryId),
   tasks: tasks.filter((task) => task.categoryId !== categoryId)
 });
+
+export const buildTodoSection = (
+  categories: TodoCategory[],
+  tasks: TodoTask[]
+): TodoSection | null => {
+  if (tasks.length === 0) {
+    return null;
+  }
+
+  const knownCategoryIds = new Set(categories.map((category) => category.id));
+  const uncategorizedTasks = tasks
+    .filter((task) => task.categoryId === null || !knownCategoryIds.has(task.categoryId))
+    .toSorted((first, second) => first.position - second.position);
+  const categoryGroups = categories
+    .map((category) => ({
+      category,
+      tasks: tasksForTodoCategory(tasks, category.id)
+    }))
+    .filter((group) => group.tasks.length > 0);
+
+  return {
+    label: 'Todo Tasks',
+    uncategorizedTasks,
+    categoryGroups
+  };
+};
 
 export const reorderTodoTasks = (
   tasks: TodoTask[],

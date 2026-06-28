@@ -2,6 +2,7 @@ import { describe, expect, test } from 'vitest';
 import { defaultSummaryConfiguration } from './summaryConfiguration';
 import { renderDailySummary } from './dailySummaryRenderer';
 import { buildDemoCalendarSection } from './demoCalendar';
+import { buildTodoSection } from './todo';
 
 describe('Daily Summary renderer', () => {
   test('returns HTML and plain text from the same Daily Summary input in section order', () => {
@@ -138,17 +139,19 @@ describe('Daily Summary renderer', () => {
         calendar: { status: 'available', label: 'Calendar', detail: 'Hidden.' },
         todo: { status: 'unavailable', label: 'Todo', reason: 'Todo source is not connected yet.' }
       },
-      todoCategories: [
-        { id: 'work', name: 'Work' },
-        { id: 'home', name: 'Home' },
-        { id: 'empty', name: 'Empty Category' }
-      ],
-      todoTasks: [
-        { id: 'work-2', title: 'Send agenda', categoryId: 'work', urgency: 'medium', position: 2 },
-        { id: 'uncat-1', title: 'Buy coffee', categoryId: null, urgency: 'high', position: 1 },
-        { id: 'work-1', title: 'Draft update', categoryId: 'work', urgency: 'low', position: 1 },
-        { id: 'home-1', title: 'Water plants', categoryId: 'home', urgency: 'medium', position: 1 }
-      ]
+      todoSection: buildTodoSection(
+        [
+          { id: 'work', name: 'Work' },
+          { id: 'home', name: 'Home' },
+          { id: 'empty', name: 'Empty Category' }
+        ],
+        [
+          { id: 'work-2', title: 'Send agenda', categoryId: 'work', urgency: 'medium', position: 2 },
+          { id: 'uncat-1', title: 'Buy coffee', categoryId: null, urgency: 'high', position: 1 },
+          { id: 'work-1', title: 'Draft update', categoryId: 'work', urgency: 'low', position: 1 },
+          { id: 'home-1', title: 'Water plants', categoryId: 'home', urgency: 'medium', position: 1 }
+        ]
+      )
     });
 
     expect(rendered.html).toContain('Todo Tasks');
@@ -187,19 +190,61 @@ describe('Daily Summary renderer', () => {
         calendar: { status: 'available', label: 'Calendar', detail: 'Hidden.' },
         todo: { status: 'unavailable', label: 'Todo', reason: 'Todo source is not connected yet.' }
       },
-      todoTasks: [
-        {
-          id: 'unknown-category-task',
-          title: 'Recover orphaned task',
-          categoryId: 'missing-category',
-          urgency: 'high',
-          position: 1
-        }
-      ]
+      todoSection: buildTodoSection(
+        [],
+        [
+          {
+            id: 'unknown-category-task',
+            title: 'Recover orphaned task',
+            categoryId: 'missing-category',
+            urgency: 'high',
+            position: 1
+          }
+        ]
+      )
     });
 
     expect(rendered.html).toContain('Todo Tasks');
     expect(rendered.html).toContain('Recover orphaned task');
     expect(rendered.text).toContain('Recover orphaned task !');
+  });
+
+  test('renders module-prepared Todo Section content without raw Todo grouping inputs', () => {
+    const todoSection = buildTodoSection(
+      [
+        { id: 'work', name: 'Work' },
+        { id: 'empty', name: 'Empty Category' }
+      ],
+      [
+        { id: 'work-2', title: 'Send agenda', categoryId: 'work', urgency: 'medium', position: 2 },
+        { id: 'work-1', title: 'Draft update', categoryId: 'work', urgency: 'low', position: 1 },
+        { id: 'uncat-1', title: 'Buy coffee', categoryId: null, urgency: 'high', position: 1 }
+      ]
+    );
+
+    const rendered = renderDailySummary({
+      configuration: {
+        ...defaultSummaryConfiguration,
+        sections: {
+          weather: false,
+          commute: false,
+          calendar: false,
+          todo: true
+        }
+      },
+      sections: {
+        weather: { status: 'available', label: 'Weather', detail: 'Hidden.' },
+        commute: { status: 'available', label: 'Commute', detail: 'Hidden.' },
+        calendar: { status: 'available', label: 'Calendar', detail: 'Hidden.' },
+        todo: { status: 'unavailable', label: 'Todo', reason: 'Todo source is not connected yet.' }
+      },
+      todoSection
+    });
+
+    expect(rendered.html.indexOf('Buy coffee')).toBeLessThan(rendered.html.indexOf('Work'));
+    expect(rendered.html.indexOf('Draft update')).toBeLessThan(rendered.html.indexOf('Send agenda'));
+    expect(rendered.html).not.toContain('Empty Category');
+    expect(rendered.text).toContain('Buy coffee !');
+    expect(rendered.text).toContain('Send agenda !');
   });
 });

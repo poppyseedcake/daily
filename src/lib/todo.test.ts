@@ -2,6 +2,7 @@ import { describe, expect, test } from 'vitest';
 import {
   addTodoCategory,
   addTodoTask,
+  buildTodoSection,
   completeTodoTask,
   deleteTodoCategory,
   reorderTodoTasks,
@@ -225,6 +226,47 @@ describe('Todo Module category lifecycle', () => {
       tasks: [
         { id: 'todo-1', title: 'Buy oats', categoryId: null, urgency: 'low', position: 1 },
         { id: 'todo-3', title: 'Review PR', categoryId: 'work', urgency: 'medium', position: 1 }
+      ]
+    });
+  });
+});
+
+describe('Todo Module Daily Summary output', () => {
+  test('prepares render-ready Todo Section content in Daily Summary order', () => {
+    const categories: TodoCategory[] = [
+      { id: 'work', name: 'Work' },
+      { id: 'home', name: 'Home' },
+      { id: 'empty', name: 'Empty Category' }
+    ];
+    const tasks: TodoTask[] = [
+      { id: 'work-2', title: 'Send agenda', categoryId: 'work', urgency: 'medium', position: 2 },
+      { id: 'missing-1', title: 'Recover orphaned task', categoryId: 'missing', urgency: 'medium', position: 2 },
+      { id: 'uncat-1', title: 'Buy coffee', categoryId: null, urgency: 'high', position: 1 },
+      { id: 'work-1', title: 'Draft update', categoryId: 'work', urgency: 'low', position: 1 },
+      { id: 'home-1', title: 'Water plants', categoryId: 'home', urgency: 'medium', position: 1 }
+    ];
+
+    expect(buildTodoSection([], [])).toBeNull();
+    expect(buildTodoSection(categories, tasks)).toEqual({
+      label: 'Todo Tasks',
+      uncategorizedTasks: [
+        { id: 'uncat-1', title: 'Buy coffee', categoryId: null, urgency: 'high', position: 1 },
+        { id: 'missing-1', title: 'Recover orphaned task', categoryId: 'missing', urgency: 'medium', position: 2 }
+      ],
+      categoryGroups: [
+        {
+          category: { id: 'work', name: 'Work' },
+          tasks: [
+            { id: 'work-1', title: 'Draft update', categoryId: 'work', urgency: 'low', position: 1 },
+            { id: 'work-2', title: 'Send agenda', categoryId: 'work', urgency: 'medium', position: 2 }
+          ]
+        },
+        {
+          category: { id: 'home', name: 'Home' },
+          tasks: [
+            { id: 'home-1', title: 'Water plants', categoryId: 'home', urgency: 'medium', position: 1 }
+          ]
+        }
       ]
     });
   });

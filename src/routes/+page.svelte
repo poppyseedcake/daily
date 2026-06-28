@@ -18,6 +18,7 @@
   import {
     addTodoCategory,
     addTodoTask,
+    buildTodoSection,
     completeTodoTask as completeTodoTaskInModule,
     deleteTodoCategory as deleteTodoCategoryInModule,
     reorderTodoTasks as reorderTodoTasksInModule,
@@ -375,8 +376,7 @@
     renderedSummaryHtml = renderDailySummary({
       configuration: previewConfiguration,
       sections: previewSections,
-      todoCategories,
-      todoTasks
+      todoSection: buildTodoSection(todoCategories, todoTasks)
     }).html;
   });
 
