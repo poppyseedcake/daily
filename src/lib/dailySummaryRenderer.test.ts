@@ -2,6 +2,7 @@ import { describe, expect, test } from 'vitest';
 import { defaultSummaryConfiguration } from './summaryConfiguration';
 import { renderDailySummary } from './dailySummaryRenderer';
 import { buildDemoCalendarSection } from './demoCalendar';
+import { buildTodoSection } from './todo';
 
 describe('Daily Summary renderer', () => {
   test('returns HTML and plain text from the same Daily Summary input in section order', () => {
@@ -12,7 +13,19 @@ describe('Daily Summary renderer', () => {
         commute: { status: 'available', label: 'Mock Commute', detail: 'Mock: 24 minutes by tram.' },
         calendar: { status: 'available', label: 'Calendar', detail: 'Design review at 10:00.' },
         todo: { status: 'available', label: 'Todo', detail: 'Ship the summary renderer.' }
-      }
+      },
+      todoSection: buildTodoSection(
+        [],
+        [
+          {
+            id: 'todo-1',
+            title: 'Ship the summary renderer.',
+            categoryId: null,
+            urgency: 'low',
+            position: 1
+          }
+        ]
+      )
     });
 
     expect(rendered.html).toContain('Mock Weather');
@@ -42,7 +55,8 @@ describe('Daily Summary renderer', () => {
         commute: { status: 'available', label: 'Mock Commute', detail: 'Mock: 24 minutes by tram.' },
         calendar: { status: 'unavailable', label: 'Calendar', reason: 'Calendar is not connected yet.' },
         todo: { status: 'available', label: 'Todo', detail: 'Ship the summary renderer.' }
-      }
+      },
+      todoSection: null
     });
 
     expect(rendered.html).toContain('background-color:#111827');
@@ -50,6 +64,45 @@ describe('Daily Summary renderer', () => {
     expect(rendered.text).toContain('Calendar is not connected yet.');
     expect(rendered.html).not.toContain('Mock Commute');
     expect(rendered.text).not.toContain('Mock Commute');
+  });
+
+  test('omits Todo when disabled in configuration even with prepared Todo content', () => {
+    const rendered = renderDailySummary({
+      configuration: {
+        ...defaultSummaryConfiguration,
+        sections: {
+          weather: false,
+          commute: false,
+          calendar: true,
+          todo: false
+        }
+      },
+      sections: {
+        weather: { status: 'available', label: 'Weather', detail: 'Hidden.' },
+        commute: { status: 'available', label: 'Commute', detail: 'Hidden.' },
+        calendar: { status: 'available', label: 'Calendar', detail: 'Planning check-in.' },
+        todo: { status: 'available', label: 'Todo', detail: 'Ship the summary renderer.' }
+      },
+      todoSection: buildTodoSection(
+        [],
+        [
+          {
+            id: 'todo-1',
+            title: 'Ship the summary renderer.',
+            categoryId: null,
+            urgency: 'high',
+            position: 1
+          }
+        ]
+      )
+    });
+
+    expect(rendered.html).toContain('Calendar');
+    expect(rendered.text).toContain('Planning check-in.');
+    expect(rendered.html).not.toContain('Todo Tasks');
+    expect(rendered.html).not.toContain('Ship the summary renderer.');
+    expect(rendered.text).not.toContain('Todo Tasks');
+    expect(rendered.text).not.toContain('Ship the summary renderer.');
   });
 
   test('escapes special characters in HTML while preserving plain text output', () => {
@@ -72,7 +125,8 @@ describe('Daily Summary renderer', () => {
         commute: { status: 'available', label: 'Commute', detail: 'Hidden.' },
         calendar: { status: 'available', label: 'Calendar', detail: 'Hidden.' },
         todo: { status: 'available', label: 'Todo', detail: 'Hidden.' }
-      }
+      },
+      todoSection: null
     });
 
     expect(rendered.html).toContain('&lt;script&gt;&amp;&quot;&#39;&lt;/script&gt;');
@@ -109,7 +163,19 @@ describe('Daily Summary renderer', () => {
           detail: demoCalendar.summaryDetail
         },
         todo: { status: 'available', label: 'Todo Tasks', detail: 'Ship the renderer.' }
-      }
+      },
+      todoSection: buildTodoSection(
+        [],
+        [
+          {
+            id: 'todo-1',
+            title: 'Ship the renderer.',
+            categoryId: null,
+            urgency: 'low',
+            position: 1
+          }
+        ]
+      )
     });
 
     expect(rendered.html).toContain('Demo Calendar');
@@ -119,6 +185,34 @@ describe('Daily Summary renderer', () => {
     expect(rendered.text).toContain('Demo Calendar');
     expect(rendered.text).toContain('Planning check-in');
     expect(rendered.text.indexOf('Demo Calendar')).toBeLessThan(rendered.text.indexOf('Todo Tasks'));
+  });
+
+  test('omits Todo output when the module-prepared Todo Section is empty', () => {
+    const rendered = renderDailySummary({
+      configuration: {
+        ...defaultSummaryConfiguration,
+        sections: {
+          weather: false,
+          commute: false,
+          calendar: true,
+          todo: true
+        }
+      },
+      sections: {
+        weather: { status: 'available', label: 'Weather', detail: 'Hidden.' },
+        commute: { status: 'available', label: 'Commute', detail: 'Hidden.' },
+        calendar: { status: 'available', label: 'Calendar', detail: 'Planning check-in.' },
+        todo: { status: 'available', label: 'Todo Tasks', detail: 'Ship the renderer.' }
+      },
+      todoSection: buildTodoSection([{ id: 'empty', name: 'Empty Category' }], [])
+    });
+
+    expect(rendered.html).toContain('Calendar');
+    expect(rendered.text).toContain('Planning check-in.');
+    expect(rendered.html).not.toContain('Todo Tasks');
+    expect(rendered.html).not.toContain('Ship the renderer.');
+    expect(rendered.text).not.toContain('Todo Tasks');
+    expect(rendered.text).not.toContain('Ship the renderer.');
   });
 
   test('renders active Todo Tasks with uncategorized tasks first, category groups, and urgency marks', () => {
@@ -138,17 +232,19 @@ describe('Daily Summary renderer', () => {
         calendar: { status: 'available', label: 'Calendar', detail: 'Hidden.' },
         todo: { status: 'unavailable', label: 'Todo', reason: 'Todo source is not connected yet.' }
       },
-      todoCategories: [
-        { id: 'work', name: 'Work' },
-        { id: 'home', name: 'Home' },
-        { id: 'empty', name: 'Empty Category' }
-      ],
-      todoTasks: [
-        { id: 'work-2', title: 'Send agenda', categoryId: 'work', urgency: 'medium', position: 2 },
-        { id: 'uncat-1', title: 'Buy coffee', categoryId: null, urgency: 'high', position: 1 },
-        { id: 'work-1', title: 'Draft update', categoryId: 'work', urgency: 'low', position: 1 },
-        { id: 'home-1', title: 'Water plants', categoryId: 'home', urgency: 'medium', position: 1 }
-      ]
+      todoSection: buildTodoSection(
+        [
+          { id: 'work', name: 'Work' },
+          { id: 'home', name: 'Home' },
+          { id: 'empty', name: 'Empty Category' }
+        ],
+        [
+          { id: 'work-2', title: 'Send agenda', categoryId: 'work', urgency: 'medium', position: 2 },
+          { id: 'uncat-1', title: 'Buy coffee', categoryId: null, urgency: 'high', position: 1 },
+          { id: 'work-1', title: 'Draft update', categoryId: 'work', urgency: 'low', position: 1 },
+          { id: 'home-1', title: 'Water plants', categoryId: 'home', urgency: 'medium', position: 1 }
+        ]
+      )
     });
 
     expect(rendered.html).toContain('Todo Tasks');
@@ -187,19 +283,61 @@ describe('Daily Summary renderer', () => {
         calendar: { status: 'available', label: 'Calendar', detail: 'Hidden.' },
         todo: { status: 'unavailable', label: 'Todo', reason: 'Todo source is not connected yet.' }
       },
-      todoTasks: [
-        {
-          id: 'unknown-category-task',
-          title: 'Recover orphaned task',
-          categoryId: 'missing-category',
-          urgency: 'high',
-          position: 1
-        }
-      ]
+      todoSection: buildTodoSection(
+        [],
+        [
+          {
+            id: 'unknown-category-task',
+            title: 'Recover orphaned task',
+            categoryId: 'missing-category',
+            urgency: 'high',
+            position: 1
+          }
+        ]
+      )
     });
 
     expect(rendered.html).toContain('Todo Tasks');
     expect(rendered.html).toContain('Recover orphaned task');
     expect(rendered.text).toContain('Recover orphaned task !');
+  });
+
+  test('renders module-prepared Todo Section content without raw Todo grouping inputs', () => {
+    const todoSection = buildTodoSection(
+      [
+        { id: 'work', name: 'Work' },
+        { id: 'empty', name: 'Empty Category' }
+      ],
+      [
+        { id: 'work-2', title: 'Send agenda', categoryId: 'work', urgency: 'medium', position: 2 },
+        { id: 'work-1', title: 'Draft update', categoryId: 'work', urgency: 'low', position: 1 },
+        { id: 'uncat-1', title: 'Buy coffee', categoryId: null, urgency: 'high', position: 1 }
+      ]
+    );
+
+    const rendered = renderDailySummary({
+      configuration: {
+        ...defaultSummaryConfiguration,
+        sections: {
+          weather: false,
+          commute: false,
+          calendar: false,
+          todo: true
+        }
+      },
+      sections: {
+        weather: { status: 'available', label: 'Weather', detail: 'Hidden.' },
+        commute: { status: 'available', label: 'Commute', detail: 'Hidden.' },
+        calendar: { status: 'available', label: 'Calendar', detail: 'Hidden.' },
+        todo: { status: 'unavailable', label: 'Todo', reason: 'Todo source is not connected yet.' }
+      },
+      todoSection
+    });
+
+    expect(rendered.html.indexOf('Buy coffee')).toBeLessThan(rendered.html.indexOf('Work'));
+    expect(rendered.html.indexOf('Draft update')).toBeLessThan(rendered.html.indexOf('Send agenda'));
+    expect(rendered.html).not.toContain('Empty Category');
+    expect(rendered.text).toContain('Buy coffee !');
+    expect(rendered.text).toContain('Send agenda !');
   });
 });
