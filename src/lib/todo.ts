@@ -37,3 +37,86 @@ export const todoCategorySchema = z.object({
 export type TodoUrgency = z.infer<typeof todoUrgencySchema>;
 export type TodoTask = z.infer<typeof todoTaskSchema>;
 export type TodoCategory = z.infer<typeof todoCategorySchema>;
+
+export const tasksForTodoCategory = (tasks: TodoTask[], categoryId: string | null) =>
+  tasks
+    .filter((task) => task.categoryId === categoryId)
+    .toSorted((first, second) => first.position - second.position);
+
+const nextPositionForCategory = (tasks: TodoTask[], categoryId: string | null) =>
+  Math.max(0, ...tasksForTodoCategory(tasks, categoryId).map((task) => task.position)) + 1;
+
+export const addTodoTask = ({
+  tasks,
+  input,
+  nextId
+}: {
+  tasks: TodoTask[];
+  input: z.input<typeof createTodoTaskSchema>;
+  nextId: () => string;
+}) => {
+  const result = createTodoTaskSchema.safeParse(input);
+
+  if (!result.success) {
+    return tasks;
+  }
+
+  return [
+    ...tasks,
+    {
+      id: nextId(),
+      title: result.data.title,
+      categoryId: result.data.categoryId,
+      urgency: result.data.urgency,
+      position: nextPositionForCategory(tasks, result.data.categoryId)
+    }
+  ];
+};
+
+export const updateTodoTask = (
+  tasks: TodoTask[],
+  input: z.input<typeof updateTodoTaskSchema>
+) => {
+  const result = updateTodoTaskSchema.safeParse(input);
+
+  if (!result.success) {
+    return tasks;
+  }
+
+  return tasks.map((task) =>
+    task.id === result.data.id
+      ? { ...task, title: result.data.title, urgency: result.data.urgency }
+      : task
+  );
+};
+
+export const completeTodoTask = (tasks: TodoTask[], taskId: string) =>
+  tasks.filter((task) => task.id !== taskId);
+
+export const reorderTodoTasks = (
+  tasks: TodoTask[],
+  {
+    categoryId,
+    orderedTasks,
+    detachMissingTasks = false
+  }: { categoryId: string | null; orderedTasks: TodoTask[]; detachMissingTasks?: boolean }
+) => {
+  const reorderedTaskIds = new Set(orderedTasks.map((task) => task.id));
+  const movedTasks = new Map(
+    orderedTasks.map((task, index) => [task.id, { categoryId, position: index + 1 }])
+  );
+
+  return tasks.map((task) => {
+    const movedTask = movedTasks.get(task.id);
+
+    if (movedTask) {
+      return { ...task, ...movedTask };
+    }
+
+    if (detachMissingTasks && task.categoryId === categoryId && !reorderedTaskIds.has(task.id)) {
+      return { ...task, categoryId: null };
+    }
+
+    return task;
+  });
+};
