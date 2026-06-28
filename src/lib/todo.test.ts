@@ -247,6 +247,7 @@ describe('Todo Module Daily Summary output', () => {
     ];
 
     expect(buildTodoSection([], [])).toBeNull();
+    expect(buildTodoSection(categories, [])).toBeNull();
     expect(buildTodoSection(categories, tasks)).toEqual({
       label: 'Todo Tasks',
       uncategorizedTasks: [

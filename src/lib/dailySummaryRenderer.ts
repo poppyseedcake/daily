@@ -20,7 +20,7 @@ export type DailySummarySectionState =
 export type DailySummaryInput = {
   configuration: SummaryConfiguration;
   sections: Record<SummarySection, DailySummarySectionState>;
-  todoSection?: TodoSection | null;
+  todoSection: TodoSection | null;
 };
 
 export type RenderedDailySummary = {
@@ -72,7 +72,7 @@ const buildVisibleSection = (
   input: DailySummaryInput,
   section: SummarySection
 ): RenderedSection[] => {
-  if (section === 'todo' && input.todoSection !== undefined) {
+  if (section === 'todo') {
     return input.todoSection ? [renderTodoSection(input.todoSection)] : [];
   }
 

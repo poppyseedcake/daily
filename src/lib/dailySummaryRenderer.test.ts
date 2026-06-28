@@ -13,7 +13,19 @@ describe('Daily Summary renderer', () => {
         commute: { status: 'available', label: 'Mock Commute', detail: 'Mock: 24 minutes by tram.' },
         calendar: { status: 'available', label: 'Calendar', detail: 'Design review at 10:00.' },
         todo: { status: 'available', label: 'Todo', detail: 'Ship the summary renderer.' }
-      }
+      },
+      todoSection: buildTodoSection(
+        [],
+        [
+          {
+            id: 'todo-1',
+            title: 'Ship the summary renderer.',
+            categoryId: null,
+            urgency: 'low',
+            position: 1
+          }
+        ]
+      )
     });
 
     expect(rendered.html).toContain('Mock Weather');
@@ -43,7 +55,8 @@ describe('Daily Summary renderer', () => {
         commute: { status: 'available', label: 'Mock Commute', detail: 'Mock: 24 minutes by tram.' },
         calendar: { status: 'unavailable', label: 'Calendar', reason: 'Calendar is not connected yet.' },
         todo: { status: 'available', label: 'Todo', detail: 'Ship the summary renderer.' }
-      }
+      },
+      todoSection: null
     });
 
     expect(rendered.html).toContain('background-color:#111827');
@@ -73,7 +86,8 @@ describe('Daily Summary renderer', () => {
         commute: { status: 'available', label: 'Commute', detail: 'Hidden.' },
         calendar: { status: 'available', label: 'Calendar', detail: 'Hidden.' },
         todo: { status: 'available', label: 'Todo', detail: 'Hidden.' }
-      }
+      },
+      todoSection: null
     });
 
     expect(rendered.html).toContain('&lt;script&gt;&amp;&quot;&#39;&lt;/script&gt;');
@@ -110,7 +124,19 @@ describe('Daily Summary renderer', () => {
           detail: demoCalendar.summaryDetail
         },
         todo: { status: 'available', label: 'Todo Tasks', detail: 'Ship the renderer.' }
-      }
+      },
+      todoSection: buildTodoSection(
+        [],
+        [
+          {
+            id: 'todo-1',
+            title: 'Ship the renderer.',
+            categoryId: null,
+            urgency: 'low',
+            position: 1
+          }
+        ]
+      )
     });
 
     expect(rendered.html).toContain('Demo Calendar');
@@ -120,6 +146,34 @@ describe('Daily Summary renderer', () => {
     expect(rendered.text).toContain('Demo Calendar');
     expect(rendered.text).toContain('Planning check-in');
     expect(rendered.text.indexOf('Demo Calendar')).toBeLessThan(rendered.text.indexOf('Todo Tasks'));
+  });
+
+  test('omits Todo output when the module-prepared Todo Section is empty', () => {
+    const rendered = renderDailySummary({
+      configuration: {
+        ...defaultSummaryConfiguration,
+        sections: {
+          weather: false,
+          commute: false,
+          calendar: true,
+          todo: true
+        }
+      },
+      sections: {
+        weather: { status: 'available', label: 'Weather', detail: 'Hidden.' },
+        commute: { status: 'available', label: 'Commute', detail: 'Hidden.' },
+        calendar: { status: 'available', label: 'Calendar', detail: 'Planning check-in.' },
+        todo: { status: 'available', label: 'Todo Tasks', detail: 'Ship the renderer.' }
+      },
+      todoSection: buildTodoSection([{ id: 'empty', name: 'Empty Category' }], [])
+    });
+
+    expect(rendered.html).toContain('Calendar');
+    expect(rendered.text).toContain('Planning check-in.');
+    expect(rendered.html).not.toContain('Todo Tasks');
+    expect(rendered.html).not.toContain('Ship the renderer.');
+    expect(rendered.text).not.toContain('Todo Tasks');
+    expect(rendered.text).not.toContain('Ship the renderer.');
   });
 
   test('renders active Todo Tasks with uncategorized tasks first, category groups, and urgency marks', () => {
