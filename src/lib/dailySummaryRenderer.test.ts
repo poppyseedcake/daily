@@ -66,6 +66,45 @@ describe('Daily Summary renderer', () => {
     expect(rendered.text).not.toContain('Mock Commute');
   });
 
+  test('omits Todo when disabled in configuration even with prepared Todo content', () => {
+    const rendered = renderDailySummary({
+      configuration: {
+        ...defaultSummaryConfiguration,
+        sections: {
+          weather: false,
+          commute: false,
+          calendar: true,
+          todo: false
+        }
+      },
+      sections: {
+        weather: { status: 'available', label: 'Weather', detail: 'Hidden.' },
+        commute: { status: 'available', label: 'Commute', detail: 'Hidden.' },
+        calendar: { status: 'available', label: 'Calendar', detail: 'Planning check-in.' },
+        todo: { status: 'available', label: 'Todo', detail: 'Ship the summary renderer.' }
+      },
+      todoSection: buildTodoSection(
+        [],
+        [
+          {
+            id: 'todo-1',
+            title: 'Ship the summary renderer.',
+            categoryId: null,
+            urgency: 'high',
+            position: 1
+          }
+        ]
+      )
+    });
+
+    expect(rendered.html).toContain('Calendar');
+    expect(rendered.text).toContain('Planning check-in.');
+    expect(rendered.html).not.toContain('Todo Tasks');
+    expect(rendered.html).not.toContain('Ship the summary renderer.');
+    expect(rendered.text).not.toContain('Todo Tasks');
+    expect(rendered.text).not.toContain('Ship the summary renderer.');
+  });
+
   test('escapes special characters in HTML while preserving plain text output', () => {
     const rendered = renderDailySummary({
       configuration: {
