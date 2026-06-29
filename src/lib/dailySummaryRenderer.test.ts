@@ -204,7 +204,7 @@ describe('Daily Summary renderer', () => {
         calendar: { status: 'available', label: 'Calendar', detail: 'Planning check-in.' },
         todo: { status: 'available', label: 'Todo Tasks', detail: 'Ship the renderer.' }
       },
-      todoSection: buildTodoSection([{ id: 'empty', name: 'Empty Category' }], [])
+      todoSection: buildTodoSection([{ id: 'empty', name: 'Empty Category', position: 1 }], [])
     });
 
     expect(rendered.html).toContain('Calendar');
@@ -234,9 +234,9 @@ describe('Daily Summary renderer', () => {
       },
       todoSection: buildTodoSection(
         [
-          { id: 'work', name: 'Work' },
-          { id: 'home', name: 'Home' },
-          { id: 'empty', name: 'Empty Category' }
+          { id: 'work', name: 'Work', position: 1 },
+          { id: 'home', name: 'Home', position: 2 },
+          { id: 'empty', name: 'Empty Category', position: 3 }
         ],
         [
           { id: 'work-2', title: 'Send agenda', categoryId: 'work', urgency: 'medium', position: 2 },
@@ -305,8 +305,8 @@ describe('Daily Summary renderer', () => {
   test('renders module-prepared Todo Section content without raw Todo grouping inputs', () => {
     const todoSection = buildTodoSection(
       [
-        { id: 'work', name: 'Work' },
-        { id: 'empty', name: 'Empty Category' }
+        { id: 'work', name: 'Work', position: 1 },
+        { id: 'empty', name: 'Empty Category', position: 2 }
       ],
       [
         { id: 'work-2', title: 'Send agenda', categoryId: 'work', urgency: 'medium', position: 2 },

@@ -26,16 +26,18 @@ export const todoTaskSchema = z.object({
   title: todoTaskTitleSchema,
   categoryId: z.string().nullable(),
   urgency: todoUrgencySchema,
-  position: z.number().int().positive()
+  position: z.number().int().positive(),
+  completed: z.boolean().default(false)
 });
 
 export const todoCategorySchema = z.object({
   id: z.string(),
-  name: todoCategoryNameSchema
+  name: todoCategoryNameSchema,
+  position: z.number().int().positive()
 });
 
 export type TodoUrgency = z.infer<typeof todoUrgencySchema>;
-export type TodoTask = z.infer<typeof todoTaskSchema>;
+export type TodoTask = z.input<typeof todoTaskSchema>;
 export type TodoCategory = z.infer<typeof todoCategorySchema>;
 
 export type TodoSection = {
@@ -54,6 +56,9 @@ export const tasksForTodoCategory = (tasks: TodoTask[], categoryId: string | nul
 
 const nextPositionForCategory = (tasks: TodoTask[], categoryId: string | null) =>
   Math.max(0, ...tasksForTodoCategory(tasks, categoryId).map((task) => task.position)) + 1;
+
+const nextPositionForTodoCategory = (categories: TodoCategory[]) =>
+  Math.max(0, ...categories.map((category) => category.position)) + 1;
 
 export const addTodoTask = ({
   tasks,
@@ -117,7 +122,10 @@ export const addTodoCategory = ({
     return categories;
   }
 
-  return [...categories, { id: nextId(), name: result.data.name }];
+  return [
+    ...categories,
+    { id: nextId(), name: result.data.name, position: nextPositionForTodoCategory(categories) }
+  ];
 };
 
 export const updateTodoCategory = (
@@ -169,6 +177,7 @@ export const buildTodoSection = (
     .filter((task) => task.categoryId === null || !knownCategoryIds.has(task.categoryId))
     .toSorted((first, second) => first.position - second.position);
   const categoryGroups = categories
+    .toSorted((first, second) => first.position - second.position)
     .map((category) => ({
       category,
       tasks: tasksForTodoCategory(tasks, category.id)
