@@ -1,12 +1,21 @@
 import { describe, expect, test } from 'vitest';
 import { defaultSummaryConfiguration } from './summaryConfiguration';
 import {
+  addTodoCategory,
+  addTodoTask,
+  completeTodoTask,
+  deleteTodoCategory,
+  reorderTodoTasks,
+  tasksForTodoCategory,
+  updateTodoCategory
+} from './todo';
+import {
   createDefaultLocalSetup,
   loadLocalSetup,
   localSetupStorageKey,
   localSetupVersion,
   saveLocalSetup,
-  type LocalSetup,
+  type LocalSetupInput,
   type LocalSetupStorageAdapter
 } from './localSetup';
 
@@ -108,7 +117,7 @@ describe('Visitor Local Setup module', () => {
 
   test('saves Local Setup without Demo Calendar or mock provider output', () => {
     const storage = memoryStorage();
-    const setup: LocalSetup & {
+    const setup: LocalSetupInput & {
       demoCalendar: { label: string };
       mockWeather: { label: string };
       mockCommute: { label: string };
@@ -150,6 +159,98 @@ describe('Visitor Local Setup module', () => {
       todoTasks: [{ ...setup.todoTasks[0], completed: false }],
       nextTodoId: setup.nextTodoId
     });
+  });
+
+  test('round-trips Summary Configuration and Todo Module output through browser storage', () => {
+    const storage = memoryStorage();
+    let nextNumericId = 1;
+    const nextId = (prefix: string) => `${prefix}-${nextNumericId++}`;
+    const homeCategories = addTodoCategory({
+      categories: [],
+      input: { name: 'Home' },
+      nextId: () => nextId('category')
+    });
+    const categories = updateTodoCategory(
+      addTodoCategory({
+        categories: homeCategories,
+        input: { name: 'Work' },
+        nextId: () => nextId('category')
+      }),
+      { id: 'category-1', name: 'Apartment' }
+    );
+    const tasks = reorderTodoTasks(
+      completeTodoTask(
+        addTodoTask({
+          tasks: addTodoTask({
+            tasks: addTodoTask({
+              tasks: addTodoTask({
+                tasks: [],
+                input: { title: 'Buy coffee', categoryId: null, urgency: 'medium' },
+                nextId: () => nextId('todo')
+              }),
+              input: { title: 'Write launch note', categoryId: 'category-2', urgency: 'low' },
+              nextId: () => nextId('todo')
+            }),
+            input: { title: 'Water plants', categoryId: 'category-1', urgency: 'low' },
+            nextId: () => nextId('todo')
+          }),
+          input: { title: 'Review deploy checklist', categoryId: 'category-2', urgency: 'high' },
+          nextId: () => nextId('todo')
+        }),
+        'todo-6'
+      ),
+      { categoryId: 'category-1', orderedTaskIds: ['todo-5', 'todo-3'] }
+    );
+    const todoStateAfterDeletion = deleteTodoCategory({
+      categories,
+      tasks,
+      categoryId: 'category-2'
+    });
+
+    const setup: LocalSetupInput = {
+      ...createDefaultLocalSetup(),
+      summaryConfiguration: {
+        ...defaultSummaryConfiguration,
+        summaryTime: '18:45',
+        sections: { weather: true, commute: true, calendar: true, todo: true }
+      },
+      todoCategories: todoStateAfterDeletion.categories,
+      todoTasks: todoStateAfterDeletion.tasks,
+      nextTodoId: nextNumericId
+    };
+
+    expect(saveLocalSetup(storage, setup).outcome).toBe('saved');
+
+    const result = loadLocalSetup(storage);
+
+    expect(result.outcome).toBe('loaded');
+    expect(result.setup.summaryConfiguration).toEqual(setup.summaryConfiguration);
+    expect(result.setup.todoCategories).toEqual([
+      { id: 'category-1', name: 'Apartment', position: 1 }
+    ]);
+    expect(result.setup.todoTasks).toEqual([
+      {
+        id: 'todo-3',
+        title: 'Buy coffee',
+        categoryId: 'category-1',
+        urgency: 'medium',
+        position: 2,
+        completed: false
+      },
+      {
+        id: 'todo-5',
+        title: 'Water plants',
+        categoryId: 'category-1',
+        urgency: 'low',
+        position: 1,
+        completed: false
+      }
+    ]);
+    expect(tasksForTodoCategory(result.setup.todoTasks, 'category-1').map((task) => task.title)).toEqual([
+      'Water plants',
+      'Buy coffee'
+    ]);
+    expect(result.setup.nextTodoId).toBe(7);
   });
 
   test('returns a failed outcome when storage cannot be written', () => {

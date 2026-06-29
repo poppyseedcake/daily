@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { defaultSummaryConfiguration, summaryConfigurationSchema } from './summaryConfiguration';
-import { todoCategorySchema, todoTaskSchema, type TodoCategory, type TodoTask } from './todo';
+import { createDefaultTodoState, todoStateSchema, type TodoState, type TodoStateInput } from './todo';
 
 export const localSetupVersion = 1;
 export const localSetupStorageKey = 'daily.visitorLocalSetup.v1';
@@ -8,10 +8,12 @@ export const localSetupStorageKey = 'daily.visitorLocalSetup.v1';
 export type LocalSetup = {
   version: typeof localSetupVersion;
   summaryConfiguration: typeof defaultSummaryConfiguration;
-  todoCategories: TodoCategory[];
-  todoTasks: TodoTask[];
-  nextTodoId: number;
-};
+} & TodoState;
+
+export type LocalSetupInput = {
+  version: typeof localSetupVersion;
+  summaryConfiguration: typeof defaultSummaryConfiguration;
+} & TodoStateInput;
 
 export type LocalSetupStorageAdapter = {
   getItem: (key: string) => string | null;
@@ -27,24 +29,34 @@ export type LocalSetupLoadOutcome =
   | 'read-failed';
 export type LocalSetupSaveOutcome = 'saved' | 'write-failed';
 
-const localSetupSchema = z.object({
-  version: z.literal(localSetupVersion),
-  summaryConfiguration: summaryConfigurationSchema,
-  todoCategories: z.array(todoCategorySchema),
-  todoTasks: z.array(todoTaskSchema),
-  nextTodoId: z.number().int().positive()
-});
+const localSetupBaseSchema = z
+  .object({
+    version: z.literal(localSetupVersion),
+    summaryConfiguration: summaryConfigurationSchema
+  })
+  .and(todoStateSchema);
+
+const localSetupSchema = localSetupBaseSchema.transform((setup) => ({
+  version: setup.version,
+  summaryConfiguration: setup.summaryConfiguration,
+  todoCategories: setup.todoCategories,
+  todoTasks: setup.todoTasks,
+  nextTodoId: setup.nextTodoId
+}));
 
 const unversionedCurrentLocalSetupSchema = z
   .object({
     version: z.never().optional(),
-    summaryConfiguration: summaryConfigurationSchema,
-    todoCategories: z.array(todoCategorySchema),
-    todoTasks: z.array(todoTaskSchema),
-    nextTodoId: z.number().int().positive()
+    summaryConfiguration: summaryConfigurationSchema
   })
-  .strip()
-  .transform((setup) => ({ ...setup, version: localSetupVersion }));
+  .and(todoStateSchema)
+  .transform((setup) => ({
+    version: localSetupVersion,
+    summaryConfiguration: setup.summaryConfiguration,
+    todoCategories: setup.todoCategories,
+    todoTasks: setup.todoTasks,
+    nextTodoId: setup.nextTodoId
+  }));
 
 const supportedLocalSetupSchema = z.union([localSetupSchema, unversionedCurrentLocalSetupSchema]);
 
@@ -53,13 +65,12 @@ const fallbackLoadResult = (outcome: LocalSetupLoadOutcome) => ({
   setup: createDefaultLocalSetup()
 });
 
-export const createDefaultLocalSetup = (): LocalSetup => ({
-  version: localSetupVersion,
-  summaryConfiguration: summaryConfigurationSchema.parse(defaultSummaryConfiguration),
-  todoCategories: [],
-  todoTasks: [],
-  nextTodoId: 1
-});
+export const createDefaultLocalSetup = (): LocalSetup =>
+  localSetupSchema.parse({
+    version: localSetupVersion,
+    summaryConfiguration: summaryConfigurationSchema.parse(defaultSummaryConfiguration),
+    ...createDefaultTodoState()
+  });
 
 export const loadLocalSetup = (
   storage: LocalSetupStorageAdapter
@@ -105,7 +116,7 @@ export const loadLocalSetup = (
 
 export const saveLocalSetup = (
   storage: LocalSetupStorageAdapter,
-  setup: LocalSetup
+  setup: LocalSetupInput
 ): { outcome: LocalSetupSaveOutcome } => {
   try {
     storage.setItem(localSetupStorageKey, JSON.stringify(localSetupSchema.parse(setup)));
