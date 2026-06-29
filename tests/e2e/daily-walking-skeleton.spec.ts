@@ -386,6 +386,65 @@ test('Visitor Todo data and local-save status persist after page refresh', async
   await expect(restoredWorkTasks.getByRole('listitem').filter({ hasText: 'Schedule retro' })).toHaveCount(1);
 });
 
+test('Visitor Todo changes from moves renames deletion and completion remain durable after refresh', async ({
+  page
+}) => {
+  await page.goto('/');
+
+  for (const category of ['Work', 'Home']) {
+    await page.getByLabel('New Todo Category').fill(category);
+    await page.getByRole('button', { name: 'Add Todo Category' }).click();
+  }
+
+  await page.getByRole('button', { name: 'Rename Home' }).click();
+  await page.getByLabel('Edit Todo Category').fill('Apartment');
+  await page.getByRole('button', { name: 'Save Todo Category' }).click();
+
+  await page.getByLabel('New Todo Task').fill('Buy coffee');
+  await page.getByLabel('Urgency', { exact: true }).selectOption('medium');
+  await page.getByRole('button', { name: 'Add Todo Task' }).click();
+
+  await page.getByLabel('New Todo Task').fill('File invoice');
+  await page.getByLabel('Todo Category', { exact: true }).selectOption({ label: 'Work' });
+  await page.getByLabel('Urgency', { exact: true }).selectOption('high');
+  await page.getByRole('button', { name: 'Add Todo Task' }).click();
+
+  await page.getByLabel('New Todo Task').fill('Water plants');
+  await page.getByLabel('Todo Category', { exact: true }).selectOption({ label: 'Apartment' });
+  await page.getByRole('button', { name: 'Add Todo Task' }).click();
+
+  const workTasks = page.getByRole('list', { name: 'Work Todo Tasks' });
+  const apartmentTasks = page.getByRole('list', { name: 'Apartment Todo Tasks' });
+
+  await workTasks.getByRole('button', { name: 'Move File invoice' }).focus();
+  await page.keyboard.press('Space');
+  await tabUntilDropTargetActive(page, apartmentTasks);
+  await page.keyboard.press('Space');
+
+  await page.getByRole('checkbox', { name: 'Complete Buy coffee' }).click();
+
+  page.once('dialog', async (dialog) => {
+    await dialog.accept();
+  });
+  await page.getByRole('button', { name: 'Delete Work' }).click();
+
+  await page.reload();
+
+  const todoPanel = page.locator('section.rounded-lg:has(> h2:text("Todo Tasks"))');
+  const restoredUncategorizedTasks = page.getByRole('list', { name: 'No Category Todo Tasks' });
+  const restoredApartmentTasks = page.getByRole('list', { name: 'Apartment Todo Tasks' });
+
+  await expect(todoPanel.getByRole('heading', { name: 'Apartment' })).toBeVisible();
+  await expect(todoPanel.getByRole('heading', { name: 'Work' })).toHaveCount(0);
+  await expect(restoredUncategorizedTasks.getByText('Buy coffee')).toHaveCount(0);
+  await expect(restoredApartmentTasks.getByRole('listitem').filter({ hasText: 'File invoice' })).toBeVisible();
+  await expect(
+    restoredApartmentTasks.getByRole('listitem').filter({ hasText: 'File invoice' }).getByLabel('High urgency')
+  ).toHaveText('!');
+  await expect(restoredApartmentTasks.getByRole('listitem').filter({ hasText: 'Water plants' })).toBeVisible();
+  await expect(page.getByRole('list', { name: 'Work Todo Tasks' })).toHaveCount(0);
+});
+
 test('Administrator route shows a minimal shell without private Visitor or User content', async ({
   page
 }) => {

@@ -36,9 +36,16 @@ export const todoCategorySchema = z.object({
   position: z.number().int().positive()
 });
 
+export const todoStateSchema = z.object({
+  todoCategories: z.array(todoCategorySchema),
+  todoTasks: z.array(todoTaskSchema),
+  nextTodoId: z.number().int().positive()
+});
+
 export type TodoUrgency = z.infer<typeof todoUrgencySchema>;
 export type TodoTask = z.input<typeof todoTaskSchema>;
 export type TodoCategory = z.infer<typeof todoCategorySchema>;
+export type TodoState = z.input<typeof todoStateSchema>;
 
 export type TodoSection = {
   label: 'Todo Tasks';
@@ -48,6 +55,12 @@ export type TodoSection = {
     tasks: TodoTask[];
   }>;
 };
+
+export const createDefaultTodoState = (): TodoState => ({
+  todoCategories: [],
+  todoTasks: [],
+  nextTodoId: 1
+});
 
 export const tasksForTodoCategory = (tasks: TodoTask[], categoryId: string | null) =>
   tasks
