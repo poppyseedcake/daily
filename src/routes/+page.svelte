@@ -59,6 +59,7 @@
   let editingCategoryName = $state('');
   let todoControlsReady = $state(false);
   let localSetupHydrated = $state(false);
+  let localSetupSaveError = $state(false);
   let nextTodoId = 1;
 
   onMount(() => {
@@ -135,7 +136,7 @@
   const restoreVisitorLocalSetup = () => {
     const result = loadLocalSetup(browserLocalSetupStorage());
 
-    if (result.outcome === 'empty') {
+    if (result.outcome !== 'loaded') {
       return;
     }
 
@@ -145,13 +146,15 @@
     nextTodoId = result.setup.nextTodoId;
   };
   const persistVisitorLocalSetup = () => {
-    saveLocalSetup(browserLocalSetupStorage(), {
+    const result = saveLocalSetup(browserLocalSetupStorage(), {
       ...createDefaultLocalSetup(),
       summaryConfiguration: currentSummaryConfiguration(),
       todoCategories,
       todoTasks,
       nextTodoId
     });
+
+    localSetupSaveError = result.outcome === 'write-failed';
   };
   const urgencyLabel = (urgency: TodoUrgency) =>
     urgency === 'high' ? 'High urgency' : urgency === 'medium' ? 'Medium urgency' : 'Low urgency';
@@ -390,6 +393,11 @@
               Shape a Local Setup for a future Daily Summary. Google sign-in will be required before
               a Daily Summary can be sent.
             </p>
+            {#if localSetupSaveError}
+              <p class="mt-3 text-sm font-medium text-red-700" role="alert">
+                Local Setup could not be saved in this browser.
+              </p>
+            {/if}
           </div>
           <a
             class="inline-flex h-10 items-center gap-2 rounded-md border border-stone-300 px-3 text-sm font-medium text-stone-800 hover:bg-stone-50"

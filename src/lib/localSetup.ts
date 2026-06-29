@@ -35,9 +35,15 @@ const localSetupSchema = z.object({
   nextTodoId: z.number().int().positive()
 });
 
-const unversionedCurrentLocalSetupSchema = localSetupSchema
-  .omit({ version: true })
-  .strict()
+const unversionedCurrentLocalSetupSchema = z
+  .object({
+    version: z.never().optional(),
+    summaryConfiguration: summaryConfigurationSchema,
+    todoCategories: z.array(todoCategorySchema),
+    todoTasks: z.array(todoTaskSchema),
+    nextTodoId: z.number().int().positive()
+  })
+  .strip()
   .transform((setup) => ({ ...setup, version: localSetupVersion }));
 
 const supportedLocalSetupSchema = z.union([localSetupSchema, unversionedCurrentLocalSetupSchema]);
@@ -88,7 +94,8 @@ export const loadLocalSetup = (
     typeof parsedSetup === 'object' &&
     parsedSetup !== null &&
     'version' in parsedSetup &&
-    (parsedSetup as { version: unknown }).version !== localSetupVersion
+    typeof (parsedSetup as { version: unknown }).version === 'number' &&
+    (parsedSetup as { version: number }).version !== localSetupVersion
   ) {
     return fallbackLoadResult('unsupported-version');
   }

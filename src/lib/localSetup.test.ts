@@ -44,6 +44,9 @@ describe('Visitor Local Setup module', () => {
         sections: { weather: true, commute: false, calendar: true, todo: true }
       },
       todoCategories: [{ id: 'category-1', name: 'Home', position: 1 }],
+      demoCalendar: { label: 'Demo Calendar' },
+      mockWeather: { label: 'Mock Weather' },
+      mockCommute: { label: 'Mock Commute' },
       todoTasks: [
         {
           id: 'todo-1',
@@ -59,13 +62,22 @@ describe('Visitor Local Setup module', () => {
     const result = loadLocalSetup(memoryStorage(JSON.stringify(storedSetup)));
 
     expect(result.outcome).toBe('loaded');
-    expect(result.setup).toMatchObject({ version: localSetupVersion, ...storedSetup });
+    expect(result.setup).toMatchObject({
+      version: localSetupVersion,
+      summaryConfiguration: storedSetup.summaryConfiguration,
+      todoCategories: storedSetup.todoCategories,
+      nextTodoId: storedSetup.nextTodoId
+    });
+    expect(result.setup).not.toHaveProperty('demoCalendar');
+    expect(result.setup).not.toHaveProperty('mockWeather');
+    expect(result.setup).not.toHaveProperty('mockCommute');
     expect(result.setup.todoTasks[0]?.completed).toBe(false);
   });
 
   test.each([
     ['invalid-json', '{'],
     ['schema-invalid', JSON.stringify({ version: localSetupVersion, summaryConfiguration: null })],
+    ['schema-invalid', JSON.stringify({ ...createDefaultLocalSetup(), version: '2' })],
     [
       'unsupported-version',
       JSON.stringify({
@@ -96,7 +108,11 @@ describe('Visitor Local Setup module', () => {
 
   test('saves Local Setup without Demo Calendar or mock provider output', () => {
     const storage = memoryStorage();
-    const setup: LocalSetup = {
+    const setup: LocalSetup & {
+      demoCalendar: { label: string };
+      mockWeather: { label: string };
+      mockCommute: { label: string };
+    } = {
       ...createDefaultLocalSetup(),
       summaryConfiguration: {
         ...defaultSummaryConfiguration,
@@ -111,18 +127,28 @@ describe('Visitor Local Setup module', () => {
           position: 1
         }
       ],
-      nextTodoId: 2
+      nextTodoId: 2,
+      demoCalendar: { label: 'Demo Calendar' },
+      mockWeather: { label: 'Mock Weather' },
+      mockCommute: { label: 'Mock Commute' }
     };
 
     const result = saveLocalSetup(storage, setup);
 
     expect(result.outcome).toBe('saved');
+    const storedSetup = JSON.parse(storage.stored ?? '');
+    expect(storedSetup).not.toHaveProperty('demoCalendar');
+    expect(storedSetup).not.toHaveProperty('mockWeather');
+    expect(storedSetup).not.toHaveProperty('mockCommute');
     expect(storage.stored).not.toContain('Demo Calendar');
     expect(storage.stored).not.toContain('Mock Weather');
     expect(storage.stored).not.toContain('Mock Commute');
-    expect(JSON.parse(storage.stored ?? '')).toEqual({
-      ...setup,
-      todoTasks: [{ ...setup.todoTasks[0], completed: false }]
+    expect(storedSetup).toEqual({
+      version: setup.version,
+      summaryConfiguration: setup.summaryConfiguration,
+      todoCategories: setup.todoCategories,
+      todoTasks: [{ ...setup.todoTasks[0], completed: false }],
+      nextTodoId: setup.nextTodoId
     });
   });
 
