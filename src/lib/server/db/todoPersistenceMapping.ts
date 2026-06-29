@@ -27,20 +27,33 @@ export const mapTodoCategoryToRow = (
 });
 
 export const mapTodoTasksFromRows = (rows: TodoTaskRow[]): TodoTask[] =>
-  rows
-    .map((row) => ({
+  sortTasksWithinIncomingCategoryOrder(
+    rows.map((row) => ({
       id: row.id,
       title: row.title,
       categoryId: row.categoryId,
-      urgency: row.urgency ?? 'low',
+      urgency: row.urgency ?? 'medium',
       position: row.position,
       completed: row.completed
     }))
-    .toSorted(
-      (first, second) =>
-        (first.categoryId ?? '').localeCompare(second.categoryId ?? '') ||
-        first.position - second.position
-    );
+  );
+
+const sortTasksWithinIncomingCategoryOrder = (tasks: TodoTask[]): TodoTask[] => {
+  const tasksByCategory = new Map<string | null, TodoTask[]>();
+
+  for (const task of tasks) {
+    tasksByCategory.set(task.categoryId, [...(tasksByCategory.get(task.categoryId) ?? []), task]);
+  }
+
+  const sortedTasksByCategory = new Map(
+    [...tasksByCategory.entries()].map(([categoryId, categoryTasks]) => [
+      categoryId,
+      categoryTasks.toSorted((first, second) => first.position - second.position)
+    ])
+  );
+
+  return tasks.map((task) => sortedTasksByCategory.get(task.categoryId)?.shift() ?? task);
+};
 
 export const mapTodoTaskToRow = (
   task: TodoTask,
