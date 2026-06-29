@@ -91,6 +91,22 @@ test('Visitor Summary Configuration persists after page refresh', async ({ page 
   await expect(page.getByText('Todo source is not connected yet.')).not.toBeVisible();
 });
 
+test('Visitor falls back safely when browser Local Setup data is corrupt', async ({ page }) => {
+  await page.goto('/');
+  await page.evaluate(() => {
+    localStorage.setItem('daily.visitorLocalSetup.v1', '{');
+  });
+
+  await page.reload();
+
+  await expect(page.getByText('Invalid browser data was ignored. Defaults are active.')).toBeVisible();
+  await expect(page.getByLabel('Summary Time')).toHaveValue('07:00');
+  await expect(page.getByRole('radio', { name: 'UTC' })).toBeChecked();
+  await expect(page.getByRole('radio', { name: 'Light Theme' })).toBeChecked();
+  await expect(page.getByText('Next summary: 07:00 UTC')).toBeVisible();
+  await expect(page.getByRole('list', { name: 'No Category Todo Tasks' }).getByRole('listitem')).toHaveCount(0);
+});
+
 test('Visitor sees Demo Calendar content for the Week Ahead and can hide it from the preview', async ({
   page
 }) => {
