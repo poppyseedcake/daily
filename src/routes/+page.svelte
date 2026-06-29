@@ -5,11 +5,20 @@
   import Panel from '$lib/components/Panel.svelte';
   import { buildDemoCalendarSection } from '$lib/demoCalendar';
   import { renderDailySummary, type DailySummaryInput } from '$lib/dailySummaryRenderer';
-  import { createDefaultLocalSetup, loadLocalSetup, saveLocalSetup } from '$lib/localSetup';
+  import {
+    createDefaultLocalSetup,
+    loadLocalSetup,
+    saveLocalSetup,
+    type LocalSetup,
+    type LocalSetupInput,
+    type LocalSetupLoadOutcome,
+    type LocalSetupSaveOutcome
+  } from '$lib/localSetup';
   import {
     defaultSummaryConfiguration,
     canPreviewDailySummary,
     summaryConfigurationSchema,
+    summaryTimeSchema,
     type SummaryConfiguration,
     type SummarySection,
     type SummaryTheme,
@@ -59,17 +68,41 @@
   let editingCategoryName = $state('');
   let todoControlsReady = $state(false);
   let localSetupHydrated = $state(false);
-  let localSetupSaveError = $state(false);
+  let localSetupStatus = $state('Not saved in this browser yet.');
+  let localSetupStatusTone = $state<'success' | 'warning' | 'error' | 'neutral'>('neutral');
+  let lastLocalSetupSnapshot: string | null = null;
+  let hydratedLocalSetupSnapshot: string | null = null;
   let nextTodoId = 1;
 
   onMount(() => {
-    restoreVisitorLocalSetup();
+    const loadOutcome = restoreVisitorLocalSetup();
+    const restoredSetup = currentLocalSetup();
+    hydratedLocalSetupSnapshot = localSetupSnapshot(restoredSetup);
+
+    if (loadOutcome === 'loaded') {
+      lastLocalSetupSnapshot = hydratedLocalSetupSnapshot;
+    }
+
+    if (loadOutcome === 'empty') {
+      const saveOutcome = persistVisitorLocalSetup(restoredSetup);
+
+      if (saveOutcome === 'saved') {
+        lastLocalSetupSnapshot = hydratedLocalSetupSnapshot;
+      }
+    }
+
     localSetupHydrated = true;
     todoControlsReady = true;
   });
 
+  const currentSummaryTime = () => {
+    const result = summaryTimeSchema.safeParse(summaryTimeInput);
+
+    return result.success ? result.data : summaryTime;
+  };
+
   const currentSummaryConfiguration = (): SummaryConfiguration => ({
-    summaryTime,
+    summaryTime: currentSummaryTime(),
     userTimeZone,
     summaryTheme,
     summaryDeliveryEnabled,
@@ -133,28 +166,75 @@
       globalThis.localStorage.setItem(key, value);
     }
   });
+  const localSetupLoadStatus = (outcome: LocalSetupLoadOutcome) => {
+    if (outcome === 'loaded') {
+      return {
+        message: 'Restored from this browser. Saved in this browser only',
+        tone: 'success' as const
+      };
+    }
+
+    if (outcome === 'empty') {
+      return {
+        message: 'Not saved in this browser yet.',
+        tone: 'neutral' as const
+      };
+    }
+
+    if (outcome === 'read-failed') {
+      return {
+        message: 'Browser storage is unavailable. Changes are not saved.',
+        tone: 'error' as const
+      };
+    }
+
+    return {
+      message: 'Invalid browser data was ignored. Defaults are active.',
+      tone: 'warning' as const
+    };
+  };
+  const localSetupSaveStatus = (outcome: LocalSetupSaveOutcome) =>
+    outcome === 'saved'
+      ? {
+          message: 'Saved in this browser only',
+          tone: 'success' as const
+        }
+      : {
+          message: 'Browser storage is unavailable. Changes are not saved.',
+          tone: 'error' as const
+        };
+  const applyLocalSetup = (setup: LocalSetup) => {
+    updateSummaryConfiguration(setup.summaryConfiguration);
+    todoCategories = setup.todoCategories;
+    todoTasks = setup.todoTasks;
+    nextTodoId = setup.nextTodoId;
+  };
+  const currentLocalSetup = (): LocalSetupInput => ({
+    ...createDefaultLocalSetup(),
+    summaryConfiguration: currentSummaryConfiguration(),
+    todoCategories,
+    todoTasks,
+    nextTodoId
+  });
+  const localSetupSnapshot = (setup: LocalSetupInput) => JSON.stringify(setup);
   const restoreVisitorLocalSetup = () => {
     const result = loadLocalSetup(browserLocalSetupStorage());
 
-    if (result.outcome !== 'loaded') {
-      return;
-    }
+    applyLocalSetup(result.setup);
+    const status = localSetupLoadStatus(result.outcome);
+    localSetupStatus = status.message;
+    localSetupStatusTone = status.tone;
 
-    updateSummaryConfiguration(result.setup.summaryConfiguration);
-    todoCategories = result.setup.todoCategories;
-    todoTasks = result.setup.todoTasks;
-    nextTodoId = result.setup.nextTodoId;
+    return result.outcome;
   };
-  const persistVisitorLocalSetup = () => {
-    const result = saveLocalSetup(browserLocalSetupStorage(), {
-      ...createDefaultLocalSetup(),
-      summaryConfiguration: currentSummaryConfiguration(),
-      todoCategories,
-      todoTasks,
-      nextTodoId
-    });
+  const persistVisitorLocalSetup = (setup: LocalSetupInput) => {
+    const result = saveLocalSetup(browserLocalSetupStorage(), setup);
 
-    localSetupSaveError = result.outcome === 'write-failed';
+    const status = localSetupSaveStatus(result.outcome);
+    localSetupStatus = status.message;
+    localSetupStatusTone = status.tone;
+
+    return result.outcome;
   };
   const urgencyLabel = (urgency: TodoUrgency) =>
     urgency === 'high' ? 'High urgency' : urgency === 'medium' ? 'Medium urgency' : 'Low urgency';
@@ -348,14 +428,6 @@
   let renderedSummaryHtml = $state('');
 
   $effect(() => {
-    renderedSummaryHtml = renderDailySummary({
-      configuration: previewConfiguration,
-      sections: previewSections,
-      todoSection: buildTodoSection(todoCategories, todoTasks)
-    }).html;
-  });
-
-  $effect(() => {
     const result = summaryConfigurationSchema.safeParse({
       ...currentSummaryConfiguration(),
       summaryTime: summaryTimeInput
@@ -367,8 +439,25 @@
   });
 
   $effect(() => {
-    if (localSetupHydrated) {
-      persistVisitorLocalSetup();
+    renderedSummaryHtml = renderDailySummary({
+      configuration: previewConfiguration,
+      sections: previewSections,
+      todoSection: buildTodoSection(todoCategories, todoTasks)
+    }).html;
+  });
+
+  $effect(() => {
+    const setup = currentLocalSetup();
+    const snapshot = localSetupSnapshot(setup);
+
+    if (!localSetupHydrated || snapshot === lastLocalSetupSnapshot || snapshot === hydratedLocalSetupSnapshot) {
+      return;
+    }
+
+    const saveOutcome = persistVisitorLocalSetup(setup);
+
+    if (saveOutcome === 'saved') {
+      lastLocalSetupSnapshot = snapshot;
     }
   });
 </script>
@@ -393,11 +482,6 @@
               Shape a Local Setup for a future Daily Summary. Google sign-in will be required before
               a Daily Summary can be sent.
             </p>
-            {#if localSetupSaveError}
-              <p class="mt-3 text-sm font-medium text-red-700" role="alert">
-                Local Setup could not be saved in this browser.
-              </p>
-            {/if}
           </div>
           <a
             class="inline-flex h-10 items-center gap-2 rounded-md border border-stone-300 px-3 text-sm font-medium text-stone-800 hover:bg-stone-50"
@@ -417,7 +501,10 @@
               <input
                 aria-labelledby="summary-time-label"
                 class="h-10 rounded-md border border-stone-300 px-3"
-                type="time"
+                type="text"
+                inputmode="numeric"
+                pattern="([01][0-9]|2[0-3]):[0-5][0-9]"
+                disabled={!localSetupHydrated}
                 bind:value={summaryTimeInput}
                 oninput={(event) => {
                   updateSummaryTimeInput(readInputValue(event));
@@ -441,6 +528,7 @@
                       type="radio"
                       bind:group={userTimeZone}
                       value={timeZone}
+                      disabled={!localSetupHydrated}
                       onchange={() => {
                         patchSummaryConfiguration({ userTimeZone: timeZone });
                       }}
@@ -463,6 +551,7 @@
                     type="radio"
                     bind:group={summaryTheme}
                     value="light"
+                    disabled={!localSetupHydrated}
                     onchange={() => {
                       patchSummaryConfiguration({ summaryTheme: 'light' });
                     }}
@@ -479,6 +568,7 @@
                     type="radio"
                     bind:group={summaryTheme}
                     value="dark"
+                    disabled={!localSetupHydrated}
                     onchange={() => {
                       patchSummaryConfiguration({ summaryTheme: 'dark' });
                     }}
@@ -496,6 +586,7 @@
                 id="summary-delivery"
                 type="checkbox"
                 bind:checked={summaryDeliveryEnabled}
+                disabled={!localSetupHydrated}
                 onchange={(event) => {
                   patchSummaryConfiguration({ summaryDeliveryEnabled: readInputChecked(event) });
                 }}
@@ -516,6 +607,7 @@
                   id={`${section.key}-section`}
                   type="checkbox"
                   bind:checked={enabledSections[section.key]}
+                  disabled={!localSetupHydrated}
                   onchange={(event) => {
                     toggleSection(section.key, readInputChecked(event));
                   }}
@@ -876,7 +968,20 @@
 
     <aside class="space-y-4">
       <Panel title="Local Save" eyebrow="Visitor">
-        <p class="font-medium text-emerald-800">Saved in this browser only</p>
+        <p
+          class={`font-medium ${
+            localSetupStatusTone === 'success'
+              ? 'text-emerald-800'
+              : localSetupStatusTone === 'warning'
+                ? 'text-amber-800'
+                : localSetupStatusTone === 'error'
+                  ? 'text-red-700'
+                  : 'text-stone-700'
+          }`}
+          role={localSetupStatusTone === 'error' || localSetupStatusTone === 'warning' ? 'alert' : undefined}
+        >
+          {localSetupStatus}
+        </p>
         <p class="mt-2">
           This Local Setup stays on this device. It does not create a User account or enable email
           delivery.
