@@ -71,16 +71,24 @@
   let localSetupStatus = $state('Not saved in this browser yet.');
   let localSetupStatusTone = $state<'success' | 'warning' | 'error' | 'neutral'>('neutral');
   let lastLocalSetupSnapshot: string | null = null;
+  let hydratedLocalSetupSnapshot: string | null = null;
   let nextTodoId = 1;
 
   onMount(() => {
     const loadOutcome = restoreVisitorLocalSetup();
     const restoredSetup = currentLocalSetup();
-    lastLocalSetupSnapshot = localSetupSnapshot(restoredSetup);
+    hydratedLocalSetupSnapshot = localSetupSnapshot(restoredSetup);
+
+    if (loadOutcome === 'loaded') {
+      lastLocalSetupSnapshot = hydratedLocalSetupSnapshot;
+    }
 
     if (loadOutcome === 'empty') {
-      persistVisitorLocalSetup(restoredSetup);
-      lastLocalSetupSnapshot = localSetupSnapshot(restoredSetup);
+      const saveOutcome = persistVisitorLocalSetup(restoredSetup);
+
+      if (saveOutcome === 'saved') {
+        lastLocalSetupSnapshot = hydratedLocalSetupSnapshot;
+      }
     }
 
     localSetupHydrated = true;
@@ -225,6 +233,8 @@
     const status = localSetupSaveStatus(result.outcome);
     localSetupStatus = status.message;
     localSetupStatusTone = status.tone;
+
+    return result.outcome;
   };
   const urgencyLabel = (urgency: TodoUrgency) =>
     urgency === 'high' ? 'High urgency' : urgency === 'medium' ? 'Medium urgency' : 'Low urgency';
@@ -440,12 +450,15 @@
     const setup = currentLocalSetup();
     const snapshot = localSetupSnapshot(setup);
 
-    if (!localSetupHydrated || snapshot === lastLocalSetupSnapshot) {
+    if (!localSetupHydrated || snapshot === lastLocalSetupSnapshot || snapshot === hydratedLocalSetupSnapshot) {
       return;
     }
 
-    persistVisitorLocalSetup(setup);
-    lastLocalSetupSnapshot = snapshot;
+    const saveOutcome = persistVisitorLocalSetup(setup);
+
+    if (saveOutcome === 'saved') {
+      lastLocalSetupSnapshot = snapshot;
+    }
   });
 </script>
 
@@ -490,7 +503,7 @@
                 class="h-10 rounded-md border border-stone-300 px-3"
                 type="text"
                 inputmode="numeric"
-                pattern="[0-2][0-9]:[0-5][0-9]"
+                pattern="([01][0-9]|2[0-3]):[0-5][0-9]"
                 disabled={!localSetupHydrated}
                 bind:value={summaryTimeInput}
                 oninput={(event) => {
