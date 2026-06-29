@@ -6,6 +6,7 @@ import {
   completeTodoTask,
   deleteTodoCategory,
   reorderTodoTasks,
+  tasksForTodoCategory,
   updateTodoCategory
 } from './todo';
 import {
@@ -14,7 +15,7 @@ import {
   localSetupStorageKey,
   localSetupVersion,
   saveLocalSetup,
-  type LocalSetup,
+  type LocalSetupInput,
   type LocalSetupStorageAdapter
 } from './localSetup';
 
@@ -116,7 +117,7 @@ describe('Visitor Local Setup module', () => {
 
   test('saves Local Setup without Demo Calendar or mock provider output', () => {
     const storage = memoryStorage();
-    const setup: LocalSetup & {
+    const setup: LocalSetupInput & {
       demoCalendar: { label: string };
       mockWeather: { label: string };
       mockCommute: { label: string };
@@ -182,19 +183,23 @@ describe('Visitor Local Setup module', () => {
         addTodoTask({
           tasks: addTodoTask({
             tasks: addTodoTask({
-              tasks: [],
-              input: { title: 'Buy coffee', categoryId: null, urgency: 'medium' },
+              tasks: addTodoTask({
+                tasks: [],
+                input: { title: 'Buy coffee', categoryId: null, urgency: 'medium' },
+                nextId: () => nextId('todo')
+              }),
+              input: { title: 'Write launch note', categoryId: 'category-2', urgency: 'low' },
               nextId: () => nextId('todo')
             }),
-            input: { title: 'Write launch note', categoryId: 'category-2', urgency: 'low' },
+            input: { title: 'Water plants', categoryId: 'category-1', urgency: 'low' },
             nextId: () => nextId('todo')
           }),
           input: { title: 'Review deploy checklist', categoryId: 'category-2', urgency: 'high' },
           nextId: () => nextId('todo')
         }),
-        'todo-5'
+        'todo-6'
       ),
-      { categoryId: 'category-1', orderedTaskIds: ['todo-3'] }
+      { categoryId: 'category-1', orderedTaskIds: ['todo-5', 'todo-3'] }
     );
     const todoStateAfterDeletion = deleteTodoCategory({
       categories,
@@ -202,7 +207,7 @@ describe('Visitor Local Setup module', () => {
       categoryId: 'category-2'
     });
 
-    const setup: LocalSetup = {
+    const setup: LocalSetupInput = {
       ...createDefaultLocalSetup(),
       summaryConfiguration: {
         ...defaultSummaryConfiguration,
@@ -229,11 +234,23 @@ describe('Visitor Local Setup module', () => {
         title: 'Buy coffee',
         categoryId: 'category-1',
         urgency: 'medium',
+        position: 2,
+        completed: false
+      },
+      {
+        id: 'todo-5',
+        title: 'Water plants',
+        categoryId: 'category-1',
+        urgency: 'low',
         position: 1,
         completed: false
       }
     ]);
-    expect(result.setup.nextTodoId).toBe(6);
+    expect(tasksForTodoCategory(result.setup.todoTasks, 'category-1').map((task) => task.title)).toEqual([
+      'Water plants',
+      'Buy coffee'
+    ]);
+    expect(result.setup.nextTodoId).toBe(7);
   });
 
   test('returns a failed outcome when storage cannot be written', () => {

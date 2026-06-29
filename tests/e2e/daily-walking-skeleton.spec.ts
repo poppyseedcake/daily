@@ -442,6 +442,10 @@ test('Visitor Todo changes from moves renames deletion and completion remain dur
     restoredApartmentTasks.getByRole('listitem').filter({ hasText: 'File invoice' }).getByLabel('High urgency')
   ).toHaveText('!');
   await expect(restoredApartmentTasks.getByRole('listitem').filter({ hasText: 'Water plants' })).toBeVisible();
+  await expect(restoredApartmentTasks.getByRole('listitem')).toHaveText([
+    /File invoice/,
+    /Water plants/
+  ]);
   await expect(page.getByRole('list', { name: 'Work Todo Tasks' })).toHaveCount(0);
 });
 
