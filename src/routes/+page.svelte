@@ -2,10 +2,10 @@
   import { CalendarDays, Check, GripVertical, Mail, Pencil, ShieldCheck, Trash2 } from '@lucide/svelte';
   import { dragHandle, dragHandleZone, SHADOW_ITEM_MARKER_PROPERTY_NAME } from 'svelte-dnd-action';
   import { onMount } from 'svelte';
-  import { z } from 'zod';
   import Panel from '$lib/components/Panel.svelte';
   import { buildDemoCalendarSection } from '$lib/demoCalendar';
   import { renderDailySummary, type DailySummaryInput } from '$lib/dailySummaryRenderer';
+  import { createDefaultLocalSetup, loadLocalSetup, saveLocalSetup } from '$lib/localSetup';
   import {
     defaultSummaryConfiguration,
     canPreviewDailySummary,
@@ -23,8 +23,6 @@
     deleteTodoCategory as deleteTodoCategoryInModule,
     reorderTodoTasks as reorderTodoTasksInModule,
     tasksForTodoCategory,
-    todoCategorySchema,
-    todoTaskSchema,
     updateTodoCategory,
     updateTodoTask,
     type TodoCategory,
@@ -39,13 +37,6 @@
     { key: 'todo', label: 'Todo' }
   ];
   const userTimeZones: UserTimeZone[] = ['Europe/Warsaw', 'America/New_York', 'UTC'];
-  const visitorLocalSetupStorageKey = 'daily.visitorLocalSetup.v1';
-  const visitorLocalSetupSchema = z.object({
-    summaryConfiguration: summaryConfigurationSchema,
-    todoCategories: z.array(todoCategorySchema),
-    todoTasks: z.array(todoTaskSchema),
-    nextTodoId: z.number().int().positive()
-  });
   const initialSummaryConfiguration = summaryConfigurationSchema.parse(defaultSummaryConfiguration);
   let summaryTime = $state(initialSummaryConfiguration.summaryTime);
   let summaryTimeInput = $state(initialSummaryConfiguration.summaryTime);
@@ -135,51 +126,32 @@
   const readInputChecked = (event: Event) => (event.currentTarget as HTMLInputElement).checked;
   const readInputValue = (event: Event) => (event.currentTarget as HTMLInputElement).value;
   const nextId = (prefix: string) => `${prefix}-${nextTodoId++}`;
+  const browserLocalSetupStorage = () => ({
+    getItem: (key: string) => globalThis.localStorage.getItem(key),
+    setItem: (key: string, value: string) => {
+      globalThis.localStorage.setItem(key, value);
+    }
+  });
   const restoreVisitorLocalSetup = () => {
-    let storedSetup: string | null | undefined;
+    const result = loadLocalSetup(browserLocalSetupStorage());
 
-    try {
-      storedSetup = globalThis.localStorage?.getItem(visitorLocalSetupStorageKey);
-    } catch {
+    if (result.outcome === 'empty') {
       return;
     }
 
-    if (!storedSetup) {
-      return;
-    }
-
-    let parsedSetup: unknown;
-    try {
-      parsedSetup = JSON.parse(storedSetup);
-    } catch {
-      return;
-    }
-
-    const result = visitorLocalSetupSchema.safeParse(parsedSetup);
-
-    if (!result.success) {
-      return;
-    }
-
-    updateSummaryConfiguration(result.data.summaryConfiguration);
-    todoCategories = result.data.todoCategories;
-    todoTasks = result.data.todoTasks;
-    nextTodoId = result.data.nextTodoId;
+    updateSummaryConfiguration(result.setup.summaryConfiguration);
+    todoCategories = result.setup.todoCategories;
+    todoTasks = result.setup.todoTasks;
+    nextTodoId = result.setup.nextTodoId;
   };
   const persistVisitorLocalSetup = () => {
-    try {
-      globalThis.localStorage?.setItem(
-        visitorLocalSetupStorageKey,
-        JSON.stringify({
-          summaryConfiguration: currentSummaryConfiguration(),
-          todoCategories,
-          todoTasks,
-          nextTodoId
-        })
-      );
-    } catch {
-      return;
-    }
+    saveLocalSetup(browserLocalSetupStorage(), {
+      ...createDefaultLocalSetup(),
+      summaryConfiguration: currentSummaryConfiguration(),
+      todoCategories,
+      todoTasks,
+      nextTodoId
+    });
   };
   const urgencyLabel = (urgency: TodoUrgency) =>
     urgency === 'high' ? 'High urgency' : urgency === 'medium' ? 'Medium urgency' : 'Low urgency';
