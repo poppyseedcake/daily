@@ -2,6 +2,7 @@
   import { CalendarDays, Check, GripVertical, Mail, Pencil, ShieldCheck, Trash2 } from '@lucide/svelte';
   import { dragHandle, dragHandleZone, SHADOW_ITEM_MARKER_PROPERTY_NAME, TRIGGERS } from 'svelte-dnd-action';
   import { onMount } from 'svelte';
+  import type { PageData } from './$types';
   import Panel from '$lib/components/Panel.svelte';
   import { buildDemoCalendarSection } from '$lib/demoCalendar';
   import { renderDailySummary, type DailySummaryInput } from '$lib/dailySummaryRenderer';
@@ -38,6 +39,10 @@
     type TodoTask,
     type TodoUrgency
   } from '$lib/todo';
+
+  const visitorAuthState = { mode: 'visitor' } as const;
+  let { data }: { data?: PageData } = $props();
+  const authState = $derived(data?.authState ?? visitorAuthState);
 
   const summarySections: Array<{ key: SummarySection; label: string }> = [
     { key: 'weather', label: 'Weather' },
@@ -492,20 +497,55 @@
       <div class="rounded-lg border border-stone-200 bg-white p-6 shadow-sm">
         <div class="flex flex-wrap items-center justify-between gap-4">
           <div>
-            <p class="text-sm font-semibold text-emerald-700">Visitor mode</p>
+            <p class="text-sm font-semibold text-emerald-700">
+              {authState.mode === 'user' ? 'User mode' : 'Visitor mode'}
+            </p>
             <h1 class="mt-2 text-3xl font-semibold text-stone-950">Daily</h1>
             <p class="mt-3 max-w-2xl text-base text-stone-700">
-              Shape a Local Setup for a future Daily Summary. Google sign-in will be required before
-              a Daily Summary can be sent.
+              {#if authState.mode === 'user'}
+                Your Daily Summary is connected to a durable account.
+              {:else}
+                Shape a Local Setup for a future Daily Summary. Google sign-in will be required before
+                a Daily Summary can be sent.
+              {/if}
             </p>
+            {#if authState.mode === 'user'}
+              <p class="mt-2 text-sm font-medium text-stone-700">
+                Summary Recipient: {authState.summaryRecipient}
+              </p>
+            {:else}
+              <p class="mt-2 text-sm font-medium text-stone-700">
+                Local Setup is saved in this browser only.
+              </p>
+            {/if}
           </div>
-          <a
-            class="inline-flex h-10 items-center gap-2 rounded-md border border-stone-300 px-3 text-sm font-medium text-stone-800 hover:bg-stone-50"
-            href="/admin"
-          >
-            <ShieldCheck size={18} aria-hidden="true" />
-            Admin Panel
-          </a>
+          <div class="flex flex-wrap items-center gap-2">
+            {#if authState.mode === 'user'}
+              <form method="POST" action="/auth/sign-out">
+                <button
+                  class="inline-flex h-10 items-center gap-2 rounded-md border border-stone-300 px-3 text-sm font-medium text-stone-800 hover:bg-stone-50"
+                  type="submit"
+                >
+                  Sign out
+                </button>
+              </form>
+            {:else}
+              <a
+                class="inline-flex h-10 items-center gap-2 rounded-md border border-emerald-700 bg-emerald-700 px-3 text-sm font-medium text-white hover:bg-emerald-800"
+                href="/auth/google"
+              >
+                <Mail size={18} aria-hidden="true" />
+                Sign in with Google
+              </a>
+            {/if}
+            <a
+              class="inline-flex h-10 items-center gap-2 rounded-md border border-stone-300 px-3 text-sm font-medium text-stone-800 hover:bg-stone-50"
+              href="/admin"
+            >
+              <ShieldCheck size={18} aria-hidden="true" />
+              Admin Panel
+            </a>
+          </div>
         </div>
       </div>
 
@@ -1005,13 +1045,12 @@
       </Panel>
       <Panel title="Sending Status" eyebrow="Milestone 1">
         <p>
-          Summary Delivery controls are available for setup, but no email can be sent until Google
-          sign-in and delivery integrations are added later.
+          Summary Delivery controls are available for setup, but no email can be sent until delivery
+          integrations are added later.
         </p>
       </Panel>
-      <Panel title="Scope Guard" eyebrow="No integrations">
+      <Panel title="Scope Guard" eyebrow="No delivery integrations">
         <ul class="list-disc space-y-2 pl-5">
-          <li>No Google sign-in</li>
           <li>No provider connections</li>
           <li>No scheduled worker</li>
         </ul>

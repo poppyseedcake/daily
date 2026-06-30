@@ -63,6 +63,12 @@ test('Visitor opens Daily into the usable main panel', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'Daily', exact: true })).toBeVisible();
   await expect(page.getByText('Visitor mode', { exact: true })).toBeVisible();
   await expect(page.getByText('Google sign-in will be required before a Daily Summary can be sent.')).toBeVisible();
+  await expect(page.getByText('Local Setup is saved in this browser only.')).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Sign in with Google' })).toHaveAttribute(
+    'href',
+    '/auth/google'
+  );
+  await expect(page.getByText('Google Calendar')).not.toBeVisible();
   await expect(page.getByRole('button', { name: 'Preview Daily Summary' })).toBeVisible();
 });
 
