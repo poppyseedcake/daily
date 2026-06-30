@@ -116,12 +116,36 @@ describe('User Setup import persistence', () => {
     expect(store.saved.todoTasks).toEqual(draft.todoTasks);
   });
 
+  test('accepts every Summary Configuration supported user time zone', async () => {
+    const store = createStore();
+    const draft = validDraft();
+    draft.summaryConfiguration.userTimeZone = 'America/New_York';
+
+    const result = await persistUserSetupImportDraftForNewUser(store, 'user-1', draft);
+
+    expect(result.outcome).toBe('imported');
+    expect(store.saved.summaryConfigurations).toEqual([draft.summaryConfiguration]);
+  });
+
   test('does not overwrite a returning User with existing saved setup', async () => {
     const store = createStore({ existingSetup: true });
 
     const result = await persistUserSetupImportDraftForNewUser(store, 'user-1', validDraft());
 
     expect(result.outcome).toBe('skipped-existing-setup');
+    expect(store.saved.summaryConfigurations).toEqual([]);
+    expect(store.saved.todoCategories).toEqual([]);
+    expect(store.saved.todoTasks).toEqual([]);
+  });
+
+  test('rejects invalid Summary Configuration clock ranges before writing', async () => {
+    const store = createStore();
+    const draft = validDraft();
+    draft.summaryConfiguration.summaryTime = '99:99';
+
+    const result = await persistUserSetupImportDraftForNewUser(store, 'user-1', draft);
+
+    expect(result.outcome).toBe('invalid-draft');
     expect(store.saved.summaryConfigurations).toEqual([]);
     expect(store.saved.todoCategories).toEqual([]);
     expect(store.saved.todoTasks).toEqual([]);

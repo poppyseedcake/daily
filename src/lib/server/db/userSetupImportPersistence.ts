@@ -1,11 +1,12 @@
 import { z } from 'zod';
 import type { UserSetupImportDraft } from '$lib/localSetup';
+import { summaryTimeSchema, userTimeZoneSchema } from '$lib/summaryConfiguration';
 
 const persistedSummaryConfigurationSchema = z.object({
   id: z.string().min(1),
   userId: z.string().min(1),
-  summaryTime: z.string().regex(/^\d{2}:\d{2}$/),
-  userTimeZone: z.enum(['UTC', 'Europe/Warsaw']),
+  summaryTime: summaryTimeSchema,
+  userTimeZone: userTimeZoneSchema,
   summaryTheme: z.enum(['light', 'dark']),
   summaryDeliveryEnabled: z.boolean(),
   weatherSectionEnabled: z.boolean(),
