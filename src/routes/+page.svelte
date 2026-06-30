@@ -1045,13 +1045,12 @@
       </Panel>
       <Panel title="Sending Status" eyebrow="Milestone 1">
         <p>
-          Summary Delivery controls are available for setup, but no email can be sent until Google
-          sign-in and delivery integrations are added later.
+          Summary Delivery controls are available for setup, but no email can be sent until delivery
+          integrations are added later.
         </p>
       </Panel>
-      <Panel title="Scope Guard" eyebrow="No integrations">
+      <Panel title="Scope Guard" eyebrow="No delivery integrations">
         <ul class="list-disc space-y-2 pl-5">
-          <li>No Google sign-in</li>
           <li>No provider connections</li>
           <li>No scheduled worker</li>
         </ul>

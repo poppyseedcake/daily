@@ -3,7 +3,10 @@ import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { eq } from 'drizzle-orm';
 import { db } from '$lib/server/db';
 import { dailyUserIdentityStore } from '$lib/server/db/dailyUserIdentityStore';
-import { persistDailyUserIdentity } from '$lib/server/db/dailyUserIdentity';
+import {
+  persistDailyUserIdentity,
+  type DailyUserIdentityOutcome
+} from '$lib/server/db/dailyUserIdentity';
 import { authAccount, authSession, authUser, authVerification } from '$lib/server/db/schema';
 
 export const googleIdentityScopes = ['openid', 'email', 'profile'] as const;
@@ -18,6 +21,12 @@ export const googleProviderOptions = (environment: GoogleProviderEnvironment) =>
   clientSecret: environment.GOOGLE_CLIENT_SECRET ?? 'missing-google-client-secret',
   scopes: [...googleIdentityScopes]
 });
+
+export const requireStoredDailyUserIdentity = (outcome: DailyUserIdentityOutcome) => {
+  if (outcome !== 'stored') {
+    throw new Error(`Failed to persist Daily user identity: ${outcome}`);
+  }
+};
 
 export const authOptions = {
   appName: 'Daily',
@@ -93,14 +102,16 @@ export const authOptions = {
             .limit(1);
 
           if (!user?.email) {
-            return;
+            throw new Error('Failed to persist Daily user identity: missing-auth-user-email');
           }
 
-          await persistDailyUserIdentity(dailyUserIdentityStore, {
+          const result = await persistDailyUserIdentity(dailyUserIdentityStore, {
             id: account.userId,
             googleSubject: account.accountId,
             email: user.email
           });
+
+          requireStoredDailyUserIdentity(result.outcome);
         }
       }
     }

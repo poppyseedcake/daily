@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import {
+  DailyUserIdentityEmailConflictError,
   persistDailyUserIdentity,
   type DailyUserIdentity,
   type DailyUserIdentityStore
@@ -51,6 +52,20 @@ describe('Daily User identity persistence', () => {
     const result = await persistDailyUserIdentity(store, validIdentity());
 
     expect(result.outcome).toBe('store-failed');
+    expect(store.saved).toEqual([]);
+  });
+
+  test('labels email ownership conflicts separately from generic store failures', async () => {
+    const store: DailyUserIdentityStore & { saved: DailyUserIdentity[] } = {
+      saved: [],
+      async upsertGoogleUser(identity) {
+        throw new DailyUserIdentityEmailConflictError(identity.email);
+      }
+    };
+
+    const result = await persistDailyUserIdentity(store, validIdentity());
+
+    expect(result.outcome).toBe('email-already-owned');
     expect(store.saved).toEqual([]);
   });
 });
