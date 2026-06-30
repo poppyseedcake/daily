@@ -398,13 +398,45 @@ describe('Visitor Local Setup module', () => {
     expect(JSON.stringify(draft)).not.toContain('Mock Commute');
   });
 
-  test.each([
-    'empty',
-    'invalid-json',
-    'schema-invalid',
-    'unsupported-version',
-    'read-failed'
-  ] satisfies LocalSetupLoadOutcome[])(
+  test('does not create a User setup import draft when a task references an unsafe category', () => {
+    expect(
+      createUserSetupImportDraftFromLocalSetup(
+        {
+          outcome: 'loaded',
+          setup: {
+            ...createDefaultLocalSetup(),
+            todoTasks: [
+              {
+                id: 'visitor-task-orphaned',
+                title: 'Orphaned category assignment',
+                categoryId: 'missing-category',
+                urgency: 'high',
+                position: 1,
+                completed: false
+              }
+            ],
+            nextTodoId: 2
+          }
+        },
+        {
+          userId: 'user-1',
+          summaryConfigurationId: 'summary-1',
+          nextTodoCategoryId: (category) => category.id,
+          nextTodoTaskId: (task) => task.id
+        }
+      )
+    ).toBeNull();
+  });
+
+  const guardedLocalSetupLoadOutcomes = {
+    empty: true,
+    'invalid-json': true,
+    'schema-invalid': true,
+    'unsupported-version': true,
+    'read-failed': true
+  } satisfies Record<Exclude<LocalSetupLoadOutcome, 'loaded'>, true>;
+
+  test.each(Object.keys(guardedLocalSetupLoadOutcomes) as Array<keyof typeof guardedLocalSetupLoadOutcomes>)(
     'does not create a User setup import draft for %s Local Setup outcome',
     (outcome) => {
       expect(

@@ -209,6 +209,28 @@ export const createUserSetupImportDraftFromLocalSetup = (
     setup.todoTasks.map((task) => [task.id, options.nextTodoTaskId(task)])
   );
 
+  const hasUnsafeTaskCategory = setup.todoTasks.some(
+    (task) => task.categoryId !== null && !categoryIds.has(task.categoryId)
+  );
+
+  if (hasUnsafeTaskCategory) {
+    return null;
+  }
+
+  const remapTaskCategoryId = (categoryId: string | null) => {
+    if (categoryId === null) {
+      return null;
+    }
+
+    const remappedCategoryId = categoryIds.get(categoryId);
+
+    if (remappedCategoryId === undefined) {
+      throw new Error('Unsafe Local Setup Todo Task category assignment');
+    }
+
+    return remappedCategoryId;
+  };
+
   return {
     summaryConfiguration: {
       id: options.summaryConfigurationId,
@@ -233,7 +255,7 @@ export const createUserSetupImportDraftFromLocalSetup = (
     todoTasks: sortTasksWithinIncomingCategoryOrder(setup.todoTasks).map((task) => ({
       id: taskIds.get(task.id) ?? task.id,
       userId: options.userId,
-      categoryId: task.categoryId === null ? null : (categoryIds.get(task.categoryId) ?? null),
+      categoryId: remapTaskCategoryId(task.categoryId),
       title: task.title,
       urgency: task.urgency,
       position: task.position,
