@@ -1,6 +1,6 @@
 <script lang="ts">
   import { CalendarDays, Check, GripVertical, Mail, Pencil, ShieldCheck, Trash2 } from '@lucide/svelte';
-  import { dragHandle, dragHandleZone, SHADOW_ITEM_MARKER_PROPERTY_NAME } from 'svelte-dnd-action';
+  import { dragHandle, dragHandleZone, SHADOW_ITEM_MARKER_PROPERTY_NAME, TRIGGERS } from 'svelte-dnd-action';
   import { onMount } from 'svelte';
   import Panel from '$lib/components/Panel.svelte';
   import { buildDemoCalendarSection } from '$lib/demoCalendar';
@@ -56,6 +56,7 @@
     ...initialSummaryConfiguration.sections
   });
   let todoTasks = $state<TodoTask[]>([]);
+  let todoDragTaskLists = $state<Record<string, TodoTask[]>>({});
   let todoCategories = $state<TodoCategory[]>([]);
   let newTodoTitle = $state('');
   let newTodoCategoryId = $state('');
@@ -240,7 +241,10 @@
     urgency === 'high' ? 'High urgency' : urgency === 'medium' ? 'Medium urgency' : 'Low urgency';
   const urgencyMark = (urgency: TodoUrgency) =>
     urgency === 'high' ? '!' : urgency === 'medium' ? '!' : '';
+  const todoDragListKey = (categoryId: string | null) => categoryId ?? '__uncategorized__';
   const tasksForCategory = (categoryId: string | null) => tasksForTodoCategory(todoTasks, categoryId);
+  const visibleTasksForCategory = (categoryId: string | null) =>
+    todoDragTaskLists[todoDragListKey(categoryId)] ?? tasksForCategory(categoryId);
   const isDndShadowTask = (task: TodoTask) =>
     Boolean((task as TodoTask & { [SHADOW_ITEM_MARKER_PROPERTY_NAME]?: boolean })[SHADOW_ITEM_MARKER_PROPERTY_NAME]);
   const realTodoDropTasks = (orderedTasks: TodoTask[], draggedTaskId: string | undefined = undefined) =>
@@ -270,16 +274,28 @@
       detachMissingTasks
     });
   };
-  const handleTodoDrop = (
+  const handleTodoConsider = (
+    categoryId: string | null,
+    event: CustomEvent<{ items: TodoTask[]; info?: { id?: string; trigger?: string } }>
+  ) => {
+    if (event.detail.info?.trigger === TRIGGERS.DRAG_STOPPED) {
+      reorderTodoTasks(categoryId, event.detail.items, event.detail.info?.id);
+      todoDragTaskLists = {};
+      return;
+    }
+
+    todoDragTaskLists = {
+      ...todoDragTaskLists,
+      [todoDragListKey(categoryId)]: event.detail.items
+    };
+  };
+  const handleTodoFinalize = (
     categoryId: string | null,
     event: CustomEvent<{ items: TodoTask[]; info?: { id?: string; trigger?: string } }>,
     detachMissingTasks = false
   ) => {
-    if (event.detail.info?.trigger === 'dragStarted') {
-      return;
-    }
-
     reorderTodoTasks(categoryId, event.detail.items, event.detail.info?.id, detachMissingTasks);
+    todoDragTaskLists = {};
   };
 
   const createTodoTask = () => {
@@ -730,15 +746,15 @@
                 class="grid min-h-12 gap-2 rounded-md"
                 aria-label="No Category Todo Tasks"
                 use:dragHandleZone={{
-                  items: tasksForCategory(null),
+                  items: visibleTasksForCategory(null),
                   flipDurationMs: 150,
                   type: 'todo-task',
                   useCursorForDetection: true
                 }}
-                onconsider={(event) => handleTodoDrop(null, event)}
-                onfinalize={(event) => handleTodoDrop(null, event, true)}
+                onconsider={(event) => handleTodoConsider(null, event)}
+                onfinalize={(event) => handleTodoFinalize(null, event, true)}
               >
-                {#each tasksForCategory(null) as task (task.id)}
+                {#each visibleTasksForCategory(null) as task (task.id)}
                   <li class="rounded-md border border-stone-200 px-3 py-2" aria-label={task.title}>
                     {#if editingTaskId === task.id}
                       <div class="grid gap-2">
@@ -857,15 +873,15 @@
                   class="grid min-h-12 gap-2 rounded-md"
                   aria-label={`${category.name} Todo Tasks`}
                   use:dragHandleZone={{
-                    items: tasksForCategory(category.id),
+                    items: visibleTasksForCategory(category.id),
                     flipDurationMs: 150,
                     type: 'todo-task',
                     useCursorForDetection: true
                   }}
-                  onconsider={(event) => handleTodoDrop(category.id, event)}
-                  onfinalize={(event) => handleTodoDrop(category.id, event, true)}
+                  onconsider={(event) => handleTodoConsider(category.id, event)}
+                  onfinalize={(event) => handleTodoFinalize(category.id, event, true)}
                 >
-                  {#each tasksForCategory(category.id) as task (task.id)}
+                  {#each visibleTasksForCategory(category.id) as task (task.id)}
                     <li class="rounded-md border border-stone-200 px-3 py-2" aria-label={task.title}>
                       {#if editingTaskId === task.id}
                         <div class="grid gap-2">

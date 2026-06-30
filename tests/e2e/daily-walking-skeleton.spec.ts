@@ -27,6 +27,36 @@ const tabUntilDropTargetActive = async (
   await expect(target).toHaveAttribute('aria-describedby', 'dnd-zone-active');
 };
 
+const dragTodoHandleToTarget = async ({
+  page,
+  sourceHandle,
+  target,
+  targetPosition
+}: {
+  page: Page;
+  sourceHandle: Locator;
+  target: Locator;
+  targetPosition?: { x: number; y: number };
+}) => {
+  const sourceBox = await sourceHandle.boundingBox();
+  const targetBox = await target.boundingBox();
+
+  expect(sourceBox).not.toBeNull();
+  expect(targetBox).not.toBeNull();
+
+  if (!sourceBox || !targetBox) {
+    return;
+  }
+
+  await sourceHandle.dragTo(target, {
+    force: true,
+    targetPosition: targetPosition ?? {
+      x: targetBox.width / 2,
+      y: targetBox.height / 2
+    }
+  });
+};
+
 test('Visitor opens Daily into the usable main panel', async ({ page }) => {
   await page.goto('/');
 
@@ -258,6 +288,68 @@ test('Visitor reorders uncategorized Todo Tasks with accessible drag controls', 
   await expect(uncategorizedTasks.locator('li').nth(0)).toContainText('Cook dinner');
   await expect(uncategorizedTasks.locator('li').nth(1)).toContainText('Plan meals');
   await expect(uncategorizedTasks.locator('li').nth(2)).toContainText('Buy groceries');
+});
+
+test('Visitor reorders uncategorized Todo Tasks with a pointer drag without disappearing', async ({
+  page
+}) => {
+  await page.goto('/');
+  await page.evaluate(() => localStorage.clear());
+  await page.reload();
+
+  for (const title of ['Plan meals', 'Buy groceries']) {
+    await page.getByLabel('New Todo Task').fill(title);
+    await page.getByRole('button', { name: 'Add Todo Task' }).click();
+  }
+
+  const uncategorizedTasks = page.getByRole('list', { name: 'No Category Todo Tasks' });
+  await expect(uncategorizedTasks.getByRole('listitem')).toHaveText([
+    /Plan meals/,
+    /Buy groceries/
+  ]);
+
+  await dragTodoHandleToTarget({
+    page,
+    sourceHandle: uncategorizedTasks.getByRole('button', { name: 'Move Buy groceries' }),
+    target: uncategorizedTasks.getByRole('listitem').filter({ hasText: 'Plan meals' }),
+    targetPosition: { x: 20, y: 4 }
+  });
+
+  await expect(uncategorizedTasks.getByRole('listitem')).toHaveText([
+    /Buy groceries/,
+    /Plan meals/
+  ]);
+});
+
+test('Visitor moves Todo Tasks between categories with a pointer drag without disappearing', async ({
+  page
+}) => {
+  await page.goto('/');
+  await page.evaluate(() => localStorage.clear());
+  await page.reload();
+
+  for (const category of ['Work', 'Home']) {
+    await page.getByLabel('New Todo Category').fill(category);
+    await page.getByRole('button', { name: 'Add Todo Category' }).click();
+  }
+
+  await page.getByLabel('New Todo Task').fill('File invoice');
+  await page.getByLabel('Todo Category', { exact: true }).selectOption({ label: 'Work' });
+  await page.getByLabel('Urgency', { exact: true }).selectOption('high');
+  await page.getByRole('button', { name: 'Add Todo Task' }).click();
+
+  const workTasks = page.getByRole('list', { name: 'Work Todo Tasks' });
+  const homeTasks = page.getByRole('list', { name: 'Home Todo Tasks' });
+
+  await dragTodoHandleToTarget({
+    page,
+    sourceHandle: workTasks.getByRole('button', { name: 'Move File invoice' }),
+    target: homeTasks
+  });
+
+  await expect(workTasks.getByText('File invoice')).toHaveCount(0);
+  await expect(homeTasks.getByRole('listitem').filter({ hasText: 'File invoice' })).toBeVisible();
+  await expect(homeTasks.getByRole('listitem').filter({ hasText: 'File invoice' }).getByLabel('High urgency')).toHaveText('!');
 });
 
 test('Visitor reorders Todo Tasks inside a category without urgency resorting', async ({ page }) => {
