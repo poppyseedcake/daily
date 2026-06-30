@@ -65,6 +65,68 @@ export const todoTasks = sqliteTable('todo_tasks', {
   completed: integer('completed', { mode: 'boolean' }).notNull().default(false)
 });
 
+export const authUser = sqliteTable(
+  'auth_user',
+  {
+    id: text('id').primaryKey(),
+    name: text('name').notNull(),
+    email: text('email').notNull(),
+    email_verified: integer('email_verified', { mode: 'boolean' }).notNull().default(false),
+    image: text('image'),
+    created_at: integer('created_at', { mode: 'timestamp' }).notNull(),
+    updated_at: integer('updated_at', { mode: 'timestamp' }).notNull()
+  },
+  (table) => ({
+    emailIdx: uniqueIndex('auth_user_email_idx').on(table.email)
+  })
+);
+
+export const authSession = sqliteTable(
+  'auth_session',
+  {
+    id: text('id').primaryKey(),
+    expires_at: integer('expires_at', { mode: 'timestamp' }).notNull(),
+    token: text('token').notNull(),
+    created_at: integer('created_at', { mode: 'timestamp' }).notNull(),
+    updated_at: integer('updated_at', { mode: 'timestamp' }).notNull(),
+    ip_address: text('ip_address'),
+    user_agent: text('user_agent'),
+    user_id: text('user_id')
+      .notNull()
+      .references(() => authUser.id, { onDelete: 'cascade' })
+  },
+  (table) => ({
+    tokenIdx: uniqueIndex('auth_session_token_idx').on(table.token)
+  })
+);
+
+export const authAccount = sqliteTable('auth_account', {
+  id: text('id').primaryKey(),
+  account_id: text('account_id').notNull(),
+  provider_id: text('provider_id').notNull(),
+  user_id: text('user_id')
+    .notNull()
+    .references(() => authUser.id, { onDelete: 'cascade' }),
+  access_token: text('access_token'),
+  refresh_token: text('refresh_token'),
+  id_token: text('id_token'),
+  access_token_expires_at: integer('access_token_expires_at', { mode: 'timestamp' }),
+  refresh_token_expires_at: integer('refresh_token_expires_at', { mode: 'timestamp' }),
+  scope: text('scope'),
+  password: text('password'),
+  created_at: integer('created_at', { mode: 'timestamp' }).notNull(),
+  updated_at: integer('updated_at', { mode: 'timestamp' }).notNull()
+});
+
+export const authVerification = sqliteTable('auth_verification', {
+  id: text('id').primaryKey(),
+  identifier: text('identifier').notNull(),
+  value: text('value').notNull(),
+  expires_at: integer('expires_at', { mode: 'timestamp' }).notNull(),
+  created_at: integer('created_at', { mode: 'timestamp' }).notNull(),
+  updated_at: integer('updated_at', { mode: 'timestamp' }).notNull()
+});
+
 export const usersRelations = relations(users, ({ one, many }) => ({
   summaryConfiguration: one(summaryConfigurations),
   todoCategories: many(todoCategories),
