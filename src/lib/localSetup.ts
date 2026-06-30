@@ -1,6 +1,18 @@
 import { z } from 'zod';
-import { defaultSummaryConfiguration, summaryConfigurationSchema } from './summaryConfiguration';
-import { createDefaultTodoState, todoStateSchema, type TodoState, type TodoStateInput } from './todo';
+import {
+  defaultSummaryConfiguration,
+  summaryConfigurationSchema,
+  type SummaryConfiguration
+} from './summaryConfiguration';
+import {
+  createDefaultTodoState,
+  todoStateSchema,
+  type TodoCategory,
+  type TodoState,
+  type TodoStateInput,
+  type TodoTask,
+  type TodoUrgency
+} from './todo';
 
 export const localSetupVersion = 1;
 export const localSetupStorageKey = 'daily.visitorLocalSetup.v1';
@@ -28,6 +40,43 @@ export type LocalSetupLoadOutcome =
   | 'unsupported-version'
   | 'read-failed';
 export type LocalSetupSaveOutcome = 'saved' | 'write-failed';
+
+export type UserSetupImportDraft = {
+  summaryConfiguration: {
+    id: string;
+    userId: string;
+    summaryTime: string;
+    userTimeZone: SummaryConfiguration['userTimeZone'];
+    summaryTheme: SummaryConfiguration['summaryTheme'];
+    summaryDeliveryEnabled: boolean;
+    weatherSectionEnabled: boolean;
+    commuteSectionEnabled: boolean;
+    calendarSectionEnabled: boolean;
+    todoSectionEnabled: boolean;
+  };
+  todoCategories: Array<{
+    id: string;
+    userId: string;
+    name: string;
+    position: number;
+  }>;
+  todoTasks: Array<{
+    id: string;
+    userId: string;
+    categoryId: string | null;
+    title: string;
+    urgency: TodoUrgency;
+    position: number;
+    completed: boolean;
+  }>;
+};
+
+export type UserSetupImportDraftOptions = {
+  userId: string;
+  summaryConfigurationId: string;
+  nextTodoCategoryId: (category: TodoCategory) => string;
+  nextTodoTaskId: (task: TodoTask) => string;
+};
 
 const localSetupBaseSchema = z
   .object({
@@ -64,6 +113,23 @@ const fallbackLoadResult = (outcome: LocalSetupLoadOutcome) => ({
   outcome,
   setup: createDefaultLocalSetup()
 });
+
+const sortTasksWithinIncomingCategoryOrder = (tasks: TodoTask[]) => {
+  const tasksByCategory = new Map<string | null, TodoTask[]>();
+
+  for (const task of tasks) {
+    tasksByCategory.set(task.categoryId, [...(tasksByCategory.get(task.categoryId) ?? []), task]);
+  }
+
+  const sortedTasksByCategory = new Map(
+    [...tasksByCategory.entries()].map(([categoryId, categoryTasks]) => [
+      categoryId,
+      categoryTasks.toSorted((first, second) => first.position - second.position)
+    ])
+  );
+
+  return tasks.map((task) => sortedTasksByCategory.get(task.categoryId)?.shift() ?? task);
+};
 
 export const createDefaultLocalSetup = (): LocalSetup =>
   localSetupSchema.parse({
@@ -125,4 +191,75 @@ export const saveLocalSetup = (
   }
 
   return { outcome: 'saved' };
+};
+
+export const createUserSetupImportDraftFromLocalSetup = (
+  result: { outcome: LocalSetupLoadOutcome; setup: LocalSetupInput },
+  options: UserSetupImportDraftOptions
+): UserSetupImportDraft | null => {
+  if (result.outcome !== 'loaded') {
+    return null;
+  }
+
+  const setup = localSetupSchema.parse(result.setup);
+  const categoryIds = new Map(
+    setup.todoCategories.map((category) => [category.id, options.nextTodoCategoryId(category)])
+  );
+  const taskIds = new Map(
+    setup.todoTasks.map((task) => [task.id, options.nextTodoTaskId(task)])
+  );
+
+  const hasUnsafeTaskCategory = setup.todoTasks.some(
+    (task) => task.categoryId !== null && !categoryIds.has(task.categoryId)
+  );
+
+  if (hasUnsafeTaskCategory) {
+    return null;
+  }
+
+  const remapTaskCategoryId = (categoryId: string | null) => {
+    if (categoryId === null) {
+      return null;
+    }
+
+    const remappedCategoryId = categoryIds.get(categoryId);
+
+    if (remappedCategoryId === undefined) {
+      throw new Error('Unsafe Local Setup Todo Task category assignment');
+    }
+
+    return remappedCategoryId;
+  };
+
+  return {
+    summaryConfiguration: {
+      id: options.summaryConfigurationId,
+      userId: options.userId,
+      summaryTime: setup.summaryConfiguration.summaryTime,
+      userTimeZone: setup.summaryConfiguration.userTimeZone,
+      summaryTheme: setup.summaryConfiguration.summaryTheme,
+      summaryDeliveryEnabled: setup.summaryConfiguration.summaryDeliveryEnabled,
+      weatherSectionEnabled: setup.summaryConfiguration.sections.weather,
+      commuteSectionEnabled: setup.summaryConfiguration.sections.commute,
+      calendarSectionEnabled: setup.summaryConfiguration.sections.calendar,
+      todoSectionEnabled: setup.summaryConfiguration.sections.todo
+    },
+    todoCategories: setup.todoCategories
+      .toSorted((first, second) => first.position - second.position)
+      .map((category) => ({
+        id: categoryIds.get(category.id) ?? category.id,
+        userId: options.userId,
+        name: category.name,
+        position: category.position
+      })),
+    todoTasks: sortTasksWithinIncomingCategoryOrder(setup.todoTasks).map((task) => ({
+      id: taskIds.get(task.id) ?? task.id,
+      userId: options.userId,
+      categoryId: remapTaskCategoryId(task.categoryId),
+      title: task.title,
+      urgency: task.urgency,
+      position: task.position,
+      completed: task.completed ?? false
+    }))
+  };
 };

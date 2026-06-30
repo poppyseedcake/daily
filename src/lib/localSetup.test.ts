@@ -11,10 +11,12 @@ import {
 } from './todo';
 import {
   createDefaultLocalSetup,
+  createUserSetupImportDraftFromLocalSetup,
   loadLocalSetup,
   localSetupStorageKey,
   localSetupVersion,
   saveLocalSetup,
+  type LocalSetupLoadOutcome,
   type LocalSetupInput,
   type LocalSetupStorageAdapter
 } from './localSetup';
@@ -268,4 +270,186 @@ describe('Visitor Local Setup module', () => {
 
     expect(result.outcome).toBe('write-failed');
   });
+
+  test('creates a User setup import draft from a valid loaded Local Setup without demo provider data', () => {
+    const localSetup: LocalSetupInput & {
+      demoCalendar: { label: string };
+      mockWeather: { label: string };
+      mockCommute: { label: string };
+    } = {
+      ...createDefaultLocalSetup(),
+      summaryConfiguration: {
+        ...defaultSummaryConfiguration,
+        summaryTime: '18:45',
+        sections: { weather: true, commute: false, calendar: true, todo: true }
+      },
+      todoCategories: [
+        { id: 'visitor-category-work', name: 'Work', position: 2 },
+        { id: 'visitor-category-home', name: 'Home', position: 1 }
+      ],
+      todoTasks: [
+        {
+          id: 'visitor-task-work-2',
+          title: 'Send agenda',
+          categoryId: 'visitor-category-work',
+          urgency: 'high',
+          position: 2,
+          completed: false
+        },
+        {
+          id: 'visitor-task-uncategorized',
+          title: 'Buy coffee',
+          categoryId: null,
+          urgency: 'medium',
+          position: 1,
+          completed: false
+        },
+        {
+          id: 'visitor-task-home',
+          title: 'Water plants',
+          categoryId: 'visitor-category-home',
+          urgency: 'low',
+          position: 1,
+          completed: false
+        },
+        {
+          id: 'visitor-task-work-1',
+          title: 'Draft update',
+          categoryId: 'visitor-category-work',
+          urgency: 'medium',
+          position: 1,
+          completed: false
+        }
+      ],
+      nextTodoId: 5,
+      demoCalendar: { label: 'Demo Calendar' },
+      mockWeather: { label: 'Mock Weather' },
+      mockCommute: { label: 'Mock Commute' }
+    };
+
+    const draft = createUserSetupImportDraftFromLocalSetup(
+      { outcome: 'loaded', setup: localSetup },
+      {
+        userId: 'user-1',
+        summaryConfigurationId: 'summary-1',
+        nextTodoCategoryId: (category) => `user-${category.id}`,
+        nextTodoTaskId: (task) => `user-${task.id}`
+      }
+    );
+
+    expect(draft).toEqual({
+      summaryConfiguration: {
+        id: 'summary-1',
+        userId: 'user-1',
+        summaryTime: '18:45',
+        userTimeZone: 'UTC',
+        summaryTheme: 'light',
+        summaryDeliveryEnabled: true,
+        weatherSectionEnabled: true,
+        commuteSectionEnabled: false,
+        calendarSectionEnabled: true,
+        todoSectionEnabled: true
+      },
+      todoCategories: [
+        { id: 'user-visitor-category-home', userId: 'user-1', name: 'Home', position: 1 },
+        { id: 'user-visitor-category-work', userId: 'user-1', name: 'Work', position: 2 }
+      ],
+      todoTasks: [
+        {
+          id: 'user-visitor-task-work-1',
+          userId: 'user-1',
+          categoryId: 'user-visitor-category-work',
+          title: 'Draft update',
+          urgency: 'medium',
+          position: 1,
+          completed: false
+        },
+        {
+          id: 'user-visitor-task-uncategorized',
+          userId: 'user-1',
+          categoryId: null,
+          title: 'Buy coffee',
+          urgency: 'medium',
+          position: 1,
+          completed: false
+        },
+        {
+          id: 'user-visitor-task-home',
+          userId: 'user-1',
+          categoryId: 'user-visitor-category-home',
+          title: 'Water plants',
+          urgency: 'low',
+          position: 1,
+          completed: false
+        },
+        {
+          id: 'user-visitor-task-work-2',
+          userId: 'user-1',
+          categoryId: 'user-visitor-category-work',
+          title: 'Send agenda',
+          urgency: 'high',
+          position: 2,
+          completed: false
+        }
+      ]
+    });
+    expect(JSON.stringify(draft)).not.toContain('Demo Calendar');
+    expect(JSON.stringify(draft)).not.toContain('Mock Weather');
+    expect(JSON.stringify(draft)).not.toContain('Mock Commute');
+  });
+
+  test('does not create a User setup import draft when a task references an unsafe category', () => {
+    expect(
+      createUserSetupImportDraftFromLocalSetup(
+        {
+          outcome: 'loaded',
+          setup: {
+            ...createDefaultLocalSetup(),
+            todoTasks: [
+              {
+                id: 'visitor-task-orphaned',
+                title: 'Orphaned category assignment',
+                categoryId: 'missing-category',
+                urgency: 'high',
+                position: 1,
+                completed: false
+              }
+            ],
+            nextTodoId: 2
+          }
+        },
+        {
+          userId: 'user-1',
+          summaryConfigurationId: 'summary-1',
+          nextTodoCategoryId: (category) => category.id,
+          nextTodoTaskId: (task) => task.id
+        }
+      )
+    ).toBeNull();
+  });
+
+  const guardedLocalSetupLoadOutcomes = {
+    empty: true,
+    'invalid-json': true,
+    'schema-invalid': true,
+    'unsupported-version': true,
+    'read-failed': true
+  } satisfies Record<Exclude<LocalSetupLoadOutcome, 'loaded'>, true>;
+
+  test.each(Object.keys(guardedLocalSetupLoadOutcomes) as Array<keyof typeof guardedLocalSetupLoadOutcomes>)(
+    'does not create a User setup import draft for %s Local Setup outcome',
+    (outcome) => {
+      expect(
+        createUserSetupImportDraftFromLocalSetup(
+          { outcome, setup: createDefaultLocalSetup() },
+          {
+            userId: 'user-1',
+            summaryConfigurationId: 'summary-1',
+            nextTodoCategoryId: (category) => category.id,
+            nextTodoTaskId: (task) => task.id
+          }
+        )
+      ).toBeNull();
+    }
+  );
 });
