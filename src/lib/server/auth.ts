@@ -1,6 +1,8 @@
 import { betterAuth, type BetterAuthOptions } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { eq } from 'drizzle-orm';
+import { building, dev } from '$app/environment';
+import { env } from '$env/dynamic/private';
 import { db } from '$lib/server/db';
 import { dailyUserIdentityStore } from '$lib/server/db/dailyUserIdentityStore';
 import {
@@ -30,7 +32,8 @@ export const requireStoredDailyUserIdentity = (outcome: DailyUserIdentityOutcome
 
 export const authOptions = {
   appName: 'Daily',
-  baseURL: process.env.BETTER_AUTH_URL ?? 'http://localhost:5173',
+  secret: env.BETTER_AUTH_SECRET ?? (building || dev ? 'daily-local-build-placeholder-secret' : undefined),
+  baseURL: env.BETTER_AUTH_URL ?? 'http://localhost:5174',
   basePath: '/api/auth',
   database: drizzleAdapter(db, {
     provider: 'sqlite',
@@ -85,7 +88,7 @@ export const authOptions = {
     }
   },
   socialProviders: {
-    google: googleProviderOptions(process.env)
+    google: googleProviderOptions(env)
   },
   databaseHooks: {
     account: {

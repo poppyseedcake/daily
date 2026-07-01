@@ -4,9 +4,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite dev",
+    "dev": "vite dev --port 5174",
     "build": "vite build",
-    "preview": "vite preview",
+    "preview": "vite preview --port 5174",
+    "start": "node --env-file=.env build",
     "prepare": "svelte-kit sync || true",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "test": "vitest run && playwright test",
@@ -28,7 +29,7 @@
     "svelte": "^5.34.0",
     "svelte-dnd-action": "^0.9.70",
     "vite": "^6.3.5",
-    "zod": "^3.25.67"
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@playwright/test": "^1.53.1",
