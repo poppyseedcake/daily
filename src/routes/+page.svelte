@@ -390,10 +390,20 @@
       orderedCategories.map((category) => category.id)
     );
   };
-  const handleTodoCategoryConsider = (event: CustomEvent<{ items: TodoCategory[] }>) => {
+  const handleTodoCategoryConsider = (
+    event: CustomEvent<{ items: TodoCategory[]; info?: { trigger?: string } }>
+  ) => {
+    if (event.detail.info?.trigger === TRIGGERS.DRAG_STOPPED) {
+      reorderTodoCategories(event.detail.items);
+      todoDragCategories = null;
+      return;
+    }
+
     todoDragCategories = event.detail.items;
   };
-  const handleTodoCategoryFinalize = (event: CustomEvent<{ items: TodoCategory[] }>) => {
+  const handleTodoCategoryFinalize = (
+    event: CustomEvent<{ items: TodoCategory[]; info?: { trigger?: string } }>
+  ) => {
     reorderTodoCategories(event.detail.items);
     todoDragCategories = null;
   };

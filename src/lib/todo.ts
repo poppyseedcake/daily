@@ -183,7 +183,7 @@ export const reorderTodoCategories = (categories: TodoCategory[], orderedCategor
 
   return categories.map((category) => {
     const position = positions.get(category.id);
-    return position ? { ...category, position } : category;
+    return position !== undefined ? { ...category, position } : category;
   });
 };
 
