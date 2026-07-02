@@ -1,0 +1,41 @@
+import {
+  defaultSummaryConfiguration,
+  summaryConfigurationSchema,
+  type SummaryConfiguration
+} from '$lib/summaryConfiguration';
+
+export type UserSummaryConfigurationStore = {
+  load: (userId: string) => Promise<SummaryConfiguration | null>;
+  save: (userId: string, configuration: SummaryConfiguration) => Promise<void>;
+};
+
+export type UserSummaryConfigurationSaveOutcome = 'saved' | 'invalid-configuration' | 'save-failed';
+
+export const loadUserSummaryConfiguration = async (
+  store: UserSummaryConfigurationStore,
+  userId: string
+): Promise<SummaryConfiguration> => {
+  const savedConfiguration = await store.load(userId);
+
+  return savedConfiguration ?? defaultSummaryConfiguration;
+};
+
+export const saveUserSummaryConfiguration = async (
+  store: UserSummaryConfigurationStore,
+  userId: string,
+  configuration: unknown
+): Promise<{ outcome: UserSummaryConfigurationSaveOutcome }> => {
+  const result = summaryConfigurationSchema.safeParse(configuration);
+
+  if (!result.success) {
+    return { outcome: 'invalid-configuration' };
+  }
+
+  try {
+    await store.save(userId, result.data);
+  } catch {
+    return { outcome: 'save-failed' };
+  }
+
+  return { outcome: 'saved' };
+};

@@ -10,9 +10,18 @@ describe('Daily page auth state', () => {
   });
 
   test('uses the verified Google email as the read-only Summary Recipient', () => {
-    expect(authStateFromSession({ user: { email: 'user@example.com', emailVerified: true } })).toEqual({
+    expect(
+      authStateFromSession({ user: { id: 'user-1', email: 'user@example.com', emailVerified: true } })
+    ).toEqual({
       mode: 'user',
+      userId: 'user-1',
       summaryRecipient: 'user@example.com'
+    });
+  });
+
+  test('keeps a verified session without a User id in Visitor mode', () => {
+    expect(authStateFromSession({ user: { email: 'user@example.com', emailVerified: true } })).toEqual({
+      mode: 'visitor'
     });
   });
 });

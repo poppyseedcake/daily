@@ -51,7 +51,9 @@
     { key: 'todo', label: 'Todo' }
   ];
   const userTimeZones: UserTimeZone[] = ['Europe/Warsaw', 'America/New_York', 'UTC'];
-  const initialSummaryConfiguration = summaryConfigurationSchema.parse(defaultSummaryConfiguration);
+  const initialSummaryConfiguration = summaryConfigurationSchema.parse(
+    data?.summaryConfiguration ?? defaultSummaryConfiguration
+  );
   let summaryTime = $state(initialSummaryConfiguration.summaryTime);
   let summaryTimeInput = $state(initialSummaryConfiguration.summaryTime);
   let userTimeZone = $state<UserTimeZone>(initialSummaryConfiguration.userTimeZone);
@@ -78,9 +80,22 @@
   let localSetupStatusTone = $state<'success' | 'warning' | 'error' | 'neutral'>('neutral');
   let lastLocalSetupSnapshot: string | null = null;
   let hydratedLocalSetupSnapshot: string | null = null;
+  let lastUserSummaryConfigurationSnapshot: string | null = JSON.stringify(initialSummaryConfiguration);
+  let queuedUserSummaryConfigurationSnapshot: string | null = null;
+  let userSummaryConfigurationSaveQueue = Promise.resolve();
+  let userSummaryConfigurationStatus = $state('Saved to your account.');
+  let userSummaryConfigurationStatusTone = $state<'success' | 'warning' | 'error' | 'neutral'>(
+    'success'
+  );
   let nextTodoId = 1;
 
   onMount(() => {
+    if (authState.mode === 'user') {
+      localSetupHydrated = true;
+      todoControlsReady = true;
+      return;
+    }
+
     const loadOutcome = restoreVisitorLocalSetup();
     const restoredSetup = currentLocalSetup();
     hydratedLocalSetupSnapshot = localSetupSnapshot(restoredSetup);
@@ -241,6 +256,50 @@
     localSetupStatusTone = status.tone;
 
     return result.outcome;
+  };
+  const persistUserSummaryConfiguration = async (configuration: SummaryConfiguration) => {
+    try {
+      const response = await fetch('/summary-configuration', {
+        method: 'PUT',
+        headers: {
+          'content-type': 'application/json'
+        },
+        body: JSON.stringify(configuration)
+      });
+
+      if (!response.ok) {
+        userSummaryConfigurationStatus = 'Account save failed. Try again.';
+        userSummaryConfigurationStatusTone = response.status === 400 ? 'warning' : 'error';
+        return false;
+      }
+
+      userSummaryConfigurationStatus = 'Saved to your account.';
+      userSummaryConfigurationStatusTone = 'success';
+      return true;
+    } catch {
+      userSummaryConfigurationStatus = 'Account save failed. Try again.';
+      userSummaryConfigurationStatusTone = 'error';
+      return false;
+    }
+  };
+  const queueUserSummaryConfigurationSave = (configuration: SummaryConfiguration, snapshot: string) => {
+    queuedUserSummaryConfigurationSnapshot = snapshot;
+    userSummaryConfigurationStatus = 'Saving to your account...';
+    userSummaryConfigurationStatusTone = 'neutral';
+
+    userSummaryConfigurationSaveQueue = userSummaryConfigurationSaveQueue.then(async () => {
+      const saved = await persistUserSummaryConfiguration(configuration);
+
+      if (saved) {
+        lastUserSummaryConfigurationSnapshot = snapshot;
+      }
+
+      if (queuedUserSummaryConfigurationSnapshot === snapshot) {
+        queuedUserSummaryConfigurationSnapshot = null;
+      }
+    });
+
+    void userSummaryConfigurationSaveQueue;
   };
   const urgencyLabel = (urgency: TodoUrgency) =>
     urgency === 'high' ? 'High urgency' : urgency === 'medium' ? 'Medium urgency' : 'Low urgency';
@@ -468,6 +527,10 @@
   });
 
   $effect(() => {
+    if (authState.mode === 'user') {
+      return;
+    }
+
     const setup = currentLocalSetup();
     const snapshot = localSetupSnapshot(setup);
 
@@ -480,6 +543,21 @@
     if (saveOutcome === 'saved') {
       lastLocalSetupSnapshot = snapshot;
     }
+  });
+
+  $effect(() => {
+    if (authState.mode !== 'user' || !localSetupHydrated) {
+      return;
+    }
+
+    const configuration = currentSummaryConfiguration();
+    const snapshot = JSON.stringify(configuration);
+
+    if (snapshot === lastUserSummaryConfigurationSnapshot || snapshot === queuedUserSummaryConfigurationSnapshot) {
+      return;
+    }
+
+    queueUserSummaryConfigurationSave(configuration, snapshot);
   });
 </script>
 
@@ -550,7 +628,10 @@
       </div>
 
       <div class="grid gap-4 md:grid-cols-2">
-        <Panel title="Summary Configuration" eyebrow="Local Setup">
+        <Panel
+          title="Summary Configuration"
+          eyebrow={authState.mode === 'user' ? 'User Setup' : 'Local Setup'}
+        >
           <div class="grid gap-3">
             <label class="grid gap-1">
               <span class="font-medium text-stone-800" id="summary-time-label">Summary Time</span>
@@ -1023,25 +1104,59 @@
     </section>
 
     <aside class="space-y-4">
-      <Panel title="Local Save" eyebrow="Visitor">
-        <p
-          class={`font-medium ${
-            localSetupStatusTone === 'success'
-              ? 'text-emerald-800'
-              : localSetupStatusTone === 'warning'
-                ? 'text-amber-800'
-                : localSetupStatusTone === 'error'
-                  ? 'text-red-700'
-                  : 'text-stone-700'
-          }`}
-          role={localSetupStatusTone === 'error' || localSetupStatusTone === 'warning' ? 'alert' : undefined}
-        >
-          {localSetupStatus}
-        </p>
-        <p class="mt-2">
-          This Local Setup stays on this device. It does not create a User account or enable email
-          delivery.
-        </p>
+      <Panel
+        title={authState.mode === 'user' ? 'Account Save' : 'Local Save'}
+        eyebrow={authState.mode === 'user' ? 'User' : 'Visitor'}
+      >
+        {#if authState.mode === 'user'}
+          <p
+            class={`font-medium ${
+              userSummaryConfigurationStatusTone === 'success'
+                ? 'text-emerald-800'
+                : userSummaryConfigurationStatusTone === 'warning'
+                  ? 'text-amber-800'
+                  : userSummaryConfigurationStatusTone === 'error'
+                    ? 'text-red-700'
+                    : 'text-stone-700'
+            }`}
+            role={userSummaryConfigurationStatusTone === 'error' ||
+            userSummaryConfigurationStatusTone === 'warning'
+              ? 'alert'
+              : undefined}
+          >
+            {userSummaryConfigurationStatus}
+          </p>
+          <p class="mt-2">
+            {#if userSummaryConfigurationStatusTone === 'success'}
+              Your Summary Configuration is saved to your account.
+            {:else if userSummaryConfigurationStatusTone === 'warning'}
+              Check the Summary Configuration values and try again.
+            {:else if userSummaryConfigurationStatusTone === 'error'}
+              Your latest changes are not saved yet. Try again.
+            {:else}
+              Your Summary Configuration changes are being saved.
+            {/if}
+          </p>
+        {:else}
+          <p
+            class={`font-medium ${
+              localSetupStatusTone === 'success'
+                ? 'text-emerald-800'
+                : localSetupStatusTone === 'warning'
+                  ? 'text-amber-800'
+                  : localSetupStatusTone === 'error'
+                    ? 'text-red-700'
+                    : 'text-stone-700'
+            }`}
+            role={localSetupStatusTone === 'error' || localSetupStatusTone === 'warning' ? 'alert' : undefined}
+          >
+            {localSetupStatus}
+          </p>
+          <p class="mt-2">
+            This Local Setup stays on this device. It does not create a User account or enable email
+            delivery.
+          </p>
+        {/if}
       </Panel>
       <Panel title="Sending Status" eyebrow="Milestone 1">
         <p>
