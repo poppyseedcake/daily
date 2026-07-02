@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { defaultSummaryConfiguration } from '$lib/summaryConfiguration';
 
-const { getSession, savedConfiguration, loadFailure } = vi.hoisted(() => ({
+const { getSession, savedConfiguration, savedTodoState, loadFailure } = vi.hoisted(() => ({
   getSession: vi.fn(),
   loadFailure: { enabled: false },
   savedConfiguration: {
@@ -15,6 +15,20 @@ const { getSession, savedConfiguration, loadFailure } = vi.hoisted(() => ({
       calendar: true,
       todo: true
     }
+  },
+  savedTodoState: {
+    todoCategories: [{ id: 'category-work', name: 'Work', position: 1 }],
+    todoTasks: [
+      {
+        id: 'todo-work',
+        title: 'Draft update',
+        categoryId: 'category-work',
+        urgency: 'high' as const,
+        position: 1,
+        completed: false
+      }
+    ],
+    nextTodoId: 1
   }
 }));
 
@@ -34,6 +48,24 @@ vi.mock('$lib/server/db/summaryConfigurationStore', () => ({
       }
 
       return userId === 'user-1' ? savedConfiguration : null;
+    },
+    async save() {}
+  }
+}));
+
+vi.mock('$lib/server/db/todoStore', () => ({
+  userTodoStore: {
+    async load(userId: string) {
+      if (loadFailure.enabled) {
+        throw new Error('store unavailable');
+      }
+
+      return userId === 'user-1'
+        ? {
+            todoCategories: savedTodoState.todoCategories,
+            todoTasks: savedTodoState.todoTasks
+          }
+        : null;
     },
     async save() {}
   }
@@ -62,7 +94,12 @@ describe('Daily page server load', () => {
 
     await expect(loadPage()).resolves.toEqual({
       authState: { mode: 'visitor' },
-      summaryConfiguration: null
+      summaryConfiguration: null,
+      todoState: {
+        todoCategories: [],
+        todoTasks: [],
+        nextTodoId: 1
+      }
     });
   });
 
@@ -77,7 +114,8 @@ describe('Daily page server load', () => {
         userId: 'user-1',
         summaryRecipient: 'user@example.com'
       },
-      summaryConfiguration: savedConfiguration
+      summaryConfiguration: savedConfiguration,
+      todoState: savedTodoState
     });
   });
 
@@ -92,7 +130,12 @@ describe('Daily page server load', () => {
         userId: 'user-2',
         summaryRecipient: 'new@example.com'
       },
-      summaryConfiguration: defaultSummaryConfiguration
+      summaryConfiguration: defaultSummaryConfiguration,
+      todoState: {
+        todoCategories: [],
+        todoTasks: [],
+        nextTodoId: 1
+      }
     });
   });
 
@@ -108,7 +151,12 @@ describe('Daily page server load', () => {
         userId: 'user-1',
         summaryRecipient: 'user@example.com'
       },
-      summaryConfiguration: null
+      summaryConfiguration: null,
+      todoState: {
+        todoCategories: [],
+        todoTasks: [],
+        nextTodoId: 1
+      }
     });
     expect(console.warn).toHaveBeenCalledWith(
       'Failed to load User Summary Configuration.',

@@ -30,9 +30,11 @@
     addTodoTask,
     buildTodoSection,
     completeTodoTask as completeTodoTaskInModule,
+    createDefaultTodoState,
     deleteTodoCategory as deleteTodoCategoryInModule,
     reorderTodoTasks as reorderTodoTasksInModule,
     tasksForTodoCategory,
+    todoStateSchema,
     updateTodoCategory,
     updateTodoTask,
     type TodoCategory,
@@ -54,6 +56,7 @@
   const initialSummaryConfiguration = summaryConfigurationSchema.parse(
     data?.summaryConfiguration ?? defaultSummaryConfiguration
   );
+  const initialTodoState = todoStateSchema.parse(data?.todoState ?? createDefaultTodoState());
   let summaryTime = $state(initialSummaryConfiguration.summaryTime);
   let summaryTimeInput = $state(initialSummaryConfiguration.summaryTime);
   let userTimeZone = $state<UserTimeZone>(initialSummaryConfiguration.userTimeZone);
@@ -62,9 +65,9 @@
   let enabledSections = $state<Record<SummarySection, boolean>>({
     ...initialSummaryConfiguration.sections
   });
-  let todoTasks = $state<TodoTask[]>([]);
+  let todoTasks = $state<TodoTask[]>(initialTodoState.todoTasks);
   let todoDragTaskLists = $state<Record<string, TodoTask[]>>({});
-  let todoCategories = $state<TodoCategory[]>([]);
+  let todoCategories = $state<TodoCategory[]>(initialTodoState.todoCategories);
   let newTodoTitle = $state('');
   let newTodoCategoryId = $state('');
   let newTodoUrgency = $state<TodoUrgency>('low');
@@ -87,7 +90,12 @@
   let userSummaryConfigurationStatusTone = $state<'success' | 'warning' | 'error' | 'neutral'>(
     'success'
   );
-  let nextTodoId = 1;
+  let lastUserTodoStateSnapshot: string | null = JSON.stringify(initialTodoState);
+  let queuedUserTodoStateSnapshot: string | null = null;
+  let userTodoStateSaveQueue = Promise.resolve();
+  let userTodoStateStatus = $state('Todo state saved to your account.');
+  let userTodoStateStatusTone = $state<'success' | 'warning' | 'error' | 'neutral'>('success');
+  let nextTodoId = initialTodoState.nextTodoId;
 
   onMount(() => {
     if (authState.mode === 'user') {
@@ -237,6 +245,11 @@
     todoTasks,
     nextTodoId
   });
+  const currentTodoState = () => ({
+    todoCategories,
+    todoTasks,
+    nextTodoId
+  });
   const localSetupSnapshot = (setup: LocalSetupInput) => JSON.stringify(setup);
   const restoreVisitorLocalSetup = () => {
     const result = loadLocalSetup(browserLocalSetupStorage());
@@ -282,6 +295,31 @@
       return false;
     }
   };
+  const persistUserTodoState = async (todoState: ReturnType<typeof currentTodoState>) => {
+    try {
+      const response = await fetch('/todo-state', {
+        method: 'PUT',
+        headers: {
+          'content-type': 'application/json'
+        },
+        body: JSON.stringify(todoState)
+      });
+
+      if (!response.ok) {
+        userTodoStateStatus = 'Todo save failed. Try again.';
+        userTodoStateStatusTone = response.status === 400 ? 'warning' : 'error';
+        return false;
+      }
+
+      userTodoStateStatus = 'Todo state saved to your account.';
+      userTodoStateStatusTone = 'success';
+      return true;
+    } catch {
+      userTodoStateStatus = 'Todo save failed. Try again.';
+      userTodoStateStatusTone = 'error';
+      return false;
+    }
+  };
   const queueUserSummaryConfigurationSave = (configuration: SummaryConfiguration, snapshot: string) => {
     queuedUserSummaryConfigurationSnapshot = snapshot;
     userSummaryConfigurationStatus = 'Saving to your account...';
@@ -300,6 +338,25 @@
     });
 
     void userSummaryConfigurationSaveQueue;
+  };
+  const queueUserTodoStateSave = (todoState: ReturnType<typeof currentTodoState>, snapshot: string) => {
+    queuedUserTodoStateSnapshot = snapshot;
+    userTodoStateStatus = 'Saving Todo state to your account...';
+    userTodoStateStatusTone = 'neutral';
+
+    userTodoStateSaveQueue = userTodoStateSaveQueue.then(async () => {
+      const saved = await persistUserTodoState(todoState);
+
+      if (saved) {
+        lastUserTodoStateSnapshot = snapshot;
+      }
+
+      if (queuedUserTodoStateSnapshot === snapshot) {
+        queuedUserTodoStateSnapshot = null;
+      }
+    });
+
+    void userTodoStateSaveQueue;
   };
   const urgencyLabel = (urgency: TodoUrgency) =>
     urgency === 'high' ? 'High urgency' : urgency === 'medium' ? 'Medium urgency' : 'Low urgency';
@@ -558,6 +615,21 @@
     }
 
     queueUserSummaryConfigurationSave(configuration, snapshot);
+  });
+
+  $effect(() => {
+    if (authState.mode !== 'user' || !localSetupHydrated) {
+      return;
+    }
+
+    const todoState = currentTodoState();
+    const snapshot = JSON.stringify(todoState);
+
+    if (snapshot === lastUserTodoStateSnapshot || snapshot === queuedUserTodoStateSnapshot) {
+      return;
+    }
+
+    queueUserTodoStateSave(todoState, snapshot);
   });
 </script>
 
@@ -1135,6 +1207,33 @@
               Your latest changes are not saved yet. Try again.
             {:else}
               Your Summary Configuration changes are being saved.
+            {/if}
+          </p>
+          <p
+            class={`mt-4 font-medium ${
+              userTodoStateStatusTone === 'success'
+                ? 'text-emerald-800'
+                : userTodoStateStatusTone === 'warning'
+                  ? 'text-amber-800'
+                  : userTodoStateStatusTone === 'error'
+                    ? 'text-red-700'
+                    : 'text-stone-700'
+            }`}
+            role={userTodoStateStatusTone === 'error' || userTodoStateStatusTone === 'warning'
+              ? 'alert'
+              : undefined}
+          >
+            {userTodoStateStatus}
+          </p>
+          <p class="mt-2">
+            {#if userTodoStateStatusTone === 'success'}
+              Your Todo data is saved to your account.
+            {:else if userTodoStateStatusTone === 'warning'}
+              Check the Todo data and try again.
+            {:else if userTodoStateStatusTone === 'error'}
+              Your latest Todo changes are not saved yet. Try again.
+            {:else}
+              Your Todo changes are being saved.
             {/if}
           </p>
         {:else}

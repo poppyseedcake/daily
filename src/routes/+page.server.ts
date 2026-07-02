@@ -1,7 +1,10 @@
 import { auth } from '$lib/server/auth';
 import { authStateFromSession } from '$lib/server/pageAuthState';
 import { userSummaryConfigurationStore } from '$lib/server/db/summaryConfigurationStore';
+import { userTodoStore } from '$lib/server/db/todoStore';
 import { loadUserSummaryConfiguration } from '$lib/server/summaryConfigurationPersistence';
+import { loadUserTodoState } from '$lib/server/todoPersistence';
+import { createDefaultTodoState } from '$lib/todo';
 
 export const load = async ({ request }) => {
   const session = await auth.api.getSession({
@@ -19,9 +22,21 @@ export const load = async ({ request }) => {
           return null;
         })
       : null;
+  const todoState =
+    authState.mode === 'user'
+      ? await loadUserTodoState(userTodoStore, authState.userId).catch((error: unknown) => {
+          console.warn('Failed to load User Todo state.', {
+            userId: authState.userId,
+            error
+          });
+
+          return createDefaultTodoState();
+        })
+      : createDefaultTodoState();
 
   return {
     authState,
-    summaryConfiguration
+    summaryConfiguration,
+    todoState
   };
 };
