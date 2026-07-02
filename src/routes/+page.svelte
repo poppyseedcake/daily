@@ -30,9 +30,11 @@
     addTodoTask,
     buildTodoSection,
     completeTodoTask as completeTodoTaskInModule,
+    createDefaultTodoState,
     deleteTodoCategory as deleteTodoCategoryInModule,
     reorderTodoTasks as reorderTodoTasksInModule,
     tasksForTodoCategory,
+    todoStateSchema,
     updateTodoCategory,
     updateTodoTask,
     type TodoCategory,
@@ -54,6 +56,7 @@
   const initialSummaryConfiguration = summaryConfigurationSchema.parse(
     data?.summaryConfiguration ?? defaultSummaryConfiguration
   );
+  const initialTodoState = todoStateSchema.parse(data?.todoState ?? createDefaultTodoState());
   let summaryTime = $state(initialSummaryConfiguration.summaryTime);
   let summaryTimeInput = $state(initialSummaryConfiguration.summaryTime);
   let userTimeZone = $state<UserTimeZone>(initialSummaryConfiguration.userTimeZone);
@@ -62,9 +65,9 @@
   let enabledSections = $state<Record<SummarySection, boolean>>({
     ...initialSummaryConfiguration.sections
   });
-  let todoTasks = $state<TodoTask[]>([]);
+  let todoTasks = $state<TodoTask[]>(initialTodoState.todoTasks);
   let todoDragTaskLists = $state<Record<string, TodoTask[]>>({});
-  let todoCategories = $state<TodoCategory[]>([]);
+  let todoCategories = $state<TodoCategory[]>(initialTodoState.todoCategories);
   let newTodoTitle = $state('');
   let newTodoCategoryId = $state('');
   let newTodoUrgency = $state<TodoUrgency>('low');
@@ -87,7 +90,10 @@
   let userSummaryConfigurationStatusTone = $state<'success' | 'warning' | 'error' | 'neutral'>(
     'success'
   );
-  let nextTodoId = 1;
+  let lastUserTodoStateSnapshot: string | null = JSON.stringify(initialTodoState);
+  let queuedUserTodoStateSnapshot: string | null = null;
+  let userTodoStateSaveQueue = Promise.resolve();
+  let nextTodoId = initialTodoState.nextTodoId;
 
   onMount(() => {
     if (authState.mode === 'user') {
@@ -237,6 +243,11 @@
     todoTasks,
     nextTodoId
   });
+  const currentTodoState = () => ({
+    todoCategories,
+    todoTasks,
+    nextTodoId
+  });
   const localSetupSnapshot = (setup: LocalSetupInput) => JSON.stringify(setup);
   const restoreVisitorLocalSetup = () => {
     const result = loadLocalSetup(browserLocalSetupStorage());
@@ -282,6 +293,21 @@
       return false;
     }
   };
+  const persistUserTodoState = async (todoState: ReturnType<typeof currentTodoState>) => {
+    try {
+      const response = await fetch('/todo-state', {
+        method: 'PUT',
+        headers: {
+          'content-type': 'application/json'
+        },
+        body: JSON.stringify(todoState)
+      });
+
+      return response.ok;
+    } catch {
+      return false;
+    }
+  };
   const queueUserSummaryConfigurationSave = (configuration: SummaryConfiguration, snapshot: string) => {
     queuedUserSummaryConfigurationSnapshot = snapshot;
     userSummaryConfigurationStatus = 'Saving to your account...';
@@ -300,6 +326,23 @@
     });
 
     void userSummaryConfigurationSaveQueue;
+  };
+  const queueUserTodoStateSave = (todoState: ReturnType<typeof currentTodoState>, snapshot: string) => {
+    queuedUserTodoStateSnapshot = snapshot;
+
+    userTodoStateSaveQueue = userTodoStateSaveQueue.then(async () => {
+      const saved = await persistUserTodoState(todoState);
+
+      if (saved) {
+        lastUserTodoStateSnapshot = snapshot;
+      }
+
+      if (queuedUserTodoStateSnapshot === snapshot) {
+        queuedUserTodoStateSnapshot = null;
+      }
+    });
+
+    void userTodoStateSaveQueue;
   };
   const urgencyLabel = (urgency: TodoUrgency) =>
     urgency === 'high' ? 'High urgency' : urgency === 'medium' ? 'Medium urgency' : 'Low urgency';
@@ -558,6 +601,21 @@
     }
 
     queueUserSummaryConfigurationSave(configuration, snapshot);
+  });
+
+  $effect(() => {
+    if (authState.mode !== 'user' || !localSetupHydrated) {
+      return;
+    }
+
+    const todoState = currentTodoState();
+    const snapshot = JSON.stringify(todoState);
+
+    if (snapshot === lastUserTodoStateSnapshot || snapshot === queuedUserTodoStateSnapshot) {
+      return;
+    }
+
+    queueUserTodoStateSave(todoState, snapshot);
   });
 </script>
 
