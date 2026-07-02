@@ -4,8 +4,9 @@
   import { onMount } from 'svelte';
   import type { PageData } from './$types';
   import Panel from '$lib/components/Panel.svelte';
+  import { buildDailySummaryPreviewInput } from '$lib/dailySummaryPreview';
   import { buildDemoCalendarSection } from '$lib/demoCalendar';
-  import { renderDailySummary, type DailySummaryInput } from '$lib/dailySummaryRenderer';
+  import { renderDailySummary } from '$lib/dailySummaryRenderer';
   import {
     createDefaultLocalSetup,
     loadLocalSetup,
@@ -28,7 +29,6 @@
   import {
     addTodoCategory,
     addTodoTask,
-    buildTodoSection,
     completeTodoTask as completeTodoTaskInModule,
     createDefaultTodoState,
     deleteTodoCategory as deleteTodoCategoryInModule,
@@ -556,28 +556,6 @@
     }
   };
   const demoCalendar = $derived(buildDemoCalendarSection({ userTimeZone }));
-  const previewSections: DailySummaryInput['sections'] = $derived({
-    weather: {
-      status: 'available',
-      label: 'Mock Weather',
-      detail: 'Mock provider data: 18C, clear, light wind.'
-    },
-    commute: {
-      status: 'available',
-      label: 'Mock Commute',
-      detail: 'Mock provider data: 24 minutes by tram to the office.'
-    },
-    calendar: {
-      status: 'available',
-      label: demoCalendar.label,
-      detail: demoCalendar.summaryDetail
-    },
-    todo: {
-      status: 'unavailable',
-      label: 'Todo',
-      reason: 'Todo source is not connected yet.'
-    }
-  });
   const previewConfiguration: SummaryConfiguration = $derived({
     summaryTime,
     userTimeZone,
@@ -604,11 +582,11 @@
   });
 
   $effect(() => {
-    renderedSummaryHtml = renderDailySummary({
+    renderedSummaryHtml = renderDailySummary(buildDailySummaryPreviewInput({
       configuration: previewConfiguration,
-      sections: previewSections,
-      todoSection: buildTodoSection(todoCategories, todoTasks)
-    }).html;
+      todoCategories,
+      todoTasks
+    })).html;
   });
 
   $effect(() => {
