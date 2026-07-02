@@ -27,7 +27,7 @@ const toPersistedCategoryRow = (category: TodoCategory, userId: string) => ({
 const toPersistedTaskRow = (task: TodoTask, userId: string) => ({
   id: persistedTodoId(userId, task.id),
   userId,
-  categoryId: task.categoryId ? persistedTodoId(userId, task.categoryId) : null,
+  categoryId: task.categoryId == null ? null : persistedTodoId(userId, task.categoryId),
   title: task.title,
   urgency: task.urgency,
   position: task.position,
@@ -42,13 +42,13 @@ const toLocalCategory = (userId: string, category: TodoCategory): TodoCategory =
 const toLocalTask = (userId: string, task: TodoTask): TodoTask => ({
   ...task,
   id: localTodoId(userId, task.id),
-  categoryId: task.categoryId ? localTodoId(userId, task.categoryId) : null
+  categoryId: task.categoryId == null ? null : localTodoId(userId, task.categoryId)
 });
 
 const assertTasksReferenceSavedCategories = (todoState: TodoStateInput) => {
   const savedCategoryIds = new Set(todoState.todoCategories.map((category) => category.id));
   const invalidTask = todoState.todoTasks.find(
-    (task) => task.categoryId !== null && !savedCategoryIds.has(task.categoryId)
+    (task) => task.categoryId != null && !savedCategoryIds.has(task.categoryId)
   );
 
   if (invalidTask) {

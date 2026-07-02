@@ -93,6 +93,8 @@
   let lastUserTodoStateSnapshot: string | null = JSON.stringify(initialTodoState);
   let queuedUserTodoStateSnapshot: string | null = null;
   let userTodoStateSaveQueue = Promise.resolve();
+  let userTodoStateStatus = $state('Todo state saved to your account.');
+  let userTodoStateStatusTone = $state<'success' | 'warning' | 'error' | 'neutral'>('success');
   let nextTodoId = initialTodoState.nextTodoId;
 
   onMount(() => {
@@ -303,8 +305,18 @@
         body: JSON.stringify(todoState)
       });
 
-      return response.ok;
+      if (!response.ok) {
+        userTodoStateStatus = 'Todo save failed. Try again.';
+        userTodoStateStatusTone = response.status === 400 ? 'warning' : 'error';
+        return false;
+      }
+
+      userTodoStateStatus = 'Todo state saved to your account.';
+      userTodoStateStatusTone = 'success';
+      return true;
     } catch {
+      userTodoStateStatus = 'Todo save failed. Try again.';
+      userTodoStateStatusTone = 'error';
       return false;
     }
   };
@@ -329,6 +341,8 @@
   };
   const queueUserTodoStateSave = (todoState: ReturnType<typeof currentTodoState>, snapshot: string) => {
     queuedUserTodoStateSnapshot = snapshot;
+    userTodoStateStatus = 'Saving Todo state to your account...';
+    userTodoStateStatusTone = 'neutral';
 
     userTodoStateSaveQueue = userTodoStateSaveQueue.then(async () => {
       const saved = await persistUserTodoState(todoState);
@@ -1193,6 +1207,33 @@
               Your latest changes are not saved yet. Try again.
             {:else}
               Your Summary Configuration changes are being saved.
+            {/if}
+          </p>
+          <p
+            class={`mt-4 font-medium ${
+              userTodoStateStatusTone === 'success'
+                ? 'text-emerald-800'
+                : userTodoStateStatusTone === 'warning'
+                  ? 'text-amber-800'
+                  : userTodoStateStatusTone === 'error'
+                    ? 'text-red-700'
+                    : 'text-stone-700'
+            }`}
+            role={userTodoStateStatusTone === 'error' || userTodoStateStatusTone === 'warning'
+              ? 'alert'
+              : undefined}
+          >
+            {userTodoStateStatus}
+          </p>
+          <p class="mt-2">
+            {#if userTodoStateStatusTone === 'success'}
+              Your Todo data is saved to your account.
+            {:else if userTodoStateStatusTone === 'warning'}
+              Check the Todo data and try again.
+            {:else if userTodoStateStatusTone === 'error'}
+              Your latest Todo changes are not saved yet. Try again.
+            {:else}
+              Your Todo changes are being saved.
             {/if}
           </p>
         {:else}

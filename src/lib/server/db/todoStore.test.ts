@@ -122,4 +122,37 @@ describe('SQLite User Todo store', () => {
       todoTasks: []
     });
   });
+
+  test('preserves an empty-string Todo Category id when saving and loading tasks', async () => {
+    const store = createUserTodoStore(database);
+
+    await store.save('user-1', {
+      todoCategories: [{ id: '', name: 'Inbox', position: 1 }],
+      todoTasks: [
+        {
+          id: 'todo-1',
+          title: 'Keep category id',
+          categoryId: '',
+          urgency: 'low',
+          position: 1,
+          completed: false
+        }
+      ],
+      nextTodoId: 2
+    });
+
+    await expect(store.load('user-1')).resolves.toEqual({
+      todoCategories: [{ id: '', name: 'Inbox', position: 1 }],
+      todoTasks: [
+        {
+          id: 'todo-1',
+          title: 'Keep category id',
+          categoryId: '',
+          urgency: 'low',
+          position: 1,
+          completed: false
+        }
+      ]
+    });
+  });
 });
