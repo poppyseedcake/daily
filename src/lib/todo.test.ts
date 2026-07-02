@@ -5,6 +5,7 @@ import {
   buildTodoSection,
   completeTodoTask,
   deleteTodoCategory,
+  reorderTodoCategories,
   reorderTodoTasks,
   tasksForTodoCategory,
   updateTodoCategory,
@@ -228,6 +229,20 @@ describe('Todo Module category lifecycle', () => {
         { id: 'todo-3', title: 'Review PR', categoryId: 'work', urgency: 'medium', position: 1 }
       ]
     });
+  });
+
+  test('reorders Todo Categories from ordered Todo Category ids', () => {
+    const categories: TodoCategory[] = [
+      { id: 'work', name: 'Work', position: 1 },
+      { id: 'home', name: 'Home', position: 2 },
+      { id: 'errands', name: 'Errands', position: 3 }
+    ];
+
+    expect(reorderTodoCategories(categories, ['errands', 'work', 'home'])).toEqual([
+      { id: 'work', name: 'Work', position: 2 },
+      { id: 'home', name: 'Home', position: 3 },
+      { id: 'errands', name: 'Errands', position: 1 }
+    ]);
   });
 });
 

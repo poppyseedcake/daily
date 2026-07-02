@@ -399,6 +399,42 @@ test('Visitor reorders Todo Tasks inside a category without urgency resorting', 
   await expect(workTasks.locator('li').nth(2)).toContainText('Review launch notes');
 });
 
+test('Visitor reorders Todo Categories and keeps that order after page refresh', async ({ page }) => {
+  await page.goto('/');
+
+  for (const category of ['Work', 'Home', 'Errands']) {
+    await page.getByLabel('New Todo Category').fill(category);
+    await page.getByRole('button', { name: 'Add Todo Category' }).click();
+  }
+
+  const todoCategories = page.getByLabel('Todo Categories');
+  await expect(todoCategories.locator('section[aria-label$="Todo Category"]')).toHaveText([
+    /Work/,
+    /Home/,
+    /Errands/
+  ]);
+
+  await todoCategories.getByRole('button', { name: 'Move category Errands' }).focus();
+  await page.keyboard.press('Space');
+  await page.keyboard.press('ArrowUp');
+  await page.keyboard.press('ArrowUp');
+  await page.keyboard.press('Space');
+
+  await expect(todoCategories.locator('section[aria-label$="Todo Category"]')).toHaveText([
+    /Errands/,
+    /Work/,
+    /Home/
+  ]);
+
+  await page.reload();
+
+  await expect(page.getByLabel('Todo Categories').locator('section[aria-label$="Todo Category"]')).toHaveText([
+    /Errands/,
+    /Work/,
+    /Home/
+  ]);
+});
+
 test('Visitor moves Todo Tasks between categories and the uncategorized list', async ({ page }) => {
   await page.goto('/');
 

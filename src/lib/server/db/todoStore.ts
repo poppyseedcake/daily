@@ -56,6 +56,23 @@ const assertTasksReferenceSavedCategories = (todoState: TodoStateInput) => {
   }
 };
 
+const sortTasksForLoadedState = (categories: TodoCategory[], tasks: TodoTask[]) => {
+  const categoryPositions = new Map(categories.map((category, index) => [category.id, index + 1]));
+
+  return tasks.toSorted((first, second) => {
+    const firstCategoryPosition =
+      first.categoryId == null
+        ? 0
+        : (categoryPositions.get(first.categoryId) ?? Number.MAX_SAFE_INTEGER);
+    const secondCategoryPosition =
+      second.categoryId == null
+        ? 0
+        : (categoryPositions.get(second.categoryId) ?? Number.MAX_SAFE_INTEGER);
+
+    return firstCategoryPosition - secondCategoryPosition || first.position - second.position;
+  });
+};
+
 export const createUserTodoStore = (database: TodoDatabase): UserTodoPersistenceStore => ({
   async load(userId) {
     const [categoryRows, taskRows] = await Promise.all([
@@ -69,11 +86,14 @@ export const createUserTodoStore = (database: TodoDatabase): UserTodoPersistence
       })
     ]);
 
+    const loadedCategories = mapTodoCategoriesFromRows(categoryRows).map((category) =>
+      toLocalCategory(userId, category)
+    );
+    const loadedTasks = mapTodoTasksFromRows(taskRows).map((task) => toLocalTask(userId, task));
+
     return {
-      todoCategories: mapTodoCategoriesFromRows(categoryRows).map((category) =>
-        toLocalCategory(userId, category)
-      ),
-      todoTasks: mapTodoTasksFromRows(taskRows).map((task) => toLocalTask(userId, task))
+      todoCategories: loadedCategories,
+      todoTasks: sortTasksForLoadedState(loadedCategories, loadedTasks)
     };
   },
   async save(userId, todoState: TodoStateInput) {

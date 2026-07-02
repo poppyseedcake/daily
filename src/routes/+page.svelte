@@ -32,6 +32,7 @@
     completeTodoTask as completeTodoTaskInModule,
     createDefaultTodoState,
     deleteTodoCategory as deleteTodoCategoryInModule,
+    reorderTodoCategories as reorderTodoCategoriesInModule,
     reorderTodoTasks as reorderTodoTasksInModule,
     tasksForTodoCategory,
     todoStateSchema,
@@ -67,6 +68,7 @@
   });
   let todoTasks = $state<TodoTask[]>(initialTodoState.todoTasks);
   let todoDragTaskLists = $state<Record<string, TodoTask[]>>({});
+  let todoDragCategories = $state<TodoCategory[] | null>(null);
   let todoCategories = $state<TodoCategory[]>(initialTodoState.todoCategories);
   let newTodoTitle = $state('');
   let newTodoCategoryId = $state('');
@@ -363,6 +365,9 @@
   const urgencyMark = (urgency: TodoUrgency) =>
     urgency === 'high' ? '!' : urgency === 'medium' ? '!' : '';
   const todoDragListKey = (categoryId: string | null) => categoryId ?? '__uncategorized__';
+  const visibleTodoCategories = () =>
+    todoDragCategories ??
+    todoCategories.toSorted((first, second) => first.position - second.position);
   const tasksForCategory = (categoryId: string | null) => tasksForTodoCategory(todoTasks, categoryId);
   const visibleTasksForCategory = (categoryId: string | null) =>
     todoDragTaskLists[todoDragListKey(categoryId)] ?? tasksForCategory(categoryId);
@@ -379,6 +384,29 @@
     });
   const todoDropTaskIds = (orderedTasks: TodoTask[], draggedTaskId: string | undefined = undefined) =>
     realTodoDropTasks(orderedTasks, draggedTaskId).map((task) => task.id);
+  const reorderTodoCategories = (orderedCategories: TodoCategory[]) => {
+    todoCategories = reorderTodoCategoriesInModule(
+      todoCategories,
+      orderedCategories.map((category) => category.id)
+    );
+  };
+  const handleTodoCategoryConsider = (
+    event: CustomEvent<{ items: TodoCategory[]; info?: { trigger?: string } }>
+  ) => {
+    if (event.detail.info?.trigger === TRIGGERS.DRAG_STOPPED) {
+      reorderTodoCategories(event.detail.items);
+      todoDragCategories = null;
+      return;
+    }
+
+    todoDragCategories = event.detail.items;
+  };
+  const handleTodoCategoryFinalize = (
+    event: CustomEvent<{ items: TodoCategory[]; info?: { trigger?: string } }>
+  ) => {
+    reorderTodoCategories(event.detail.items);
+    todoDragCategories = null;
+  };
   const reorderTodoTasks = (
     categoryId: string | null,
     orderedTasks: TodoTask[],
@@ -883,7 +911,7 @@
                   aria-label="Todo Category"
                 >
                   <option value="">No Category</option>
-                  {#each todoCategories as category}
+                  {#each visibleTodoCategories() as category}
                     <option value={category.id}>{category.name}</option>
                   {/each}
                 </select>
@@ -1019,61 +1047,84 @@
               </ul>
             </section>
 
-            {#each todoCategories as category (category.id)}
-              <section class="grid gap-2">
-                <div class="flex flex-wrap items-center justify-between gap-2">
-                  {#if editingCategoryId === category.id}
-                    <div class="flex flex-wrap items-center gap-2">
-                      <input
-                        class="h-10 rounded-md border border-stone-300 px-3"
-                        bind:value={editingCategoryName}
-                        aria-label="Edit Todo Category"
-                      />
-                      <button
-                        class="h-10 rounded-md bg-emerald-700 px-4 text-sm font-semibold text-white"
-                        type="button"
-                        disabled={!todoControlsReady}
-                        onclick={saveEditingTodoCategory}
-                      >
-                        Save Todo Category
-                      </button>
-                    </div>
-                  {:else}
-                    <h3 class="font-semibold text-stone-950">{category.name}</h3>
-                    <div class="flex items-center gap-2">
-                      <button
-                        class="inline-flex size-9 items-center justify-center rounded-md border border-stone-300 text-stone-700 hover:bg-stone-50"
-                        type="button"
-                        disabled={!todoControlsReady}
-                        aria-label={`Rename ${category.name}`}
-                        onclick={() => startEditingTodoCategory(category)}
-                      >
-                        <Pencil size={16} aria-hidden="true" />
-                      </button>
-                      <button
-                        class="inline-flex size-9 items-center justify-center rounded-md border border-red-200 text-red-700 hover:bg-red-50"
-                        type="button"
-                        disabled={!todoControlsReady}
-                        aria-label={`Delete ${category.name}`}
-                        onclick={() => deleteTodoCategory(category)}
-                      >
-                        <Trash2 size={16} aria-hidden="true" />
-                      </button>
-                    </div>
-                  {/if}
-                </div>
-                <ul
-                  class="grid min-h-12 gap-2 rounded-md"
-                  aria-label={`${category.name} Todo Tasks`}
-                  use:dragHandleZone={{
-                    items: visibleTasksForCategory(category.id),
-                    flipDurationMs: 150,
-                    type: 'todo-task',
-                    useCursorForDetection: true
-                  }}
-                  onconsider={(event) => handleTodoConsider(category.id, event)}
-                  onfinalize={(event) => handleTodoFinalize(category.id, event, true)}
-                >
+            <div
+              class="grid gap-4"
+              aria-label="Todo Categories"
+              use:dragHandleZone={{
+                items: visibleTodoCategories(),
+                flipDurationMs: 150,
+                type: 'todo-category',
+                useCursorForDetection: true
+              }}
+              onconsider={handleTodoCategoryConsider}
+              onfinalize={handleTodoCategoryFinalize}
+            >
+              {#each visibleTodoCategories() as category (category.id)}
+                <section class="grid gap-2 rounded-md" aria-label={`${category.name} Todo Category`}>
+                  <div class="flex flex-wrap items-center justify-between gap-2">
+                    {#if editingCategoryId === category.id}
+                      <div class="flex flex-wrap items-center gap-2">
+                        <input
+                          class="h-10 rounded-md border border-stone-300 px-3"
+                          bind:value={editingCategoryName}
+                          aria-label="Edit Todo Category"
+                        />
+                        <button
+                          class="h-10 rounded-md bg-emerald-700 px-4 text-sm font-semibold text-white"
+                          type="button"
+                          disabled={!todoControlsReady}
+                          onclick={saveEditingTodoCategory}
+                        >
+                          Save Todo Category
+                        </button>
+                      </div>
+                    {:else}
+                      <div class="flex min-w-0 items-center gap-2">
+                        <span
+                          class="inline-flex size-9 cursor-grab items-center justify-center rounded-md border border-stone-200 text-stone-500 active:cursor-grabbing"
+                          role="button"
+                          tabindex="0"
+                          aria-label={`Move category ${category.name}`}
+                          use:dragHandle
+                        >
+                          <GripVertical size={16} aria-hidden="true" />
+                        </span>
+                        <h3 class="font-semibold text-stone-950">{category.name}</h3>
+                      </div>
+                      <div class="flex items-center gap-2">
+                        <button
+                          class="inline-flex size-9 items-center justify-center rounded-md border border-stone-300 text-stone-700 hover:bg-stone-50"
+                          type="button"
+                          disabled={!todoControlsReady}
+                          aria-label={`Rename ${category.name}`}
+                          onclick={() => startEditingTodoCategory(category)}
+                        >
+                          <Pencil size={16} aria-hidden="true" />
+                        </button>
+                        <button
+                          class="inline-flex size-9 items-center justify-center rounded-md border border-red-200 text-red-700 hover:bg-red-50"
+                          type="button"
+                          disabled={!todoControlsReady}
+                          aria-label={`Delete ${category.name}`}
+                          onclick={() => deleteTodoCategory(category)}
+                        >
+                          <Trash2 size={16} aria-hidden="true" />
+                        </button>
+                      </div>
+                    {/if}
+                  </div>
+                  <ul
+                    class="grid min-h-12 gap-2 rounded-md"
+                    aria-label={`${category.name} Todo Tasks`}
+                    use:dragHandleZone={{
+                      items: visibleTasksForCategory(category.id),
+                      flipDurationMs: 150,
+                      type: 'todo-task',
+                      useCursorForDetection: true
+                    }}
+                    onconsider={(event) => handleTodoConsider(category.id, event)}
+                    onfinalize={(event) => handleTodoFinalize(category.id, event, true)}
+                  >
                   {#each visibleTasksForCategory(category.id) as task (task.id)}
                     <li class="rounded-md border border-stone-200 px-3 py-2" aria-label={task.title}>
                       {#if editingTaskId === task.id}
@@ -1143,9 +1194,10 @@
                       {/if}
                     </li>
                   {/each}
-                </ul>
-              </section>
-            {/each}
+                  </ul>
+                </section>
+              {/each}
+            </div>
           </div>
         </div>
       </Panel>
