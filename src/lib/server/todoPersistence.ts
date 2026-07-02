@@ -20,6 +20,14 @@ const nextNumericId = (ids: string[]) =>
     })
   ) + 1;
 
+const hasOnlySubmittedCategoryReferences = (todoState: TodoStateInput) => {
+  const submittedCategoryIds = new Set(todoState.todoCategories.map((category) => category.id));
+
+  return todoState.todoTasks.every(
+    (task) => task.categoryId === null || submittedCategoryIds.has(task.categoryId)
+  );
+};
+
 export const loadUserTodoState = async (
   store: UserTodoPersistenceStore,
   userId: string
@@ -54,6 +62,10 @@ export const saveUserTodoState = async (
   const result = todoStateSchema.safeParse(todoState);
 
   if (!result.success) {
+    return { outcome: 'invalid-todo-state' };
+  }
+
+  if (!hasOnlySubmittedCategoryReferences(result.data)) {
     return { outcome: 'invalid-todo-state' };
   }
 

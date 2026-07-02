@@ -133,6 +133,29 @@ describe('User Todo persistence', () => {
     ]);
   });
 
+  test('rejects Todo Tasks that reference categories outside the submitted Todo state', async () => {
+    const store = createStore({});
+
+    await expect(
+      saveUserTodoState(store, 'user-1', {
+        todoCategories: [],
+        todoTasks: [
+          {
+            id: 'todo-1',
+            title: 'Invalid reference',
+            categoryId: 'category-1',
+            urgency: 'high',
+            position: 1,
+            completed: false
+          }
+        ],
+        nextTodoId: 2
+      })
+    ).resolves.toEqual({ outcome: 'invalid-todo-state' });
+
+    expect(store.saved).toEqual([]);
+  });
+
   test('continues browser-generated Todo ids after a reload', async () => {
     const store = createStore({
       categories: [category('user-1', 'category-3', 'Work', 1)],
