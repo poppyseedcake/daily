@@ -178,6 +178,15 @@ export const deleteTodoCategory = ({
   tasks: tasks.filter((task) => task.categoryId !== categoryId)
 });
 
+export const reorderTodoCategories = (categories: TodoCategory[], orderedCategoryIds: string[]) => {
+  const positions = new Map(orderedCategoryIds.map((categoryId, index) => [categoryId, index + 1]));
+
+  return categories.map((category) => {
+    const position = positions.get(category.id);
+    return position ? { ...category, position } : category;
+  });
+};
+
 export const buildTodoSection = (
   categories: TodoCategory[],
   tasks: TodoTask[]

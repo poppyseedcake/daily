@@ -88,6 +88,109 @@ describe('SQLite User Todo store', () => {
     });
   });
 
+  test('persists signed-in User Todo ordering, grouping, moves, and urgency changes', async () => {
+    const store = createUserTodoStore(database);
+
+    await store.save('user-1', {
+      todoCategories: [
+        { id: 'category-work', name: 'Work', position: 2 },
+        { id: 'category-home', name: 'Home', position: 1 }
+      ],
+      todoTasks: [
+        {
+          id: 'todo-coffee',
+          title: 'Buy coffee',
+          categoryId: null,
+          urgency: 'medium',
+          position: 2,
+          completed: false
+        },
+        {
+          id: 'todo-oats',
+          title: 'Buy oats',
+          categoryId: null,
+          urgency: 'low',
+          position: 1,
+          completed: false
+        },
+        {
+          id: 'todo-invoice',
+          title: 'File invoice',
+          categoryId: 'category-home',
+          urgency: 'high',
+          position: 2,
+          completed: false
+        },
+        {
+          id: 'todo-plants',
+          title: 'Water plants',
+          categoryId: 'category-home',
+          urgency: 'medium',
+          position: 1,
+          completed: false
+        },
+        {
+          id: 'todo-agenda',
+          title: 'Send agenda',
+          categoryId: 'category-work',
+          urgency: 'high',
+          position: 1,
+          completed: false
+        }
+      ],
+      nextTodoId: 6
+    });
+
+    await expect(store.load('user-1')).resolves.toEqual({
+      todoCategories: [
+        { id: 'category-home', name: 'Home', position: 1 },
+        { id: 'category-work', name: 'Work', position: 2 }
+      ],
+      todoTasks: [
+        {
+          id: 'todo-oats',
+          title: 'Buy oats',
+          categoryId: null,
+          urgency: 'low',
+          position: 1,
+          completed: false
+        },
+        {
+          id: 'todo-coffee',
+          title: 'Buy coffee',
+          categoryId: null,
+          urgency: 'medium',
+          position: 2,
+          completed: false
+        },
+        {
+          id: 'todo-plants',
+          title: 'Water plants',
+          categoryId: 'category-home',
+          urgency: 'medium',
+          position: 1,
+          completed: false
+        },
+        {
+          id: 'todo-invoice',
+          title: 'File invoice',
+          categoryId: 'category-home',
+          urgency: 'high',
+          position: 2,
+          completed: false
+        },
+        {
+          id: 'todo-agenda',
+          title: 'Send agenda',
+          categoryId: 'category-work',
+          urgency: 'high',
+          position: 1,
+          completed: false
+        }
+      ]
+    });
+  });
+
   test('rejects Todo Tasks that reference categories outside the saved User Todo state', async () => {
     const store = createUserTodoStore(database);
     await store.save('user-1', {
