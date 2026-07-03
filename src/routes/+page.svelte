@@ -332,6 +332,11 @@
     localSetupImportStatus = status.message;
     localSetupImportStatusTone = status.tone;
   };
+  const removeLocalSetupImportUrlFlag = () => {
+    const url = new URL(globalThis.location.href);
+    url.searchParams.delete('localSetupImport');
+    globalThis.history.replaceState(globalThis.history.state, '', `${url.pathname}${url.search}${url.hash}`);
+  };
   const markCurrentUserStateSaved = () => {
     const configuration = currentSummaryConfiguration();
     const todoState = currentTodoState();
@@ -346,6 +351,7 @@
       updateLocalSetupImportStatus(result.outcome);
       localSetupHydrated = true;
       todoControlsReady = true;
+      removeLocalSetupImportUrlFlag();
       return;
     }
 
@@ -372,6 +378,7 @@
     markCurrentUserStateSaved();
     localSetupHydrated = true;
     todoControlsReady = true;
+    removeLocalSetupImportUrlFlag();
   };
   const persistUserSummaryConfiguration = async (configuration: SummaryConfiguration) => {
     try {

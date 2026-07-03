@@ -81,7 +81,10 @@ const createStore = ({
         }
       };
 
-      work({
+      const result = work({
+        hasExistingUserSetup() {
+          return existingSetup;
+        },
         saveSummaryConfiguration(summaryConfiguration) {
           staged.summaryConfigurations.push(summaryConfiguration);
           failIfNeeded('summaryConfiguration');
@@ -99,6 +102,8 @@ const createStore = ({
       saved.summaryConfigurations = staged.summaryConfigurations;
       saved.todoCategories = staged.todoCategories;
       saved.todoTasks = staged.todoTasks;
+
+      return result;
     }
   };
 };

@@ -39,6 +39,7 @@ const userSetupImportDraftSchema = z.object({
 });
 
 export type UserSetupImportPersistenceTransaction = {
+  hasExistingUserSetup: (userId: string) => boolean;
   saveSummaryConfiguration: (
     summaryConfiguration: UserSetupImportDraft['summaryConfiguration']
   ) => void;
@@ -48,7 +49,7 @@ export type UserSetupImportPersistenceTransaction = {
 
 export type UserSetupImportPersistenceStore = {
   hasExistingUserSetup: (userId: string) => Promise<boolean>;
-  transaction: (work: (transaction: UserSetupImportPersistenceTransaction) => void) => Promise<void>;
+  transaction: <T>(work: (transaction: UserSetupImportPersistenceTransaction) => T) => Promise<T>;
 };
 
 export type UserSetupImportPersistenceOutcome =
@@ -85,19 +86,19 @@ export const persistUserSetupImportDraftForNewUser = async (
     return { outcome: 'invalid-draft' };
   }
 
-  if (await store.hasExistingUserSetup(userId)) {
-    return { outcome: 'skipped-existing-setup' };
-  }
-
   try {
-    await store.transaction((transaction) => {
+    return await store.transaction((transaction) => {
+      if (transaction.hasExistingUserSetup(userId)) {
+        return { outcome: 'skipped-existing-setup' };
+      }
+
       transaction.saveSummaryConfiguration(result.data.summaryConfiguration);
       transaction.saveTodoCategories(result.data.todoCategories);
       transaction.saveTodoTasks(result.data.todoTasks);
+
+      return { outcome: 'imported' };
     });
   } catch {
     return { outcome: 'import-failed' };
   }
-
-  return { outcome: 'imported' };
 };

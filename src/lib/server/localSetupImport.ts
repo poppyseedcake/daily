@@ -12,8 +12,7 @@ import { userSetupImportStore } from '$lib/server/db/userSetupImportStore';
 
 export type LocalSetupImportOutcome =
   | UserSetupImportPersistenceOutcome
-  | 'invalid-local-setup'
-  | 'not-available';
+  | 'invalid-local-setup';
 
 export const importVisitorLocalSetupForUser = async (
   userId: string,

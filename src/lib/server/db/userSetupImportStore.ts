@@ -5,30 +5,37 @@ import type { UserSetupImportPersistenceStore } from './userSetupImportPersisten
 
 type SetupImportDatabase = typeof db;
 
+const hasExistingUserSetup = (database: Pick<SetupImportDatabase, 'select'>, userId: string) =>
+  Boolean(
+    database
+      .select({ id: summaryConfigurations.id })
+      .from(summaryConfigurations)
+      .where(eq(summaryConfigurations.userId, userId))
+      .get() ||
+      database
+        .select({ id: todoCategories.id })
+        .from(todoCategories)
+        .where(eq(todoCategories.userId, userId))
+        .get() ||
+      database
+        .select({ id: todoTasks.id })
+        .from(todoTasks)
+        .where(eq(todoTasks.userId, userId))
+        .get()
+  );
+
 export const createUserSetupImportStore = (
   database: SetupImportDatabase
 ): UserSetupImportPersistenceStore => ({
   async hasExistingUserSetup(userId) {
-    const [summaryConfiguration, todoCategory, todoTask] = await Promise.all([
-      database.query.summaryConfigurations.findFirst({
-        where: eq(summaryConfigurations.userId, userId),
-        columns: { id: true }
-      }),
-      database.query.todoCategories.findFirst({
-        where: eq(todoCategories.userId, userId),
-        columns: { id: true }
-      }),
-      database.query.todoTasks.findFirst({
-        where: eq(todoTasks.userId, userId),
-        columns: { id: true }
-      })
-    ]);
-
-    return Boolean(summaryConfiguration || todoCategory || todoTask);
+    return hasExistingUserSetup(database, userId);
   },
   async transaction(work) {
-    database.transaction((transaction) => {
+    return database.transaction((transaction) =>
       work({
+        hasExistingUserSetup(userId) {
+          return hasExistingUserSetup(transaction, userId);
+        },
         saveSummaryConfiguration(summaryConfiguration) {
           transaction.insert(summaryConfigurations).values(summaryConfiguration).run();
         },
@@ -42,8 +49,8 @@ export const createUserSetupImportStore = (
             transaction.insert(todoTasks).values(tasks).run();
           }
         }
-      });
-    });
+      })
+    );
   }
 });
 
