@@ -599,16 +599,18 @@ test('Visitor Todo changes from moves renames deletion and completion remain dur
   await expect(page.getByRole('list', { name: 'Work Todo Tasks' })).toHaveCount(0);
 });
 
-test('Administrator route shows a minimal shell without private Visitor or User content', async ({
+test('Visitor cannot access the Admin Panel and private Local Setup content is excluded', async ({
   page
 }) => {
   await page.goto('/');
+  await page.getByLabel('New Todo Task').fill('Private board review');
+  await page.getByRole('button', { name: 'Add Todo Task' }).click();
 
-  await page.getByRole('link', { name: 'Admin Panel' }).click();
+  const adminResponse = await page.goto('/admin');
 
   await expect(page).toHaveURL('/admin');
-  await expect(page.getByRole('heading', { name: 'Admin Panel' })).toBeVisible();
-  await expect(page.getByText('Operational shell')).toBeVisible();
-  await expect(page.getByText('No Visitor Local Setup or User summary content is shown here.')).toBeVisible();
-  await expect(page.getByText('Demo Calendar')).not.toBeVisible();
+  expect(adminResponse?.status()).toBe(403);
+  await expect(page.locator('body')).not.toContainText('Operational shell');
+  await expect(page.locator('body')).not.toContainText('Private board review');
+  await expect(page.locator('body')).not.toContainText('Demo Calendar');
 });
