@@ -41,16 +41,14 @@ const userSetupImportDraftSchema = z.object({
 export type UserSetupImportPersistenceTransaction = {
   saveSummaryConfiguration: (
     summaryConfiguration: UserSetupImportDraft['summaryConfiguration']
-  ) => Promise<void>;
-  saveTodoCategories: (todoCategories: UserSetupImportDraft['todoCategories']) => Promise<void>;
-  saveTodoTasks: (todoTasks: UserSetupImportDraft['todoTasks']) => Promise<void>;
+  ) => void;
+  saveTodoCategories: (todoCategories: UserSetupImportDraft['todoCategories']) => void;
+  saveTodoTasks: (todoTasks: UserSetupImportDraft['todoTasks']) => void;
 };
 
 export type UserSetupImportPersistenceStore = {
   hasExistingUserSetup: (userId: string) => Promise<boolean>;
-  transaction: (
-    work: (transaction: UserSetupImportPersistenceTransaction) => Promise<void>
-  ) => Promise<void>;
+  transaction: (work: (transaction: UserSetupImportPersistenceTransaction) => void) => Promise<void>;
 };
 
 export type UserSetupImportPersistenceOutcome =
@@ -92,10 +90,10 @@ export const persistUserSetupImportDraftForNewUser = async (
   }
 
   try {
-    await store.transaction(async (transaction) => {
-      await transaction.saveSummaryConfiguration(result.data.summaryConfiguration);
-      await transaction.saveTodoCategories(result.data.todoCategories);
-      await transaction.saveTodoTasks(result.data.todoTasks);
+    await store.transaction((transaction) => {
+      transaction.saveSummaryConfiguration(result.data.summaryConfiguration);
+      transaction.saveTodoCategories(result.data.todoCategories);
+      transaction.saveTodoTasks(result.data.todoTasks);
     });
   } catch {
     return { outcome: 'import-failed' };

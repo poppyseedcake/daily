@@ -6,7 +6,7 @@ export const GET = async ({ request }) => {
     headers: request.headers,
     body: {
       provider: 'google',
-      callbackURL: '/',
+      callbackURL: '/?localSetupImport=1',
       scopes: [...googleIdentityScopes]
     },
     returnHeaders: true
