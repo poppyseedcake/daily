@@ -71,6 +71,12 @@ vi.mock('$lib/server/db/todoStore', () => ({
   }
 }));
 
+vi.mock('$env/dynamic/private', () => ({
+  env: {
+    ADMINISTRATOR_EMAIL_ALLOWLIST: ' admin@example.com '
+  }
+}));
+
 const { load } = await import('./+page.server');
 
 const loadPage = () =>
@@ -94,6 +100,7 @@ describe('Daily page server load', () => {
 
     await expect(loadPage()).resolves.toEqual({
       authState: { mode: 'visitor' },
+      isAdministrator: false,
       summaryConfiguration: null,
       todoState: {
         todoCategories: [],
@@ -114,6 +121,7 @@ describe('Daily page server load', () => {
         userId: 'user-1',
         summaryRecipient: 'user@example.com'
       },
+      isAdministrator: false,
       summaryConfiguration: savedConfiguration,
       todoState: savedTodoState
     });
@@ -130,6 +138,7 @@ describe('Daily page server load', () => {
         userId: 'user-2',
         summaryRecipient: 'new@example.com'
       },
+      isAdministrator: false,
       summaryConfiguration: defaultSummaryConfiguration,
       todoState: {
         todoCategories: [],
@@ -151,6 +160,7 @@ describe('Daily page server load', () => {
         userId: 'user-1',
         summaryRecipient: 'user@example.com'
       },
+      isAdministrator: false,
       summaryConfiguration: null,
       todoState: {
         todoCategories: [],
@@ -162,5 +172,26 @@ describe('Daily page server load', () => {
       'Failed to load User Summary Configuration.',
       expect.objectContaining({ userId: 'user-1' })
     );
+  });
+
+  test('marks an allowlisted signed-in User as an Administrator', async () => {
+    getSession.mockResolvedValue({
+      user: { id: 'admin-1', email: 'Admin@Example.com', emailVerified: true }
+    });
+
+    await expect(loadPage()).resolves.toEqual({
+      authState: {
+        mode: 'user',
+        userId: 'admin-1',
+        summaryRecipient: 'Admin@Example.com'
+      },
+      isAdministrator: true,
+      summaryConfiguration: defaultSummaryConfiguration,
+      todoState: {
+        todoCategories: [],
+        todoTasks: [],
+        nextTodoId: 1
+      }
+    });
   });
 });

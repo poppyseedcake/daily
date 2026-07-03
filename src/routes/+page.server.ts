@@ -1,4 +1,5 @@
 import { auth } from '$lib/server/auth';
+import { isAdministratorAuthState } from '$lib/server/adminAuthorization';
 import { authStateFromSession } from '$lib/server/pageAuthState';
 import { userSummaryConfigurationStore } from '$lib/server/db/summaryConfigurationStore';
 import { userTodoStore } from '$lib/server/db/todoStore';
@@ -36,6 +37,7 @@ export const load = async ({ request }) => {
 
   return {
     authState,
+    isAdministrator: isAdministratorAuthState(authState),
     summaryConfiguration,
     todoState
   };

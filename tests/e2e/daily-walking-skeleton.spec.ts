@@ -603,6 +603,7 @@ test('Visitor cannot access the Admin Panel and private Local Setup content is e
   page
 }) => {
   await page.goto('/');
+  await expect(page.getByRole('link', { name: 'Admin Panel' })).toHaveCount(0);
   await page.getByLabel('New Todo Task').fill('Private board review');
   await page.getByRole('button', { name: 'Add Todo Task' }).click();
 

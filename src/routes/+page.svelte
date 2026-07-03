@@ -46,6 +46,7 @@
   const visitorAuthState = { mode: 'visitor' } as const;
   let { data }: { data?: PageData } = $props();
   const authState = $derived(data?.authState ?? visitorAuthState);
+  const isAdministrator = $derived(data?.isAdministrator ?? false);
 
   const summarySections: Array<{ key: SummarySection; label: string }> = [
     { key: 'weather', label: 'Weather' },
@@ -802,13 +803,15 @@
                 Sign in with Google
               </a>
             {/if}
-            <a
-              class="inline-flex h-10 items-center gap-2 rounded-md border border-stone-300 px-3 text-sm font-medium text-stone-800 hover:bg-stone-50"
-              href="/admin"
-            >
-              <ShieldCheck size={18} aria-hidden="true" />
-              Admin Panel
-            </a>
+            {#if isAdministrator}
+              <a
+                class="inline-flex h-10 items-center gap-2 rounded-md border border-stone-300 px-3 text-sm font-medium text-stone-800 hover:bg-stone-50"
+                href="/admin"
+              >
+                <ShieldCheck size={18} aria-hidden="true" />
+                Admin Panel
+              </a>
+            {/if}
           </div>
         </div>
       </div>
