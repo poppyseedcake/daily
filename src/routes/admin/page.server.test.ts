@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { isHttpError } from '@sveltejs/kit';
 
 const { getSession } = vi.hoisted(() => ({
   getSession: vi.fn()
@@ -33,12 +34,11 @@ describe('Admin Panel server load', () => {
   test('denies a Visitor before rendering operational Admin Panel output', async () => {
     getSession.mockResolvedValue(null);
 
-    await expect(loadAdminPage()).resolves.toEqual({
-      access: {
-        mode: 'visitor-denied',
-        message: 'Sign in with an authorized Google account to access the Admin Panel.'
-      }
-    });
+    await expect(loadAdminPage()).rejects.toSatisfy(
+      (thrown) =>
+        isHttpError(thrown, 403) &&
+        thrown.body.message === 'Sign in with an authorized Google account to access the Admin Panel.'
+    );
   });
 
   test('denies a signed-in User whose verified Google email is not allowlisted', async () => {
@@ -46,12 +46,11 @@ describe('Admin Panel server load', () => {
       user: { id: 'user-1', email: 'user@example.com', emailVerified: true }
     });
 
-    await expect(loadAdminPage()).resolves.toEqual({
-      access: {
-        mode: 'user-denied',
-        message: 'Your signed-in Google account is not authorized for the Admin Panel.'
-      }
-    });
+    await expect(loadAdminPage()).rejects.toSatisfy(
+      (thrown) =>
+        isHttpError(thrown, 403) &&
+        thrown.body.message === 'Your signed-in Google account is not authorized for the Admin Panel.'
+    );
   });
 
   test('allows a signed-in Administrator whose verified Google email is allowlisted', async () => {

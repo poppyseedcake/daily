@@ -606,15 +606,11 @@ test('Visitor cannot access the Admin Panel and private Local Setup content is e
   await page.getByLabel('New Todo Task').fill('Private board review');
   await page.getByRole('button', { name: 'Add Todo Task' }).click();
 
-  await page.getByRole('link', { name: 'Admin Panel' }).click();
+  const adminResponse = await page.goto('/admin');
 
   await expect(page).toHaveURL('/admin');
-  await expect(page.getByRole('heading', { name: 'Admin Panel' })).toBeVisible();
-  await expect(page.getByText('Restricted')).toBeVisible();
-  await expect(
-    page.getByText('Sign in with an authorized Google account to access the Admin Panel.')
-  ).toBeVisible();
-  await expect(page.getByText('Operational shell')).not.toBeVisible();
-  await expect(page.getByText('Private board review')).not.toBeVisible();
-  await expect(page.getByText('Demo Calendar')).not.toBeVisible();
+  expect(adminResponse?.status()).toBe(403);
+  await expect(page.locator('body')).not.toContainText('Operational shell');
+  await expect(page.locator('body')).not.toContainText('Private board review');
+  await expect(page.locator('body')).not.toContainText('Demo Calendar');
 });

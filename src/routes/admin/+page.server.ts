@@ -1,28 +1,27 @@
 import { env } from '$env/dynamic/private';
 import { auth } from '$lib/server/auth';
 import { authStateFromSession } from '$lib/server/pageAuthState';
+import { error } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
 
-export type AdminPanelAccess =
-  | {
-      mode: 'visitor-denied';
-      message: string;
-    }
-  | {
-      mode: 'user-denied';
-      message: string;
-    }
-  | {
-      mode: 'allowed';
-    };
+export type AdminPanelAccess = {
+  mode: 'allowed';
+};
 
-const administratorEmailAllowlist = () =>
-  new Set(
-    (env.ADMINISTRATOR_EMAIL_ALLOWLIST ?? '')
-      .split(',')
-      .map((email) => email.trim().toLowerCase())
-      .filter(Boolean)
-  );
+const administratorEmailAllowlist = (() => {
+  let cache: Set<string> | null = null;
+
+  return () => {
+    cache ??= new Set(
+      (env.ADMINISTRATOR_EMAIL_ALLOWLIST ?? '')
+        .split(',')
+        .map((email) => email.trim().toLowerCase())
+        .filter(Boolean)
+    );
+
+    return cache;
+  };
+})();
 
 export const load: PageServerLoad = async ({ request }) => {
   const session = await auth.api.getSession({
@@ -31,21 +30,11 @@ export const load: PageServerLoad = async ({ request }) => {
   const authState = authStateFromSession(session);
 
   if (authState.mode !== 'user') {
-    return {
-      access: {
-        mode: 'visitor-denied',
-        message: 'Sign in with an authorized Google account to access the Admin Panel.'
-      } satisfies AdminPanelAccess
-    };
+    throw error(403, 'Sign in with an authorized Google account to access the Admin Panel.');
   }
 
   if (!administratorEmailAllowlist().has(authState.summaryRecipient.toLowerCase())) {
-    return {
-      access: {
-        mode: 'user-denied',
-        message: 'Your signed-in Google account is not authorized for the Admin Panel.'
-      } satisfies AdminPanelAccess
-    };
+    throw error(403, 'Your signed-in Google account is not authorized for the Admin Panel.');
   }
 
   return {
