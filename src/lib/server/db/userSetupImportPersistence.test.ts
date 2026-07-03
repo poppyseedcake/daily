@@ -81,16 +81,19 @@ const createStore = ({
         }
       };
 
-      await work({
-        async saveSummaryConfiguration(summaryConfiguration) {
+      const result = work({
+        hasExistingUserSetup() {
+          return existingSetup;
+        },
+        saveSummaryConfiguration(summaryConfiguration) {
           staged.summaryConfigurations.push(summaryConfiguration);
           failIfNeeded('summaryConfiguration');
         },
-        async saveTodoCategories(todoCategories) {
+        saveTodoCategories(todoCategories) {
           staged.todoCategories.push(...todoCategories);
           failIfNeeded('todoCategories');
         },
-        async saveTodoTasks(todoTasks) {
+        saveTodoTasks(todoTasks) {
           staged.todoTasks.push(...todoTasks);
           failIfNeeded('todoTasks');
         }
@@ -99,6 +102,8 @@ const createStore = ({
       saved.summaryConfigurations = staged.summaryConfigurations;
       saved.todoCategories = staged.todoCategories;
       saved.todoTasks = staged.todoTasks;
+
+      return result;
     }
   };
 };

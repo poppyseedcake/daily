@@ -97,10 +97,17 @@
   let userTodoStateSaveQueue = Promise.resolve();
   let userTodoStateStatus = $state('Todo state saved to your account.');
   let userTodoStateStatusTone = $state<'success' | 'warning' | 'error' | 'neutral'>('success');
+  let localSetupImportStatus = $state('No browser Local Setup was imported.');
+  let localSetupImportStatusTone = $state<'success' | 'warning' | 'error' | 'neutral'>('neutral');
   let nextTodoId = initialTodoState.nextTodoId;
 
   onMount(() => {
     if (authState.mode === 'user') {
+      if (new URL(globalThis.location.href).searchParams.get('localSetupImport') === '1') {
+        void importVisitorLocalSetupAfterSignIn();
+        return;
+      }
+
       localSetupHydrated = true;
       todoControlsReady = true;
       return;
@@ -271,6 +278,107 @@
     localSetupStatusTone = status.tone;
 
     return result.outcome;
+  };
+  const localSetupImportMessage = (outcome: string) => {
+    if (outcome === 'imported') {
+      return {
+        message: 'Imported Local Setup from this browser.',
+        tone: 'success' as const
+      };
+    }
+
+    if (outcome === 'skipped-existing-setup') {
+      return {
+        message: 'Saved User setup kept. Browser Local Setup was not imported.',
+        tone: 'success' as const
+      };
+    }
+
+    if (outcome === 'invalid-local-setup' || outcome === 'invalid-draft') {
+      return {
+        message: 'Browser Local Setup could not be imported. Saved User setup is unchanged.',
+        tone: 'warning' as const
+      };
+    }
+
+    if (outcome === 'empty') {
+      return {
+        message: 'No browser Local Setup was found for import.',
+        tone: 'neutral' as const
+      };
+    }
+
+    if (outcome === 'unsupported-version' || outcome === 'schema-invalid' || outcome === 'invalid-json') {
+      return {
+        message: 'Invalid browser Local Setup was ignored. Saved User setup is unchanged.',
+        tone: 'warning' as const
+      };
+    }
+
+    if (outcome === 'read-failed' || outcome === 'import-failed') {
+      return {
+        message: 'Browser Local Setup import is unavailable. Saved User setup is unchanged.',
+        tone: 'error' as const
+      };
+    }
+
+    return {
+      message: 'Browser Local Setup was not imported. Saved User setup is unchanged.',
+      tone: 'neutral' as const
+    };
+  };
+  const updateLocalSetupImportStatus = (outcome: string) => {
+    const status = localSetupImportMessage(outcome);
+    localSetupImportStatus = status.message;
+    localSetupImportStatusTone = status.tone;
+  };
+  const removeLocalSetupImportUrlFlag = () => {
+    const url = new URL(globalThis.location.href);
+    url.searchParams.delete('localSetupImport');
+    globalThis.history.replaceState(globalThis.history.state, '', `${url.pathname}${url.search}${url.hash}`);
+  };
+  const markCurrentUserStateSaved = () => {
+    const configuration = currentSummaryConfiguration();
+    const todoState = currentTodoState();
+
+    lastUserSummaryConfigurationSnapshot = JSON.stringify(configuration);
+    lastUserTodoStateSnapshot = JSON.stringify(todoState);
+  };
+  const importVisitorLocalSetupAfterSignIn = async () => {
+    const result = loadLocalSetup(browserLocalSetupStorage());
+
+    if (result.outcome !== 'loaded') {
+      updateLocalSetupImportStatus(result.outcome);
+      localSetupHydrated = true;
+      todoControlsReady = true;
+      removeLocalSetupImportUrlFlag();
+      return;
+    }
+
+    try {
+      const response = await fetch('/local-setup-import', {
+        method: 'PUT',
+        headers: {
+          'content-type': 'application/json'
+        },
+        body: JSON.stringify(result.setup)
+      });
+      const importResult = (await response.json()) as { outcome?: string };
+      const outcome = importResult.outcome ?? 'import-failed';
+
+      updateLocalSetupImportStatus(outcome);
+
+      if (response.ok && outcome === 'imported') {
+        applyLocalSetup(result.setup);
+      }
+    } catch {
+      updateLocalSetupImportStatus('import-failed');
+    }
+
+    markCurrentUserStateSaved();
+    localSetupHydrated = true;
+    todoControlsReady = true;
+    removeLocalSetupImportUrlFlag();
   };
   const persistUserSummaryConfiguration = async (configuration: SummaryConfiguration) => {
     try {
@@ -1265,6 +1373,22 @@
             {:else}
               Your Todo changes are being saved.
             {/if}
+          </p>
+          <p
+            class={`mt-4 font-medium ${
+              localSetupImportStatusTone === 'success'
+                ? 'text-emerald-800'
+                : localSetupImportStatusTone === 'warning'
+                  ? 'text-amber-800'
+                  : localSetupImportStatusTone === 'error'
+                    ? 'text-red-700'
+                    : 'text-stone-700'
+            }`}
+            role={localSetupImportStatusTone === 'error' || localSetupImportStatusTone === 'warning'
+              ? 'alert'
+              : undefined}
+          >
+            {localSetupImportStatus}
           </p>
         {:else}
           <p

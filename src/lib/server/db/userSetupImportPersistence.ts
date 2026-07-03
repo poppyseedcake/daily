@@ -39,18 +39,17 @@ const userSetupImportDraftSchema = z.object({
 });
 
 export type UserSetupImportPersistenceTransaction = {
+  hasExistingUserSetup: (userId: string) => boolean;
   saveSummaryConfiguration: (
     summaryConfiguration: UserSetupImportDraft['summaryConfiguration']
-  ) => Promise<void>;
-  saveTodoCategories: (todoCategories: UserSetupImportDraft['todoCategories']) => Promise<void>;
-  saveTodoTasks: (todoTasks: UserSetupImportDraft['todoTasks']) => Promise<void>;
+  ) => void;
+  saveTodoCategories: (todoCategories: UserSetupImportDraft['todoCategories']) => void;
+  saveTodoTasks: (todoTasks: UserSetupImportDraft['todoTasks']) => void;
 };
 
 export type UserSetupImportPersistenceStore = {
   hasExistingUserSetup: (userId: string) => Promise<boolean>;
-  transaction: (
-    work: (transaction: UserSetupImportPersistenceTransaction) => Promise<void>
-  ) => Promise<void>;
+  transaction: <T>(work: (transaction: UserSetupImportPersistenceTransaction) => T) => Promise<T>;
 };
 
 export type UserSetupImportPersistenceOutcome =
@@ -87,19 +86,19 @@ export const persistUserSetupImportDraftForNewUser = async (
     return { outcome: 'invalid-draft' };
   }
 
-  if (await store.hasExistingUserSetup(userId)) {
-    return { outcome: 'skipped-existing-setup' };
-  }
-
   try {
-    await store.transaction(async (transaction) => {
-      await transaction.saveSummaryConfiguration(result.data.summaryConfiguration);
-      await transaction.saveTodoCategories(result.data.todoCategories);
-      await transaction.saveTodoTasks(result.data.todoTasks);
+    return await store.transaction((transaction) => {
+      if (transaction.hasExistingUserSetup(userId)) {
+        return { outcome: 'skipped-existing-setup' };
+      }
+
+      transaction.saveSummaryConfiguration(result.data.summaryConfiguration);
+      transaction.saveTodoCategories(result.data.todoCategories);
+      transaction.saveTodoTasks(result.data.todoTasks);
+
+      return { outcome: 'imported' };
     });
   } catch {
     return { outcome: 'import-failed' };
   }
-
-  return { outcome: 'imported' };
 };
