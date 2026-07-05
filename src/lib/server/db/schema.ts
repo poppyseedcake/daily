@@ -65,6 +65,21 @@ export const todoTasks = sqliteTable('todo_tasks', {
   completed: integer('completed', { mode: 'boolean' }).notNull().default(false)
 });
 
+export const deliveryRecords = sqliteTable('delivery_records', {
+  id: text('id').primaryKey(),
+  userId: text('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  attemptType: text('attempt_type', { enum: ['test', 'scheduled'] }).notNull(),
+  requestedAt: text('requested_at').notNull(),
+  completedAt: text('completed_at'),
+  deliveryStatus: text('delivery_status', { enum: ['sent', 'failed'] }).notNull(),
+  providerName: text('provider_name').notNull(),
+  providerMessageId: text('provider_message_id'),
+  providerStatusMetadata: text('provider_status_metadata'),
+  errorClassification: text('error_classification')
+});
+
 export const authUser = sqliteTable(
   'auth_user',
   {
@@ -130,7 +145,8 @@ export const authVerification = sqliteTable('auth_verification', {
 export const usersRelations = relations(users, ({ one, many }) => ({
   summaryConfiguration: one(summaryConfigurations),
   todoCategories: many(todoCategories),
-  todoTasks: many(todoTasks)
+  todoTasks: many(todoTasks),
+  deliveryRecords: many(deliveryRecords)
 }));
 
 export const summaryConfigurationsRelations = relations(summaryConfigurations, ({ one }) => ({
@@ -156,5 +172,12 @@ export const todoTasksRelations = relations(todoTasks, ({ one }) => ({
   category: one(todoCategories, {
     fields: [todoTasks.categoryId],
     references: [todoCategories.id]
+  })
+}));
+
+export const deliveryRecordsRelations = relations(deliveryRecords, ({ one }) => ({
+  user: one(users, {
+    fields: [deliveryRecords.userId],
+    references: [users.id]
   })
 }));
