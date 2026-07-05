@@ -18,6 +18,7 @@ export const createDeliveryRecordStore = (database: DeliveryRecordDatabase) => (
       .insert(deliveryRecords)
       .values({
         ...record,
+        id: record.id ?? crypto.randomUUID(),
         userId
       })
       .run();
