@@ -1427,13 +1427,23 @@
           </p>
         {/if}
       </Panel>
-      <Panel title="Sending Status" eyebrow="Milestone 1">
-        <p>
-          Summary Delivery controls are available for setup, but no email can be sent until delivery
-          integrations are added later.
-        </p>
-      </Panel>
       {#if authState.mode === 'user'}
+        <Panel title="Sending Status" eyebrow="Test delivery">
+          <div class="space-y-3">
+            <p>
+              Send a test Daily Summary to {authState.summaryRecipient}.
+            </p>
+            <form method="POST" action="?/sendTestDailySummary">
+              <button
+                class="inline-flex h-10 items-center gap-2 rounded-md bg-emerald-700 px-4 text-sm font-semibold text-white hover:bg-emerald-800"
+                type="submit"
+              >
+                <Mail size={18} aria-hidden="true" />
+                Send Test Daily Summary
+              </button>
+            </form>
+          </div>
+        </Panel>
         <Panel title="Delivery History" eyebrow="Last 30 days">
           {#if deliveryRecords.length > 0}
             <ul class="grid gap-3" aria-label="Delivery Record History">
@@ -1492,8 +1502,15 @@
             <p>No Delivery Records in the last 30 days.</p>
           {/if}
         </Panel>
+      {:else}
+        <Panel title="Sending Status" eyebrow="Milestone 1">
+          <p>
+            Summary Delivery controls are available for setup, but no email can be sent until delivery
+            integrations are added later.
+          </p>
+        </Panel>
       {/if}
-      <Panel title="Scope Guard" eyebrow="No delivery integrations">
+      <Panel title="Scope Guard" eyebrow="Remaining delivery scope">
         <ul class="list-disc space-y-2 pl-5">
           <li>No provider connections</li>
           <li>No scheduled worker</li>

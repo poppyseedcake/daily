@@ -1,9 +1,19 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { defaultSummaryConfiguration } from '$lib/summaryConfiguration';
 
-const { getSession, savedConfiguration, savedTodoState, savedDeliveryRecords, loadFailure } = vi.hoisted(() => ({
+const {
+  getSession,
+  savedConfiguration,
+  savedTodoState,
+  savedDeliveryRecords,
+  recordedDeliveryRecords,
+  sentMessages,
+  loadFailure
+} = vi.hoisted(() => ({
   getSession: vi.fn(),
   loadFailure: { enabled: false },
+  recordedDeliveryRecords: [] as Array<{ userId: string; record: unknown }>,
+  sentMessages: [] as unknown[],
   savedConfiguration: {
     summaryTime: '18:45',
     userTimeZone: 'America/New_York' as const,
@@ -86,6 +96,9 @@ vi.mock('$lib/server/db/todoStore', () => ({
 
 vi.mock('$lib/server/db/deliveryRecordStore', () => ({
   deliveryRecordStore: {
+    async recordAttempt(userId: string, record: unknown) {
+      recordedDeliveryRecords.push({ userId, record });
+    },
     async loadRecentForUser(userId: string) {
       if (loadFailure.enabled) {
         throw new Error('store unavailable');
@@ -96,23 +109,53 @@ vi.mock('$lib/server/db/deliveryRecordStore', () => ({
   }
 }));
 
+vi.mock('$lib/server/dailySummaryDelivery', async () => {
+  const actual = await vi.importActual<typeof import('$lib/server/dailySummaryDelivery')>(
+    '$lib/server/dailySummaryDelivery'
+  );
+
+  return {
+    ...actual,
+    dailySummaryDeliveryProvider: {
+      async send(message: unknown) {
+        sentMessages.push(message);
+
+        return {
+          providerName: 'fake-resend',
+          providerMessageId: 'fake-message-1',
+          providerStatusMetadata: 'accepted'
+        };
+      }
+    }
+  };
+});
+
 vi.mock('$env/dynamic/private', () => ({
   env: {
     ADMINISTRATOR_EMAIL_ALLOWLIST: ' admin@example.com '
   }
 }));
 
-const { load } = await import('./+page.server');
+const { actions, load } = await import('./+page.server');
 
 const loadPage = () =>
   load({
     request: new Request('http://localhost/')
   } as Parameters<typeof load>[0]);
 
+const sendTestDailySummary = () =>
+  actions.sendTestDailySummary({
+    request: new Request('http://localhost/?/sendTestDailySummary', {
+      method: 'POST'
+    })
+  } as Parameters<typeof actions.sendTestDailySummary>[0]);
+
 describe('Daily page server load', () => {
   beforeEach(() => {
     getSession.mockReset();
     loadFailure.enabled = false;
+    recordedDeliveryRecords.length = 0;
+    sentMessages.length = 0;
     vi.spyOn(console, 'warn').mockImplementation(() => {});
   });
 
@@ -223,5 +266,60 @@ describe('Daily page server load', () => {
       },
       deliveryRecords: []
     });
+  });
+
+  test('sends a test Daily Summary for a signed-in User through the delivery boundary', async () => {
+    getSession.mockResolvedValue({
+      user: { id: 'user-1', email: 'user@example.com', emailVerified: true }
+    });
+
+    const result = await sendTestDailySummary();
+
+    expect(result).toEqual({ outcome: 'sent' });
+    expect(sentMessages).toEqual([
+      expect.objectContaining({
+        to: 'user@example.com',
+        subject: expect.stringContaining('Test'),
+        html: expect.stringContaining('Draft update'),
+        text: expect.stringContaining('Draft update')
+      })
+    ]);
+    expect(sentMessages[0]).toEqual(
+      expect.objectContaining({
+        html: expect.stringContaining('Mock Weather'),
+        text: expect.stringContaining('Mock Commute')
+      })
+    );
+    expect(recordedDeliveryRecords).toEqual([
+      {
+        userId: 'user-1',
+        record: expect.objectContaining({
+          attemptType: 'test',
+          deliveryStatus: 'sent',
+          providerName: 'fake-resend',
+          providerMessageId: 'fake-message-1',
+          providerStatusMetadata: 'accepted',
+          errorClassification: null
+        })
+      }
+    ]);
+    expect(savedConfiguration).toEqual({
+      summaryTime: '18:45',
+      userTimeZone: 'America/New_York',
+      summaryTheme: 'light',
+      summaryDeliveryEnabled: true,
+      sections: {
+        weather: true,
+        commute: true,
+        calendar: true,
+        todo: true
+      }
+    });
+    expect(savedTodoState.todoTasks).toEqual([
+      expect.objectContaining({
+        id: 'todo-work',
+        title: 'Draft update'
+      })
+    ]);
   });
 });
