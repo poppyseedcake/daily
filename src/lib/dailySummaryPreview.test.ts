@@ -80,4 +80,26 @@ describe('Daily Summary preview input', () => {
     expect(persistedUserSetup).not.toHaveProperty('calendar');
     expect(persistedUserSetup).not.toHaveProperty('sections');
   });
+
+  test('omits empty Todo content instead of rendering it as unavailable in preview', () => {
+    const preview = buildDailySummaryPreviewInput({
+      configuration: {
+        ...configuration,
+        sections: {
+          weather: false,
+          commute: false,
+          calendar: false,
+          todo: true
+        }
+      },
+      todoCategories,
+      todoTasks: []
+    });
+
+    const rendered = renderDailySummary(preview);
+
+    expect(rendered.html).not.toContain('Todo');
+    expect(rendered.text).not.toContain('Todo');
+    expect(rendered.text).not.toContain('No active Todo Tasks.');
+  });
 });

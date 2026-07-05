@@ -139,6 +139,47 @@ describe('Daily Summary renderer', () => {
     expect(rendered.text).toContain(`Use <b>bold</b> & "quotes" plus 'apostrophes'.`);
   });
 
+  test('escapes Todo Task and Todo Category content in HTML while preserving plain text output', () => {
+    const rendered = renderDailySummary({
+      configuration: {
+        ...defaultSummaryConfiguration,
+        sections: {
+          weather: false,
+          commute: false,
+          calendar: false,
+          todo: true
+        }
+      },
+      sections: {
+        weather: { status: 'available', label: 'Weather', detail: 'Hidden.' },
+        commute: { status: 'available', label: 'Commute', detail: 'Hidden.' },
+        calendar: { status: 'available', label: 'Calendar', detail: 'Hidden.' },
+        todo: { status: 'available', label: 'Todo', detail: 'Hidden.' }
+      },
+      todoSection: buildTodoSection(
+        [{ id: 'work', name: `<script>Work & "quotes"</script>`, position: 1 }],
+        [
+          {
+            id: 'todo-1',
+            title: `Use <b>bold</b> & "quotes" plus 'apostrophes'.`,
+            categoryId: 'work',
+            urgency: 'high',
+            position: 1
+          }
+        ]
+      )
+    });
+
+    expect(rendered.html).toContain('&lt;script&gt;Work &amp; &quot;quotes&quot;&lt;/script&gt;');
+    expect(rendered.html).toContain(
+      'Use &lt;b&gt;bold&lt;/b&gt; &amp; &quot;quotes&quot; plus &#39;apostrophes&#39;.'
+    );
+    expect(rendered.html).not.toContain('<script>');
+    expect(rendered.html).not.toContain('<b>bold</b>');
+    expect(rendered.text).toContain(`<script>Work & "quotes"</script>`);
+    expect(rendered.text).toContain(`Use <b>bold</b> & "quotes" plus 'apostrophes'. !`);
+  });
+
   test('renders Demo Calendar Events separately from Todo Tasks in the Daily Summary preview', () => {
     const demoCalendar = buildDemoCalendarSection({
       userTimeZone: 'UTC',
@@ -213,6 +254,32 @@ describe('Daily Summary renderer', () => {
     expect(rendered.html).not.toContain('Ship the renderer.');
     expect(rendered.text).not.toContain('Todo Tasks');
     expect(rendered.text).not.toContain('Ship the renderer.');
+  });
+
+  test('renders unavailable Todo Section with a useful reason when Todo content cannot be prepared', () => {
+    const rendered = renderDailySummary({
+      configuration: {
+        ...defaultSummaryConfiguration,
+        sections: {
+          weather: false,
+          commute: false,
+          calendar: false,
+          todo: true
+        }
+      },
+      sections: {
+        weather: { status: 'available', label: 'Weather', detail: 'Hidden.' },
+        commute: { status: 'available', label: 'Commute', detail: 'Hidden.' },
+        calendar: { status: 'available', label: 'Calendar', detail: 'Hidden.' },
+        todo: { status: 'unavailable', label: 'Todo', reason: 'Todo data is temporarily unavailable.' }
+      },
+      todoSection: null
+    });
+
+    expect(rendered.html).toContain('Todo');
+    expect(rendered.html).toContain('Todo data is temporarily unavailable.');
+    expect(rendered.text).toContain('Todo');
+    expect(rendered.text).toContain('Todo data is temporarily unavailable.');
   });
 
   test('renders active Todo Tasks with uncategorized tasks first, category groups, and urgency marks', () => {
