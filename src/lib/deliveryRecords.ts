@@ -13,4 +13,6 @@ export type DeliveryRecord = {
   errorClassification: string | null;
 };
 
-export type DeliveryRecordInput = DeliveryRecord;
+export type DeliveryRecordInput = Omit<DeliveryRecord, 'id'> & {
+  id?: DeliveryRecord['id'];
+};

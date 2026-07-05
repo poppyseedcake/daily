@@ -1,5 +1,5 @@
 import { relations, sql } from 'drizzle-orm';
-import { integer, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
+import { index, integer, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
 
 export const users = sqliteTable(
   'users',
@@ -65,20 +65,29 @@ export const todoTasks = sqliteTable('todo_tasks', {
   completed: integer('completed', { mode: 'boolean' }).notNull().default(false)
 });
 
-export const deliveryRecords = sqliteTable('delivery_records', {
-  id: text('id').primaryKey(),
-  userId: text('user_id')
-    .notNull()
-    .references(() => users.id, { onDelete: 'cascade' }),
-  attemptType: text('attempt_type', { enum: ['test', 'scheduled'] }).notNull(),
-  requestedAt: text('requested_at').notNull(),
-  completedAt: text('completed_at'),
-  deliveryStatus: text('delivery_status', { enum: ['sent', 'failed'] }).notNull(),
-  providerName: text('provider_name').notNull(),
-  providerMessageId: text('provider_message_id'),
-  providerStatusMetadata: text('provider_status_metadata'),
-  errorClassification: text('error_classification')
-});
+export const deliveryRecords = sqliteTable(
+  'delivery_records',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    attemptType: text('attempt_type', { enum: ['test', 'scheduled'] }).notNull(),
+    requestedAt: text('requested_at').notNull(),
+    completedAt: text('completed_at'),
+    deliveryStatus: text('delivery_status', { enum: ['sent', 'failed'] }).notNull(),
+    providerName: text('provider_name').notNull(),
+    providerMessageId: text('provider_message_id'),
+    providerStatusMetadata: text('provider_status_metadata'),
+    errorClassification: text('error_classification')
+  },
+  (table) => ({
+    userRequestedAtIdx: index('delivery_records_user_requested_at_idx').on(
+      table.userId,
+      table.requestedAt
+    )
+  })
+);
 
 export const authUser = sqliteTable(
   'auth_user',

@@ -88,5 +88,8 @@ describe('Daily database schema', () => {
     expect(migration).toContain('`provider_message_id` text');
     expect(migration).toContain('`error_classification` text');
     expect(migration).toContain('FOREIGN KEY (`user_id`) REFERENCES `users` (`id`)');
+    expect(migration).toContain(
+      'CREATE INDEX `delivery_records_user_requested_at_idx` ON `delivery_records` (`user_id`,`requested_at`)'
+    );
   });
 });
