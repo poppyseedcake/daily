@@ -5,6 +5,7 @@
   import type { PageData } from './$types';
   import Panel from '$lib/components/Panel.svelte';
   import { buildDailySummaryPreviewInput } from '$lib/dailySummaryPreview';
+  import type { DeliveryRecord } from '$lib/deliveryRecords';
   import { buildDemoCalendarSection } from '$lib/demoCalendar';
   import { renderDailySummary } from '$lib/dailySummaryRenderer';
   import {
@@ -59,6 +60,7 @@
     data?.summaryConfiguration ?? defaultSummaryConfiguration
   );
   const initialTodoState = todoStateSchema.parse(data?.todoState ?? createDefaultTodoState());
+  const deliveryRecords = $derived<DeliveryRecord[]>(data?.deliveryRecords ?? []);
   let summaryTime = $state(initialSummaryConfiguration.summaryTime);
   let summaryTimeInput = $state(initialSummaryConfiguration.summaryTime);
   let userTimeZone = $state<UserTimeZone>(initialSummaryConfiguration.userTimeZone);
@@ -473,6 +475,17 @@
     urgency === 'high' ? 'High urgency' : urgency === 'medium' ? 'Medium urgency' : 'Low urgency';
   const urgencyMark = (urgency: TodoUrgency) =>
     urgency === 'high' ? '!' : urgency === 'medium' ? '!' : '';
+  const deliveryAttemptLabel = (attemptType: DeliveryRecord['attemptType']) =>
+    attemptType === 'scheduled' ? 'Scheduled' : 'Test';
+  const deliveryStatusLabel = (status: DeliveryRecord['deliveryStatus']) =>
+    status === 'sent' ? 'Sent' : 'Failed';
+  const deliveryTimeLabel = (timestamp: string | null) =>
+    timestamp
+      ? new Intl.DateTimeFormat(undefined, {
+          dateStyle: 'medium',
+          timeStyle: 'short'
+        }).format(new Date(timestamp))
+      : 'Not completed';
   const todoDragListKey = (categoryId: string | null) => categoryId ?? '__uncategorized__';
   const visibleTodoCategories = () =>
     todoDragCategories ??
@@ -1420,6 +1433,66 @@
           integrations are added later.
         </p>
       </Panel>
+      {#if authState.mode === 'user'}
+        <Panel title="Delivery History" eyebrow="Last 30 days">
+          {#if deliveryRecords.length > 0}
+            <ul class="grid gap-3" aria-label="Delivery Record History">
+              {#each deliveryRecords as record}
+                <li class="grid gap-2 rounded-md border border-stone-200 p-3">
+                  <div class="flex flex-wrap items-center justify-between gap-2">
+                    <p class="font-semibold text-stone-950">
+                      {deliveryAttemptLabel(record.attemptType)} Daily Summary
+                    </p>
+                    <span
+                      class={`rounded-md px-2 py-1 text-xs font-semibold ${
+                        record.deliveryStatus === 'sent'
+                          ? 'bg-emerald-100 text-emerald-800'
+                          : 'bg-red-100 text-red-700'
+                      }`}
+                    >
+                      {deliveryStatusLabel(record.deliveryStatus)}
+                    </span>
+                  </div>
+                  <dl class="grid gap-1 text-sm text-stone-700">
+                    <div class="flex flex-wrap justify-between gap-2">
+                      <dt>Requested</dt>
+                      <dd>{deliveryTimeLabel(record.requestedAt)}</dd>
+                    </div>
+                    <div class="flex flex-wrap justify-between gap-2">
+                      <dt>Completed</dt>
+                      <dd>{deliveryTimeLabel(record.completedAt)}</dd>
+                    </div>
+                    <div class="flex flex-wrap justify-between gap-2">
+                      <dt>Provider</dt>
+                      <dd>{record.providerName}</dd>
+                    </div>
+                    {#if record.providerMessageId}
+                      <div class="flex flex-wrap justify-between gap-2">
+                        <dt>Message id</dt>
+                        <dd class="break-all">{record.providerMessageId}</dd>
+                      </div>
+                    {/if}
+                    {#if record.providerStatusMetadata}
+                      <div class="flex flex-wrap justify-between gap-2">
+                        <dt>Status metadata</dt>
+                        <dd>{record.providerStatusMetadata}</dd>
+                      </div>
+                    {/if}
+                    {#if record.errorClassification}
+                      <div class="flex flex-wrap justify-between gap-2">
+                        <dt>Error classification</dt>
+                        <dd>{record.errorClassification}</dd>
+                      </div>
+                    {/if}
+                  </dl>
+                </li>
+              {/each}
+            </ul>
+          {:else}
+            <p>No Delivery Records in the last 30 days.</p>
+          {/if}
+        </Panel>
+      {/if}
       <Panel title="Scope Guard" eyebrow="No delivery integrations">
         <ul class="list-disc space-y-2 pl-5">
           <li>No provider connections</li>

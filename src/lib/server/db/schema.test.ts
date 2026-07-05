@@ -6,6 +6,7 @@ import {
   authSession,
   authUser,
   authVerification,
+  deliveryRecords,
   summaryConfigurations,
   todoCategories,
   todoTasks,
@@ -19,6 +20,7 @@ describe('Daily database schema', () => {
       getTableName(summaryConfigurations),
       getTableName(todoCategories),
       getTableName(todoTasks),
+      getTableName(deliveryRecords),
       getTableName(authUser),
       getTableName(authSession),
       getTableName(authAccount),
@@ -28,6 +30,7 @@ describe('Daily database schema', () => {
       'summary_configurations',
       'todo_categories',
       'todo_tasks',
+      'delivery_records',
       'auth_user',
       'auth_session',
       'auth_account',
@@ -46,6 +49,7 @@ describe('Daily database schema', () => {
     expect(migration).toContain('CREATE TABLE `summary_configurations`');
     expect(migration).toContain('CREATE TABLE `todo_categories`');
     expect(migration).toContain('CREATE TABLE `todo_tasks`');
+    expect(migration).not.toContain('CREATE TABLE `delivery_records`');
     expect(migration).not.toContain('CREATE TABLE `auth_user`');
     expect(migration).not.toContain('CREATE TABLE `auth_session`');
     expect(migration).not.toContain('CREATE TABLE `auth_account`');
@@ -70,5 +74,19 @@ describe('Daily database schema', () => {
     expect(migration).toContain(
       'CREATE UNIQUE INDEX `auth_session_token_idx` ON `auth_session` (`token`)'
     );
+  });
+
+  test('ships Delivery Records in an upgrade migration', () => {
+    const migrationPath = 'drizzle/0002_add_delivery_records.sql';
+
+    expect(existsSync(migrationPath)).toBe(true);
+
+    const migration = readFileSync(migrationPath, 'utf8');
+
+    expect(migration).toContain('CREATE TABLE `delivery_records`');
+    expect(migration).toContain('`attempt_type` text NOT NULL');
+    expect(migration).toContain('`provider_message_id` text');
+    expect(migration).toContain('`error_classification` text');
+    expect(migration).toContain('FOREIGN KEY (`user_id`) REFERENCES `users` (`id`)');
   });
 });

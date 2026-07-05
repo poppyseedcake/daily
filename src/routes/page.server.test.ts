@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { defaultSummaryConfiguration } from '$lib/summaryConfiguration';
 
-const { getSession, savedConfiguration, savedTodoState, loadFailure } = vi.hoisted(() => ({
+const { getSession, savedConfiguration, savedTodoState, savedDeliveryRecords, loadFailure } = vi.hoisted(() => ({
   getSession: vi.fn(),
   loadFailure: { enabled: false },
   savedConfiguration: {
@@ -29,7 +29,20 @@ const { getSession, savedConfiguration, savedTodoState, loadFailure } = vi.hoist
       }
     ],
     nextTodoId: 1
-  }
+  },
+  savedDeliveryRecords: [
+    {
+      id: 'delivery-1',
+      attemptType: 'test' as const,
+      requestedAt: '2026-07-05T06:45:00.000Z',
+      completedAt: '2026-07-05T06:45:03.000Z',
+      deliveryStatus: 'sent' as const,
+      providerName: 'resend',
+      providerMessageId: 'message-123',
+      providerStatusMetadata: 'accepted',
+      errorClassification: null
+    }
+  ]
 }));
 
 vi.mock('$lib/server/auth', () => ({
@@ -71,6 +84,18 @@ vi.mock('$lib/server/db/todoStore', () => ({
   }
 }));
 
+vi.mock('$lib/server/db/deliveryRecordStore', () => ({
+  deliveryRecordStore: {
+    async loadRecentForUser(userId: string) {
+      if (loadFailure.enabled) {
+        throw new Error('store unavailable');
+      }
+
+      return userId === 'user-1' ? savedDeliveryRecords : [];
+    }
+  }
+}));
+
 vi.mock('$env/dynamic/private', () => ({
   env: {
     ADMINISTRATOR_EMAIL_ALLOWLIST: ' admin@example.com '
@@ -106,7 +131,8 @@ describe('Daily page server load', () => {
         todoCategories: [],
         todoTasks: [],
         nextTodoId: 1
-      }
+      },
+      deliveryRecords: []
     });
   });
 
@@ -123,7 +149,8 @@ describe('Daily page server load', () => {
       },
       isAdministrator: false,
       summaryConfiguration: savedConfiguration,
-      todoState: savedTodoState
+      todoState: savedTodoState,
+      deliveryRecords: savedDeliveryRecords
     });
   });
 
@@ -144,7 +171,8 @@ describe('Daily page server load', () => {
         todoCategories: [],
         todoTasks: [],
         nextTodoId: 1
-      }
+      },
+      deliveryRecords: []
     });
   });
 
@@ -166,7 +194,8 @@ describe('Daily page server load', () => {
         todoCategories: [],
         todoTasks: [],
         nextTodoId: 1
-      }
+      },
+      deliveryRecords: []
     });
     expect(console.warn).toHaveBeenCalledWith(
       'Failed to load User Summary Configuration.',
@@ -191,7 +220,8 @@ describe('Daily page server load', () => {
         todoCategories: [],
         todoTasks: [],
         nextTodoId: 1
-      }
+      },
+      deliveryRecords: []
     });
   });
 });
