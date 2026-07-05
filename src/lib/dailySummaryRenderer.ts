@@ -73,20 +73,37 @@ const buildVisibleSection = (
   section: SummarySection
 ): RenderedSection[] => {
   if (section === 'todo') {
-    return input.todoSection ? [renderTodoSection(input.todoSection)] : [];
+    if (input.todoSection) {
+      return [renderTodoSection(input.todoSection)];
+    }
+
+    const sectionState = input.sections.todo;
+
+    if (sectionState.status === 'unavailable') {
+      return [renderUnavailableSection(sectionState.label, sectionState.reason)];
+    }
+
+    return [];
   }
 
   const sectionState = input.sections[section];
-  const body = sectionState.status === 'available' ? sectionState.detail : sectionState.reason;
 
-  return [
-    {
-      label: sectionState.label,
-      html: `<p>${escapeHtml(body)}</p>`,
-      text: body
-    }
-  ];
+  return sectionState.status === 'available'
+    ? [renderAvailableSection(sectionState.label, sectionState.detail)]
+    : [renderUnavailableSection(sectionState.label, sectionState.reason)];
 };
+
+const renderAvailableSection = (label: string, detail: string): RenderedSection => ({
+  label,
+  html: `<p>${escapeHtml(detail)}</p>`,
+  text: detail
+});
+
+const renderUnavailableSection = (label: string, reason: string): RenderedSection => ({
+  label,
+  html: `<p>${escapeHtml(reason)}</p>`,
+  text: reason
+});
 
 const renderTodoSection = (todoSection: TodoSection): RenderedSection => {
   const uncategorizedHtml =

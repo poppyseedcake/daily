@@ -35,9 +35,9 @@ export const buildDailySummaryPreviewInput = ({
         detail: demoCalendar.summaryDetail
       },
       todo: {
-        status: 'unavailable',
+        status: 'available',
         label: 'Todo',
-        reason: 'Todo source is not connected yet.'
+        detail: 'No active Todo Tasks.'
       }
     },
     todoSection: buildTodoSection(todoCategories, todoTasks)
