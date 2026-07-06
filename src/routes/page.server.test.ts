@@ -8,10 +8,21 @@ const {
   savedDeliveryRecords,
   recordedDeliveryRecords,
   sentMessages,
+  deliveryProviderMode,
+  validationFailure,
   loadFailure
 } = vi.hoisted(() => ({
   getSession: vi.fn(),
   loadFailure: { enabled: false },
+  deliveryProviderMode: {
+    outcome: 'accepted' as
+      | 'accepted'
+      | 'failed'
+      | 'missing-message-id'
+      | 'configuration-missing'
+      | 'unavailable'
+  },
+  validationFailure: { enabled: false },
   recordedDeliveryRecords: [] as Array<{ userId: string; record: unknown }>,
   sentMessages: [] as unknown[],
   savedConfiguration: {
@@ -70,6 +81,13 @@ vi.mock('$lib/server/db/summaryConfigurationStore', () => ({
         throw new Error('store unavailable');
       }
 
+      if (validationFailure.enabled) {
+        return {
+          ...savedConfiguration,
+          summaryTime: 'not-a-time'
+        };
+      }
+
       return userId === 'user-1' ? savedConfiguration : null;
     },
     async save() {}
@@ -120,9 +138,43 @@ vi.mock('$lib/server/dailySummaryDelivery', async () => {
       async send(message: unknown) {
         sentMessages.push(message);
 
+        if (deliveryProviderMode.outcome === 'failed') {
+          throw new actual.DailySummaryDeliveryError(
+            'Resend rejected Daily Summary delivery.',
+            'provider-rejected',
+            {
+              providerName: 'fake-resend',
+              providerStatusMetadata: 'status=503'
+            }
+          );
+        }
+
+        if (deliveryProviderMode.outcome === 'configuration-missing') {
+          throw new actual.DailySummaryDeliveryError(
+            'Resend delivery is not configured.',
+            'configuration-missing',
+            {
+              providerName: 'fake-resend',
+              providerStatusMetadata: 'missing RESEND_API_KEY'
+            }
+          );
+        }
+
+        if (deliveryProviderMode.outcome === 'unavailable') {
+          throw new actual.DailySummaryDeliveryError(
+            'Resend delivery request failed.',
+            'provider-unavailable',
+            {
+              providerName: 'fake-resend',
+              providerStatusMetadata: null
+            }
+          );
+        }
+
         return {
           providerName: 'fake-resend',
-          providerMessageId: 'fake-message-1',
+          providerMessageId:
+            deliveryProviderMode.outcome === 'missing-message-id' ? null : 'fake-message-1',
           providerStatusMetadata: 'accepted'
         };
       }
@@ -154,6 +206,8 @@ describe('Daily page server load', () => {
   beforeEach(() => {
     getSession.mockReset();
     loadFailure.enabled = false;
+    deliveryProviderMode.outcome = 'accepted';
+    validationFailure.enabled = false;
     recordedDeliveryRecords.length = 0;
     sentMessages.length = 0;
     vi.spyOn(console, 'warn').mockImplementation(() => {});
@@ -321,5 +375,134 @@ describe('Daily page server load', () => {
         title: 'Draft update'
       })
     ]);
+  });
+
+  test('records a failed Delivery Record when the provider rejects a test Daily Summary', async () => {
+    getSession.mockResolvedValue({
+      user: { id: 'user-1', email: 'user@example.com', emailVerified: true }
+    });
+    deliveryProviderMode.outcome = 'failed';
+
+    const result = await sendTestDailySummary();
+
+    expect(result).toEqual({
+      outcome: 'failed',
+      reason: 'provider-rejected',
+      message: 'The delivery provider rejected the test Daily Summary.'
+    });
+    expect(recordedDeliveryRecords).toEqual([
+      {
+        userId: 'user-1',
+        record: expect.objectContaining({
+          attemptType: 'test',
+          deliveryStatus: 'failed',
+          providerName: 'fake-resend',
+          providerMessageId: null,
+          providerStatusMetadata: 'status=503',
+          errorClassification: 'provider-rejected'
+        })
+      }
+    ]);
+  });
+
+  test('records a failed Delivery Record when delivery configuration is missing', async () => {
+    getSession.mockResolvedValue({
+      user: { id: 'user-1', email: 'user@example.com', emailVerified: true }
+    });
+    deliveryProviderMode.outcome = 'configuration-missing';
+
+    const result = await sendTestDailySummary();
+
+    expect(result).toEqual({
+      outcome: 'failed',
+      reason: 'configuration-missing',
+      message: 'Test Daily Summary delivery is not configured.'
+    });
+    expect(recordedDeliveryRecords).toEqual([
+      {
+        userId: 'user-1',
+        record: expect.objectContaining({
+          attemptType: 'test',
+          deliveryStatus: 'failed',
+          providerName: 'fake-resend',
+          providerMessageId: null,
+          providerStatusMetadata: 'missing RESEND_API_KEY',
+          errorClassification: 'configuration-missing'
+        })
+      }
+    ]);
+  });
+
+  test('records a failed Delivery Record when the delivery provider is unavailable', async () => {
+    getSession.mockResolvedValue({
+      user: { id: 'user-1', email: 'user@example.com', emailVerified: true }
+    });
+    deliveryProviderMode.outcome = 'unavailable';
+
+    const result = await sendTestDailySummary();
+
+    expect(result).toEqual({
+      outcome: 'failed',
+      reason: 'provider-unavailable',
+      message: 'The test Daily Summary could not be sent.'
+    });
+    expect(recordedDeliveryRecords).toEqual([
+      {
+        userId: 'user-1',
+        record: expect.objectContaining({
+          attemptType: 'test',
+          deliveryStatus: 'failed',
+          providerName: 'fake-resend',
+          providerMessageId: null,
+          providerStatusMetadata: null,
+          errorClassification: 'provider-unavailable'
+        })
+      }
+    ]);
+  });
+
+  test('normalizes provider acceptance without a message id into a failed Delivery Record', async () => {
+    getSession.mockResolvedValue({
+      user: { id: 'user-1', email: 'user@example.com', emailVerified: true }
+    });
+    deliveryProviderMode.outcome = 'missing-message-id';
+
+    const result = await sendTestDailySummary();
+
+    expect(result).toEqual({
+      outcome: 'failed',
+      reason: 'provider-missing-message-id',
+      message: 'The delivery provider accepted the request without a message id.'
+    });
+    expect(recordedDeliveryRecords).toEqual([
+      {
+        userId: 'user-1',
+        record: expect.objectContaining({
+          attemptType: 'test',
+          deliveryStatus: 'failed',
+          providerName: 'fake-resend',
+          providerMessageId: null,
+          providerStatusMetadata: 'accepted; missing message id',
+          errorClassification: 'provider-missing-message-id'
+        })
+      }
+    ]);
+  });
+
+  test('does not submit to the provider when validation prevents a test Daily Summary', async () => {
+    getSession.mockResolvedValue({
+      user: { id: 'user-1', email: 'user@example.com', emailVerified: true }
+    });
+    validationFailure.enabled = true;
+
+    const result = await sendTestDailySummary();
+
+    expect(result).toEqual({
+      outcome: 'failed',
+      reason: 'validation-failed',
+      message: 'The saved Daily Summary setup is invalid, so no provider request was made.'
+    });
+    expect(sentMessages).toEqual([]);
+    expect(recordedDeliveryRecords).toEqual([]);
   });
 });

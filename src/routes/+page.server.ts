@@ -5,6 +5,8 @@ import { userSummaryConfigurationStore } from '$lib/server/db/summaryConfigurati
 import { deliveryRecordStore } from '$lib/server/db/deliveryRecordStore';
 import { userTodoStore } from '$lib/server/db/todoStore';
 import {
+  DailySummaryDeliveryError,
+  type DailySummaryDeliveryErrorClassification,
   dailySummaryDeliveryProvider,
   dailySummarySenderAddress
 } from '$lib/server/dailySummaryDelivery';
@@ -12,7 +14,29 @@ import { buildDailySummaryPreviewInput } from '$lib/dailySummaryPreview';
 import { renderDailySummary } from '$lib/dailySummaryRenderer';
 import { loadUserSummaryConfiguration } from '$lib/server/summaryConfigurationPersistence';
 import { loadUserTodoState } from '$lib/server/todoPersistence';
-import { createDefaultTodoState } from '$lib/todo';
+import { summaryConfigurationSchema } from '$lib/summaryConfiguration';
+import { createDefaultTodoState, todoStateSchema } from '$lib/todo';
+
+const testDeliveryFailureMessage = (classification: DailySummaryDeliveryErrorClassification) => {
+  switch (classification) {
+    case 'configuration-missing':
+      return 'Test Daily Summary delivery is not configured.';
+    case 'provider-rejected':
+      return 'The delivery provider rejected the test Daily Summary.';
+    case 'provider-unavailable':
+      return 'The test Daily Summary could not be sent.';
+    default: {
+      const exhaustiveClassification: never = classification;
+      return exhaustiveClassification;
+    }
+  }
+};
+
+const validationFailureResponse = {
+  outcome: 'failed',
+  reason: 'validation-failed',
+  message: 'The saved Daily Summary setup is invalid, so no provider request was made.'
+} as const;
 
 export const load = async ({ request }) => {
   const session = await auth.api.getSession({
@@ -79,20 +103,76 @@ export const actions = {
       authState.userId
     );
     const todoState = await loadUserTodoState(userTodoStore, authState.userId);
+    const validConfiguration = summaryConfigurationSchema.safeParse(configuration);
+    const validTodoState = todoStateSchema.safeParse(todoState);
+
+    if (!validConfiguration.success || !validTodoState.success) {
+      return validationFailureResponse;
+    }
+
     const renderedSummary = renderDailySummary(
       buildDailySummaryPreviewInput({
-        configuration,
-        todoCategories: todoState.todoCategories,
-        todoTasks: todoState.todoTasks
+        configuration: validConfiguration.data,
+        todoCategories: validTodoState.data.todoCategories,
+        todoTasks: validTodoState.data.todoTasks
       })
     );
-    const accepted = await dailySummaryDeliveryProvider.send({
+    const message = {
       to: authState.summaryRecipient,
       from: dailySummarySenderAddress(),
       subject: 'Test Daily Summary',
       html: renderedSummary.html,
       text: renderedSummary.text
-    });
+    };
+    let accepted;
+
+    try {
+      accepted = await dailySummaryDeliveryProvider.send(message);
+    } catch (error) {
+      if (!(error instanceof DailySummaryDeliveryError)) {
+        throw error;
+      }
+
+      await deliveryRecordStore.recordAttempt(authState.userId, {
+        id: crypto.randomUUID(),
+        attemptType: 'test',
+        requestedAt,
+        completedAt: new Date().toISOString(),
+        deliveryStatus: 'failed',
+        providerName: error.providerName,
+        providerMessageId: null,
+        providerStatusMetadata: error.providerStatusMetadata,
+        errorClassification: error.classification
+      });
+
+      return {
+        outcome: 'failed',
+        reason: error.classification,
+        message: testDeliveryFailureMessage(error.classification)
+      };
+    }
+
+    if (!accepted.providerMessageId) {
+      await deliveryRecordStore.recordAttempt(authState.userId, {
+        id: crypto.randomUUID(),
+        attemptType: 'test',
+        requestedAt,
+        completedAt: new Date().toISOString(),
+        deliveryStatus: 'failed',
+        providerName: accepted.providerName,
+        providerMessageId: null,
+        providerStatusMetadata: accepted.providerStatusMetadata
+          ? `${accepted.providerStatusMetadata}; missing message id`
+          : 'missing message id',
+        errorClassification: 'provider-missing-message-id'
+      });
+
+      return {
+        outcome: 'failed',
+        reason: 'provider-missing-message-id',
+        message: 'The delivery provider accepted the request without a message id.'
+      };
+    }
 
     await deliveryRecordStore.recordAttempt(authState.userId, {
       id: crypto.randomUUID(),

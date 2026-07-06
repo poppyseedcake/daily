@@ -11,9 +11,8 @@ vi.mock('$env/dynamic/private', () => ({
   env
 }));
 
-const { dailySummarySenderAddress, resendDailySummaryDeliveryProvider } = await import(
-  './dailySummaryDelivery'
-);
+const { DailySummaryDeliveryError, dailySummarySenderAddress, resendDailySummaryDeliveryProvider } =
+  await import('./dailySummaryDelivery');
 
 describe('Daily Summary delivery provider', () => {
   beforeEach(() => {
@@ -59,6 +58,80 @@ describe('Daily Summary delivery provider', () => {
     expect(result).toEqual({
       providerName: 'resend',
       providerMessageId: 'resend-message-1',
+      providerStatusMetadata: 'accepted'
+    });
+  });
+
+  test('reports missing Resend configuration without submitting provider content', async () => {
+    env.RESEND_API_KEY = '';
+    const fetch = vi.fn();
+    vi.stubGlobal('fetch', fetch);
+
+    await expect(
+      resendDailySummaryDeliveryProvider.send({
+        to: 'user@example.com',
+        from: dailySummarySenderAddress(),
+        subject: 'Test Daily Summary',
+        html: '<article>Rendered Daily Summary</article>',
+        text: 'Rendered Daily Summary'
+      })
+    ).rejects.toMatchObject({
+      name: 'DailySummaryDeliveryError',
+      classification: 'configuration-missing',
+      providerName: 'resend',
+      providerStatusMetadata: 'missing RESEND_API_KEY'
+    } satisfies Partial<InstanceType<typeof DailySummaryDeliveryError>>);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  test('reports provider rejection with non-private status metadata', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ message: 'invalid api key' }), {
+          status: 401,
+          headers: { 'content-type': 'application/json' }
+        })
+      )
+    );
+
+    await expect(
+      resendDailySummaryDeliveryProvider.send({
+        to: 'user@example.com',
+        from: dailySummarySenderAddress(),
+        subject: 'Test Daily Summary',
+        html: '<article>Rendered Daily Summary</article>',
+        text: 'Rendered Daily Summary'
+      })
+    ).rejects.toMatchObject({
+      classification: 'provider-rejected',
+      providerName: 'resend',
+      providerStatusMetadata: 'status=401'
+    });
+  });
+
+  test('returns provider acceptance without a message id for action-level normalization', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({}), {
+          status: 200,
+          headers: { 'content-type': 'application/json' }
+        })
+      )
+    );
+
+    await expect(
+      resendDailySummaryDeliveryProvider.send({
+        to: 'user@example.com',
+        from: dailySummarySenderAddress(),
+        subject: 'Test Daily Summary',
+        html: '<article>Rendered Daily Summary</article>',
+        text: 'Rendered Daily Summary'
+      })
+    ).resolves.toEqual({
+      providerName: 'resend',
+      providerMessageId: null,
       providerStatusMetadata: 'accepted'
     });
   });

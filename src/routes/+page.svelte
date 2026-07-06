@@ -2,7 +2,7 @@
   import { CalendarDays, Check, GripVertical, Mail, Pencil, ShieldCheck, Trash2 } from '@lucide/svelte';
   import { dragHandle, dragHandleZone, SHADOW_ITEM_MARKER_PROPERTY_NAME, TRIGGERS } from 'svelte-dnd-action';
   import { onMount } from 'svelte';
-  import type { PageData } from './$types';
+  import type { ActionData, PageData } from './$types';
   import Panel from '$lib/components/Panel.svelte';
   import { buildDailySummaryPreviewInput } from '$lib/dailySummaryPreview';
   import type { DeliveryRecord } from '$lib/deliveryRecords';
@@ -45,7 +45,7 @@
   } from '$lib/todo';
 
   const visitorAuthState = { mode: 'visitor' } as const;
-  let { data }: { data?: PageData } = $props();
+  let { data, form }: { data?: PageData; form?: ActionData } = $props();
   const authState = $derived(data?.authState ?? visitorAuthState);
   const isAdministrator = $derived(data?.isAdministrator ?? false);
 
@@ -61,6 +61,24 @@
   );
   const initialTodoState = todoStateSchema.parse(data?.todoState ?? createDefaultTodoState());
   const deliveryRecords = $derived<DeliveryRecord[]>(data?.deliveryRecords ?? []);
+  const testDeliveryStatus = $derived(
+    form?.outcome === 'sent'
+      ? {
+          message: 'Test Daily Summary sent.',
+          tone: 'success' as const
+        }
+      : form?.outcome === 'failed'
+        ? {
+            message: form.message,
+            tone: 'error' as const
+          }
+        : form?.outcome === 'unauthorized'
+          ? {
+              message: 'Google sign-in is required before a test Daily Summary can be sent.',
+              tone: 'warning' as const
+            }
+          : null
+  );
   let summaryTime = $state(initialSummaryConfiguration.summaryTime);
   let summaryTimeInput = $state(initialSummaryConfiguration.summaryTime);
   let userTimeZone = $state<UserTimeZone>(initialSummaryConfiguration.userTimeZone);
@@ -1433,6 +1451,20 @@
             <p>
               Send a test Daily Summary to {authState.summaryRecipient}.
             </p>
+            {#if testDeliveryStatus}
+              <p
+                class={`font-medium ${
+                  testDeliveryStatus.tone === 'success'
+                    ? 'text-emerald-800'
+                    : testDeliveryStatus.tone === 'warning'
+                      ? 'text-amber-800'
+                      : 'text-red-700'
+                }`}
+                role={testDeliveryStatus.tone === 'success' ? 'status' : 'alert'}
+              >
+                {testDeliveryStatus.message}
+              </p>
+            {/if}
             <form method="POST" action="?/sendTestDailySummary">
               <button
                 class="inline-flex h-10 items-center gap-2 rounded-md bg-emerald-700 px-4 text-sm font-semibold text-white hover:bg-emerald-800"
@@ -1505,8 +1537,7 @@
       {:else}
         <Panel title="Sending Status" eyebrow="Milestone 1">
           <p>
-            Summary Delivery controls are available for setup, but no email can be sent until delivery
-            integrations are added later.
+            Google sign-in is required before a test Daily Summary can be sent.
           </p>
         </Panel>
       {/if}
