@@ -377,6 +377,20 @@ describe('Daily page server load', () => {
     ]);
   });
 
+  test('does not send or record a test Daily Summary for a Visitor', async () => {
+    getSession.mockResolvedValue(null);
+
+    const result = await sendTestDailySummary();
+
+    expect(result).toEqual({
+      outcome: 'failed',
+      reason: 'visitor-not-allowed',
+      message: 'Sign in with Google to send a test Daily Summary.'
+    });
+    expect(sentMessages).toEqual([]);
+    expect(recordedDeliveryRecords).toEqual([]);
+  });
+
   test('records a failed Delivery Record when the provider rejects a test Daily Summary', async () => {
     getSession.mockResolvedValue({
       user: { id: 'user-1', email: 'user@example.com', emailVerified: true }

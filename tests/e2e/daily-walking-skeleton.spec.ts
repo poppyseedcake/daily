@@ -72,6 +72,18 @@ test('Visitor opens Daily into the usable main panel', async ({ page }) => {
   await expect(page.getByRole('button', { name: 'Preview Daily Summary' })).toBeVisible();
 });
 
+test('Visitor can preview but cannot send or view Delivery Records', async ({ page }) => {
+  await page.goto('/');
+
+  await expect(page.getByRole('button', { name: 'Preview Daily Summary' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Send Test Daily Summary' })).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Delivery History' })).toHaveCount(0);
+  await expect(page.getByText('No Delivery Records in the last 30 days.')).toHaveCount(0);
+  await expect(
+    page.getByText('Google sign-in is required before a test Daily Summary can be sent.')
+  ).toBeVisible();
+});
+
 test('Visitor configures Daily Summary state from the main panel', async ({ page }) => {
   await page.goto('/');
 

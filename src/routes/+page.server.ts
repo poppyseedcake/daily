@@ -94,7 +94,11 @@ export const actions = {
     const authState = authStateFromSession(session);
 
     if (authState.mode !== 'user') {
-      return { outcome: 'unauthorized' };
+      return {
+        outcome: 'failed',
+        reason: 'visitor-not-allowed',
+        message: 'Sign in with Google to send a test Daily Summary.'
+      };
     }
 
     const requestedAt = new Date().toISOString();
