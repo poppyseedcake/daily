@@ -4,6 +4,9 @@ import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
   plugins: [tailwindcss(), sveltekit()],
+  ssr: {
+    external: ['@opentelemetry/api']
+  },
   test: {
     include: ['src/**/*.test.ts']
   }
