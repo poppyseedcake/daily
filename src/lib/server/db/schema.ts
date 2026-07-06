@@ -1,5 +1,5 @@
 import { relations, sql } from 'drizzle-orm';
-import { index, integer, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
+import { index, integer, real, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
 
 export const users = sqliteTable(
   'users',
@@ -63,6 +63,17 @@ export const todoTasks = sqliteTable('todo_tasks', {
   urgency: text('urgency', { enum: ['low', 'medium', 'high'] }).notNull().default('medium'),
   position: integer('position').notNull(),
   completed: integer('completed', { mode: 'boolean' }).notNull().default(false)
+});
+
+export const weatherLocations = sqliteTable('weather_locations', {
+  id: text('id').primaryKey(),
+  userId: text('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' })
+    .unique(),
+  label: text('label').notNull(),
+  latitude: real('latitude').notNull(),
+  longitude: real('longitude').notNull()
 });
 
 export const deliveryRecords = sqliteTable(
@@ -155,6 +166,7 @@ export const usersRelations = relations(users, ({ one, many }) => ({
   summaryConfiguration: one(summaryConfigurations),
   todoCategories: many(todoCategories),
   todoTasks: many(todoTasks),
+  weatherLocation: one(weatherLocations),
   deliveryRecords: many(deliveryRecords)
 }));
 
@@ -181,6 +193,13 @@ export const todoTasksRelations = relations(todoTasks, ({ one }) => ({
   category: one(todoCategories, {
     fields: [todoTasks.categoryId],
     references: [todoCategories.id]
+  })
+}));
+
+export const weatherLocationsRelations = relations(weatherLocations, ({ one }) => ({
+  user: one(users, {
+    fields: [weatherLocations.userId],
+    references: [users.id]
   })
 }));
 
