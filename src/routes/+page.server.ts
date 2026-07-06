@@ -6,6 +6,7 @@ import { deliveryRecordStore } from '$lib/server/db/deliveryRecordStore';
 import { userTodoStore } from '$lib/server/db/todoStore';
 import {
   DailySummaryDeliveryError,
+  type DailySummaryDeliveryErrorClassification,
   dailySummaryDeliveryProvider,
   dailySummarySenderAddress
 } from '$lib/server/dailySummaryDelivery';
@@ -16,16 +17,19 @@ import { loadUserTodoState } from '$lib/server/todoPersistence';
 import { summaryConfigurationSchema } from '$lib/summaryConfiguration';
 import { createDefaultTodoState, todoStateSchema } from '$lib/todo';
 
-const testDeliveryFailureMessage = (classification: string) => {
-  if (classification === 'configuration-missing') {
-    return 'Test Daily Summary delivery is not configured.';
+const testDeliveryFailureMessage = (classification: DailySummaryDeliveryErrorClassification) => {
+  switch (classification) {
+    case 'configuration-missing':
+      return 'Test Daily Summary delivery is not configured.';
+    case 'provider-rejected':
+      return 'The delivery provider rejected the test Daily Summary.';
+    case 'provider-unavailable':
+      return 'The test Daily Summary could not be sent.';
+    default: {
+      const exhaustiveClassification: never = classification;
+      return exhaustiveClassification;
+    }
   }
-
-  if (classification === 'provider-rejected') {
-    return 'The delivery provider rejected the test Daily Summary.';
-  }
-
-  return 'The test Daily Summary could not be sent.';
 };
 
 const validationFailureResponse = {

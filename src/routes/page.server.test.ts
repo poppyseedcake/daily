@@ -15,7 +15,12 @@ const {
   getSession: vi.fn(),
   loadFailure: { enabled: false },
   deliveryProviderMode: {
-    outcome: 'accepted' as 'accepted' | 'failed' | 'missing-message-id' | 'configuration-missing'
+    outcome: 'accepted' as
+      | 'accepted'
+      | 'failed'
+      | 'missing-message-id'
+      | 'configuration-missing'
+      | 'unavailable'
   },
   validationFailure: { enabled: false },
   recordedDeliveryRecords: [] as Array<{ userId: string; record: unknown }>,
@@ -151,6 +156,17 @@ vi.mock('$lib/server/dailySummaryDelivery', async () => {
             {
               providerName: 'fake-resend',
               providerStatusMetadata: 'missing RESEND_API_KEY'
+            }
+          );
+        }
+
+        if (deliveryProviderMode.outcome === 'unavailable') {
+          throw new actual.DailySummaryDeliveryError(
+            'Resend delivery request failed.',
+            'provider-unavailable',
+            {
+              providerName: 'fake-resend',
+              providerStatusMetadata: null
             }
           );
         }
@@ -412,6 +428,34 @@ describe('Daily page server load', () => {
           providerMessageId: null,
           providerStatusMetadata: 'missing RESEND_API_KEY',
           errorClassification: 'configuration-missing'
+        })
+      }
+    ]);
+  });
+
+  test('records a failed Delivery Record when the delivery provider is unavailable', async () => {
+    getSession.mockResolvedValue({
+      user: { id: 'user-1', email: 'user@example.com', emailVerified: true }
+    });
+    deliveryProviderMode.outcome = 'unavailable';
+
+    const result = await sendTestDailySummary();
+
+    expect(result).toEqual({
+      outcome: 'failed',
+      reason: 'provider-unavailable',
+      message: 'The test Daily Summary could not be sent.'
+    });
+    expect(recordedDeliveryRecords).toEqual([
+      {
+        userId: 'user-1',
+        record: expect.objectContaining({
+          attemptType: 'test',
+          deliveryStatus: 'failed',
+          providerName: 'fake-resend',
+          providerMessageId: null,
+          providerStatusMetadata: null,
+          errorClassification: 'provider-unavailable'
         })
       }
     ]);
