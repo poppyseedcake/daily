@@ -122,4 +122,33 @@ describe('SQLite Delivery Record store', () => {
       }
     ]);
   });
+
+  test('does not persist private rendered content in provider status metadata', async () => {
+    const store = createDeliveryRecordStore(database);
+
+    await store.recordAttempt('user-1', {
+      id: 'private-provider-payload',
+      attemptType: 'test',
+      requestedAt: '2026-07-05T06:45:00.000Z',
+      completedAt: '2026-07-05T06:45:03.000Z',
+      deliveryStatus: 'failed',
+      providerName: 'resend',
+      providerMessageId: null,
+      providerStatusMetadata:
+        '{"html":"<article>Draft investor update</article>","text":"Calendar: Therapy 10:00, Route: 123 Private St to Office","token":"secret-token"}',
+      errorClassification: 'provider-rejected'
+    });
+
+    const [record] = await store.loadRecentForUser('user-1', '2026-07-05T12:00:00.000Z');
+    const persistedRow = sqlite
+      .prepare('select provider_status_metadata from delivery_records where id = ?')
+      .get('private-provider-payload') as { provider_status_metadata: string | null };
+
+    expect(record.providerStatusMetadata).toBe('redacted');
+    expect(persistedRow.provider_status_metadata).toBe('redacted');
+    expect(JSON.stringify(record)).not.toContain('Draft investor update');
+    expect(JSON.stringify(record)).not.toContain('Therapy');
+    expect(JSON.stringify(record)).not.toContain('123 Private St');
+    expect(JSON.stringify(record)).not.toContain('secret-token');
+  });
 });
