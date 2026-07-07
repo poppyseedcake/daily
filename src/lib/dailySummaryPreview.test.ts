@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
 import { buildDailySummaryPreviewInput } from './dailySummaryPreview';
 import { renderDailySummary } from './dailySummaryRenderer';
 import type { SummaryConfiguration } from './summaryConfiguration';
@@ -38,28 +38,63 @@ const todoTasks: TodoTask[] = [
 ];
 
 describe('Daily Summary preview input', () => {
-  test('renders Visitor and User setup through the same Daily Summary input shape', () => {
-    const visitorPreview = buildDailySummaryPreviewInput({
+  test('renders Visitor and User setup through the same Daily Summary input shape', async () => {
+    const visitorPreview = await buildDailySummaryPreviewInput({
       configuration,
       todoCategories,
       todoTasks
     });
-    const userPreview = buildDailySummaryPreviewInput({
+    const userPreview = await buildDailySummaryPreviewInput({
       configuration,
       todoCategories,
       todoTasks
     });
 
     expect(renderDailySummary(visitorPreview).text).toBe(renderDailySummary(userPreview).text);
-    expect(renderDailySummary(userPreview).text).toContain('Mock Weather');
+    expect(renderDailySummary(userPreview).text).toContain('Choose a Weather Location to preview live weather.');
     expect(renderDailySummary(userPreview).text).toContain('Mock Commute');
     expect(renderDailySummary(userPreview).text).toContain('Demo Calendar');
     expect(renderDailySummary(userPreview).text).toContain('Buy coffee !');
     expect(renderDailySummary(userPreview).text).toContain('Work\nDraft update !');
   });
 
-  test('keeps provider placeholders out of the persisted User setup shape', () => {
-    const preview = buildDailySummaryPreviewInput({
+  test('renders live Weather from Weather Location coordinates in HTML and plain text', async () => {
+    const forecastProvider = {
+      fetchDailyForecast: vi.fn().mockResolvedValue({
+        dates: ['2026-07-07'],
+        weatherCodes: [61],
+        minimumTemperaturesCelsius: [12],
+        maximumTemperaturesCelsius: [19],
+        precipitationProbabilities: [80]
+      })
+    };
+
+    const preview = await buildDailySummaryPreviewInput({
+      configuration,
+      todoCategories,
+      todoTasks,
+      weatherLocation: {
+        label: 'Warsaw, Masovian Voivodeship, Poland',
+        latitude: 52.2297,
+        longitude: 21.0122
+      },
+      weatherProvider: forecastProvider,
+      now: new Date('2026-07-07T10:00:00.000Z')
+    });
+    const rendered = renderDailySummary(preview);
+
+    expect(forecastProvider.fetchDailyForecast).toHaveBeenCalledWith({
+      latitude: 52.2297,
+      longitude: 21.0122,
+      timeZone: 'America/New_York'
+    });
+    expect(rendered.text).toContain('Weather\nRainy. Low 12C, high 19C. Chance of precipitation 80%.');
+    expect(rendered.html).toContain('Rainy. Low 12C, high 19C. Chance of precipitation 80%.');
+    expect(rendered.text).not.toContain('Mock Weather');
+  });
+
+  test('keeps provider placeholders out of the persisted User setup shape', async () => {
+    const preview = await buildDailySummaryPreviewInput({
       configuration,
       todoCategories,
       todoTasks
@@ -72,7 +107,6 @@ describe('Daily Summary preview input', () => {
       nextTodoId: 3
     };
 
-    expect(preview.sections.weather).toMatchObject({ label: 'Mock Weather' });
     expect(preview.sections.commute).toMatchObject({ label: 'Mock Commute' });
     expect(preview.sections.calendar).toMatchObject({ label: 'Demo Calendar' });
     expect(persistedUserSetup).not.toHaveProperty('weather');
@@ -81,8 +115,8 @@ describe('Daily Summary preview input', () => {
     expect(persistedUserSetup).not.toHaveProperty('sections');
   });
 
-  test('omits empty Todo content instead of rendering it as unavailable in preview', () => {
-    const preview = buildDailySummaryPreviewInput({
+  test('omits empty Todo content instead of rendering it as unavailable in preview', async () => {
+    const preview = await buildDailySummaryPreviewInput({
       configuration: {
         ...configuration,
         sections: {

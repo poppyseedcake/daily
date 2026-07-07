@@ -2,28 +2,42 @@ import { buildDemoCalendarSection } from './demoCalendar';
 import type { DailySummaryInput } from './dailySummaryRenderer';
 import type { SummaryConfiguration } from './summaryConfiguration';
 import { buildTodoSection, type TodoCategory, type TodoTask } from './todo';
+import type { WeatherLocation } from './weatherLocation';
+import {
+  buildWeatherSection,
+  openMeteoWeatherForecastProvider,
+  type WeatherForecastProvider
+} from './weatherForecast';
 
 export type DailySummaryPreviewSetup = {
   configuration: SummaryConfiguration;
   todoCategories: TodoCategory[];
   todoTasks: TodoTask[];
+  weatherLocation?: WeatherLocation | null;
+  weatherProvider?: WeatherForecastProvider;
+  now?: Date;
 };
 
-export const buildDailySummaryPreviewInput = ({
+export const buildDailySummaryPreviewInput = async ({
   configuration,
   todoCategories,
-  todoTasks
-}: DailySummaryPreviewSetup): DailySummaryInput => {
+  todoTasks,
+  weatherLocation = null,
+  weatherProvider = openMeteoWeatherForecastProvider,
+  now = new Date()
+}: DailySummaryPreviewSetup): Promise<DailySummaryInput> => {
   const demoCalendar = buildDemoCalendarSection({ userTimeZone: configuration.userTimeZone });
+  const weather = await buildPreviewWeatherSection({
+    configuration,
+    weatherLocation,
+    weatherProvider,
+    now
+  });
 
   return {
     configuration,
     sections: {
-      weather: {
-        status: 'available',
-        label: 'Mock Weather',
-        detail: 'Mock provider data: 18C, clear, light wind.'
-      },
+      weather,
       commute: {
         status: 'available',
         label: 'Mock Commute',
@@ -42,4 +56,44 @@ export const buildDailySummaryPreviewInput = ({
     },
     todoSection: buildTodoSection(todoCategories, todoTasks)
   };
+};
+
+const buildPreviewWeatherSection = async ({
+  configuration,
+  weatherLocation,
+  weatherProvider,
+  now
+}: {
+  configuration: SummaryConfiguration;
+  weatherLocation: WeatherLocation | null;
+  weatherProvider: WeatherForecastProvider;
+  now: Date;
+}): Promise<DailySummaryInput['sections']['weather']> => {
+  if (!weatherLocation) {
+    return {
+      status: 'unavailable',
+      label: 'Weather',
+      reason: 'Choose a Weather Location to preview live weather.'
+    };
+  }
+
+  try {
+    const forecast = await weatherProvider.fetchDailyForecast({
+      latitude: weatherLocation.latitude,
+      longitude: weatherLocation.longitude,
+      timeZone: configuration.userTimeZone
+    });
+
+    return buildWeatherSection({
+      forecast,
+      userTimeZone: configuration.userTimeZone,
+      now
+    });
+  } catch {
+    return {
+      status: 'unavailable',
+      label: 'Weather',
+      reason: 'Live weather is unavailable right now.'
+    };
+  }
 };

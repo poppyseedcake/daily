@@ -121,6 +121,7 @@ export const actions = {
       authState.userId
     );
     const todoState = await loadUserTodoState(userTodoStore, authState.userId);
+    const weatherLocation = await loadUserWeatherLocation(userWeatherLocationStore, authState.userId);
     const validConfiguration = summaryConfigurationSchema.safeParse(configuration);
     const validTodoState = todoStateSchema.safeParse(todoState);
 
@@ -129,10 +130,11 @@ export const actions = {
     }
 
     const renderedSummary = renderDailySummary(
-      buildDailySummaryPreviewInput({
+      await buildDailySummaryPreviewInput({
         configuration: validConfiguration.data,
         todoCategories: validTodoState.data.todoCategories,
-        todoTasks: validTodoState.data.todoTasks
+        todoTasks: validTodoState.data.todoTasks,
+        weatherLocation
       })
     );
     const message = {
