@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { CalendarDays, Check, GripVertical, Mail, Pencil, ShieldCheck, Trash2 } from '@lucide/svelte';
+  import { CalendarDays, Check, CloudSun, GripVertical, Mail, Pencil, Search, ShieldCheck, Trash2 } from '@lucide/svelte';
   import { dragHandle, dragHandleZone, SHADOW_ITEM_MARKER_PROPERTY_NAME, TRIGGERS } from 'svelte-dnd-action';
   import { onMount } from 'svelte';
   import type { ActionData, PageData } from './$types';
@@ -43,6 +43,7 @@
     type TodoTask,
     type TodoUrgency
   } from '$lib/todo';
+  import { weatherLocationSchema, type WeatherLocation } from '$lib/weatherLocation';
 
   const visitorAuthState = { mode: 'visitor' } as const;
   let { data, form }: { data?: PageData; form?: ActionData } = $props();
@@ -60,6 +61,9 @@
     data?.summaryConfiguration ?? defaultSummaryConfiguration
   );
   const initialTodoState = todoStateSchema.parse(data?.todoState ?? createDefaultTodoState());
+  const initialWeatherLocation = data?.weatherLocation
+    ? weatherLocationSchema.parse(data.weatherLocation)
+    : null;
   const deliveryRecords = $derived<DeliveryRecord[]>(data?.deliveryRecords ?? []);
   const testDeliveryStatus = $derived(
     form?.outcome === 'sent'
@@ -118,6 +122,15 @@
   let userTodoStateSaveQueue = Promise.resolve();
   let userTodoStateStatus = $state('Todo state saved to your account.');
   let userTodoStateStatusTone = $state<'success' | 'warning' | 'error' | 'neutral'>('success');
+  let weatherLocation = $state<WeatherLocation | null>(initialWeatherLocation);
+  let weatherLocationSearchQuery = $state('');
+  let weatherLocationSearchResults = $state<WeatherLocation[]>([]);
+  let weatherLocationStatus = $state(
+    initialWeatherLocation ? 'Weather Location saved to your account.' : 'No Weather Location saved yet.'
+  );
+  let weatherLocationStatusTone = $state<'success' | 'warning' | 'error' | 'neutral'>(
+    initialWeatherLocation ? 'success' : 'neutral'
+  );
   let localSetupImportStatus = $state('No browser Local Setup was imported.');
   let localSetupImportStatusTone = $state<'success' | 'warning' | 'error' | 'neutral'>('neutral');
   let nextTodoId = initialTodoState.nextTodoId;
@@ -449,6 +462,75 @@
       userTodoStateStatus = 'Todo save failed. Try again.';
       userTodoStateStatusTone = 'error';
       return false;
+    }
+  };
+  const searchWeatherLocation = async () => {
+    if (authState.mode !== 'user') {
+      return;
+    }
+
+    weatherLocationStatus = 'Searching Weather Locations...';
+    weatherLocationStatusTone = 'neutral';
+
+    try {
+      const response = await fetch(
+        `/weather-location-search?q=${encodeURIComponent(weatherLocationSearchQuery)}`
+      );
+      const result = (await response.json()) as {
+        outcome?: string;
+        locations?: WeatherLocation[];
+      };
+
+      if (!response.ok || result.outcome !== 'found') {
+        weatherLocationSearchResults = [];
+        weatherLocationStatus = 'Enter a valid city search.';
+        weatherLocationStatusTone = 'warning';
+        return;
+      }
+
+      weatherLocationSearchResults = result.locations ?? [];
+      weatherLocationStatus =
+        weatherLocationSearchResults.length > 0
+          ? 'Choose a Weather Location result.'
+          : 'No matching Weather Locations found.';
+      weatherLocationStatusTone = weatherLocationSearchResults.length > 0 ? 'neutral' : 'warning';
+    } catch {
+      weatherLocationSearchResults = [];
+      weatherLocationStatus = 'Weather Location search failed. Try again.';
+      weatherLocationStatusTone = 'error';
+    }
+  };
+  const saveWeatherLocation = async (location: WeatherLocation) => {
+    if (authState.mode !== 'user') {
+      return;
+    }
+
+    weatherLocationStatus = 'Saving Weather Location...';
+    weatherLocationStatusTone = 'neutral';
+
+    try {
+      const response = await fetch('/weather-location', {
+        method: 'PUT',
+        headers: {
+          'content-type': 'application/json'
+        },
+        body: JSON.stringify(location)
+      });
+
+      if (!response.ok) {
+        weatherLocationStatus = 'Weather Location save failed. Try again.';
+        weatherLocationStatusTone = response.status === 400 ? 'warning' : 'error';
+        return;
+      }
+
+      weatherLocation = location;
+      weatherLocationSearchResults = [];
+      weatherLocationSearchQuery = location.label;
+      weatherLocationStatus = 'Weather Location saved to your account.';
+      weatherLocationStatusTone = 'success';
+    } catch {
+      weatherLocationStatus = 'Weather Location save failed. Try again.';
+      weatherLocationStatusTone = 'error';
     }
   };
   const queueUserSummaryConfigurationSave = (configuration: SummaryConfiguration, snapshot: string) => {
@@ -974,6 +1056,93 @@
           </div>
         </Panel>
       </div>
+
+      {#if enabledSections.weather}
+        <Panel
+          title="Weather Location"
+          eyebrow={authState.mode === 'user' ? 'User Setup' : 'Daily Summary'}
+        >
+          {#if authState.mode === 'user'}
+            <div class="space-y-4">
+              <div class="flex flex-wrap items-start justify-between gap-3">
+                <div class="min-w-0">
+                  <p class="font-medium text-stone-900">
+                    {weatherLocation?.label ?? 'No Weather Location selected'}
+                  </p>
+                  {#if weatherLocation}
+                    <p class="mt-1 text-sm text-stone-600">
+                      {weatherLocation.latitude.toFixed(4)}, {weatherLocation.longitude.toFixed(4)}
+                    </p>
+                  {/if}
+                </div>
+                <CloudSun size={22} class="text-emerald-700" aria-hidden="true" />
+              </div>
+
+              <div class="grid gap-2 sm:grid-cols-[1fr_auto]">
+                <label class="grid gap-1">
+                  <span class="font-medium text-stone-800">City Search</span>
+                  <input
+                    class="h-10 rounded-md border border-stone-300 px-3"
+                    bind:value={weatherLocationSearchQuery}
+                    aria-label="City Search"
+                    placeholder="Search city"
+                    onkeydown={(event) => {
+                      if (event.key === 'Enter') {
+                        event.preventDefault();
+                        void searchWeatherLocation();
+                      }
+                    }}
+                  />
+                </label>
+                <button
+                  class="inline-flex h-10 items-center justify-center gap-2 self-end rounded-md border border-stone-300 px-4 text-sm font-semibold text-stone-800 hover:bg-stone-50"
+                  type="button"
+                  onclick={searchWeatherLocation}
+                >
+                  <Search size={18} aria-hidden="true" />
+                  Search
+                </button>
+              </div>
+
+              {#if weatherLocationSearchResults.length > 0}
+                <ul class="grid gap-2" aria-label="Weather Location search results">
+                  {#each weatherLocationSearchResults as result}
+                    <li class="rounded-md border border-stone-200 px-3 py-2">
+                      <div class="flex flex-wrap items-center justify-between gap-3">
+                        <div class="min-w-0">
+                          <p class="break-words font-medium text-stone-950">{result.label}</p>
+                          <p class="mt-1 text-sm text-stone-600">
+                            {result.latitude.toFixed(4)}, {result.longitude.toFixed(4)}
+                          </p>
+                        </div>
+                        <button
+                          class="inline-flex h-9 items-center gap-2 rounded-md bg-emerald-700 px-3 text-sm font-semibold text-white hover:bg-emerald-800"
+                          type="button"
+                          onclick={() => saveWeatherLocation(result)}
+                        >
+                          <Check size={16} aria-hidden="true" />
+                          Select
+                        </button>
+                      </div>
+                    </li>
+                  {/each}
+                </ul>
+              {/if}
+
+              <p
+                class={`text-sm ${weatherLocationStatusTone === 'success' ? 'text-emerald-700' : weatherLocationStatusTone === 'warning' ? 'text-amber-700' : weatherLocationStatusTone === 'error' ? 'text-red-700' : 'text-stone-600'}`}
+              >
+                {weatherLocationStatus}
+              </p>
+            </div>
+          {:else}
+            <div class="flex flex-wrap items-center justify-between gap-3">
+              <p class="text-stone-700">Mock Weather appears in Visitor previews until sign-in.</p>
+              <CloudSun size={22} class="text-emerald-700" aria-hidden="true" />
+            </div>
+          {/if}
+        </Panel>
+      {/if}
 
       {#if enabledSections.calendar}
         <Panel title="Demo Calendar" eyebrow="Sample Calendar Events for Visitor mode">

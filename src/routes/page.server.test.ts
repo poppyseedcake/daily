@@ -5,6 +5,7 @@ const {
   getSession,
   savedConfiguration,
   savedTodoState,
+  savedWeatherLocation,
   savedDeliveryRecords,
   recordedDeliveryRecords,
   sentMessages,
@@ -50,6 +51,11 @@ const {
       }
     ],
     nextTodoId: 1
+  },
+  savedWeatherLocation: {
+    label: 'Warsaw, Masovian Voivodeship, Poland',
+    latitude: 52.2297,
+    longitude: 21.0122
   },
   savedDeliveryRecords: [
     {
@@ -107,6 +113,19 @@ vi.mock('$lib/server/db/todoStore', () => ({
             todoTasks: savedTodoState.todoTasks
           }
         : null;
+    },
+    async save() {}
+  }
+}));
+
+vi.mock('$lib/server/db/weatherLocationStore', () => ({
+  userWeatherLocationStore: {
+    async load(userId: string) {
+      if (loadFailure.enabled) {
+        throw new Error('store unavailable');
+      }
+
+      return userId === 'user-1' ? savedWeatherLocation : null;
     },
     async save() {}
   }
@@ -229,6 +248,7 @@ describe('Daily page server load', () => {
         todoTasks: [],
         nextTodoId: 1
       },
+      weatherLocation: null,
       deliveryRecords: []
     });
   });
@@ -247,6 +267,7 @@ describe('Daily page server load', () => {
       isAdministrator: false,
       summaryConfiguration: savedConfiguration,
       todoState: savedTodoState,
+      weatherLocation: savedWeatherLocation,
       deliveryRecords: savedDeliveryRecords
     });
   });
@@ -269,6 +290,7 @@ describe('Daily page server load', () => {
         todoTasks: [],
         nextTodoId: 1
       },
+      weatherLocation: null,
       deliveryRecords: []
     });
   });
@@ -292,6 +314,7 @@ describe('Daily page server load', () => {
         todoTasks: [],
         nextTodoId: 1
       },
+      weatherLocation: null,
       deliveryRecords: []
     });
     expect(console.warn).toHaveBeenCalledWith(
@@ -318,6 +341,7 @@ describe('Daily page server load', () => {
         todoTasks: [],
         nextTodoId: 1
       },
+      weatherLocation: null,
       deliveryRecords: []
     });
   });

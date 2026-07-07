@@ -10,7 +10,8 @@ import {
   summaryConfigurations,
   todoCategories,
   todoTasks,
-  users
+  users,
+  weatherLocations
 } from './schema';
 
 describe('Daily database schema', () => {
@@ -20,6 +21,7 @@ describe('Daily database schema', () => {
       getTableName(summaryConfigurations),
       getTableName(todoCategories),
       getTableName(todoTasks),
+      getTableName(weatherLocations),
       getTableName(deliveryRecords),
       getTableName(authUser),
       getTableName(authSession),
@@ -30,6 +32,7 @@ describe('Daily database schema', () => {
       'summary_configurations',
       'todo_categories',
       'todo_tasks',
+      'weather_locations',
       'delivery_records',
       'auth_user',
       'auth_session',
@@ -91,5 +94,25 @@ describe('Daily database schema', () => {
     expect(migration).toContain(
       'CREATE INDEX `delivery_records_user_requested_at_idx` ON `delivery_records` (`user_id`,`requested_at`)'
     );
+  });
+
+  test('ships Weather Locations in an upgrade migration without forecast snapshots', () => {
+    const migrationPath = 'drizzle/0003_add_weather_locations.sql';
+
+    expect(existsSync(migrationPath)).toBe(true);
+
+    const migration = readFileSync(migrationPath, 'utf8');
+
+    expect(migration).toContain('CREATE TABLE `weather_locations`');
+    expect(migration).toContain('`label` text NOT NULL');
+    expect(migration).toContain('`latitude` real NOT NULL');
+    expect(migration).toContain('`longitude` real NOT NULL');
+    expect(migration).toContain('FOREIGN KEY (`user_id`) REFERENCES `users` (`id`)');
+    expect(migration).toContain(
+      'CREATE UNIQUE INDEX `weather_locations_user_id_unique` ON `weather_locations` (`user_id`)'
+    );
+    expect(migration).not.toContain('forecast');
+    expect(migration).not.toContain('payload');
+    expect(migration).not.toContain('rendered');
   });
 });

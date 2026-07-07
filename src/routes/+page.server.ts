@@ -4,6 +4,7 @@ import { authStateFromSession } from '$lib/server/pageAuthState';
 import { userSummaryConfigurationStore } from '$lib/server/db/summaryConfigurationStore';
 import { deliveryRecordStore } from '$lib/server/db/deliveryRecordStore';
 import { userTodoStore } from '$lib/server/db/todoStore';
+import { userWeatherLocationStore } from '$lib/server/db/weatherLocationStore';
 import {
   DailySummaryDeliveryError,
   type DailySummaryDeliveryErrorClassification,
@@ -14,6 +15,7 @@ import { buildDailySummaryPreviewInput } from '$lib/dailySummaryPreview';
 import { renderDailySummary } from '$lib/dailySummaryRenderer';
 import { loadUserSummaryConfiguration } from '$lib/server/summaryConfigurationPersistence';
 import { loadUserTodoState } from '$lib/server/todoPersistence';
+import { loadUserWeatherLocation } from '$lib/server/weatherLocationPersistence';
 import { summaryConfigurationSchema } from '$lib/summaryConfiguration';
 import { createDefaultTodoState, todoStateSchema } from '$lib/todo';
 
@@ -76,12 +78,24 @@ export const load = async ({ request }) => {
           return [];
         })
       : [];
+  const weatherLocation =
+    authState.mode === 'user'
+      ? await loadUserWeatherLocation(userWeatherLocationStore, authState.userId).catch((error: unknown) => {
+          console.warn('Failed to load User Weather Location.', {
+            userId: authState.userId,
+            error
+          });
+
+          return null;
+        })
+      : null;
 
   return {
     authState,
     isAdministrator: isAdministratorAuthState(authState),
     summaryConfiguration,
     todoState,
+    weatherLocation,
     deliveryRecords
   };
 };
