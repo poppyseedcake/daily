@@ -803,6 +803,7 @@
     }
   });
   let renderedSummaryHtml = $state('');
+  let previewRenderVersion = 0;
 
   $effect(() => {
     const result = summaryConfigurationSchema.safeParse({
@@ -816,11 +817,18 @@
   });
 
   $effect(() => {
-    renderedSummaryHtml = renderDailySummary(buildDailySummaryPreviewInput({
+    const renderVersion = ++previewRenderVersion;
+
+    void buildDailySummaryPreviewInput({
       configuration: previewConfiguration,
       todoCategories,
-      todoTasks
-    })).html;
+      todoTasks,
+      weatherLocation
+    }).then((previewInput) => {
+      if (renderVersion === previewRenderVersion) {
+        renderedSummaryHtml = renderDailySummary(previewInput).html;
+      }
+    });
   });
 
   $effect(() => {

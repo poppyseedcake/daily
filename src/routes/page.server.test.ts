@@ -8,6 +8,7 @@ const {
   savedWeatherLocation,
   savedDeliveryRecords,
   recordedDeliveryRecords,
+  sentForecastRequests,
   sentMessages,
   deliveryProviderMode,
   validationFailure,
@@ -25,6 +26,7 @@ const {
   },
   validationFailure: { enabled: false },
   recordedDeliveryRecords: [] as Array<{ userId: string; record: unknown }>,
+  sentForecastRequests: [] as unknown[],
   sentMessages: [] as unknown[],
   savedConfiguration: {
     summaryTime: '18:45',
@@ -207,6 +209,27 @@ vi.mock('$env/dynamic/private', () => ({
   }
 }));
 
+vi.mock('$lib/weatherForecast', async () => {
+  const actual = await vi.importActual<typeof import('$lib/weatherForecast')>('$lib/weatherForecast');
+
+  return {
+    ...actual,
+    openMeteoWeatherForecastProvider: {
+      async fetchDailyForecast(request: unknown) {
+        sentForecastRequests.push(request);
+
+        return {
+          dates: ['2026-07-07'],
+          weatherCodes: [0],
+          minimumTemperaturesCelsius: [16],
+          maximumTemperaturesCelsius: [23],
+          precipitationProbabilities: [10]
+        };
+      }
+    }
+  };
+});
+
 const { actions, load } = await import('./+page.server');
 
 const loadPage = () =>
@@ -228,11 +251,15 @@ describe('Daily page server load', () => {
     deliveryProviderMode.outcome = 'accepted';
     validationFailure.enabled = false;
     recordedDeliveryRecords.length = 0;
+    sentForecastRequests.length = 0;
     sentMessages.length = 0;
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-07-07T12:00:00.000Z'));
     vi.spyOn(console, 'warn').mockImplementation(() => {});
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     vi.restoreAllMocks();
   });
 
@@ -364,10 +391,22 @@ describe('Daily page server load', () => {
     ]);
     expect(sentMessages[0]).toEqual(
       expect.objectContaining({
-        html: expect.stringContaining('Mock Weather'),
+        html: expect.stringContaining('Clear. Low 16C, high 23C. Chance of precipitation 10%.'),
+        text: expect.stringContaining('Clear. Low 16C, high 23C. Chance of precipitation 10%.')
+      })
+    );
+    expect(sentMessages[0]).toEqual(
+      expect.objectContaining({
         text: expect.stringContaining('Mock Commute')
       })
     );
+    expect(sentForecastRequests).toEqual([
+      {
+        latitude: 52.2297,
+        longitude: 21.0122,
+        timeZone: 'America/New_York'
+      }
+    ]);
     expect(recordedDeliveryRecords).toEqual([
       {
         userId: 'user-1',
