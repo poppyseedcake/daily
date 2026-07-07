@@ -32,10 +32,10 @@ const deterministicLocations: WeatherLocation[] = [
 
 export const deterministicWeatherLocationGeocodingProvider: WeatherLocationGeocodingProvider = {
   async search(query) {
-    const normalizedQuery = query.toLocaleLowerCase();
+    const normalizedQuery = query.toLowerCase();
 
     return deterministicLocations.filter((location) =>
-      location.label.toLocaleLowerCase().includes(normalizedQuery)
+      location.label.toLowerCase().includes(normalizedQuery)
     );
   }
 };

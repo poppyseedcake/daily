@@ -28,6 +28,14 @@ const toWeatherLocationRow = (
   longitude: location.longitude
 });
 
+const toWeatherLocationUpdateSet = (
+  location: WeatherLocation
+): Pick<typeof weatherLocations.$inferInsert, 'label' | 'latitude' | 'longitude'> => ({
+  label: location.label,
+  latitude: location.latitude,
+  longitude: location.longitude
+});
+
 export const createUserWeatherLocationStore = (
   database: WeatherLocationDatabase
 ): UserWeatherLocationStore => ({
@@ -47,7 +55,7 @@ export const createUserWeatherLocationStore = (
       })
       .onConflictDoUpdate({
         target: weatherLocations.userId,
-        set: toWeatherLocationRow(userId, location)
+        set: toWeatherLocationUpdateSet(location)
       });
   }
 });

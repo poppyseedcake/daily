@@ -1086,6 +1086,12 @@
                     bind:value={weatherLocationSearchQuery}
                     aria-label="City Search"
                     placeholder="Search city"
+                    onkeydown={(event) => {
+                      if (event.key === 'Enter') {
+                        event.preventDefault();
+                        void searchWeatherLocation();
+                      }
+                    }}
                   />
                 </label>
                 <button
