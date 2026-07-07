@@ -1,5 +1,8 @@
 import { describe, expect, test } from 'vitest';
-import { deterministicWeatherLocationGeocodingProvider } from './weatherLocationGeocoding';
+import {
+  deterministicWeatherLocationGeocodingProvider,
+  searchWeatherLocations
+} from './weatherLocationGeocoding';
 
 describe('Weather Location geocoding', () => {
   test('matches deterministic city results case-insensitively', async () => {
@@ -10,5 +13,21 @@ describe('Weather Location geocoding', () => {
         longitude: -89.644
       }
     ]);
+  });
+
+  test('returns a typed unavailable outcome when geocoding fails', async () => {
+    await expect(
+      searchWeatherLocations(
+        {
+          async search() {
+            throw new Error('Geocoding provider failed.');
+          }
+        },
+        'Warsaw'
+      )
+    ).resolves.toEqual({
+      outcome: 'unavailable',
+      reason: 'Weather Location search is unavailable right now.'
+    });
   });
 });

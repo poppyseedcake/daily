@@ -17,8 +17,18 @@ export type DailyWeatherForecast = {
   precipitationProbabilities: Array<number | null>;
 };
 
+export type DailyWeatherForecastResult =
+  | {
+      outcome: 'available';
+      forecast: DailyWeatherForecast;
+    }
+  | {
+      outcome: 'unavailable';
+      reason: string;
+    };
+
 export type WeatherForecastProvider = {
-  fetchDailyForecast: (request: DailyWeatherForecastRequest) => Promise<DailyWeatherForecast>;
+  fetchDailyForecast: (request: DailyWeatherForecastRequest) => Promise<DailyWeatherForecastResult>;
 };
 
 const openMeteoDailyForecastSchema = z.object({
@@ -43,33 +53,40 @@ export const createOpenMeteoWeatherForecastProvider = ({
   timeoutMilliseconds = defaultForecastTimeoutMilliseconds
 }: OpenMeteoProviderOptions = {}): WeatherForecastProvider => ({
   async fetchDailyForecast({ latitude, longitude, timeZone }) {
-    const url = new URL('https://api.open-meteo.com/v1/forecast');
-    url.searchParams.set('latitude', latitude.toString());
-    url.searchParams.set('longitude', longitude.toString());
-    url.searchParams.set('daily', [
-      'weather_code',
-      'temperature_2m_min',
-      'temperature_2m_max',
-      'precipitation_probability_max'
-    ].join(','));
-    url.searchParams.set('temperature_unit', 'celsius');
-    url.searchParams.set('timezone', timeZone);
+    try {
+      const url = new URL('https://api.open-meteo.com/v1/forecast');
+      url.searchParams.set('latitude', latitude.toString());
+      url.searchParams.set('longitude', longitude.toString());
+      url.searchParams.set('daily', [
+        'weather_code',
+        'temperature_2m_min',
+        'temperature_2m_max',
+        'precipitation_probability_max'
+      ].join(','));
+      url.searchParams.set('temperature_unit', 'celsius');
+      url.searchParams.set('timezone', timeZone);
 
-    const response = await fetchWithTimeout(fetcher, url, timeoutMilliseconds);
+      const response = await fetchWithTimeout(fetcher, url, timeoutMilliseconds);
 
-    if (!response.ok) {
-      throw new Error('Open-Meteo forecast request failed.');
+      if (!response.ok) {
+        return unavailableForecast();
+      }
+
+      const parsed = openMeteoDailyForecastSchema.parse(await response.json());
+
+      return {
+        outcome: 'available',
+        forecast: {
+          dates: parsed.daily.time,
+          weatherCodes: parsed.daily.weather_code,
+          minimumTemperaturesCelsius: parsed.daily.temperature_2m_min,
+          maximumTemperaturesCelsius: parsed.daily.temperature_2m_max,
+          precipitationProbabilities: parsed.daily.precipitation_probability_max
+        }
+      };
+    } catch {
+      return unavailableForecast();
     }
-
-    const parsed = openMeteoDailyForecastSchema.parse(await response.json());
-
-    return {
-      dates: parsed.daily.time,
-      weatherCodes: parsed.daily.weather_code,
-      minimumTemperaturesCelsius: parsed.daily.temperature_2m_min,
-      maximumTemperaturesCelsius: parsed.daily.temperature_2m_max,
-      precipitationProbabilities: parsed.daily.precipitation_probability_max
-    };
   }
 });
 
@@ -150,6 +167,11 @@ const fetchWithTimeout = async (
 
 const isFiniteNumber = (value: number | null | undefined): value is number =>
   typeof value === 'number' && Number.isFinite(value);
+
+const unavailableForecast = (): DailyWeatherForecastResult => ({
+  outcome: 'unavailable',
+  reason: 'Live weather is unavailable right now.'
+});
 
 export const weatherCodeDescription = (code: number) => {
   if (code === 0) {

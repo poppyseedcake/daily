@@ -61,11 +61,14 @@ describe('Daily Summary preview input', () => {
   test('renders live Weather from Weather Location coordinates in HTML and plain text', async () => {
     const forecastProvider = {
       fetchDailyForecast: vi.fn().mockResolvedValue({
-        dates: ['2026-07-07'],
-        weatherCodes: [61],
-        minimumTemperaturesCelsius: [12],
-        maximumTemperaturesCelsius: [19],
-        precipitationProbabilities: [80]
+        outcome: 'available',
+        forecast: {
+          dates: ['2026-07-07'],
+          weatherCodes: [61],
+          minimumTemperaturesCelsius: [12],
+          maximumTemperaturesCelsius: [19],
+          precipitationProbabilities: [80]
+        }
       })
     };
 
@@ -91,6 +94,73 @@ describe('Daily Summary preview input', () => {
     expect(rendered.text).toContain('Weather\nRainy. Low 12C, high 19C. Chance of precipitation 80%.');
     expect(rendered.html).toContain('Rainy. Low 12C, high 19C. Chance of precipitation 80%.');
     expect(rendered.text).not.toContain('Mock Weather');
+  });
+
+  test('omits disabled Weather and avoids live Weather provider work', async () => {
+    const forecastProvider = {
+      fetchDailyForecast: vi.fn().mockResolvedValue({
+        outcome: 'available',
+        forecast: {
+          dates: ['2026-07-07'],
+          weatherCodes: [61],
+          minimumTemperaturesCelsius: [12],
+          maximumTemperaturesCelsius: [19],
+          precipitationProbabilities: [80]
+        }
+      })
+    };
+
+    const preview = await buildDailySummaryPreviewInput({
+      configuration: {
+        ...configuration,
+        sections: {
+          ...configuration.sections,
+          weather: false
+        }
+      },
+      todoCategories,
+      todoTasks,
+      weatherLocation: {
+        label: 'Warsaw, Masovian Voivodeship, Poland',
+        latitude: 52.2297,
+        longitude: 21.0122
+      },
+      weatherProvider: forecastProvider,
+      now: new Date('2026-07-07T10:00:00.000Z')
+    });
+    const rendered = renderDailySummary(preview);
+
+    expect(forecastProvider.fetchDailyForecast).not.toHaveBeenCalled();
+    expect(rendered.text).not.toContain('Weather');
+    expect(rendered.html).not.toContain('Weather');
+  });
+
+  test('renders unavailable Weather from provider failure while keeping other sections visible', async () => {
+    const forecastProvider = {
+      fetchDailyForecast: vi.fn().mockResolvedValue({
+        outcome: 'unavailable',
+        reason: 'Live weather is unavailable right now.'
+      })
+    };
+
+    const preview = await buildDailySummaryPreviewInput({
+      configuration,
+      todoCategories,
+      todoTasks,
+      weatherLocation: {
+        label: 'Warsaw, Masovian Voivodeship, Poland',
+        latitude: 52.2297,
+        longitude: 21.0122
+      },
+      weatherProvider: forecastProvider,
+      now: new Date('2026-07-07T10:00:00.000Z')
+    });
+    const rendered = renderDailySummary(preview);
+
+    expect(rendered.text).toContain('Weather\nLive weather is unavailable right now.');
+    expect(rendered.text).toContain('Mock Commute');
+    expect(rendered.text).toContain('Demo Calendar');
+    expect(rendered.text).toContain('Buy coffee !');
   });
 
   test('keeps provider placeholders out of the persisted User setup shape', async () => {

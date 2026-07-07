@@ -15,5 +15,9 @@ export const GET = async ({ request }) => {
     return json(result, { status: 400 });
   }
 
+  if (result.outcome === 'unavailable') {
+    return json(result, { status: 503 });
+  }
+
   return json(result);
 };

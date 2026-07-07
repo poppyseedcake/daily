@@ -69,6 +69,14 @@ const buildPreviewWeatherSection = async ({
   weatherProvider: WeatherForecastProvider;
   now: Date;
 }): Promise<DailySummaryInput['sections']['weather']> => {
+  if (!configuration.sections.weather) {
+    return {
+      status: 'available',
+      label: 'Weather',
+      detail: ''
+    };
+  }
+
   if (!weatherLocation) {
     return {
       status: 'unavailable',
@@ -78,14 +86,22 @@ const buildPreviewWeatherSection = async ({
   }
 
   try {
-    const forecast = await weatherProvider.fetchDailyForecast({
+    const forecastResult = await weatherProvider.fetchDailyForecast({
       latitude: weatherLocation.latitude,
       longitude: weatherLocation.longitude,
       timeZone: configuration.userTimeZone
     });
 
+    if (forecastResult.outcome === 'unavailable') {
+      return {
+        status: 'unavailable',
+        label: 'Weather',
+        reason: forecastResult.reason
+      };
+    }
+
     return buildWeatherSection({
-      forecast,
+      forecast: forecastResult.forecast,
       userTimeZone: configuration.userTimeZone,
       now
     });

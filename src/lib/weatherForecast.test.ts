@@ -97,9 +97,10 @@ describe('Weather forecast mapping', () => {
       timeZone: 'Europe/Warsaw'
     });
 
-    const forecastExpectation = expect(forecast).rejects.toThrow(
-      'Open-Meteo forecast request timed out.'
-    );
+    const forecastExpectation = expect(forecast).resolves.toEqual({
+      outcome: 'unavailable',
+      reason: 'Live weather is unavailable right now.'
+    });
 
     await vi.advanceTimersByTimeAsync(100);
     await forecastExpectation;
@@ -107,5 +108,47 @@ describe('Weather forecast mapping', () => {
       signal: expect.any(AbortSignal)
     });
     vi.useRealTimers();
+  });
+
+  test('returns a typed unavailable outcome when Open-Meteo rejects a forecast request', async () => {
+    const provider = createOpenMeteoWeatherForecastProvider({
+      fetcher: vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ error: 'Service unavailable' }), {
+          status: 503
+        })
+      )
+    });
+
+    await expect(
+      provider.fetchDailyForecast({
+        latitude: 52.2297,
+        longitude: 21.0122,
+        timeZone: 'Europe/Warsaw'
+      })
+    ).resolves.toEqual({
+      outcome: 'unavailable',
+      reason: 'Live weather is unavailable right now.'
+    });
+  });
+
+  test('returns a typed unavailable outcome when Open-Meteo returns unmappable forecast data', async () => {
+    const provider = createOpenMeteoWeatherForecastProvider({
+      fetcher: vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ daily: { time: ['2026-07-07'] } }), {
+          status: 200
+        })
+      )
+    });
+
+    await expect(
+      provider.fetchDailyForecast({
+        latitude: 52.2297,
+        longitude: 21.0122,
+        timeZone: 'Europe/Warsaw'
+      })
+    ).resolves.toEqual({
+      outcome: 'unavailable',
+      reason: 'Live weather is unavailable right now.'
+    });
   });
 });
