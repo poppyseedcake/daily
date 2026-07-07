@@ -11,10 +11,10 @@ export type DailyWeatherForecastRequest = {
 
 export type DailyWeatherForecast = {
   dates: string[];
-  weatherCodes: number[];
-  minimumTemperaturesCelsius: number[];
-  maximumTemperaturesCelsius: number[];
-  precipitationProbabilities: number[];
+  weatherCodes: Array<number | null>;
+  minimumTemperaturesCelsius: Array<number | null>;
+  maximumTemperaturesCelsius: Array<number | null>;
+  precipitationProbabilities: Array<number | null>;
 };
 
 export type WeatherForecastProvider = {
@@ -24,14 +24,24 @@ export type WeatherForecastProvider = {
 const openMeteoDailyForecastSchema = z.object({
   daily: z.object({
     time: z.array(z.string()),
-    weather_code: z.array(z.number()),
-    temperature_2m_min: z.array(z.number()),
-    temperature_2m_max: z.array(z.number()),
-    precipitation_probability_max: z.array(z.number())
+    weather_code: z.array(z.number().nullable()),
+    temperature_2m_min: z.array(z.number().nullable()),
+    temperature_2m_max: z.array(z.number().nullable()),
+    precipitation_probability_max: z.array(z.number().nullable())
   })
 });
 
-export const openMeteoWeatherForecastProvider: WeatherForecastProvider = {
+type OpenMeteoProviderOptions = {
+  fetcher?: typeof fetch;
+  timeoutMilliseconds?: number;
+};
+
+const defaultForecastTimeoutMilliseconds = 3_000;
+
+export const createOpenMeteoWeatherForecastProvider = ({
+  fetcher = fetch,
+  timeoutMilliseconds = defaultForecastTimeoutMilliseconds
+}: OpenMeteoProviderOptions = {}): WeatherForecastProvider => ({
   async fetchDailyForecast({ latitude, longitude, timeZone }) {
     const url = new URL('https://api.open-meteo.com/v1/forecast');
     url.searchParams.set('latitude', latitude.toString());
@@ -45,7 +55,7 @@ export const openMeteoWeatherForecastProvider: WeatherForecastProvider = {
     url.searchParams.set('temperature_unit', 'celsius');
     url.searchParams.set('timezone', timeZone);
 
-    const response = await fetch(url);
+    const response = await fetchWithTimeout(fetcher, url, timeoutMilliseconds);
 
     if (!response.ok) {
       throw new Error('Open-Meteo forecast request failed.');
@@ -61,7 +71,9 @@ export const openMeteoWeatherForecastProvider: WeatherForecastProvider = {
       precipitationProbabilities: parsed.daily.precipitation_probability_max
     };
   }
-};
+});
+
+export const openMeteoWeatherForecastProvider = createOpenMeteoWeatherForecastProvider();
 
 export const buildWeatherSection = ({
   forecast,
@@ -86,12 +98,58 @@ export const buildWeatherSection = ({
     };
   }
 
+  const weatherCode = forecast.weatherCodes[dayIndex];
+  const minimumTemperature = forecast.minimumTemperaturesCelsius[dayIndex];
+  const maximumTemperature = forecast.maximumTemperaturesCelsius[dayIndex];
+  const precipitationProbability = forecast.precipitationProbabilities[dayIndex];
+
+  if (
+    !isFiniteNumber(weatherCode) ||
+    !isFiniteNumber(minimumTemperature) ||
+    !isFiniteNumber(maximumTemperature)
+  ) {
+    return {
+      status: 'unavailable',
+      label: 'Weather',
+      reason: 'Weather forecast is not available for today.'
+    };
+  }
+
   return {
     status: 'available',
     label: 'Weather',
-    detail: `${weatherCodeDescription(forecast.weatherCodes[dayIndex])}. Low ${Math.round(forecast.minimumTemperaturesCelsius[dayIndex])}C, high ${Math.round(forecast.maximumTemperaturesCelsius[dayIndex])}C. Chance of precipitation ${Math.round(forecast.precipitationProbabilities[dayIndex])}%.`
+    detail: [
+      `${weatherCodeDescription(weatherCode)}. Low ${Math.round(minimumTemperature)}C, high ${Math.round(maximumTemperature)}C.`,
+      isFiniteNumber(precipitationProbability)
+        ? `Chance of precipitation ${Math.round(precipitationProbability)}%.`
+        : 'Chance of precipitation unavailable.'
+    ].join(' ')
   };
 };
+
+const fetchWithTimeout = async (
+  fetcher: typeof fetch,
+  url: URL,
+  timeoutMilliseconds: number
+): Promise<Response> => {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMilliseconds);
+
+  try {
+    return await fetcher(url, { signal: controller.signal });
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      throw new Error('Open-Meteo forecast request timed out.');
+    }
+
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
+};
+
+const isFiniteNumber = (value: number | null | undefined): value is number =>
+  typeof value === 'number' && Number.isFinite(value);
 
 export const weatherCodeDescription = (code: number) => {
   if (code === 0) {
