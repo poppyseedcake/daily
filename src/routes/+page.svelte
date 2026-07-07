@@ -486,7 +486,15 @@
       const result = (await response.json()) as {
         outcome?: string;
         locations?: WeatherLocation[];
+        reason?: string;
       };
+
+      if (result.outcome === 'unavailable') {
+        weatherLocationSearchResults = [];
+        weatherLocationStatus = result.reason ?? 'Weather Location search is unavailable right now.';
+        weatherLocationStatusTone = 'error';
+        return;
+      }
 
       if (!response.ok || result.outcome !== 'found') {
         weatherLocationSearchResults = [];

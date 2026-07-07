@@ -219,11 +219,14 @@ vi.mock('$lib/weatherForecast', async () => {
         sentForecastRequests.push(request);
 
         return {
-          dates: ['2026-07-07'],
-          weatherCodes: [0],
-          minimumTemperaturesCelsius: [16],
-          maximumTemperaturesCelsius: [23],
-          precipitationProbabilities: [10]
+          outcome: 'available',
+          forecast: {
+            dates: ['2026-07-07'],
+            weatherCodes: [0],
+            minimumTemperaturesCelsius: [16],
+            maximumTemperaturesCelsius: [23],
+            precipitationProbabilities: [10]
+          }
         };
       }
     }

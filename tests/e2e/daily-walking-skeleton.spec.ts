@@ -158,6 +158,26 @@ test('Visitor Weather Location persists after page refresh', async ({ page }) =>
   await expect(page.getByText('52.2297, 21.0122')).toBeVisible();
 });
 
+test('Visitor sees unavailable Weather Location search reason when geocoding fails', async ({ page }) => {
+  await page.route('/weather-location-search?**', async (route) => {
+    await route.fulfill({
+      status: 503,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        outcome: 'unavailable',
+        reason: 'Weather Location search is unavailable right now.'
+      })
+    });
+  });
+
+  await page.goto('/');
+  await page.getByLabel('City Search').fill('Warsaw');
+  await page.getByRole('button', { name: 'Search' }).click();
+
+  await expect(page.getByText('Weather Location search is unavailable right now.')).toBeVisible();
+  await expect(page.getByText('Enter a valid city search.')).toHaveCount(0);
+});
+
 test('Visitor falls back safely when browser Local Setup data is corrupt', async ({ page }) => {
   await page.goto('/');
   await page.evaluate(() => {

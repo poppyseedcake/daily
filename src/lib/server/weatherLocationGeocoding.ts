@@ -43,17 +43,28 @@ export const deterministicWeatherLocationGeocodingProvider: WeatherLocationGeoco
 export const searchWeatherLocations = async (
   provider: WeatherLocationGeocodingProvider,
   query: unknown
-): Promise<{ outcome: 'found'; locations: WeatherLocation[] } | { outcome: 'invalid-query' }> => {
+): Promise<
+  | { outcome: 'found'; locations: WeatherLocation[] }
+  | { outcome: 'invalid-query' }
+  | { outcome: 'unavailable'; reason: string }
+> => {
   const result = weatherLocationSearchQuerySchema.safeParse(query);
 
   if (!result.success) {
     return { outcome: 'invalid-query' };
   }
 
-  const locations = await provider.search(result.data);
+  try {
+    const locations = await provider.search(result.data);
 
-  return {
-    outcome: 'found',
-    locations: z.array(weatherLocationSchema).parse(locations)
-  };
+    return {
+      outcome: 'found',
+      locations: z.array(weatherLocationSchema).parse(locations)
+    };
+  } catch {
+    return {
+      outcome: 'unavailable',
+      reason: 'Weather Location search is unavailable right now.'
+    };
+  }
 };
