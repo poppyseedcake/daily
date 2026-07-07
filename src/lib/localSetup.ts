@@ -13,6 +13,7 @@ import {
   type TodoTask,
   type TodoUrgency
 } from './todo';
+import { weatherLocationSchema, type WeatherLocation } from './weatherLocation';
 
 export const localSetupVersion = 1;
 export const localSetupStorageKey = 'daily.visitorLocalSetup.v1';
@@ -20,11 +21,13 @@ export const localSetupStorageKey = 'daily.visitorLocalSetup.v1';
 export type LocalSetup = {
   version: typeof localSetupVersion;
   summaryConfiguration: typeof defaultSummaryConfiguration;
+  weatherLocation: WeatherLocation | null;
 } & TodoState;
 
 export type LocalSetupInput = {
   version: typeof localSetupVersion;
   summaryConfiguration: typeof defaultSummaryConfiguration;
+  weatherLocation: WeatherLocation | null;
 } & TodoStateInput;
 
 export type LocalSetupStorageAdapter = {
@@ -69,11 +72,19 @@ export type UserSetupImportDraft = {
     position: number;
     completed: boolean;
   }>;
+  weatherLocation: {
+    id: string;
+    userId: string;
+    label: string;
+    latitude: number;
+    longitude: number;
+  } | null;
 };
 
 export type UserSetupImportDraftOptions = {
   userId: string;
   summaryConfigurationId: string;
+  weatherLocationId: string;
   nextTodoCategoryId: (category: TodoCategory) => string;
   nextTodoTaskId: (task: TodoTask) => string;
 };
@@ -81,13 +92,15 @@ export type UserSetupImportDraftOptions = {
 const localSetupBaseSchema = z
   .object({
     version: z.literal(localSetupVersion),
-    summaryConfiguration: summaryConfigurationSchema
+    summaryConfiguration: summaryConfigurationSchema,
+    weatherLocation: weatherLocationSchema.nullable().default(null)
   })
   .and(todoStateSchema);
 
 const localSetupSchema = localSetupBaseSchema.transform((setup) => ({
   version: setup.version,
   summaryConfiguration: setup.summaryConfiguration,
+  weatherLocation: setup.weatherLocation,
   todoCategories: setup.todoCategories,
   todoTasks: setup.todoTasks,
   nextTodoId: setup.nextTodoId
@@ -96,12 +109,14 @@ const localSetupSchema = localSetupBaseSchema.transform((setup) => ({
 const unversionedCurrentLocalSetupSchema = z
   .object({
     version: z.never().optional(),
-    summaryConfiguration: summaryConfigurationSchema
+    summaryConfiguration: summaryConfigurationSchema,
+    weatherLocation: weatherLocationSchema.nullable().default(null)
   })
   .and(todoStateSchema)
   .transform((setup) => ({
     version: localSetupVersion,
     summaryConfiguration: setup.summaryConfiguration,
+    weatherLocation: setup.weatherLocation,
     todoCategories: setup.todoCategories,
     todoTasks: setup.todoTasks,
     nextTodoId: setup.nextTodoId
@@ -260,6 +275,15 @@ export const createUserSetupImportDraftFromLocalSetup = (
       urgency: task.urgency,
       position: task.position,
       completed: task.completed ?? false
-    }))
+    })),
+    weatherLocation: setup.weatherLocation
+      ? {
+          id: options.weatherLocationId,
+          userId: options.userId,
+          label: setup.weatherLocation.label,
+          latitude: setup.weatherLocation.latitude,
+          longitude: setup.weatherLocation.longitude
+        }
+      : null
   };
 };

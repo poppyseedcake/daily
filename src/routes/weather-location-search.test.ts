@@ -1,16 +1,7 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
-const { getSession, providerCalls } = vi.hoisted(() => ({
-  getSession: vi.fn(),
+const { providerCalls } = vi.hoisted(() => ({
   providerCalls: [] as string[]
-}));
-
-vi.mock('$lib/server/auth', () => ({
-  auth: {
-    api: {
-      getSession
-    }
-  }
 }));
 
 vi.mock('$lib/server/weatherLocationGeocoding', async (importOriginal) => {
@@ -48,35 +39,17 @@ const searchWeatherLocations = (query: string) =>
 
 describe('Weather Location search endpoint', () => {
   beforeEach(() => {
-    getSession.mockReset();
     providerCalls.length = 0;
   });
 
-  test('rejects Visitor searches before provider calls', async () => {
-    getSession.mockResolvedValue(null);
-
-    const response = await searchWeatherLocations('Springfield');
-
-    expect(response.status).toBe(401);
-    expect(providerCalls).toEqual([]);
-  });
-
   test('rejects invalid search input before provider calls', async () => {
-    getSession.mockResolvedValue({
-      user: { id: 'user-1', email: 'user@example.com', emailVerified: true }
-    });
-
     const response = await searchWeatherLocations('<script>');
 
     expect(response.status).toBe(400);
     expect(providerCalls).toEqual([]);
   });
 
-  test('returns disambiguated city results for signed-in Users', async () => {
-    getSession.mockResolvedValue({
-      user: { id: 'user-1', email: 'user@example.com', emailVerified: true }
-    });
-
+  test('returns disambiguated city results for Visitors and signed-in Users', async () => {
     const response = await searchWeatherLocations('Springfield');
 
     expect(response.status).toBe(200);

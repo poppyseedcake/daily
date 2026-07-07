@@ -10,6 +10,7 @@ const createTestDatabase = () => {
   const sqlite = new Database(':memory:');
   sqlite.pragma('foreign_keys = ON');
   sqlite.exec(readFileSync('drizzle/0000_bootstrap_daily.sql', 'utf8'));
+  sqlite.exec(readFileSync('drizzle/0003_add_weather_locations.sql', 'utf8'));
 
   return {
     sqlite,
@@ -58,7 +59,14 @@ const validDraft = (): UserSetupImportDraft => ({
       position: 1,
       completed: false
     }
-  ]
+  ],
+  weatherLocation: {
+    id: 'weather-location-1',
+    userId: 'user-1',
+    label: 'Warsaw, Poland',
+    latitude: 52.2297,
+    longitude: 21.0122
+  }
 });
 
 describe('SQLite User Setup import store', () => {
@@ -85,6 +93,7 @@ describe('SQLite User Setup import store', () => {
       transaction.saveSummaryConfiguration(draft.summaryConfiguration);
       transaction.saveTodoCategories(draft.todoCategories);
       transaction.saveTodoTasks(draft.todoTasks);
+      transaction.saveWeatherLocation(draft.weatherLocation);
     });
 
     await expect(store.hasExistingUserSetup('user-1')).resolves.toBe(true);
@@ -98,5 +107,18 @@ describe('SQLite User Setup import store', () => {
       { title: 'Pack lunch', category_id: null, urgency: 'medium', position: 1 },
       { title: 'Send update', category_id: 'category-work', urgency: 'high', position: 1 }
     ]);
+    expect(sqlite.prepare('select label, latitude, longitude from weather_locations').all()).toEqual([
+      { label: 'Warsaw, Poland', latitude: 52.2297, longitude: 21.0122 }
+    ]);
+  });
+
+  test('treats an existing Weather Location as existing User setup', async () => {
+    const store = createUserSetupImportStore(database);
+
+    await store.transaction((transaction) => {
+      transaction.saveWeatherLocation(validDraft().weatherLocation);
+    });
+
+    await expect(store.hasExistingUserSetup('user-1')).resolves.toBe(true);
   });
 });
