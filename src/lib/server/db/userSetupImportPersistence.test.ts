@@ -41,7 +41,14 @@ const validDraft = (): UserSetupImportDraft => ({
       position: 1,
       completed: true
     }
-  ]
+  ],
+  weatherLocation: {
+    id: 'weather-location-1',
+    userId: 'user-1',
+    label: 'Warsaw, Poland',
+    latitude: 52.2297,
+    longitude: 21.0122
+  }
 });
 
 const createStore = ({
@@ -55,12 +62,14 @@ const createStore = ({
     summaryConfigurations: UserSetupImportDraft['summaryConfiguration'][];
     todoCategories: UserSetupImportDraft['todoCategories'];
     todoTasks: UserSetupImportDraft['todoTasks'];
+    weatherLocations: NonNullable<UserSetupImportDraft['weatherLocation']>[];
   };
 } => {
   const saved = {
     summaryConfigurations: [] as UserSetupImportDraft['summaryConfiguration'][],
     todoCategories: [] as UserSetupImportDraft['todoCategories'],
-    todoTasks: [] as UserSetupImportDraft['todoTasks']
+    todoTasks: [] as UserSetupImportDraft['todoTasks'],
+    weatherLocations: [] as NonNullable<UserSetupImportDraft['weatherLocation']>[]
   };
 
   return {
@@ -72,7 +81,8 @@ const createStore = ({
       const staged = {
         summaryConfigurations: [...saved.summaryConfigurations],
         todoCategories: [...saved.todoCategories],
-        todoTasks: [...saved.todoTasks]
+        todoTasks: [...saved.todoTasks],
+        weatherLocations: [...saved.weatherLocations]
       };
 
       const failIfNeeded = (step: typeof failAfter) => {
@@ -96,12 +106,18 @@ const createStore = ({
         saveTodoTasks(todoTasks) {
           staged.todoTasks.push(...todoTasks);
           failIfNeeded('todoTasks');
+        },
+        saveWeatherLocation(weatherLocation) {
+          if (weatherLocation) {
+            staged.weatherLocations.push(weatherLocation);
+          }
         }
       });
 
       saved.summaryConfigurations = staged.summaryConfigurations;
       saved.todoCategories = staged.todoCategories;
       saved.todoTasks = staged.todoTasks;
+      saved.weatherLocations = staged.weatherLocations;
 
       return result;
     }
@@ -119,6 +135,7 @@ describe('User Setup import persistence', () => {
     expect(store.saved.summaryConfigurations).toEqual([draft.summaryConfiguration]);
     expect(store.saved.todoCategories).toEqual(draft.todoCategories);
     expect(store.saved.todoTasks).toEqual(draft.todoTasks);
+    expect(store.saved.weatherLocations).toEqual([draft.weatherLocation]);
   });
 
   test('accepts every Summary Configuration supported user time zone', async () => {
@@ -141,6 +158,7 @@ describe('User Setup import persistence', () => {
     expect(store.saved.summaryConfigurations).toEqual([]);
     expect(store.saved.todoCategories).toEqual([]);
     expect(store.saved.todoTasks).toEqual([]);
+    expect(store.saved.weatherLocations).toEqual([]);
   });
 
   test('rejects invalid Summary Configuration clock ranges before writing', async () => {

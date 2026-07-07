@@ -54,6 +54,11 @@ describe('Visitor Local Setup module', () => {
         summaryTime: '18:45',
         sections: { weather: true, commute: false, calendar: true, todo: true }
       },
+      weatherLocation: {
+        label: 'Warsaw, Poland',
+        latitude: 52.2297,
+        longitude: 21.0122
+      },
       todoCategories: [{ id: 'category-1', name: 'Home', position: 1 }],
       demoCalendar: { label: 'Demo Calendar' },
       mockWeather: { label: 'Mock Weather' },
@@ -157,6 +162,7 @@ describe('Visitor Local Setup module', () => {
     expect(storedSetup).toEqual({
       version: setup.version,
       summaryConfiguration: setup.summaryConfiguration,
+      weatherLocation: null,
       todoCategories: setup.todoCategories,
       todoTasks: [{ ...setup.todoTasks[0], completed: false }],
       nextTodoId: setup.nextTodoId
@@ -255,6 +261,29 @@ describe('Visitor Local Setup module', () => {
     expect(result.setup.nextTodoId).toBe(7);
   });
 
+  test('round-trips Visitor Weather Location through browser storage', () => {
+    const storage = memoryStorage();
+    const setup: LocalSetupInput = {
+      ...createDefaultLocalSetup(),
+      weatherLocation: {
+        label: 'Warsaw, Poland',
+        latitude: 52.2297,
+        longitude: 21.0122
+      }
+    };
+
+    expect(saveLocalSetup(storage, setup).outcome).toBe('saved');
+
+    const result = loadLocalSetup(storage);
+
+    expect(result.outcome).toBe('loaded');
+    expect(result.setup.weatherLocation).toEqual({
+      label: 'Warsaw, Poland',
+      latitude: 52.2297,
+      longitude: 21.0122
+    });
+  });
+
   test('returns a failed outcome when storage cannot be written', () => {
     const result = saveLocalSetup(
       {
@@ -282,6 +311,11 @@ describe('Visitor Local Setup module', () => {
         ...defaultSummaryConfiguration,
         summaryTime: '18:45',
         sections: { weather: true, commute: false, calendar: true, todo: true }
+      },
+      weatherLocation: {
+        label: 'Warsaw, Poland',
+        latitude: 52.2297,
+        longitude: 21.0122
       },
       todoCategories: [
         { id: 'visitor-category-work', name: 'Work', position: 2 },
@@ -332,6 +366,7 @@ describe('Visitor Local Setup module', () => {
       {
         userId: 'user-1',
         summaryConfigurationId: 'summary-1',
+        weatherLocationId: 'weather-location-1',
         nextTodoCategoryId: (category) => `user-${category.id}`,
         nextTodoTaskId: (task) => `user-${task.id}`
       }
@@ -391,7 +426,14 @@ describe('Visitor Local Setup module', () => {
           position: 2,
           completed: false
         }
-      ]
+      ],
+      weatherLocation: {
+        id: 'weather-location-1',
+        userId: 'user-1',
+        label: 'Warsaw, Poland',
+        latitude: 52.2297,
+        longitude: 21.0122
+      }
     });
     expect(JSON.stringify(draft)).not.toContain('Demo Calendar');
     expect(JSON.stringify(draft)).not.toContain('Mock Weather');
@@ -421,6 +463,7 @@ describe('Visitor Local Setup module', () => {
         {
           userId: 'user-1',
           summaryConfigurationId: 'summary-1',
+          weatherLocationId: 'weather-location-1',
           nextTodoCategoryId: (category) => category.id,
           nextTodoTaskId: (task) => task.id
         }
@@ -445,6 +488,7 @@ describe('Visitor Local Setup module', () => {
           {
             userId: 'user-1',
             summaryConfigurationId: 'summary-1',
+            weatherLocationId: 'weather-location-1',
             nextTodoCategoryId: (category) => category.id,
             nextTodoTaskId: (task) => task.id
           }

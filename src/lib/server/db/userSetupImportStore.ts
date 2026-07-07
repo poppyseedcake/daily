@@ -1,6 +1,6 @@
 import { eq } from 'drizzle-orm';
 import { db } from '$lib/server/db';
-import { summaryConfigurations, todoCategories, todoTasks } from './schema';
+import { summaryConfigurations, todoCategories, todoTasks, weatherLocations } from './schema';
 import type { UserSetupImportPersistenceStore } from './userSetupImportPersistence';
 
 type SetupImportDatabase = typeof db;
@@ -21,6 +21,11 @@ const hasExistingUserSetup = (database: Pick<SetupImportDatabase, 'select'>, use
         .select({ id: todoTasks.id })
         .from(todoTasks)
         .where(eq(todoTasks.userId, userId))
+        .get() ||
+      database
+        .select({ id: weatherLocations.id })
+        .from(weatherLocations)
+        .where(eq(weatherLocations.userId, userId))
         .get()
   );
 
@@ -47,6 +52,11 @@ export const createUserSetupImportStore = (
         saveTodoTasks(tasks) {
           if (tasks.length > 0) {
             transaction.insert(todoTasks).values(tasks).run();
+          }
+        },
+        saveWeatherLocation(weatherLocation) {
+          if (weatherLocation) {
+            transaction.insert(weatherLocations).values(weatherLocation).run();
           }
         }
       })

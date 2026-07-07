@@ -139,6 +139,25 @@ test('Visitor Summary Configuration persists after page refresh', async ({ page 
   await expect(page.getByText('Todo source is not connected yet.')).not.toBeVisible();
 });
 
+test('Visitor Weather Location persists after page refresh', async ({ page }) => {
+  await page.goto('/');
+
+  await expect(page.getByText('Saved in this browser only')).toBeVisible();
+  await expect(page.getByLabel('City Search')).toBeEnabled();
+  await page.getByLabel('City Search').fill('Warsaw');
+  await expect(page.getByLabel('City Search')).toHaveValue('Warsaw');
+  await page.getByRole('button', { name: 'Search' }).click();
+  await page.getByRole('button', { name: 'Select' }).first().click();
+
+  await expect(page.getByText('Weather Location saved in this browser only.')).toBeVisible();
+  await expect(page.getByText('Warsaw, Masovian Voivodeship, Poland')).toBeVisible();
+
+  await page.reload();
+
+  await expect(page.getByText('Warsaw, Masovian Voivodeship, Poland')).toBeVisible();
+  await expect(page.getByText('52.2297, 21.0122')).toBeVisible();
+});
+
 test('Visitor falls back safely when browser Local Setup data is corrupt', async ({ page }) => {
   await page.goto('/');
   await page.evaluate(() => {

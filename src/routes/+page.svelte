@@ -277,6 +277,12 @@
         };
   const applyLocalSetup = (setup: LocalSetup) => {
     updateSummaryConfiguration(setup.summaryConfiguration);
+    weatherLocation = setup.weatherLocation;
+    weatherLocationSearchQuery = setup.weatherLocation?.label ?? '';
+    weatherLocationStatus = setup.weatherLocation
+      ? 'Weather Location saved in this browser only.'
+      : 'No Weather Location saved yet.';
+    weatherLocationStatusTone = setup.weatherLocation ? 'success' : 'neutral';
     todoCategories = setup.todoCategories;
     todoTasks = setup.todoTasks;
     nextTodoId = setup.nextTodoId;
@@ -284,6 +290,7 @@
   const currentLocalSetup = (): LocalSetupInput => ({
     ...createDefaultLocalSetup(),
     summaryConfiguration: currentSummaryConfiguration(),
+    weatherLocation,
     todoCategories,
     todoTasks,
     nextTodoId
@@ -465,16 +472,16 @@
     }
   };
   const searchWeatherLocation = async () => {
-    if (authState.mode !== 'user') {
-      return;
-    }
-
+    const searchInput = globalThis.document?.getElementById('weather-location-search');
+    const currentSearchQuery =
+      searchInput instanceof HTMLInputElement ? searchInput.value : weatherLocationSearchQuery;
+    weatherLocationSearchQuery = currentSearchQuery;
     weatherLocationStatus = 'Searching Weather Locations...';
     weatherLocationStatusTone = 'neutral';
 
     try {
       const response = await fetch(
-        `/weather-location-search?q=${encodeURIComponent(weatherLocationSearchQuery)}`
+        `/weather-location-search?q=${encodeURIComponent(currentSearchQuery)}`
       );
       const result = (await response.json()) as {
         outcome?: string;
@@ -502,6 +509,11 @@
   };
   const saveWeatherLocation = async (location: WeatherLocation) => {
     if (authState.mode !== 'user') {
+      weatherLocation = location;
+      weatherLocationSearchResults = [];
+      weatherLocationSearchQuery = location.label;
+      weatherLocationStatus = 'Weather Location saved in this browser only.';
+      weatherLocationStatusTone = 'success';
       return;
     }
 
@@ -1060,87 +1072,86 @@
       {#if enabledSections.weather}
         <Panel
           title="Weather Location"
-          eyebrow={authState.mode === 'user' ? 'User Setup' : 'Daily Summary'}
+          eyebrow={authState.mode === 'user' ? 'User Setup' : 'Local Setup'}
         >
-          {#if authState.mode === 'user'}
-            <div class="space-y-4">
-              <div class="flex flex-wrap items-start justify-between gap-3">
-                <div class="min-w-0">
-                  <p class="font-medium text-stone-900">
-                    {weatherLocation?.label ?? 'No Weather Location selected'}
+          <div class="space-y-4">
+            <div class="flex flex-wrap items-start justify-between gap-3">
+              <div class="min-w-0">
+                <p class="font-medium text-stone-900">
+                  {weatherLocation?.label ?? 'No Weather Location selected'}
+                </p>
+                {#if weatherLocation}
+                  <p class="mt-1 text-sm text-stone-600">
+                    {weatherLocation.latitude.toFixed(4)}, {weatherLocation.longitude.toFixed(4)}
                   </p>
-                  {#if weatherLocation}
-                    <p class="mt-1 text-sm text-stone-600">
-                      {weatherLocation.latitude.toFixed(4)}, {weatherLocation.longitude.toFixed(4)}
-                    </p>
-                  {/if}
-                </div>
-                <CloudSun size={22} class="text-emerald-700" aria-hidden="true" />
+                {/if}
               </div>
-
-              <div class="grid gap-2 sm:grid-cols-[1fr_auto]">
-                <label class="grid gap-1">
-                  <span class="font-medium text-stone-800">City Search</span>
-                  <input
-                    class="h-10 rounded-md border border-stone-300 px-3"
-                    bind:value={weatherLocationSearchQuery}
-                    aria-label="City Search"
-                    placeholder="Search city"
-                    onkeydown={(event) => {
-                      if (event.key === 'Enter') {
-                        event.preventDefault();
-                        void searchWeatherLocation();
-                      }
-                    }}
-                  />
-                </label>
-                <button
-                  class="inline-flex h-10 items-center justify-center gap-2 self-end rounded-md border border-stone-300 px-4 text-sm font-semibold text-stone-800 hover:bg-stone-50"
-                  type="button"
-                  onclick={searchWeatherLocation}
-                >
-                  <Search size={18} aria-hidden="true" />
-                  Search
-                </button>
-              </div>
-
-              {#if weatherLocationSearchResults.length > 0}
-                <ul class="grid gap-2" aria-label="Weather Location search results">
-                  {#each weatherLocationSearchResults as result}
-                    <li class="rounded-md border border-stone-200 px-3 py-2">
-                      <div class="flex flex-wrap items-center justify-between gap-3">
-                        <div class="min-w-0">
-                          <p class="break-words font-medium text-stone-950">{result.label}</p>
-                          <p class="mt-1 text-sm text-stone-600">
-                            {result.latitude.toFixed(4)}, {result.longitude.toFixed(4)}
-                          </p>
-                        </div>
-                        <button
-                          class="inline-flex h-9 items-center gap-2 rounded-md bg-emerald-700 px-3 text-sm font-semibold text-white hover:bg-emerald-800"
-                          type="button"
-                          onclick={() => saveWeatherLocation(result)}
-                        >
-                          <Check size={16} aria-hidden="true" />
-                          Select
-                        </button>
-                      </div>
-                    </li>
-                  {/each}
-                </ul>
-              {/if}
-
-              <p
-                class={`text-sm ${weatherLocationStatusTone === 'success' ? 'text-emerald-700' : weatherLocationStatusTone === 'warning' ? 'text-amber-700' : weatherLocationStatusTone === 'error' ? 'text-red-700' : 'text-stone-600'}`}
-              >
-                {weatherLocationStatus}
-              </p>
-            </div>
-          {:else}
-            <div class="flex flex-wrap items-center justify-between gap-3">
-              <p class="text-stone-700">Mock Weather appears in Visitor previews until sign-in.</p>
               <CloudSun size={22} class="text-emerald-700" aria-hidden="true" />
             </div>
-          {/if}
+
+            <div class="grid gap-2 sm:grid-cols-[1fr_auto]">
+              <label class="grid gap-1">
+                <span class="font-medium text-stone-800">City Search</span>
+                <input
+                  class="h-10 rounded-md border border-stone-300 px-3"
+                  bind:value={weatherLocationSearchQuery}
+                  id="weather-location-search"
+                  aria-label="City Search"
+                  placeholder="Search city"
+                  disabled={!localSetupHydrated}
+                  oninput={(event) => {
+                    weatherLocationSearchQuery = readInputValue(event);
+                  }}
+                  onkeydown={(event) => {
+                    if (event.key === 'Enter') {
+                      event.preventDefault();
+                      void searchWeatherLocation();
+                    }
+                  }}
+                />
+              </label>
+              <button
+                class="inline-flex h-10 items-center justify-center gap-2 self-end rounded-md border border-stone-300 px-4 text-sm font-semibold text-stone-800 hover:bg-stone-50"
+                type="button"
+                disabled={!localSetupHydrated}
+                onclick={searchWeatherLocation}
+              >
+                <Search size={18} aria-hidden="true" />
+                Search
+              </button>
+            </div>
+
+            {#if weatherLocationSearchResults.length > 0}
+              <ul class="grid gap-2" aria-label="Weather Location search results">
+                {#each weatherLocationSearchResults as result}
+                  <li class="rounded-md border border-stone-200 px-3 py-2">
+                    <div class="flex flex-wrap items-center justify-between gap-3">
+                      <div class="min-w-0">
+                        <p class="break-words font-medium text-stone-950">{result.label}</p>
+                        <p class="mt-1 text-sm text-stone-600">
+                          {result.latitude.toFixed(4)}, {result.longitude.toFixed(4)}
+                        </p>
+                      </div>
+                      <button
+                        class="inline-flex h-9 items-center gap-2 rounded-md bg-emerald-700 px-3 text-sm font-semibold text-white hover:bg-emerald-800"
+                        type="button"
+                        onclick={() => saveWeatherLocation(result)}
+                      >
+                        <Check size={16} aria-hidden="true" />
+                        Select
+                      </button>
+                    </div>
+                  </li>
+                {/each}
+              </ul>
+            {/if}
+
+            <p
+              class={`text-sm ${weatherLocationStatusTone === 'success' ? 'text-emerald-700' : weatherLocationStatusTone === 'warning' ? 'text-amber-700' : weatherLocationStatusTone === 'error' ? 'text-red-700' : 'text-stone-600'}`}
+            >
+              {weatherLocationStatus}
+            </p>
+          </div>
         </Panel>
       {/if}
 

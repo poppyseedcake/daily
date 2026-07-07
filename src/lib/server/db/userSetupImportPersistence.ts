@@ -32,10 +32,19 @@ const persistedTodoTaskSchema = z.object({
   completed: z.boolean()
 });
 
+const persistedWeatherLocationSchema = z.object({
+  id: z.string().min(1),
+  userId: z.string().min(1),
+  label: z.string().trim().min(1).max(160).refine((label) => !/[<>]/.test(label)),
+  latitude: z.number().finite().min(-90).max(90),
+  longitude: z.number().finite().min(-180).max(180)
+});
+
 const userSetupImportDraftSchema = z.object({
   summaryConfiguration: persistedSummaryConfigurationSchema,
   todoCategories: z.array(persistedTodoCategorySchema),
-  todoTasks: z.array(persistedTodoTaskSchema)
+  todoTasks: z.array(persistedTodoTaskSchema),
+  weatherLocation: persistedWeatherLocationSchema.nullable()
 });
 
 export type UserSetupImportPersistenceTransaction = {
@@ -45,6 +54,7 @@ export type UserSetupImportPersistenceTransaction = {
   ) => void;
   saveTodoCategories: (todoCategories: UserSetupImportDraft['todoCategories']) => void;
   saveTodoTasks: (todoTasks: UserSetupImportDraft['todoTasks']) => void;
+  saveWeatherLocation: (weatherLocation: UserSetupImportDraft['weatherLocation']) => void;
 };
 
 export type UserSetupImportPersistenceStore = {
@@ -59,9 +69,10 @@ export type UserSetupImportPersistenceOutcome =
   | 'import-failed';
 
 const isDraftForUser = (userId: string, draft: UserSetupImportDraft) =>
-  draft.summaryConfiguration.userId === userId &&
-  draft.todoCategories.every((category) => category.userId === userId) &&
-  draft.todoTasks.every((task) => task.userId === userId);
+    draft.summaryConfiguration.userId === userId &&
+    draft.todoCategories.every((category) => category.userId === userId) &&
+    draft.todoTasks.every((task) => task.userId === userId) &&
+    (draft.weatherLocation === null || draft.weatherLocation.userId === userId);
 
 const hasValidTaskCategoryReferences = (draft: UserSetupImportDraft) => {
   const categoryIds = new Set(draft.todoCategories.map((category) => category.id));
@@ -95,6 +106,7 @@ export const persistUserSetupImportDraftForNewUser = async (
       transaction.saveSummaryConfiguration(result.data.summaryConfiguration);
       transaction.saveTodoCategories(result.data.todoCategories);
       transaction.saveTodoTasks(result.data.todoTasks);
+      transaction.saveWeatherLocation(result.data.weatherLocation);
 
       return { outcome: 'imported' };
     });
