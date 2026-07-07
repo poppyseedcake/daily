@@ -11,6 +11,7 @@ const {
   sentForecastRequests,
   sentMessages,
   deliveryProviderMode,
+  weatherProviderMode,
   validationFailure,
   loadFailure
 } = vi.hoisted(() => ({
@@ -23,6 +24,9 @@ const {
       | 'missing-message-id'
       | 'configuration-missing'
       | 'unavailable'
+  },
+  weatherProviderMode: {
+    outcome: 'available' as 'available' | 'unavailable'
   },
   validationFailure: { enabled: false },
   recordedDeliveryRecords: [] as Array<{ userId: string; record: unknown }>,
@@ -218,6 +222,13 @@ vi.mock('$lib/weatherForecast', async () => {
       async fetchDailyForecast(request: unknown) {
         sentForecastRequests.push(request);
 
+        if (weatherProviderMode.outcome === 'unavailable') {
+          return {
+            outcome: 'unavailable',
+            reason: 'Live weather is unavailable right now.'
+          };
+        }
+
         return {
           outcome: 'available',
           forecast: {
@@ -252,6 +263,7 @@ describe('Daily page server load', () => {
     getSession.mockReset();
     loadFailure.enabled = false;
     deliveryProviderMode.outcome = 'accepted';
+    weatherProviderMode.outcome = 'available';
     validationFailure.enabled = false;
     recordedDeliveryRecords.length = 0;
     sentForecastRequests.length = 0;
@@ -483,6 +495,41 @@ describe('Daily page server load', () => {
         })
       }
     ]);
+  });
+
+  test('sends unavailable Weather content without failing the accepted test Daily Summary', async () => {
+    getSession.mockResolvedValue({
+      user: { id: 'user-1', email: 'user@example.com', emailVerified: true }
+    });
+    weatherProviderMode.outcome = 'unavailable';
+
+    const result = await sendTestDailySummary();
+
+    expect(result).toEqual({ outcome: 'sent' });
+    expect(sentMessages).toEqual([
+      expect.objectContaining({
+        html: expect.stringContaining('Live weather is unavailable right now.'),
+        text: expect.stringContaining('Weather\nLive weather is unavailable right now.')
+      })
+    ]);
+    expect(recordedDeliveryRecords).toEqual([
+      {
+        userId: 'user-1',
+        record: expect.objectContaining({
+          attemptType: 'test',
+          deliveryStatus: 'sent',
+          providerName: 'fake-resend',
+          providerMessageId: 'fake-message-1',
+          providerStatusMetadata: 'accepted',
+          errorClassification: null
+        })
+      }
+    ]);
+    expect(recordedDeliveryRecords[0]?.record).not.toEqual(
+      expect.objectContaining({
+        providerStatusMetadata: expect.stringContaining('Live weather is unavailable right now.')
+      })
+    );
   });
 
   test('records a failed Delivery Record when delivery configuration is missing', async () => {
