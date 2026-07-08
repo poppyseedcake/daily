@@ -61,9 +61,9 @@ export const buildDailySummaryPreviewInput = async ({
             }
           : calendarReadiness.status === 'connected'
             ? {
-                status: 'available',
+                status: 'unavailable',
                 label: calendarReadiness.label,
-                detail: calendarReadiness.detail
+                reason: 'Calendar preview is unavailable until Calendar Events can be loaded.'
               }
           : {
               status: 'unavailable',

@@ -1,4 +1,4 @@
-import { auth, googleCalendarReadScopes } from '$lib/server/auth';
+import { auth, googleCalendarReadScopes, googleIdentityScopes } from '$lib/server/auth';
 
 const calendarConnectionFailedPath = '/?calendarConnection=failed';
 const calendarConnectionSuccessPath = '/?calendarConnection=success';
@@ -23,13 +23,13 @@ export const GET = async ({ request }) => {
   }
 
   try {
-    const result = await auth.api.signInSocial({
+    const result = await auth.api.linkSocialAccount({
       headers: request.headers,
       body: {
         provider: 'google',
         callbackURL: calendarConnectionSuccessPath,
         errorCallbackURL: calendarConnectionFailedPath,
-        scopes: [...googleCalendarReadScopes]
+        scopes: [...googleIdentityScopes, ...googleCalendarReadScopes]
       },
       returnHeaders: true
     });

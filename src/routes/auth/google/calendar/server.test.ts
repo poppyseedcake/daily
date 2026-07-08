@@ -1,19 +1,20 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
-const { getSession, signInSocial } = vi.hoisted(() => ({
+const { getSession, linkSocialAccount } = vi.hoisted(() => ({
   getSession: vi.fn(),
-  signInSocial: vi.fn()
+  linkSocialAccount: vi.fn()
 }));
 
 vi.mock('$lib/server/auth', () => ({
   auth: {
     api: {
       getSession,
-      signInSocial
+      linkSocialAccount
     }
   },
   googleCalendarReadScope: 'https://www.googleapis.com/auth/calendar.readonly',
-  googleCalendarReadScopes: ['https://www.googleapis.com/auth/calendar.readonly']
+  googleCalendarReadScopes: ['https://www.googleapis.com/auth/calendar.readonly'],
+  googleIdentityScopes: ['openid', 'email', 'profile']
 }));
 
 const { GET } = await import('./+server');
@@ -21,14 +22,14 @@ const { GET } = await import('./+server');
 describe('Google Calendar consent route', () => {
   beforeEach(() => {
     getSession.mockReset();
-    signInSocial.mockReset();
+    linkSocialAccount.mockReset();
   });
 
-  test('starts a separate Google consent flow with read-only Calendar scopes', async () => {
+  test('starts an authenticated Google account-link flow with identity and Calendar scopes', async () => {
     getSession.mockResolvedValue({
       user: { id: 'user-1', email: 'user@example.com', emailVerified: true }
     });
-    signInSocial.mockResolvedValue({
+    linkSocialAccount.mockResolvedValue({
       response: { url: 'https://accounts.google.example/calendar-consent' },
       headers: new Headers()
     });
@@ -41,13 +42,13 @@ describe('Google Calendar consent route', () => {
     expect(response.headers.get('location')).toBe(
       'https://accounts.google.example/calendar-consent'
     );
-    expect(signInSocial).toHaveBeenCalledWith({
+    expect(linkSocialAccount).toHaveBeenCalledWith({
       headers: expect.any(Headers),
       body: {
         provider: 'google',
         callbackURL: '/?calendarConnection=success',
         errorCallbackURL: '/?calendarConnection=failed',
-        scopes: ['https://www.googleapis.com/auth/calendar.readonly']
+        scopes: ['openid', 'email', 'profile', 'https://www.googleapis.com/auth/calendar.readonly']
       },
       returnHeaders: true
     });
@@ -62,14 +63,14 @@ describe('Google Calendar consent route', () => {
 
     expect(response.status).toBe(303);
     expect(response.headers.get('location')).toBe('/');
-    expect(signInSocial).not.toHaveBeenCalled();
+    expect(linkSocialAccount).not.toHaveBeenCalled();
   });
 
   test('returns to failed Calendar state when Better Auth cannot start consent', async () => {
     getSession.mockResolvedValue({
       user: { id: 'user-1', email: 'user@example.com', emailVerified: true }
     });
-    signInSocial.mockResolvedValue({
+    linkSocialAccount.mockResolvedValue({
       response: {},
       headers: new Headers()
     });
@@ -86,7 +87,7 @@ describe('Google Calendar consent route', () => {
     getSession.mockResolvedValue({
       user: { id: 'user-1', email: 'user@example.com', emailVerified: true }
     });
-    signInSocial.mockRejectedValue(new Error('provider unavailable'));
+    linkSocialAccount.mockRejectedValue(new Error('provider unavailable'));
 
     const response = await GET({
       request: new Request('http://localhost/auth/google/calendar')

@@ -18,18 +18,30 @@ const createTestDatabase = () => {
   };
 };
 
-const saveUser = (sqlite: Database.Database, id: string) => {
+const saveUser = (sqlite: Database.Database, id: string, googleSubject = `google-${id}`) => {
   sqlite
     .prepare(
       'insert into users (id, google_subject, email, created_at, updated_at) values (?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)'
     )
-    .run(id, `google-${id}`, `${id}@example.com`);
+    .run(id, googleSubject, `${id}@example.com`);
 };
 
-const saveAuthGoogleAccount = (sqlite: Database.Database, userId: string) => {
+const saveAuthGoogleAccount = (
+  sqlite: Database.Database,
+  userId: string,
+  overrides: Partial<{
+    id: string;
+    accountId: string;
+    accessToken: string;
+    refreshToken: string;
+    scope: string;
+    createdAt: number;
+    updatedAt: number;
+  }> = {}
+) => {
   sqlite
     .prepare(
-      'insert into auth_user (id, name, email, email_verified, created_at, updated_at) values (?, ?, ?, true, ?, ?)'
+      'insert or ignore into auth_user (id, name, email, email_verified, created_at, updated_at) values (?, ?, ?, true, ?, ?)'
     )
     .run(userId, 'Daily User', `${userId}@example.com`, 1783521000000, 1783521000000);
   sqlite
@@ -37,16 +49,16 @@ const saveAuthGoogleAccount = (sqlite: Database.Database, userId: string) => {
       'insert into auth_account (id, account_id, provider_id, user_id, access_token, refresh_token, access_token_expires_at, scope, created_at, updated_at) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
     )
     .run(
-      `account-${userId}`,
-      `google-${userId}`,
+      overrides.id ?? `account-${userId}`,
+      overrides.accountId ?? `google-${userId}`,
       'google',
       userId,
-      `access-${userId}`,
-      `refresh-${userId}`,
+      overrides.accessToken ?? `access-${userId}`,
+      overrides.refreshToken ?? `refresh-${userId}`,
       1783521000,
-      'openid email profile https://www.googleapis.com/auth/calendar.readonly',
-      1783519200000,
-      1783519200000
+      overrides.scope ?? 'openid email profile https://www.googleapis.com/auth/calendar.readonly',
+      overrides.createdAt ?? 1783519200000,
+      overrides.updatedAt ?? 1783519200000
     );
 };
 
@@ -107,6 +119,76 @@ describe('SQLite User Calendar Connection store', () => {
       refreshTokenAvailable: true,
       accessTokenExpiresAt: new Date('2026-07-08T14:30:00.000Z')
     });
+  });
+
+  test('persists Calendar connection to the Daily user matched by Google subject', async () => {
+    const store = createUserCalendarConnectionStore(database);
+    saveUser(sqlite, 'daily-user-1', 'google-subject-1');
+    saveAuthGoogleAccount(sqlite, 'auth-user-1', {
+      accountId: 'google-subject-1'
+    });
+
+    await expect(store.saveConnectedFromGoogleAuthAccount('auth-user-1')).resolves.toBe(true);
+
+    await expect(store.load('daily-user-1')).resolves.toMatchObject({
+      status: 'connected',
+      providerAccountId: 'google-subject-1'
+    });
+  });
+
+  test('uses the newest Calendar-scoped Google auth account for the signed-in auth user', async () => {
+    const store = createUserCalendarConnectionStore(database);
+    saveAuthGoogleAccount(sqlite, 'user-1', {
+      id: 'account-user-1-stale',
+      scope: 'openid email profile',
+      updatedAt: 1783519200000
+    });
+    saveAuthGoogleAccount(sqlite, 'user-1', {
+      id: 'account-user-1-calendar',
+      accessToken: 'access-calendar',
+      scope: 'openid email profile https://www.googleapis.com/auth/calendar.readonly',
+      updatedAt: 1783522800000
+    });
+
+    await expect(store.saveConnectedFromGoogleAuthAccount('user-1')).resolves.toBe(true);
+
+    await expect(store.load('user-1')).resolves.toMatchObject({
+      status: 'connected',
+      accessTokenAvailable: true,
+      grantedScopes: expect.arrayContaining(['https://www.googleapis.com/auth/calendar.readonly'])
+    });
+  });
+
+  test('ignores newer Google auth accounts that do not include the Calendar scope', async () => {
+    const store = createUserCalendarConnectionStore(database);
+    saveAuthGoogleAccount(sqlite, 'user-1', {
+      id: 'account-user-1-calendar',
+      accessToken: 'access-calendar',
+      scope: 'openid email profile https://www.googleapis.com/auth/calendar.readonly',
+      updatedAt: 1783519200000
+    });
+    saveAuthGoogleAccount(sqlite, 'user-1', {
+      id: 'account-user-1-identity-only',
+      scope: 'openid email profile',
+      updatedAt: 1783522800000
+    });
+
+    await expect(store.saveConnectedFromGoogleAuthAccount('user-1')).resolves.toBe(true);
+
+    await expect(store.load('user-1')).resolves.toMatchObject({
+      status: 'connected',
+      accessTokenAvailable: true,
+      grantedScopes: expect.arrayContaining(['https://www.googleapis.com/auth/calendar.readonly'])
+    });
+  });
+
+  test('rolls back selected Calendar replacement when an insert fails', async () => {
+    const store = createUserCalendarConnectionStore(database);
+    await store.saveSelectedCalendars('user-1', ['primary', 'work']);
+
+    await expect(store.saveSelectedCalendars('user-1', ['personal', 'personal'])).rejects.toThrow();
+
+    await expect(store.loadSelectedCalendarIds('user-1')).resolves.toEqual(['primary', 'work']);
   });
 
   test('records failed consent without breaking the User connection surface', async () => {

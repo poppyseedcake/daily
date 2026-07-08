@@ -1,8 +1,8 @@
 import { randomUUID } from 'node:crypto';
-import { and, asc, eq } from 'drizzle-orm';
+import { and, asc, desc, eq } from 'drizzle-orm';
 import { googleCalendarReadScope } from '$lib/googleCalendarScopes';
 import { db } from '$lib/server/db';
-import { authAccount, calendarConnections, selectedCalendars } from './schema';
+import { authAccount, calendarConnections, selectedCalendars, users } from './schema';
 
 export type ConnectedCalendarConnection = {
   status: 'connected';
@@ -30,7 +30,7 @@ export type UserCalendarConnectionStore = {
   loadSelectedCalendarIds: (userId: string) => Promise<string[]>;
 };
 
-type CalendarConnectionDatabase = Pick<typeof db, 'delete' | 'insert' | 'query'>;
+type CalendarConnectionDatabase = typeof db;
 
 const parseGrantedScopes = (value: string): string[] => {
   const parsed = JSON.parse(value) as unknown;
@@ -97,22 +97,36 @@ export const createUserCalendarConnectionStore = (
         }
       });
   },
-  async saveConnectedFromGoogleAuthAccount(userId) {
-    const row = await database.query.authAccount.findFirst({
-      where: and(eq(authAccount.user_id, userId), eq(authAccount.provider_id, 'google'))
+  async saveConnectedFromGoogleAuthAccount(authUserId) {
+    const rows = await database.query.authAccount.findMany({
+      where: and(eq(authAccount.user_id, authUserId), eq(authAccount.provider_id, 'google')),
+      orderBy: desc(authAccount.updated_at)
     });
-    const grantedScopes = parseProviderScopes(row?.scope ?? null);
+    const scopedAccount = rows
+      .map((row) => ({
+        row,
+        grantedScopes: parseProviderScopes(row.scope)
+      }))
+      .find((account) => account.grantedScopes.includes(googleCalendarReadScope));
 
-    if (!row || !grantedScopes.includes(googleCalendarReadScope)) {
+    if (!scopedAccount) {
       return false;
     }
 
-    await this.saveConnected(userId, {
-      providerAccountId: row.account_id,
-      grantedScopes,
-      accessTokenAvailable: Boolean(row.access_token),
-      refreshTokenAvailable: Boolean(row.refresh_token),
-      accessTokenExpiresAt: row.access_token_expires_at
+    const dailyUser = await database.query.users.findFirst({
+      where: eq(users.googleSubject, scopedAccount.row.account_id)
+    });
+
+    if (!dailyUser) {
+      return false;
+    }
+
+    await this.saveConnected(dailyUser.id, {
+      providerAccountId: scopedAccount.row.account_id,
+      grantedScopes: scopedAccount.grantedScopes,
+      accessTokenAvailable: Boolean(scopedAccount.row.access_token),
+      refreshTokenAvailable: Boolean(scopedAccount.row.refresh_token),
+      accessTokenExpiresAt: scopedAccount.row.access_token_expires_at
     });
 
     return true;
@@ -145,15 +159,20 @@ export const createUserCalendarConnectionStore = (
     await database.delete(selectedCalendars).where(eq(selectedCalendars.userId, userId));
   },
   async saveSelectedCalendars(userId, calendarIds) {
-    await database.delete(selectedCalendars).where(eq(selectedCalendars.userId, userId));
-    for (const [position, calendarId] of calendarIds.entries()) {
-      await database.insert(selectedCalendars).values({
-        id: randomUUID(),
-        userId,
-        calendarId,
-        position
-      });
-    }
+    database.transaction((transaction) => {
+      transaction.delete(selectedCalendars).where(eq(selectedCalendars.userId, userId)).run();
+      for (const [position, calendarId] of calendarIds.entries()) {
+        transaction
+          .insert(selectedCalendars)
+          .values({
+            id: randomUUID(),
+            userId,
+            calendarId,
+            position
+          })
+          .run();
+      }
+    });
   },
   async loadSelectedCalendarIds(userId) {
     const rows = await database.query.selectedCalendars.findMany({
