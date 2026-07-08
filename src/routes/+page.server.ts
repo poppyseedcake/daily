@@ -126,17 +126,18 @@ export const load = async ({ request }) => {
           return { status: 'not-connected' } as const;
         })
       : null;
+  let calendarAccessToken: string | null = null;
   const selectedCalendarConfiguration =
     authState.mode === 'user' && calendarConnection?.status === 'connected'
       ? await (async () => {
           try {
-            const accessToken = await loadGoogleCalendarAccessToken(authState.userId);
+            calendarAccessToken = await loadGoogleCalendarAccessToken(authState.userId);
 
-            if (!accessToken) {
+            if (!calendarAccessToken) {
               return null;
             }
 
-            const providerCalendars = await googleCalendarListProvider.loadCalendars(accessToken);
+            const providerCalendars = await googleCalendarListProvider.loadCalendars(calendarAccessToken);
             const savedCalendars = await userCalendarConnectionStore.loadSelectedCalendars(authState.userId);
             const configuration = buildSelectedCalendarConfiguration({
               providerCalendars,
@@ -189,18 +190,6 @@ export const load = async ({ request }) => {
                     primary: calendar.primary
                   }))
               : [];
-          const calendarAccessToken =
-            calendarConnection?.status === 'connected'
-              ? await loadGoogleCalendarAccessToken(authState.userId).catch((error: unknown) => {
-                  console.warn('Failed to load User Calendar access token for preview.', {
-                    userId: authState.userId,
-                    error
-                  });
-
-                  return null;
-                })
-              : null;
-
           return renderDailySummary(
             await buildDailySummaryPreviewInput({
               authMode: 'user',

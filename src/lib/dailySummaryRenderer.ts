@@ -88,7 +88,7 @@ const buildVisibleSection = (
     return [];
   }
 
-  if (section === 'calendar' && input.calendarSection) {
+  if (section === 'calendar' && input.calendarSection && hasCalendarEvents(input.calendarSection)) {
     return [renderCalendarSection(input.calendarSection)];
   }
 
@@ -98,6 +98,9 @@ const buildVisibleSection = (
     ? [renderAvailableSection(sectionState.label, sectionState.detail)]
     : [renderUnavailableSection(sectionState.label, sectionState.reason)];
 };
+
+const hasCalendarEvents = (calendarSection: CalendarSection) =>
+  Boolean(calendarSection.today) || calendarSection.weekAhead.length > 0;
 
 const renderCalendarSection = (calendarSection: CalendarSection): RenderedSection => {
   const today = calendarSection.today ? renderCalendarDay(calendarSection.today) : null;

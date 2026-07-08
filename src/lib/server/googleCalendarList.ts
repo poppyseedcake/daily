@@ -109,7 +109,7 @@ export const googleCalendarEventProvider = (accessToken: string): CalendarEventP
                 kind: 'timed',
                 id: event.id,
                 calendarId,
-                calendarSummary: calendarId,
+                calendarSummary: '',
                 summary: event.summary,
                 start: event.start.dateTime,
                 end: event.end.dateTime
@@ -123,7 +123,7 @@ export const googleCalendarEventProvider = (accessToken: string): CalendarEventP
                 kind: 'all-day',
                 id: event.id,
                 calendarId,
-                calendarSummary: calendarId,
+                calendarSummary: '',
                 summary: event.summary,
                 startDate: event.start.date,
                 endDate: event.end.date

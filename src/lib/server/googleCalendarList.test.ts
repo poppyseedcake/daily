@@ -20,7 +20,7 @@ vi.mock('$lib/server/db', () => ({
   }
 }));
 
-const { googleCalendarListProvider, loadGoogleCalendarAccessToken } = await import(
+const { googleCalendarEventProvider, googleCalendarListProvider, loadGoogleCalendarAccessToken } = await import(
   './googleCalendarList'
 );
 
@@ -95,6 +95,74 @@ describe('Google Calendar list provider', () => {
     await expect(googleCalendarListProvider.loadCalendars('access-token')).rejects.toThrow(
       'Google Calendar list request failed: 403'
     );
+  });
+
+  test('maps Google Calendar Events without using raw calendar IDs as display summaries', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        items: [
+          {
+            id: 'timed-event',
+            summary: 'Planning',
+            start: { dateTime: '2026-07-07T15:00:00.000Z' },
+            end: { dateTime: '2026-07-07T16:00:00.000Z' }
+          },
+          {
+            id: 'all-day-event',
+            summary: 'Conference',
+            start: { date: '2026-07-08' },
+            end: { date: '2026-07-09' }
+          }
+        ]
+      })
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      googleCalendarEventProvider('access-token').fetchEvents({
+        calendarIds: ['user@gmail.com'],
+        timeMin: '2026-07-07T04:00:00Z',
+        timeMax: '2026-07-14T04:00:00Z',
+        timeZone: 'America/New_York'
+      })
+    ).resolves.toEqual([
+      {
+        kind: 'timed',
+        id: 'timed-event',
+        calendarId: 'user@gmail.com',
+        calendarSummary: '',
+        summary: 'Planning',
+        start: '2026-07-07T15:00:00.000Z',
+        end: '2026-07-07T16:00:00.000Z'
+      },
+      {
+        kind: 'all-day',
+        id: 'all-day-event',
+        calendarId: 'user@gmail.com',
+        calendarSummary: '',
+        summary: 'Conference',
+        startDate: '2026-07-08',
+        endDate: '2026-07-09'
+      }
+    ]);
+    const [requestUrl, requestInit] = fetchMock.mock.calls[0];
+    const url = new URL(requestUrl);
+    expect(url.origin + url.pathname).toBe(
+      'https://www.googleapis.com/calendar/v3/calendars/user%40gmail.com/events'
+    );
+    expect(Object.fromEntries(url.searchParams)).toEqual({
+      singleEvents: 'true',
+      orderBy: 'startTime',
+      timeMin: '2026-07-07T04:00:00Z',
+      timeMax: '2026-07-14T04:00:00Z',
+      timeZone: 'America/New_York'
+    });
+    expect(requestInit).toEqual({
+      headers: {
+        authorization: 'Bearer access-token'
+      }
+    });
   });
 
   test('loads the newest Calendar-scoped access token when it is still valid', async () => {

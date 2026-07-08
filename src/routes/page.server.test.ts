@@ -10,6 +10,7 @@ const {
   savedSelectedCalendars,
   providerCalendars,
   sentCalendarEventRequests,
+  loadedGoogleCalendarAccessTokens,
   calendarConnectionWrites,
   selectedCalendarWrites,
   savedDeliveryRecords,
@@ -38,6 +39,7 @@ const {
   recordedDeliveryRecords: [] as Array<{ userId: string; record: unknown }>,
   sentForecastRequests: [] as unknown[],
   sentCalendarEventRequests: [] as unknown[],
+  loadedGoogleCalendarAccessTokens: [] as string[],
   sentMessages: [] as unknown[],
   savedConfiguration: {
     summaryTime: '18:45',
@@ -230,6 +232,8 @@ vi.mock('$lib/server/googleCalendarList', () => ({
     }
   }),
   async loadGoogleCalendarAccessToken(userId: string) {
+    loadedGoogleCalendarAccessTokens.push(userId);
+
     return userId === 'user-1' ? 'calendar-access-token' : null;
   }
 }));
@@ -382,6 +386,7 @@ describe('Daily page server load', () => {
     recordedDeliveryRecords.length = 0;
     sentForecastRequests.length = 0;
     sentCalendarEventRequests.length = 0;
+    loadedGoogleCalendarAccessTokens.length = 0;
     sentMessages.length = 0;
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-07-07T12:00:00.000Z'));
@@ -495,6 +500,7 @@ describe('Daily page server load', () => {
         timeZone: 'America/New_York'
       }
     ]);
+    expect(loadedGoogleCalendarAccessTokens).toEqual(['user-1']);
   });
 
   test('persists the primary Google calendar as the first default Selected Calendar', async () => {
