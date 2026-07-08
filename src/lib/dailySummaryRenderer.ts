@@ -1,4 +1,5 @@
 import type { SummaryConfiguration, SummarySection } from './summaryConfiguration';
+import type { CalendarSection } from './calendar';
 import {
   type TodoSection,
   type TodoTask,
@@ -20,6 +21,7 @@ export type DailySummarySectionState =
 export type DailySummaryInput = {
   configuration: SummaryConfiguration;
   sections: Record<SummarySection, DailySummarySectionState>;
+  calendarSection?: CalendarSection | null;
   todoSection: TodoSection | null;
 };
 
@@ -86,11 +88,67 @@ const buildVisibleSection = (
     return [];
   }
 
+  if (section === 'calendar' && input.calendarSection && hasCalendarEvents(input.calendarSection)) {
+    return [renderCalendarSection(input.calendarSection)];
+  }
+
   const sectionState = input.sections[section];
 
   return sectionState.status === 'available'
     ? [renderAvailableSection(sectionState.label, sectionState.detail)]
     : [renderUnavailableSection(sectionState.label, sectionState.reason)];
+};
+
+const hasCalendarEvents = (calendarSection: CalendarSection) =>
+  Boolean(calendarSection.today) || calendarSection.weekAhead.length > 0;
+
+const renderCalendarSection = (calendarSection: CalendarSection): RenderedSection => {
+  const today = calendarSection.today ? renderCalendarDay(calendarSection.today) : null;
+  const weekAhead = calendarSection.weekAhead.map(renderCalendarDay);
+  const html = [
+    today?.html,
+    weekAhead.length > 0
+      ? `<h3>Week Ahead</h3>${weekAhead.map((day) => day.html).join('')}`
+      : null
+  ]
+    .filter(Boolean)
+    .join('');
+  const text = [
+    today?.text,
+    weekAhead.length > 0 ? `Week Ahead\n${weekAhead.map((day) => day.text).join('\n\n')}` : null
+  ]
+    .filter(Boolean)
+    .join('\n\n');
+
+  return {
+    label: calendarSection.label,
+    html,
+    text
+  };
+};
+
+const renderCalendarDay = (day: CalendarSection['weekAhead'][number]) => {
+  const htmlEvents = [
+    ...day.allDayEvents.map(
+      (event) =>
+        `<li>All day ${escapeHtml(event.title)} <span>(${escapeHtml(event.calendarLabel)})</span></li>`
+    ),
+    ...day.timedEvents.map(
+      (event) =>
+        `<li><time>${escapeHtml(event.localStartTime)}</time> ${escapeHtml(event.title)} <span>(${escapeHtml(event.calendarLabel)})</span></li>`
+    )
+  ];
+  const textEvents = [
+    ...day.allDayEvents.map((event) => `All day ${event.title} (${event.calendarLabel})`),
+    ...day.timedEvents.map(
+      (event) => `${event.localStartTime} ${event.title} (${event.calendarLabel})`
+    )
+  ];
+
+  return {
+    html: `<h4>${escapeHtml(day.label)}</h4><ul>${htmlEvents.join('')}</ul>`,
+    text: `${day.label}\n${textEvents.join('\n')}`
+  };
 };
 
 const renderAvailableSection = (label: string, detail: string): RenderedSection => ({

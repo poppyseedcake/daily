@@ -88,6 +88,85 @@ describe('Daily Summary preview input', () => {
     expect(rendered.html).not.toContain('Google Calendar is connected for this User.');
   });
 
+  test('renders live selected Calendar Events for a signed-in User preview in local Week Ahead order', async () => {
+    const calendarEventProvider = {
+      fetchEvents: vi.fn().mockResolvedValue([
+        {
+          kind: 'timed',
+          id: 'later-today',
+          calendarId: 'work',
+          calendarSummary: 'Work',
+          summary: 'Team retro',
+          start: '2026-07-08T16:00:00.000Z',
+          end: '2026-07-08T16:30:00.000Z'
+        },
+        {
+          kind: 'timed',
+          id: 'early-today',
+          calendarId: 'personal',
+          calendarSummary: 'Personal',
+          summary: 'School drop-off',
+          start: '2026-07-08T12:00:00.000Z',
+          end: '2026-07-08T12:30:00.000Z'
+        },
+        {
+          kind: 'timed',
+          id: 'tomorrow',
+          calendarId: 'work',
+          calendarSummary: 'Work',
+          summary: 'Planning',
+          start: '2026-07-09T15:00:00.000Z',
+          end: '2026-07-09T16:00:00.000Z'
+        },
+        {
+          kind: 'all-day',
+          id: 'all-day-tomorrow',
+          calendarId: 'personal',
+          calendarSummary: 'Personal',
+          summary: 'Conference',
+          startDate: '2026-07-09',
+          endDate: '2026-07-10'
+        }
+      ])
+    };
+
+    const preview = await buildDailySummaryPreviewInput({
+      authMode: 'user',
+      configuration,
+      todoCategories,
+      todoTasks,
+      calendarReadiness: {
+        status: 'connected',
+        label: 'Calendar',
+        statusLabel: 'Calendar connected',
+        detail: 'Google Calendar is connected for this User.'
+      },
+      selectedCalendars: [
+        { id: 'work', summary: 'Work', backgroundColor: '#1a73e8', primary: true },
+        { id: 'personal', summary: 'Personal', backgroundColor: '#34a853', primary: false }
+      ],
+      calendarEventProvider,
+      now: new Date('2026-07-08T10:00:00.000Z')
+    });
+    const rendered = renderDailySummary(preview);
+
+    expect(calendarEventProvider.fetchEvents).toHaveBeenCalledWith({
+      calendarIds: ['work', 'personal'],
+      timeMin: '2026-07-08T04:00:00Z',
+      timeMax: '2026-07-15T04:00:00Z',
+      timeZone: 'America/New_York'
+    });
+    expect(rendered.text).toContain('Calendar\nToday\n08:00 School drop-off (Personal)\n12:00 Team retro (Work)');
+    expect(rendered.text).toContain('Week Ahead\nThu, Jul 9\nAll day Conference (Personal)\n11:00 Planning (Work)');
+    expect(rendered.html).toContain('Today');
+    expect(rendered.html).toContain('08:00');
+    expect(rendered.html).toContain('School drop-off');
+    expect(rendered.html).toContain('Personal');
+    expect(rendered.html.indexOf('School drop-off')).toBeLessThan(rendered.html.indexOf('Team retro'));
+    expect(rendered.text.indexOf('Weather')).toBeLessThan(rendered.text.indexOf('Calendar'));
+    expect(rendered.text.indexOf('Calendar')).toBeLessThan(rendered.text.indexOf('Todo Tasks'));
+  });
+
   test('omits signed-in User Calendar output when the Calendar Summary Section is disabled', async () => {
     const preview = await buildDailySummaryPreviewInput({
       authMode: 'user',

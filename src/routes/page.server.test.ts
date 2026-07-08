@@ -9,6 +9,8 @@ const {
   savedCalendarConnection,
   savedSelectedCalendars,
   providerCalendars,
+  sentCalendarEventRequests,
+  loadedGoogleCalendarAccessTokens,
   calendarConnectionWrites,
   selectedCalendarWrites,
   savedDeliveryRecords,
@@ -36,6 +38,8 @@ const {
   validationFailure: { enabled: false },
   recordedDeliveryRecords: [] as Array<{ userId: string; record: unknown }>,
   sentForecastRequests: [] as unknown[],
+  sentCalendarEventRequests: [] as unknown[],
+  loadedGoogleCalendarAccessTokens: [] as string[],
   sentMessages: [] as unknown[],
   savedConfiguration: {
     summaryTime: '18:45',
@@ -210,7 +214,26 @@ vi.mock('$lib/server/googleCalendarList', () => ({
       return providerCalendars;
     }
   },
+  googleCalendarEventProvider: () => ({
+    async fetchEvents(request: unknown) {
+      sentCalendarEventRequests.push(request);
+
+      return [
+        {
+          kind: 'timed',
+          id: 'calendar-event-1',
+          calendarId: 'work',
+          calendarSummary: 'Work',
+          summary: 'Planning',
+          start: '2026-07-07T15:00:00.000Z',
+          end: '2026-07-07T16:00:00.000Z'
+        }
+      ];
+    }
+  }),
   async loadGoogleCalendarAccessToken(userId: string) {
+    loadedGoogleCalendarAccessTokens.push(userId);
+
     return userId === 'user-1' ? 'calendar-access-token' : null;
   }
 }));
@@ -362,6 +385,8 @@ describe('Daily page server load', () => {
     calendarConnectionWrites.length = 0;
     recordedDeliveryRecords.length = 0;
     sentForecastRequests.length = 0;
+    sentCalendarEventRequests.length = 0;
+    loadedGoogleCalendarAccessTokens.length = 0;
     sentMessages.length = 0;
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-07-07T12:00:00.000Z'));
@@ -388,7 +413,8 @@ describe('Daily page server load', () => {
       },
       weatherLocation: null,
       deliveryRecords: [],
-      selectedCalendarConfiguration: null
+      selectedCalendarConfiguration: null,
+      renderedSummaryHtml: null
     });
   });
 
@@ -441,6 +467,40 @@ describe('Daily page server load', () => {
         }
       })
     );
+  });
+
+  test('loads live selected Calendar Events into the signed-in User Daily Summary preview', async () => {
+    getSession.mockResolvedValue({
+      user: { id: 'user-1', email: 'user@example.com', emailVerified: true }
+    });
+    savedCalendarConnection.status = 'connected';
+    savedSelectedCalendars.push({
+      id: 'work',
+      summary: 'Work',
+      backgroundColor: '#0b8043',
+      primary: false
+    });
+    providerCalendars.push({
+      id: 'work',
+      summary: 'Work',
+      backgroundColor: '#0b8043',
+      primary: false
+    });
+
+    await expect(loadPage()).resolves.toEqual(
+      expect.objectContaining({
+        renderedSummaryHtml: expect.stringContaining('Planning')
+      })
+    );
+    expect(sentCalendarEventRequests).toEqual([
+      {
+        calendarIds: ['work'],
+        timeMin: '2026-07-07T04:00:00Z',
+        timeMax: '2026-07-14T04:00:00Z',
+        timeZone: 'America/New_York'
+      }
+    ]);
+    expect(loadedGoogleCalendarAccessTokens).toEqual(['user-1']);
   });
 
   test('persists the primary Google calendar as the first default Selected Calendar', async () => {
@@ -497,7 +557,8 @@ describe('Daily page server load', () => {
       todoState: savedTodoState,
       weatherLocation: savedWeatherLocation,
       deliveryRecords: savedDeliveryRecords,
-      selectedCalendarConfiguration: null
+      selectedCalendarConfiguration: null,
+      renderedSummaryHtml: expect.any(String)
     });
   });
 
@@ -578,7 +639,8 @@ describe('Daily page server load', () => {
       },
       weatherLocation: null,
       deliveryRecords: [],
-      selectedCalendarConfiguration: null
+      selectedCalendarConfiguration: null,
+      renderedSummaryHtml: expect.any(String)
     });
   });
 
@@ -604,7 +666,8 @@ describe('Daily page server load', () => {
       },
       weatherLocation: null,
       deliveryRecords: [],
-      selectedCalendarConfiguration: null
+      selectedCalendarConfiguration: null,
+      renderedSummaryHtml: null
     });
     expect(console.warn).toHaveBeenCalledWith(
       'Failed to load User Summary Configuration.',
@@ -633,7 +696,8 @@ describe('Daily page server load', () => {
       },
       weatherLocation: null,
       deliveryRecords: [],
-      selectedCalendarConfiguration: null
+      selectedCalendarConfiguration: null,
+      renderedSummaryHtml: expect.any(String)
     });
   });
 
@@ -713,6 +777,40 @@ describe('Daily page server load', () => {
         id: 'todo-work',
         title: 'Draft update'
       })
+    ]);
+  });
+
+  test('does not fetch live Calendar Events for out-of-scope test Daily Summary delivery', async () => {
+    getSession.mockResolvedValue({
+      user: { id: 'user-1', email: 'user@example.com', emailVerified: true }
+    });
+    savedCalendarConnection.status = 'connected';
+    savedSelectedCalendars.push({
+      id: 'work',
+      summary: 'Work',
+      backgroundColor: '#0b8043',
+      primary: false
+    });
+
+    const result = await sendTestDailySummary();
+
+    expect(result).toEqual({ outcome: 'sent' });
+    expect(sentCalendarEventRequests).toEqual([]);
+    expect(sentMessages).toEqual([
+      expect.objectContaining({
+        html: expect.not.stringContaining('Planning'),
+        text: expect.not.stringContaining('Today\n11:00 Planning (Work)')
+      })
+    ]);
+    expect(recordedDeliveryRecords).toEqual([
+      {
+        userId: 'user-1',
+        record: expect.not.objectContaining({
+          html: expect.any(String),
+          text: expect.any(String),
+          calendarEvents: expect.anything()
+        })
+      }
     ]);
   });
 

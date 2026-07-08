@@ -228,6 +228,40 @@ describe('Daily Summary renderer', () => {
     expect(rendered.text.indexOf('Demo Calendar')).toBeLessThan(rendered.text.indexOf('Todo Tasks'));
   });
 
+  test('falls back to the configured Calendar state when the live Calendar Section is empty', () => {
+    const rendered = renderDailySummary({
+      configuration: {
+        ...defaultSummaryConfiguration,
+        sections: {
+          weather: false,
+          commute: false,
+          calendar: true,
+          todo: false
+        }
+      },
+      sections: {
+        weather: { status: 'available', label: 'Weather', detail: 'Hidden.' },
+        commute: { status: 'available', label: 'Commute', detail: 'Hidden.' },
+        calendar: {
+          status: 'available',
+          label: 'Calendar',
+          detail: 'No Calendar Events in the next week.'
+        },
+        todo: { status: 'available', label: 'Todo Tasks', detail: 'Hidden.' }
+      },
+      calendarSection: {
+        label: 'Calendar',
+        today: null,
+        weekAhead: []
+      },
+      todoSection: null
+    });
+
+    expect(rendered.html).toContain('No Calendar Events in the next week.');
+    expect(rendered.text).toContain('No Calendar Events in the next week.');
+    expect(rendered.html).not.toContain('<h2>Calendar</h2></section>');
+  });
+
   test('omits Todo output when the module-prepared Todo Section is empty', () => {
     const rendered = renderDailySummary({
       configuration: {
