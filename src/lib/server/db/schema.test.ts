@@ -1,6 +1,6 @@
 import { getTableName } from 'drizzle-orm';
 import { describe, expect, test } from 'vitest';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import {
   authAccount,
   authSession,
@@ -114,5 +114,18 @@ describe('Daily database schema', () => {
     expect(migration).not.toContain('forecast');
     expect(migration).not.toContain('payload');
     expect(migration).not.toContain('rendered');
+  });
+
+  test('does not define durable weather forecast snapshot storage in migrations', () => {
+    const migrations = readdirSync('drizzle')
+      .filter((fileName) => fileName.endsWith('.sql'))
+      .map((fileName) => readFileSync(`drizzle/${fileName}`, 'utf8').toLowerCase())
+      .join('\n');
+
+    expect(migrations).not.toContain('weather_forecast');
+    expect(migrations).not.toContain('forecast_snapshot');
+    expect(migrations).not.toContain('weather_payload');
+    expect(migrations).not.toContain('forecast_payload');
+    expect(migrations).not.toContain('open_meteo_payload');
   });
 });

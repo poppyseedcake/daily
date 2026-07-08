@@ -57,6 +57,32 @@ const dragTodoHandleToTarget = async ({
   });
 };
 
+const localDateForTimeZone = (timeZone: string) =>
+  new Intl.DateTimeFormat('sv-SE', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).format(new Date());
+
+const stubOpenMeteoForecast = async (page: Page) => {
+  await page.route('https://api.open-meteo.com/v1/forecast?**', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        daily: {
+          time: [localDateForTimeZone('Europe/Warsaw')],
+          weather_code: [61],
+          temperature_2m_min: [12],
+          temperature_2m_max: [19],
+          precipitation_probability_max: [80]
+        }
+      })
+    });
+  });
+};
+
 test('Visitor opens Daily into the usable main panel', async ({ page }) => {
   await page.goto('/');
 
@@ -140,9 +166,12 @@ test('Visitor Summary Configuration persists after page refresh', async ({ page 
 });
 
 test('Visitor Weather Location persists after page refresh', async ({ page }) => {
+  await stubOpenMeteoForecast(page);
   await page.goto('/');
 
-  await expect(page.getByText('Saved in this browser only')).toBeVisible();
+  await expect(page.getByText('Choose a Weather Location to preview live weather.')).toBeVisible();
+  await expect(page.getByText('Mock Weather')).not.toBeVisible();
+  await expect(page.getByText('Saved in this browser only', { exact: true })).toBeVisible();
   await expect(page.getByLabel('City Search')).toBeEnabled();
   await page.getByLabel('City Search').fill('Warsaw');
   await expect(page.getByLabel('City Search')).toHaveValue('Warsaw');
@@ -151,11 +180,18 @@ test('Visitor Weather Location persists after page refresh', async ({ page }) =>
 
   await expect(page.getByText('Weather Location saved in this browser only.')).toBeVisible();
   await expect(page.getByText('Warsaw, Masovian Voivodeship, Poland')).toBeVisible();
+  await expect(
+    page.getByText('Rainy. Low 12C, high 19C. Chance of precipitation 80%.')
+  ).toBeVisible();
+  await expect(page.getByText('Mock Weather')).not.toBeVisible();
 
   await page.reload();
 
   await expect(page.getByText('Warsaw, Masovian Voivodeship, Poland')).toBeVisible();
   await expect(page.getByText('52.2297, 21.0122')).toBeVisible();
+  await expect(
+    page.getByText('Rainy. Low 12C, high 19C. Chance of precipitation 80%.')
+  ).toBeVisible();
 });
 
 test('Visitor sees unavailable Weather Location search reason when geocoding fails', async ({ page }) => {
