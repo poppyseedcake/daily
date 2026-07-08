@@ -6,7 +6,9 @@ import {
   authSession,
   authUser,
   authVerification,
+  calendarConnections,
   deliveryRecords,
+  selectedCalendars,
   summaryConfigurations,
   todoCategories,
   todoTasks,
@@ -22,6 +24,8 @@ describe('Daily database schema', () => {
       getTableName(todoCategories),
       getTableName(todoTasks),
       getTableName(weatherLocations),
+      getTableName(calendarConnections),
+      getTableName(selectedCalendars),
       getTableName(deliveryRecords),
       getTableName(authUser),
       getTableName(authSession),
@@ -33,6 +37,8 @@ describe('Daily database schema', () => {
       'todo_categories',
       'todo_tasks',
       'weather_locations',
+      'calendar_connections',
+      'selected_calendars',
       'delivery_records',
       'auth_user',
       'auth_session',
@@ -114,6 +120,28 @@ describe('Daily database schema', () => {
     expect(migration).not.toContain('forecast');
     expect(migration).not.toContain('payload');
     expect(migration).not.toContain('rendered');
+  });
+
+  test('ships Calendar Connections and Selected Calendars in an upgrade migration', () => {
+    const migrationPath = 'drizzle/0004_add_calendar_connections.sql';
+
+    expect(existsSync(migrationPath)).toBe(true);
+
+    const migration = readFileSync(migrationPath, 'utf8');
+
+    expect(migration).toContain('CREATE TABLE `calendar_connections`');
+    expect(migration).toContain('`connection_status` text NOT NULL');
+    expect(migration).toContain('`granted_scopes` text DEFAULT');
+    expect(migration).toContain('`access_token_available` integer DEFAULT false NOT NULL');
+    expect(migration).toContain('`refresh_token_available` integer DEFAULT false NOT NULL');
+    expect(migration).toContain('`access_token_expires_at` integer');
+    expect(migration).toContain('CREATE TABLE `selected_calendars`');
+    expect(migration).toContain(
+      'CREATE UNIQUE INDEX `calendar_connections_user_id_unique` ON `calendar_connections` (`user_id`)'
+    );
+    expect(migration).toContain(
+      'CREATE UNIQUE INDEX `selected_calendars_user_calendar_idx` ON `selected_calendars` (`user_id`,`calendar_id`)'
+    );
   });
 
   test('does not define durable weather forecast snapshot storage in migrations', () => {

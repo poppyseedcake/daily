@@ -59,6 +59,12 @@ export const buildDailySummaryPreviewInput = async ({
               label: calendarReadiness.label,
               detail: demoCalendar.summaryDetail
             }
+          : calendarReadiness.status === 'connected'
+            ? {
+                status: 'available',
+                label: calendarReadiness.label,
+                detail: calendarReadiness.detail
+              }
           : {
               status: 'unavailable',
               label: calendarReadiness.label,

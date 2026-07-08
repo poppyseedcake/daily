@@ -76,6 +76,47 @@ export const weatherLocations = sqliteTable('weather_locations', {
   longitude: real('longitude').notNull()
 });
 
+export const calendarConnections = sqliteTable('calendar_connections', {
+  id: text('id').primaryKey(),
+  userId: text('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' })
+    .unique(),
+  connectionStatus: text('connection_status', {
+    enum: ['connected', 'failed']
+  }).notNull(),
+  providerAccountId: text('provider_account_id'),
+  grantedScopes: text('granted_scopes').notNull().default('[]'),
+  accessTokenAvailable: integer('access_token_available', { mode: 'boolean' })
+    .notNull()
+    .default(false),
+  refreshTokenAvailable: integer('refresh_token_available', { mode: 'boolean' })
+    .notNull()
+    .default(false),
+  accessTokenExpiresAt: integer('access_token_expires_at', { mode: 'timestamp' }),
+  updatedAt: text('updated_at')
+    .notNull()
+    .default(sql`CURRENT_TIMESTAMP`)
+});
+
+export const selectedCalendars = sqliteTable(
+  'selected_calendars',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    calendarId: text('calendar_id').notNull(),
+    position: integer('position').notNull()
+  },
+  (table) => ({
+    userCalendarIdx: uniqueIndex('selected_calendars_user_calendar_idx').on(
+      table.userId,
+      table.calendarId
+    )
+  })
+);
+
 export const deliveryRecords = sqliteTable(
   'delivery_records',
   {
@@ -167,6 +208,8 @@ export const usersRelations = relations(users, ({ one, many }) => ({
   todoCategories: many(todoCategories),
   todoTasks: many(todoTasks),
   weatherLocation: one(weatherLocations),
+  calendarConnection: one(calendarConnections),
+  selectedCalendars: many(selectedCalendars),
   deliveryRecords: many(deliveryRecords)
 }));
 
@@ -199,6 +242,20 @@ export const todoTasksRelations = relations(todoTasks, ({ one }) => ({
 export const weatherLocationsRelations = relations(weatherLocations, ({ one }) => ({
   user: one(users, {
     fields: [weatherLocations.userId],
+    references: [users.id]
+  })
+}));
+
+export const calendarConnectionsRelations = relations(calendarConnections, ({ one }) => ({
+  user: one(users, {
+    fields: [calendarConnections.userId],
+    references: [users.id]
+  })
+}));
+
+export const selectedCalendarsRelations = relations(selectedCalendars, ({ one }) => ({
+  user: one(users, {
+    fields: [selectedCalendars.userId],
     references: [users.id]
   })
 }));
