@@ -9,6 +9,7 @@ const {
   savedCalendarConnection,
   savedSelectedCalendars,
   providerCalendars,
+  sentCalendarEventRequests,
   calendarConnectionWrites,
   selectedCalendarWrites,
   savedDeliveryRecords,
@@ -36,6 +37,7 @@ const {
   validationFailure: { enabled: false },
   recordedDeliveryRecords: [] as Array<{ userId: string; record: unknown }>,
   sentForecastRequests: [] as unknown[],
+  sentCalendarEventRequests: [] as unknown[],
   sentMessages: [] as unknown[],
   savedConfiguration: {
     summaryTime: '18:45',
@@ -210,6 +212,22 @@ vi.mock('$lib/server/googleCalendarList', () => ({
       return providerCalendars;
     }
   },
+  googleCalendarEventProvider: () => ({
+    async fetchEvents(request: unknown) {
+      sentCalendarEventRequests.push(request);
+
+      return [
+        {
+          id: 'calendar-event-1',
+          calendarId: 'work',
+          calendarSummary: 'Work',
+          summary: 'Planning',
+          start: '2026-07-07T15:00:00.000Z',
+          end: '2026-07-07T16:00:00.000Z'
+        }
+      ];
+    }
+  }),
   async loadGoogleCalendarAccessToken(userId: string) {
     return userId === 'user-1' ? 'calendar-access-token' : null;
   }
@@ -362,6 +380,7 @@ describe('Daily page server load', () => {
     calendarConnectionWrites.length = 0;
     recordedDeliveryRecords.length = 0;
     sentForecastRequests.length = 0;
+    sentCalendarEventRequests.length = 0;
     sentMessages.length = 0;
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-07-07T12:00:00.000Z'));
@@ -713,6 +732,47 @@ describe('Daily page server load', () => {
         id: 'todo-work',
         title: 'Draft update'
       })
+    ]);
+  });
+
+  test('sends live selected Calendar Events in a signed-in User test Daily Summary', async () => {
+    getSession.mockResolvedValue({
+      user: { id: 'user-1', email: 'user@example.com', emailVerified: true }
+    });
+    savedCalendarConnection.status = 'connected';
+    savedSelectedCalendars.push({
+      id: 'work',
+      summary: 'Work',
+      backgroundColor: '#0b8043',
+      primary: false
+    });
+
+    const result = await sendTestDailySummary();
+
+    expect(result).toEqual({ outcome: 'sent' });
+    expect(sentCalendarEventRequests).toEqual([
+      {
+        calendarIds: ['work'],
+        timeMin: '2026-07-07T04:00:00Z',
+        timeMax: '2026-07-14T04:00:00Z',
+        timeZone: 'America/New_York'
+      }
+    ]);
+    expect(sentMessages).toEqual([
+      expect.objectContaining({
+        html: expect.stringContaining('Planning'),
+        text: expect.stringContaining('Today\n11:00 Planning (Work)')
+      })
+    ]);
+    expect(recordedDeliveryRecords).toEqual([
+      {
+        userId: 'user-1',
+        record: expect.not.objectContaining({
+          html: expect.any(String),
+          text: expect.any(String),
+          calendarEvents: expect.anything()
+        })
+      }
     ]);
   });
 

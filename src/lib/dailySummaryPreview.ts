@@ -1,5 +1,11 @@
 import { buildDemoCalendarSection } from './demoCalendar';
 import type { DailySummaryInput } from './dailySummaryRenderer';
+import {
+  buildCalendarEventFetchRequest,
+  buildCalendarSection,
+  type CalendarEventProvider
+} from './calendar';
+import type { SavedSelectedCalendar } from './selectedCalendars';
 import type { SummaryConfiguration } from './summaryConfiguration';
 import { buildTodoSection, type TodoCategory, type TodoTask } from './todo';
 import type { WeatherLocation } from './weatherLocation';
@@ -22,6 +28,8 @@ export type DailySummaryPreviewSetup = {
   todoTasks: TodoTask[];
   weatherLocation?: WeatherLocation | null;
   weatherProvider?: WeatherForecastProvider;
+  selectedCalendars?: SavedSelectedCalendar[];
+  calendarEventProvider?: CalendarEventProvider;
   now?: Date;
 };
 
@@ -33,6 +41,8 @@ export const buildDailySummaryPreviewInput = async ({
   todoTasks,
   weatherLocation = null,
   weatherProvider = openMeteoWeatherForecastProvider,
+  selectedCalendars = [],
+  calendarEventProvider,
   now = new Date()
 }: DailySummaryPreviewSetup): Promise<DailySummaryInput> => {
   const demoCalendar = buildDemoCalendarSection({ userTimeZone: configuration.userTimeZone });
@@ -40,6 +50,13 @@ export const buildDailySummaryPreviewInput = async ({
     configuration,
     weatherLocation,
     weatherProvider,
+    now
+  });
+  const calendarSection = await buildPreviewCalendarSection({
+    calendarReadiness,
+    configuration,
+    selectedCalendars,
+    calendarEventProvider,
     now
   });
 
@@ -76,8 +93,48 @@ export const buildDailySummaryPreviewInput = async ({
         detail: 'No active Todo Tasks.'
       }
     },
+    calendarSection,
     todoSection: buildTodoSection(todoCategories, todoTasks)
   };
+};
+
+const buildPreviewCalendarSection = async ({
+  calendarReadiness,
+  configuration,
+  selectedCalendars,
+  calendarEventProvider,
+  now
+}: {
+  calendarReadiness: CalendarReadiness;
+  configuration: SummaryConfiguration;
+  selectedCalendars: SavedSelectedCalendar[];
+  calendarEventProvider: CalendarEventProvider | undefined;
+  now: Date;
+}): Promise<DailySummaryInput['calendarSection']> => {
+  if (
+    calendarReadiness.status !== 'connected' ||
+    !configuration.sections.calendar ||
+    !calendarEventProvider
+  ) {
+    return null;
+  }
+
+  try {
+    return buildCalendarSection({
+      providerEvents: await calendarEventProvider.fetchEvents(
+        buildCalendarEventFetchRequest({
+          selectedCalendars,
+          userTimeZone: configuration.userTimeZone,
+          now
+        })
+      ),
+      selectedCalendars,
+      userTimeZone: configuration.userTimeZone,
+      now
+    });
+  } catch {
+    return null;
+  }
 };
 
 const buildPreviewWeatherSection = async ({

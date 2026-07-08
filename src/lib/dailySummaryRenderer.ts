@@ -1,4 +1,5 @@
 import type { SummaryConfiguration, SummarySection } from './summaryConfiguration';
+import type { CalendarSection } from './calendar';
 import {
   type TodoSection,
   type TodoTask,
@@ -20,6 +21,7 @@ export type DailySummarySectionState =
 export type DailySummaryInput = {
   configuration: SummaryConfiguration;
   sections: Record<SummarySection, DailySummarySectionState>;
+  calendarSection?: CalendarSection | null;
   todoSection: TodoSection | null;
 };
 
@@ -86,11 +88,36 @@ const buildVisibleSection = (
     return [];
   }
 
+  if (section === 'calendar' && input.calendarSection) {
+    return [renderCalendarSection(input.calendarSection)];
+  }
+
   const sectionState = input.sections[section];
 
   return sectionState.status === 'available'
     ? [renderAvailableSection(sectionState.label, sectionState.detail)]
     : [renderUnavailableSection(sectionState.label, sectionState.reason)];
+};
+
+const renderCalendarSection = (calendarSection: CalendarSection): RenderedSection => {
+  const html = calendarSection.days
+    .map(
+      (day) =>
+        `<h3>${escapeHtml(day.label)}</h3><ul>${day.events.map((event) => `<li><time>${escapeHtml(event.localStartTime)}</time> ${escapeHtml(event.title)} <span>(${escapeHtml(event.calendarLabel)})</span></li>`).join('')}</ul>`
+    )
+    .join('');
+  const text = calendarSection.days
+    .map(
+      (day) =>
+        `${day.label}\n${day.events.map((event) => `${event.localStartTime} ${event.title} (${event.calendarLabel})`).join('\n')}`
+    )
+    .join('\n\n');
+
+  return {
+    label: calendarSection.label,
+    html,
+    text
+  };
 };
 
 const renderAvailableSection = (label: string, detail: string): RenderedSection => ({
