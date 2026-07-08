@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { buildSelectedCalendarConfiguration } from './selectedCalendars';
+import { buildSavedSelectedCalendars, buildSelectedCalendarConfiguration } from './selectedCalendars';
 
 describe('Selected Calendar configuration', () => {
   test('selects the primary Google calendar by default when the User has no saved selection', () => {
@@ -103,5 +103,59 @@ describe('Selected Calendar configuration', () => {
     ]);
     expect(JSON.stringify(configuration)).not.toContain('Dentist');
     expect(JSON.stringify(configuration)).not.toContain('Home');
+  });
+
+  test('builds saved selections from provider metadata and only keeps unavailable saved metadata', () => {
+    const savedSelections = buildSavedSelectedCalendars({
+      providerCalendars: [
+        {
+          id: 'work',
+          summary: 'Work From Provider',
+          description: 'Budget review at 11:00',
+          location: 'Office',
+          backgroundColor: '#0b8043',
+          primary: false
+        },
+        {
+          id: 'primary',
+          summary: 'Ada Lovelace',
+          backgroundColor: '#3f51b5',
+          primary: true
+        }
+      ],
+      savedCalendars: [
+        {
+          id: 'work',
+          summary: 'Client Supplied Work',
+          backgroundColor: null,
+          primary: true
+        },
+        {
+          id: 'removed',
+          summary: 'Old Project',
+          backgroundColor: null,
+          primary: false
+        }
+      ],
+      selectedCalendarIds: ['work', 'removed']
+    });
+
+    expect(savedSelections).toEqual([
+      {
+        id: 'work',
+        summary: 'Work From Provider',
+        backgroundColor: '#0b8043',
+        primary: false
+      },
+      {
+        id: 'removed',
+        summary: 'Old Project',
+        backgroundColor: null,
+        primary: false
+      }
+    ]);
+    expect(JSON.stringify(savedSelections)).not.toContain('Budget');
+    expect(JSON.stringify(savedSelections)).not.toContain('Office');
+    expect(JSON.stringify(savedSelections)).not.toContain('Client Supplied Work');
   });
 });

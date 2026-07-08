@@ -7,7 +7,7 @@ export const savedSelectedCalendarSchema = z.object({
   primary: z.boolean()
 }).strict();
 
-export const selectedCalendarSaveSchema = z.array(savedSelectedCalendarSchema);
+export const selectedCalendarIdSaveSchema = z.array(z.string().trim().min(1));
 
 export type ProviderCalendarListEntry = {
   id: string;
@@ -70,4 +70,25 @@ export const buildSelectedCalendarConfiguration = ({
     calendars: [...providerOptions, ...unavailableSavedOptions],
     selectedCalendarIds
   };
+};
+
+export const buildSavedSelectedCalendars = ({
+  providerCalendars,
+  savedCalendars,
+  selectedCalendarIds
+}: {
+  providerCalendars: ProviderCalendarListEntry[];
+  savedCalendars: SavedSelectedCalendar[];
+  selectedCalendarIds: string[];
+}): SavedSelectedCalendar[] => {
+  const selectedIds = new Set(selectedCalendarIds);
+  const providerSelections = providerCalendars
+    .filter((calendar) => selectedIds.has(calendar.id))
+    .map(calendarDisplayMetadata);
+  const providerIds = new Set(providerCalendars.map((calendar) => calendar.id));
+  const unavailableSavedSelections = savedCalendars.filter(
+    (calendar) => selectedIds.has(calendar.id) && !providerIds.has(calendar.id)
+  );
+
+  return [...providerSelections, ...unavailableSavedSelections];
 };

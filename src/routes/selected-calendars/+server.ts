@@ -1,8 +1,12 @@
 import { json } from '@sveltejs/kit';
 import { auth } from '$lib/server/auth';
 import { userCalendarConnectionStore } from '$lib/server/db/calendarConnectionStore';
+import {
+  googleCalendarListProvider,
+  loadGoogleCalendarAccessToken
+} from '$lib/server/googleCalendarList';
 import { authStateFromSession } from '$lib/server/pageAuthState';
-import { selectedCalendarSaveSchema } from '$lib/selectedCalendars';
+import { buildSavedSelectedCalendars, selectedCalendarIdSaveSchema } from '$lib/selectedCalendars';
 
 export const PUT = async ({ request }) => {
   const session = await auth.api.getSession({
@@ -22,13 +26,35 @@ export const PUT = async ({ request }) => {
     return json({ outcome: 'invalid-selected-calendars' }, { status: 400 });
   }
 
-  const result = selectedCalendarSaveSchema.safeParse(payload);
+  const result = selectedCalendarIdSaveSchema.safeParse(payload);
 
   if (!result.success) {
     return json({ outcome: 'invalid-selected-calendars' }, { status: 400 });
   }
 
-  await userCalendarConnectionStore.saveSelectedCalendars(authState.userId, result.data);
+  const calendarConnection = await userCalendarConnectionStore.load(authState.userId);
+
+  if (calendarConnection.status !== 'connected') {
+    return json({ outcome: 'calendar-not-connected' }, { status: 409 });
+  }
+
+  const accessToken = await loadGoogleCalendarAccessToken(authState.userId);
+
+  if (!accessToken) {
+    return json({ outcome: 'calendar-not-connected' }, { status: 409 });
+  }
+
+  const [providerCalendars, savedCalendars] = await Promise.all([
+    googleCalendarListProvider.loadCalendars(accessToken),
+    userCalendarConnectionStore.loadSelectedCalendars(authState.userId)
+  ]);
+  const selectedCalendars = buildSavedSelectedCalendars({
+    providerCalendars,
+    savedCalendars,
+    selectedCalendarIds: result.data
+  });
+
+  await userCalendarConnectionStore.saveSelectedCalendars(authState.userId, selectedCalendars);
 
   return json({ outcome: 'saved' });
 };

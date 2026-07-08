@@ -579,14 +579,7 @@
           'content-type': 'application/json'
         },
         body: JSON.stringify(
-          calendars
-            .filter((calendar) => calendar.selected)
-            .map((calendar) => ({
-              id: calendar.id,
-              summary: calendar.summary,
-              backgroundColor: calendar.backgroundColor,
-              primary: calendar.primary
-            }))
+          calendars.filter((calendar) => calendar.selected).map((calendar) => calendar.id)
         )
       });
 
