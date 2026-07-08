@@ -455,6 +455,35 @@ describe('Daily page server load', () => {
     ]);
   });
 
+  test('records Delivery Records without rendered Daily Summary content or forecast snapshots', async () => {
+    getSession.mockResolvedValue({
+      user: { id: 'user-1', email: 'user@example.com', emailVerified: true }
+    });
+
+    const result = await sendTestDailySummary();
+
+    expect(result).toEqual({ outcome: 'sent' });
+    expect(recordedDeliveryRecords).toEqual([
+      {
+        userId: 'user-1',
+        record: {
+          id: expect.any(String),
+          attemptType: 'test',
+          requestedAt: '2026-07-07T12:00:00.000Z',
+          completedAt: '2026-07-07T12:00:00.000Z',
+          deliveryStatus: 'sent',
+          providerName: 'fake-resend',
+          providerMessageId: 'fake-message-1',
+          providerStatusMetadata: 'accepted',
+          errorClassification: null
+        }
+      }
+    ]);
+    expect(JSON.stringify(recordedDeliveryRecords)).not.toContain('Draft update');
+    expect(JSON.stringify(recordedDeliveryRecords)).not.toContain('Clear. Low 16C');
+    expect(JSON.stringify(recordedDeliveryRecords)).not.toContain('weatherCodes');
+  });
+
   test('does not send or record a test Daily Summary for a Visitor', async () => {
     getSession.mockResolvedValue(null);
 

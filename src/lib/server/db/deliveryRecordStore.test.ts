@@ -151,4 +151,33 @@ describe('SQLite Delivery Record store', () => {
     expect(JSON.stringify(record)).not.toContain('123 Private St');
     expect(JSON.stringify(record)).not.toContain('secret-token');
   });
+
+  test('redacts weather provider diagnostics that include payloads or private Daily Summary details', async () => {
+    const store = createDeliveryRecordStore(database);
+
+    await store.recordAttempt('user-1', {
+      id: 'weather-provider-diagnostics',
+      attemptType: 'test',
+      requestedAt: '2026-07-05T06:45:00.000Z',
+      completedAt: '2026-07-05T06:45:03.000Z',
+      deliveryStatus: 'failed',
+      providerName: 'open-meteo',
+      providerMessageId: null,
+      providerStatusMetadata:
+        'payload={"latitude":52.2297,"longitude":21.0122,"daily":{"weather_code":[61]},"calendar":"Therapy 10:00","todo":"Call bank"}',
+      errorClassification: 'provider-rejected'
+    });
+
+    const [record] = await store.loadRecentForUser('user-1', '2026-07-05T12:00:00.000Z');
+    const persistedRow = sqlite
+      .prepare('select provider_status_metadata from delivery_records where id = ?')
+      .get('weather-provider-diagnostics') as { provider_status_metadata: string | null };
+
+    expect(record.providerStatusMetadata).toBe('redacted');
+    expect(persistedRow.provider_status_metadata).toBe('redacted');
+    expect(JSON.stringify(record)).not.toContain('52.2297');
+    expect(JSON.stringify(record)).not.toContain('weather_code');
+    expect(JSON.stringify(record)).not.toContain('Therapy');
+    expect(JSON.stringify(record)).not.toContain('Call bank');
+  });
 });
