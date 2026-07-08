@@ -38,24 +38,56 @@ const todoTasks: TodoTask[] = [
 ];
 
 describe('Daily Summary preview input', () => {
-  test('renders Visitor and User setup through the same Daily Summary input shape', async () => {
+  test('renders Visitor setup with Demo Calendar through the Daily Summary input shape', async () => {
     const visitorPreview = await buildDailySummaryPreviewInput({
       configuration,
       todoCategories,
       todoTasks
     });
-    const userPreview = await buildDailySummaryPreviewInput({
+
+    expect(renderDailySummary(visitorPreview).text).toContain('Choose a Weather Location to preview live weather.');
+    expect(renderDailySummary(visitorPreview).text).toContain('Mock Commute');
+    expect(renderDailySummary(visitorPreview).text).toContain('Demo Calendar');
+    expect(renderDailySummary(visitorPreview).text).toContain('Buy coffee !');
+    expect(renderDailySummary(visitorPreview).text).toContain('Work\nDraft update !');
+  });
+
+  test('renders signed-in User Calendar as unavailable until Calendar is connected', async () => {
+    const preview = await buildDailySummaryPreviewInput({
+      authMode: 'user',
       configuration,
       todoCategories,
       todoTasks
     });
+    const rendered = renderDailySummary(preview);
 
-    expect(renderDailySummary(visitorPreview).text).toBe(renderDailySummary(userPreview).text);
-    expect(renderDailySummary(userPreview).text).toContain('Choose a Weather Location to preview live weather.');
-    expect(renderDailySummary(userPreview).text).toContain('Mock Commute');
-    expect(renderDailySummary(userPreview).text).toContain('Demo Calendar');
-    expect(renderDailySummary(userPreview).text).toContain('Buy coffee !');
-    expect(renderDailySummary(userPreview).text).toContain('Work\nDraft update !');
+    expect(rendered.text).toContain('Calendar\nConnect Google Calendar to include Calendar Events.');
+    expect(rendered.html).toContain('Connect Google Calendar to include Calendar Events.');
+    expect(rendered.text).not.toContain('Demo Calendar');
+    expect(rendered.html).not.toContain('Demo Calendar');
+  });
+
+  test('omits signed-in User Calendar output when the Calendar Summary Section is disabled', async () => {
+    const preview = await buildDailySummaryPreviewInput({
+      authMode: 'user',
+      configuration: {
+        ...configuration,
+        sections: {
+          ...configuration.sections,
+          calendar: false
+        }
+      },
+      todoCategories,
+      todoTasks
+    });
+    const rendered = renderDailySummary(preview);
+
+    expect(rendered.text).not.toContain('Calendar');
+    expect(rendered.html).not.toContain('Calendar');
+    expect(rendered.text).not.toContain('Connect Google Calendar');
+    expect(rendered.html).not.toContain('Connect Google Calendar');
+    expect(rendered.text).not.toContain('Demo Calendar');
+    expect(rendered.html).not.toContain('Demo Calendar');
   });
 
   test('renders live Weather from Weather Location coordinates in HTML and plain text', async () => {

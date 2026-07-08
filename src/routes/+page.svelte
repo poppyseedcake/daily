@@ -4,6 +4,7 @@
   import { onMount } from 'svelte';
   import type { ActionData, PageData } from './$types';
   import Panel from '$lib/components/Panel.svelte';
+  import { calendarReadinessForAuthMode } from '$lib/calendarReadiness';
   import { buildDailySummaryPreviewInput } from '$lib/dailySummaryPreview';
   import type { DeliveryRecord } from '$lib/deliveryRecords';
   import { buildDemoCalendarSection } from '$lib/demoCalendar';
@@ -48,6 +49,9 @@
   const visitorAuthState = { mode: 'visitor' } as const;
   let { data, form }: { data?: PageData; form?: ActionData } = $props();
   const authState = $derived(data?.authState ?? visitorAuthState);
+  const calendarReadiness = $derived(
+    data?.calendarReadiness ?? calendarReadinessForAuthMode(authState.mode)
+  );
   const isAdministrator = $derived(data?.isAdministrator ?? false);
 
   const summarySections: Array<{ key: SummarySection; label: string }> = [
@@ -828,6 +832,7 @@
     const renderVersion = ++previewRenderVersion;
 
     void buildDailySummaryPreviewInput({
+      calendarReadiness,
       configuration: previewConfiguration,
       todoCategories,
       todoTasks,
@@ -1065,21 +1070,31 @@
         <Panel title="Summary Sections" eyebrow="Daily Summary">
           <div class="grid gap-3">
             {#each summarySections as section}
-              <label
-                class="flex items-center justify-between gap-3 rounded-md border border-stone-200 px-3 py-2"
-                for={`${section.key}-section`}
-              >
-                <span>{section.label} Section</span>
-                <input
-                  id={`${section.key}-section`}
-                  type="checkbox"
-                  bind:checked={enabledSections[section.key]}
-                  disabled={!localSetupHydrated}
-                  onchange={(event) => {
-                    toggleSection(section.key, readInputChecked(event));
-                  }}
-                />
-              </label>
+              <div class="rounded-md border border-stone-200 px-3 py-2">
+                <label
+                  class="flex items-center justify-between gap-3"
+                  for={`${section.key}-section`}
+                >
+                  <span>{section.label} Section</span>
+                  <input
+                    id={`${section.key}-section`}
+                    type="checkbox"
+                    bind:checked={enabledSections[section.key]}
+                    disabled={!localSetupHydrated}
+                    onchange={(event) => {
+                      toggleSection(section.key, readInputChecked(event));
+                    }}
+                  />
+                </label>
+                {#if section.key === 'calendar' && calendarReadiness.status === 'not-connected'}
+                  <p class="mt-2 text-sm font-medium text-amber-800">
+                    {calendarReadiness.statusLabel}
+                  </p>
+                  <p class="mt-1 text-sm text-stone-600">
+                    {calendarReadiness.detail}
+                  </p>
+                {/if}
+              </div>
             {/each}
           </div>
         </Panel>
@@ -1171,13 +1186,13 @@
         </Panel>
       {/if}
 
-      {#if enabledSections.calendar}
-        <Panel title="Demo Calendar" eyebrow="Sample Calendar Events for Visitor mode">
+      {#if enabledSections.calendar && calendarReadiness.status === 'demo'}
+        <Panel title={calendarReadiness.label} eyebrow={calendarReadiness.detail}>
           <div class="space-y-4">
             <div class="flex flex-wrap items-center justify-between gap-3">
               <p class="font-medium text-stone-900">Week Ahead</p>
               <p class="rounded-md bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-950">
-                Demo Calendar
+                {calendarReadiness.label}
               </p>
             </div>
             <div class="grid gap-2">
@@ -1203,6 +1218,20 @@
                 </section>
               {/each}
             </div>
+          </div>
+        </Panel>
+      {:else if enabledSections.calendar && calendarReadiness.status === 'not-connected'}
+        <Panel title={calendarReadiness.label} eyebrow="Google Calendar">
+          <div class="space-y-3">
+            <div class="flex flex-wrap items-center justify-between gap-3">
+              <p class="font-medium text-stone-900">{calendarReadiness.statusLabel}</p>
+              <p class="rounded-md bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-950">
+                Unavailable
+              </p>
+            </div>
+            <p class="text-sm text-stone-600">
+              {calendarReadiness.unavailableReason}
+            </p>
           </div>
         </Panel>
       {/if}

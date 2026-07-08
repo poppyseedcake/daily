@@ -13,6 +13,7 @@ import {
 } from '$lib/server/dailySummaryDelivery';
 import { buildDailySummaryPreviewInput } from '$lib/dailySummaryPreview';
 import { renderDailySummary } from '$lib/dailySummaryRenderer';
+import { calendarReadinessForAuthMode } from '$lib/calendarReadiness';
 import { loadUserSummaryConfiguration } from '$lib/server/summaryConfigurationPersistence';
 import { loadUserTodoState } from '$lib/server/todoPersistence';
 import { loadUserWeatherLocation } from '$lib/server/weatherLocationPersistence';
@@ -93,6 +94,7 @@ export const load = async ({ request }) => {
   return {
     authState,
     isAdministrator: isAdministratorAuthState(authState),
+    calendarReadiness: calendarReadinessForAuthMode(authState.mode),
     summaryConfiguration,
     todoState,
     weatherLocation,
@@ -131,6 +133,7 @@ export const actions = {
 
     const renderedSummary = renderDailySummary(
       await buildDailySummaryPreviewInput({
+        calendarReadiness: calendarReadinessForAuthMode('user'),
         configuration: validConfiguration.data,
         todoCategories: validTodoState.data.todoCategories,
         todoTasks: validTodoState.data.todoTasks,
