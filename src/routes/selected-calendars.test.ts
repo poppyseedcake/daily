@@ -176,6 +176,18 @@ describe('Selected Calendars endpoint', () => {
     expect(savedSelections).toEqual([]);
   });
 
+  test('rejects duplicate selected Calendar ids before persistence', async () => {
+    getSession.mockResolvedValue({
+      user: { id: 'user-1', email: 'user@example.com', emailVerified: true }
+    });
+
+    const response = await saveSelectedCalendars(['work', 'work']);
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({ outcome: 'invalid-selected-calendars' });
+    expect(savedSelections).toEqual([]);
+  });
+
   test('rejects Visitors and invalid copied Calendar Event content', async () => {
     getSession.mockResolvedValue(null);
 

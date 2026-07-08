@@ -7,7 +7,9 @@ export const savedSelectedCalendarSchema = z.object({
   primary: z.boolean()
 }).strict();
 
-export const selectedCalendarIdSaveSchema = z.array(z.string().trim().min(1));
+export const selectedCalendarIdSaveSchema = z
+  .array(z.string().trim().min(1))
+  .refine((calendarIds) => new Set(calendarIds).size === calendarIds.length);
 
 export type ProviderCalendarListEntry = {
   id: string;

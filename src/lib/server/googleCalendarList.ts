@@ -46,6 +46,8 @@ export const googleCalendarListProvider: GoogleCalendarListProvider = {
   }
 };
 
+const tokenIsExpired = (expiresAt: Date | null) => expiresAt !== null && expiresAt <= new Date();
+
 export const loadGoogleCalendarAccessToken = async (authUserId: string) => {
   const accounts = await db.query.authAccount.findMany({
     where: and(eq(authAccount.user_id, authUserId), eq(authAccount.provider_id, 'google')),
@@ -54,5 +56,9 @@ export const loadGoogleCalendarAccessToken = async (authUserId: string) => {
 
   const account = accounts.find((row) => row.scope?.split(/\s+/).includes(googleCalendarReadScope));
 
-  return account?.access_token ?? null;
+  if (!account?.access_token || tokenIsExpired(account.access_token_expires_at)) {
+    return null;
+  }
+
+  return account.access_token;
 };
