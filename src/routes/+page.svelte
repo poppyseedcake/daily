@@ -45,6 +45,7 @@
     type TodoUrgency
   } from '$lib/todo';
   import { weatherLocationSchema, type WeatherLocation } from '$lib/weatherLocation';
+  import type { SelectedCalendarConfiguration, SelectedCalendarOption } from '$lib/selectedCalendars';
 
   const visitorAuthState = { mode: 'visitor' } as const;
   let { data, form }: { data?: PageData; form?: ActionData } = $props();
@@ -69,6 +70,7 @@
     ? weatherLocationSchema.parse(data.weatherLocation)
     : null;
   const deliveryRecords = $derived<DeliveryRecord[]>(data?.deliveryRecords ?? []);
+  const initialSelectedCalendarConfiguration = data?.selectedCalendarConfiguration ?? null;
   const testDeliveryStatus = $derived(
     form?.outcome === 'sent'
       ? {
@@ -134,6 +136,15 @@
   );
   let weatherLocationStatusTone = $state<'success' | 'warning' | 'error' | 'neutral'>(
     initialWeatherLocation ? 'success' : 'neutral'
+  );
+  let selectedCalendarConfiguration = $state<SelectedCalendarConfiguration | null>(
+    initialSelectedCalendarConfiguration
+  );
+  let selectedCalendarStatus = $state(
+    initialSelectedCalendarConfiguration ? 'Selected Calendars saved to your account.' : 'No Calendar list loaded.'
+  );
+  let selectedCalendarStatusTone = $state<'success' | 'warning' | 'error' | 'neutral'>(
+    initialSelectedCalendarConfiguration ? 'success' : 'neutral'
   );
   let localSetupImportStatus = $state('No browser Local Setup was imported.');
   let localSetupImportStatusTone = $state<'success' | 'warning' | 'error' | 'neutral'>('neutral');
@@ -555,6 +566,59 @@
     } catch {
       weatherLocationStatus = 'Weather Location save failed. Try again.';
       weatherLocationStatusTone = 'error';
+    }
+  };
+  const persistSelectedCalendars = async (calendars: SelectedCalendarOption[]) => {
+    selectedCalendarStatus = 'Saving Selected Calendars...';
+    selectedCalendarStatusTone = 'neutral';
+
+    try {
+      const response = await fetch('/selected-calendars', {
+        method: 'PUT',
+        headers: {
+          'content-type': 'application/json'
+        },
+        body: JSON.stringify(
+          calendars.filter((calendar) => calendar.selected).map((calendar) => calendar.id)
+        )
+      });
+
+      if (!response.ok) {
+        selectedCalendarStatus = 'Selected Calendar save failed. Try again.';
+        selectedCalendarStatusTone = response.status === 400 ? 'warning' : 'error';
+        return false;
+      }
+
+      selectedCalendarStatus = 'Selected Calendars saved to your account.';
+      selectedCalendarStatusTone = 'success';
+      return true;
+    } catch {
+      selectedCalendarStatus = 'Selected Calendar save failed. Try again.';
+      selectedCalendarStatusTone = 'error';
+      return false;
+    }
+  };
+  const toggleSelectedCalendar = async (calendarId: string, selected: boolean) => {
+    if (!selectedCalendarConfiguration) {
+      return;
+    }
+
+    const nextCalendars = selectedCalendarConfiguration.calendars.map((calendar) =>
+      calendar.id === calendarId ? { ...calendar, selected } : calendar
+    );
+    const previousConfiguration = selectedCalendarConfiguration;
+
+    selectedCalendarConfiguration = {
+      calendars: nextCalendars,
+      selectedCalendarIds: nextCalendars
+        .filter((calendar) => calendar.selected)
+        .map((calendar) => calendar.id)
+    };
+
+    const saved = await persistSelectedCalendars(nextCalendars);
+
+    if (!saved) {
+      selectedCalendarConfiguration = previousConfiguration;
     }
   };
   const queueUserSummaryConfigurationSave = (configuration: SummaryConfiguration, snapshot: string) => {
@@ -1241,6 +1305,49 @@
                 : calendarReadiness.unavailableReason}
             </p>
             {#if authState.mode === 'user' && calendarReadiness.status === 'connected'}
+              {#if selectedCalendarConfiguration}
+                <fieldset class="grid gap-2 rounded-md border border-stone-200 p-3">
+                  <legend class="font-medium text-stone-800">Selected Calendars</legend>
+                  {#each selectedCalendarConfiguration.calendars as calendar}
+                    <label
+                      class="flex items-center justify-between gap-3 rounded-md border border-stone-200 px-3 py-2"
+                      for={`selected-calendar-${calendar.id}`}
+                    >
+                      <span class="min-w-0">
+                        <span class="block break-words font-medium text-stone-900">
+                          {calendar.summary}
+                        </span>
+                        <span class="block text-sm text-stone-600">
+                          {calendar.primary ? 'Primary Google calendar' : 'Google calendar'}
+                          {calendar.unavailable ? ' unavailable from provider' : ''}
+                        </span>
+                      </span>
+                      <span class="flex items-center gap-2">
+                        {#if calendar.backgroundColor}
+                          <span
+                            class="h-4 w-4 rounded-sm border border-stone-300"
+                            style={`background-color: ${calendar.backgroundColor}`}
+                            aria-hidden="true"
+                          ></span>
+                        {/if}
+                        <input
+                          id={`selected-calendar-${calendar.id}`}
+                          type="checkbox"
+                          checked={calendar.selected}
+                          onchange={(event) => {
+                            void toggleSelectedCalendar(calendar.id, readInputChecked(event));
+                          }}
+                        />
+                      </span>
+                    </label>
+                  {/each}
+                  <p
+                    class={`text-sm ${selectedCalendarStatusTone === 'success' ? 'text-emerald-700' : selectedCalendarStatusTone === 'warning' ? 'text-amber-700' : selectedCalendarStatusTone === 'error' ? 'text-red-700' : 'text-stone-600'}`}
+                  >
+                    {selectedCalendarStatus}
+                  </p>
+                </fieldset>
+              {/if}
               <form method="POST" action="?/disconnectGoogleCalendar">
                 <button
                   class="inline-flex h-10 items-center justify-center rounded-md border border-stone-300 px-4 text-sm font-semibold text-stone-800 hover:bg-stone-50"

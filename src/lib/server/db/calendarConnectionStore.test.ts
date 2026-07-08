@@ -11,6 +11,7 @@ const createTestDatabase = () => {
   sqlite.exec(readFileSync('drizzle/0000_bootstrap_daily.sql', 'utf8'));
   sqlite.exec(readFileSync('drizzle/0001_add_better_auth_tables.sql', 'utf8'));
   sqlite.exec(readFileSync('drizzle/0004_add_calendar_connections.sql', 'utf8'));
+  sqlite.exec(readFileSync('drizzle/0005_add_selected_calendar_metadata.sql', 'utf8'));
 
   return {
     sqlite,
@@ -184,11 +185,72 @@ describe('SQLite User Calendar Connection store', () => {
 
   test('rolls back selected Calendar replacement when an insert fails', async () => {
     const store = createUserCalendarConnectionStore(database);
-    await store.saveSelectedCalendars('user-1', ['primary', 'work']);
+    await store.saveSelectedCalendars('user-1', [
+      { id: 'primary', summary: 'Ada Lovelace', backgroundColor: '#3f51b5', primary: true },
+      { id: 'work', summary: 'Work', backgroundColor: '#0b8043', primary: false }
+    ]);
 
-    await expect(store.saveSelectedCalendars('user-1', ['personal', 'personal'])).rejects.toThrow();
+    await expect(
+      store.saveSelectedCalendars('user-1', [
+        { id: 'personal', summary: 'Personal', backgroundColor: null, primary: false },
+        { id: 'personal', summary: 'Duplicate', backgroundColor: null, primary: false }
+      ])
+    ).rejects.toThrow();
 
     await expect(store.loadSelectedCalendarIds('user-1')).resolves.toEqual(['primary', 'work']);
+  });
+
+  test('persists selected Calendar display metadata per User without event content', async () => {
+    const store = createUserCalendarConnectionStore(database);
+
+    await store.saveSelectedCalendars('user-1', [
+      {
+        id: 'primary',
+        summary: 'Ada Lovelace',
+        backgroundColor: '#3f51b5',
+        primary: true
+      },
+      {
+        id: 'work',
+        summary: 'Work',
+        backgroundColor: null,
+        primary: false
+      }
+    ]);
+    await store.saveSelectedCalendars('user-2', [
+      {
+        id: 'family',
+        summary: 'Family',
+        backgroundColor: '#d50000',
+        primary: false
+      }
+    ]);
+
+    await expect(store.loadSelectedCalendars('user-1')).resolves.toEqual([
+      {
+        id: 'primary',
+        summary: 'Ada Lovelace',
+        backgroundColor: '#3f51b5',
+        primary: true
+      },
+      {
+        id: 'work',
+        summary: 'Work',
+        backgroundColor: null,
+        primary: false
+      }
+    ]);
+    await expect(store.loadSelectedCalendarIds('user-1')).resolves.toEqual(['primary', 'work']);
+    await expect(store.loadSelectedCalendars('user-2')).resolves.toEqual([
+      {
+        id: 'family',
+        summary: 'Family',
+        backgroundColor: '#d50000',
+        primary: false
+      }
+    ]);
+    expect(JSON.stringify(await store.loadSelectedCalendars('user-1'))).not.toContain('event');
+    expect(JSON.stringify(await store.loadSelectedCalendars('user-1'))).not.toContain('attendees');
   });
 
   test('records failed consent without breaking the User connection surface', async () => {
@@ -210,7 +272,10 @@ describe('SQLite User Calendar Connection store', () => {
       refreshTokenAvailable: true,
       accessTokenExpiresAt: null
     });
-    await store.saveSelectedCalendars('user-1', ['primary', 'work']);
+    await store.saveSelectedCalendars('user-1', [
+      { id: 'primary', summary: 'Ada Lovelace', backgroundColor: '#3f51b5', primary: true },
+      { id: 'work', summary: 'Work', backgroundColor: '#0b8043', primary: false }
+    ]);
     await store.saveConnected('user-2', {
       providerAccountId: 'google-user-2',
       grantedScopes: ['https://www.googleapis.com/auth/calendar.readonly'],
@@ -218,7 +283,9 @@ describe('SQLite User Calendar Connection store', () => {
       refreshTokenAvailable: false,
       accessTokenExpiresAt: null
     });
-    await store.saveSelectedCalendars('user-2', ['primary']);
+    await store.saveSelectedCalendars('user-2', [
+      { id: 'primary', summary: 'Other Primary', backgroundColor: null, primary: true }
+    ]);
 
     await store.disconnect('user-1');
 

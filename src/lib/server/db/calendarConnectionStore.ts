@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { and, asc, desc, eq } from 'drizzle-orm';
 import { googleCalendarReadScope } from '$lib/googleCalendarScopes';
+import type { SavedSelectedCalendar } from '$lib/selectedCalendars';
 import { db } from '$lib/server/db';
 import { authAccount, calendarConnections, selectedCalendars, users } from './schema';
 
@@ -26,8 +27,9 @@ export type UserCalendarConnectionStore = {
   saveConnectedFromGoogleAuthAccount: (userId: string) => Promise<boolean>;
   markFailed: (userId: string) => Promise<void>;
   disconnect: (userId: string) => Promise<void>;
-  saveSelectedCalendars: (userId: string, calendarIds: string[]) => Promise<void>;
+  saveSelectedCalendars: (userId: string, calendars: SavedSelectedCalendar[]) => Promise<void>;
   loadSelectedCalendarIds: (userId: string) => Promise<string[]>;
+  loadSelectedCalendars: (userId: string) => Promise<SavedSelectedCalendar[]>;
 };
 
 type CalendarConnectionDatabase = typeof db;
@@ -158,16 +160,19 @@ export const createUserCalendarConnectionStore = (
     await database.delete(calendarConnections).where(eq(calendarConnections.userId, userId));
     await database.delete(selectedCalendars).where(eq(selectedCalendars.userId, userId));
   },
-  async saveSelectedCalendars(userId, calendarIds) {
+  async saveSelectedCalendars(userId, calendars) {
     database.transaction((transaction) => {
       transaction.delete(selectedCalendars).where(eq(selectedCalendars.userId, userId)).run();
-      for (const [position, calendarId] of calendarIds.entries()) {
+      for (const [position, calendar] of calendars.entries()) {
         transaction
           .insert(selectedCalendars)
           .values({
             id: randomUUID(),
             userId,
-            calendarId,
+            calendarId: calendar.id,
+            summary: calendar.summary,
+            backgroundColor: calendar.backgroundColor,
+            primary: calendar.primary,
             position
           })
           .run();
@@ -181,6 +186,19 @@ export const createUserCalendarConnectionStore = (
     });
 
     return rows.map((row) => row.calendarId);
+  },
+  async loadSelectedCalendars(userId) {
+    const rows = await database.query.selectedCalendars.findMany({
+      where: eq(selectedCalendars.userId, userId),
+      orderBy: asc(selectedCalendars.position)
+    });
+
+    return rows.map((row) => ({
+      id: row.calendarId,
+      summary: row.summary,
+      backgroundColor: row.backgroundColor,
+      primary: row.primary
+    }));
   }
 });
 

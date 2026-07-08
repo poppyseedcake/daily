@@ -107,6 +107,9 @@ export const selectedCalendars = sqliteTable(
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
     calendarId: text('calendar_id').notNull(),
+    summary: text('summary').notNull().default(''),
+    backgroundColor: text('background_color'),
+    primary: integer('primary', { mode: 'boolean' }).notNull().default(false),
     position: integer('position').notNull()
   },
   (table) => ({
