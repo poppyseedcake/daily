@@ -5,6 +5,7 @@ import { userSummaryConfigurationStore } from '$lib/server/db/summaryConfigurati
 import { deliveryRecordStore } from '$lib/server/db/deliveryRecordStore';
 import { userTodoStore } from '$lib/server/db/todoStore';
 import { userWeatherLocationStore } from '$lib/server/db/weatherLocationStore';
+import { userCalendarConnectionStore } from '$lib/server/db/calendarConnectionStore';
 import {
   DailySummaryDeliveryError,
   type DailySummaryDeliveryErrorClassification,
@@ -13,7 +14,10 @@ import {
 } from '$lib/server/dailySummaryDelivery';
 import { buildDailySummaryPreviewInput } from '$lib/dailySummaryPreview';
 import { renderDailySummary } from '$lib/dailySummaryRenderer';
-import { calendarReadinessForAuthMode } from '$lib/calendarReadiness';
+import {
+  calendarReadinessForAuthMode,
+  calendarReadinessForUserConnection
+} from '$lib/calendarReadiness';
 import { loadUserSummaryConfiguration } from '$lib/server/summaryConfigurationPersistence';
 import { loadUserTodoState } from '$lib/server/todoPersistence';
 import { loadUserWeatherLocation } from '$lib/server/weatherLocationPersistence';
@@ -46,6 +50,21 @@ export const load = async ({ request }) => {
     headers: request.headers
   });
   const authState = authStateFromSession(session);
+  const calendarConnectionResult = new URL(request.url).searchParams.get('calendarConnection');
+
+  if (authState.mode === 'user' && calendarConnectionResult === 'success') {
+    const storedConnection = await userCalendarConnectionStore.saveConnectedFromGoogleAuthAccount(
+      authState.userId
+    );
+
+    if (!storedConnection) {
+      await userCalendarConnectionStore.markFailed(authState.userId);
+    }
+  }
+
+  if (authState.mode === 'user' && calendarConnectionResult === 'failed') {
+    await userCalendarConnectionStore.markFailed(authState.userId);
+  }
   const summaryConfiguration =
     authState.mode === 'user'
       ? await loadUserSummaryConfiguration(userSummaryConfigurationStore, authState.userId).catch((error: unknown) => {
@@ -90,11 +109,25 @@ export const load = async ({ request }) => {
           return null;
         })
       : null;
+  const calendarConnection =
+    authState.mode === 'user'
+      ? await userCalendarConnectionStore.load(authState.userId).catch((error: unknown) => {
+          console.warn('Failed to load User Calendar Connection.', {
+            userId: authState.userId,
+            error
+          });
+
+          return { status: 'not-connected' } as const;
+        })
+      : null;
 
   return {
     authState,
     isAdministrator: isAdministratorAuthState(authState),
-    calendarReadiness: calendarReadinessForAuthMode(authState.mode),
+    calendarReadiness:
+      authState.mode === 'user' && calendarConnection
+        ? calendarReadinessForUserConnection(calendarConnection)
+        : calendarReadinessForAuthMode(authState.mode),
     summaryConfiguration,
     todoState,
     weatherLocation,
@@ -103,6 +136,24 @@ export const load = async ({ request }) => {
 };
 
 export const actions = {
+  disconnectGoogleCalendar: async ({ request }) => {
+    const session = await auth.api.getSession({
+      headers: request.headers
+    });
+    const authState = authStateFromSession(session);
+
+    if (authState.mode !== 'user') {
+      return {
+        outcome: 'failed',
+        reason: 'visitor-not-allowed',
+        message: 'Sign in with Google to disconnect Google Calendar.'
+      };
+    }
+
+    await userCalendarConnectionStore.disconnect(authState.userId);
+
+    return { outcome: 'disconnected' };
+  },
   sendTestDailySummary: async ({ request }) => {
     const session = await auth.api.getSession({
       headers: request.headers

@@ -1086,7 +1086,7 @@
                     }}
                   />
                 </label>
-                {#if section.key === 'calendar' && calendarReadiness.status === 'not-connected'}
+                {#if section.key === 'calendar' && calendarReadiness.status !== 'demo'}
                   <p class="mt-2 text-sm font-medium text-amber-800">
                     {calendarReadiness.statusLabel}
                   </p>
@@ -1220,18 +1220,43 @@
             </div>
           </div>
         </Panel>
-      {:else if enabledSections.calendar && calendarReadiness.status === 'not-connected'}
+      {:else if enabledSections.calendar && calendarReadiness.status !== 'demo'}
         <Panel title={calendarReadiness.label} eyebrow="Google Calendar">
           <div class="space-y-3">
             <div class="flex flex-wrap items-center justify-between gap-3">
               <p class="font-medium text-stone-900">{calendarReadiness.statusLabel}</p>
-              <p class="rounded-md bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-950">
-                Unavailable
-              </p>
+              {#if calendarReadiness.status === 'connected'}
+                <p class="rounded-md bg-emerald-100 px-2 py-1 text-xs font-semibold text-emerald-950">
+                  Connected
+                </p>
+              {:else}
+                <p class="rounded-md bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-950">
+                  Unavailable
+                </p>
+              {/if}
             </div>
             <p class="text-sm text-stone-600">
-              {calendarReadiness.unavailableReason}
+              {calendarReadiness.status === 'connected'
+                ? calendarReadiness.detail
+                : calendarReadiness.unavailableReason}
             </p>
+            {#if authState.mode === 'user' && calendarReadiness.status === 'connected'}
+              <form method="POST" action="?/disconnectGoogleCalendar">
+                <button
+                  class="inline-flex h-10 items-center justify-center rounded-md border border-stone-300 px-4 text-sm font-semibold text-stone-800 hover:bg-stone-50"
+                  type="submit"
+                >
+                  Disconnect Google Calendar
+                </button>
+              </form>
+            {:else if authState.mode === 'user'}
+              <a
+                class="inline-flex h-10 items-center justify-center rounded-md bg-emerald-700 px-4 text-sm font-semibold text-white hover:bg-emerald-800"
+                href="/auth/google/calendar"
+              >
+                Connect Google Calendar
+              </a>
+            {/if}
           </div>
         </Panel>
       {/if}

@@ -67,6 +67,27 @@ describe('Daily Summary preview input', () => {
     expect(rendered.html).not.toContain('Demo Calendar');
   });
 
+  test('does not render a connected Calendar placeholder as available event data', async () => {
+    const preview = await buildDailySummaryPreviewInput({
+      configuration,
+      todoCategories,
+      todoTasks,
+      calendarReadiness: {
+        status: 'connected',
+        label: 'Calendar',
+        statusLabel: 'Calendar connected',
+        detail: 'Google Calendar is connected for this User.'
+      }
+    });
+    const rendered = renderDailySummary(preview);
+
+    expect(rendered.text).toContain(
+      'Calendar\nCalendar preview is unavailable until Calendar Events can be loaded.'
+    );
+    expect(rendered.text).not.toContain('Google Calendar is connected for this User.');
+    expect(rendered.html).not.toContain('Google Calendar is connected for this User.');
+  });
+
   test('omits signed-in User Calendar output when the Calendar Summary Section is disabled', async () => {
     const preview = await buildDailySummaryPreviewInput({
       authMode: 'user',

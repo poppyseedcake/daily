@@ -6,6 +6,8 @@ const {
   savedConfiguration,
   savedTodoState,
   savedWeatherLocation,
+  savedCalendarConnection,
+  calendarConnectionWrites,
   savedDeliveryRecords,
   recordedDeliveryRecords,
   sentForecastRequests,
@@ -63,6 +65,10 @@ const {
     latitude: 52.2297,
     longitude: 21.0122
   },
+  savedCalendarConnection: {
+    status: 'not-connected' as 'not-connected' | 'connected' | 'failed'
+  },
+  calendarConnectionWrites: [] as Array<{ operation: string; userId: string }>,
   savedDeliveryRecords: [
     {
       id: 'delivery-1',
@@ -148,6 +154,31 @@ vi.mock('$lib/server/db/weatherLocationStore', () => ({
       return userId === 'user-1' ? savedWeatherLocation : null;
     },
     async save() {}
+  }
+}));
+
+vi.mock('$lib/server/db/calendarConnectionStore', () => ({
+  userCalendarConnectionStore: {
+    async load(userId: string) {
+      if (loadFailure.enabled) {
+        throw new Error('store unavailable');
+      }
+
+      return userId === 'user-1' ? savedCalendarConnection : { status: 'not-connected' };
+    },
+    async saveConnectedFromGoogleAuthAccount(userId: string) {
+      calendarConnectionWrites.push({ operation: 'saveConnectedFromGoogleAuthAccount', userId });
+      savedCalendarConnection.status = 'connected';
+      return true;
+    },
+    async markFailed(userId: string) {
+      calendarConnectionWrites.push({ operation: 'markFailed', userId });
+      savedCalendarConnection.status = 'failed';
+    },
+    async disconnect(userId: string) {
+      calendarConnectionWrites.push({ operation: 'disconnect', userId });
+      savedCalendarConnection.status = 'not-connected';
+    }
   }
 }));
 
@@ -265,12 +296,24 @@ const loadPage = () =>
     request: new Request('http://localhost/')
   } as Parameters<typeof load>[0]);
 
+const loadPageAt = (url: string) =>
+  load({
+    request: new Request(url)
+  } as Parameters<typeof load>[0]);
+
 const sendTestDailySummary = () =>
   actions.sendTestDailySummary({
     request: new Request('http://localhost/?/sendTestDailySummary', {
       method: 'POST'
     })
   } as Parameters<typeof actions.sendTestDailySummary>[0]);
+
+const disconnectGoogleCalendar = () =>
+  actions.disconnectGoogleCalendar({
+    request: new Request('http://localhost/?/disconnectGoogleCalendar', {
+      method: 'POST'
+    })
+  } as Parameters<typeof actions.disconnectGoogleCalendar>[0]);
 
 describe('Daily page server load', () => {
   beforeEach(() => {
@@ -279,6 +322,8 @@ describe('Daily page server load', () => {
     deliveryProviderMode.outcome = 'accepted';
     weatherProviderMode.outcome = 'available';
     validationFailure.enabled = false;
+    savedCalendarConnection.status = 'not-connected';
+    calendarConnectionWrites.length = 0;
     recordedDeliveryRecords.length = 0;
     sentForecastRequests.length = 0;
     sentMessages.length = 0;
@@ -328,6 +373,62 @@ describe('Daily page server load', () => {
       weatherLocation: savedWeatherLocation,
       deliveryRecords: savedDeliveryRecords
     });
+  });
+
+  test('persists successful Calendar consent and reports a connected Calendar state', async () => {
+    getSession.mockResolvedValue({
+      user: { id: 'user-1', email: 'user@example.com', emailVerified: true }
+    });
+
+    await expect(loadPageAt('http://localhost/?calendarConnection=success')).resolves.toEqual(
+      expect.objectContaining({
+        calendarReadiness: expect.objectContaining({
+          status: 'connected',
+          statusLabel: 'Calendar connected'
+        })
+      })
+    );
+    expect(calendarConnectionWrites).toEqual([
+      { operation: 'saveConnectedFromGoogleAuthAccount', userId: 'user-1' }
+    ]);
+  });
+
+  test('keeps the signed-in User usable when Calendar consent fails or is canceled', async () => {
+    getSession.mockResolvedValue({
+      user: { id: 'user-1', email: 'user@example.com', emailVerified: true }
+    });
+
+    await expect(loadPageAt('http://localhost/?calendarConnection=failed')).resolves.toEqual(
+      expect.objectContaining({
+        authState: expect.objectContaining({ mode: 'user', userId: 'user-1' }),
+        calendarReadiness: expect.objectContaining({
+          status: 'failed',
+          statusLabel: 'Calendar not connected'
+        })
+      })
+    );
+    expect(calendarConnectionWrites).toEqual([{ operation: 'markFailed', userId: 'user-1' }]);
+  });
+
+  test('disconnects Google Calendar for the signed-in User only', async () => {
+    getSession.mockResolvedValue({
+      user: { id: 'user-1', email: 'user@example.com', emailVerified: true }
+    });
+    savedCalendarConnection.status = 'connected';
+
+    await expect(disconnectGoogleCalendar()).resolves.toEqual({ outcome: 'disconnected' });
+    expect(calendarConnectionWrites).toEqual([{ operation: 'disconnect', userId: 'user-1' }]);
+  });
+
+  test('does not disconnect Google Calendar for a Visitor', async () => {
+    getSession.mockResolvedValue(null);
+
+    await expect(disconnectGoogleCalendar()).resolves.toEqual({
+      outcome: 'failed',
+      reason: 'visitor-not-allowed',
+      message: 'Sign in with Google to disconnect Google Calendar.'
+    });
+    expect(calendarConnectionWrites).toEqual([]);
   });
 
   test('loads defaults for a new signed-in User without imported Local Setup', async () => {

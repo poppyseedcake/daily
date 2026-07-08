@@ -10,6 +10,7 @@ import {
   type DailyUserIdentityOutcome
 } from '$lib/server/db/dailyUserIdentity';
 import { authAccount, authSession, authUser, authVerification } from '$lib/server/db/schema';
+export { googleCalendarReadScope, googleCalendarReadScopes } from '$lib/googleCalendarScopes';
 
 export const googleIdentityScopes = ['openid', 'email', 'profile'] as const;
 
