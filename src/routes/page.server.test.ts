@@ -7,7 +7,10 @@ const {
   savedTodoState,
   savedWeatherLocation,
   savedCalendarConnection,
+  savedSelectedCalendars,
+  providerCalendars,
   calendarConnectionWrites,
+  selectedCalendarWrites,
   savedDeliveryRecords,
   recordedDeliveryRecords,
   sentForecastRequests,
@@ -68,7 +71,20 @@ const {
   savedCalendarConnection: {
     status: 'not-connected' as 'not-connected' | 'connected' | 'failed'
   },
+  savedSelectedCalendars: [] as Array<{
+    id: string;
+    summary: string;
+    backgroundColor: string | null;
+    primary: boolean;
+  }>,
+  providerCalendars: [] as Array<{
+    id: string;
+    summary: string;
+    backgroundColor: string | null;
+    primary: boolean;
+  }>,
   calendarConnectionWrites: [] as Array<{ operation: string; userId: string }>,
+  selectedCalendarWrites: [] as Array<{ userId: string; calendars: unknown }>,
   savedDeliveryRecords: [
     {
       id: 'delivery-1',
@@ -178,7 +194,24 @@ vi.mock('$lib/server/db/calendarConnectionStore', () => ({
     async disconnect(userId: string) {
       calendarConnectionWrites.push({ operation: 'disconnect', userId });
       savedCalendarConnection.status = 'not-connected';
+    },
+    async loadSelectedCalendars(userId: string) {
+      return userId === 'user-1' ? savedSelectedCalendars : [];
+    },
+    async saveSelectedCalendars(userId: string, calendars: unknown) {
+      selectedCalendarWrites.push({ userId, calendars });
     }
+  }
+}));
+
+vi.mock('$lib/server/googleCalendarList', () => ({
+  googleCalendarListProvider: {
+    async loadCalendars() {
+      return providerCalendars;
+    }
+  },
+  async loadGoogleCalendarAccessToken(userId: string) {
+    return userId === 'user-1' ? 'calendar-access-token' : null;
   }
 }));
 
@@ -323,6 +356,9 @@ describe('Daily page server load', () => {
     weatherProviderMode.outcome = 'available';
     validationFailure.enabled = false;
     savedCalendarConnection.status = 'not-connected';
+    savedSelectedCalendars.length = 0;
+    providerCalendars.length = 0;
+    selectedCalendarWrites.length = 0;
     calendarConnectionWrites.length = 0;
     recordedDeliveryRecords.length = 0;
     sentForecastRequests.length = 0;
@@ -351,8 +387,97 @@ describe('Daily page server load', () => {
         nextTodoId: 1
       },
       weatherLocation: null,
-      deliveryRecords: []
+      deliveryRecords: [],
+      selectedCalendarConfiguration: null
     });
+  });
+
+  test('loads User Selected Calendar configuration from Google calendar list and saved selection', async () => {
+    getSession.mockResolvedValue({
+      user: { id: 'user-1', email: 'user@example.com', emailVerified: true }
+    });
+    savedCalendarConnection.status = 'connected';
+    providerCalendars.push(
+      {
+        id: 'primary',
+        summary: 'Ada Lovelace',
+        backgroundColor: '#3f51b5',
+        primary: true
+      },
+      {
+        id: 'work',
+        summary: 'Work',
+        backgroundColor: '#0b8043',
+        primary: false
+      }
+    );
+    savedSelectedCalendars.push({
+      id: 'work',
+      summary: 'Work',
+      backgroundColor: '#0b8043',
+      primary: false
+    });
+
+    await expect(loadPage()).resolves.toEqual(
+      expect.objectContaining({
+        selectedCalendarConfiguration: {
+          calendars: [
+            {
+              id: 'primary',
+              summary: 'Ada Lovelace',
+              backgroundColor: '#3f51b5',
+              primary: true,
+              selected: false
+            },
+            {
+              id: 'work',
+              summary: 'Work',
+              backgroundColor: '#0b8043',
+              primary: false,
+              selected: true
+            }
+          ],
+          selectedCalendarIds: ['work']
+        }
+      })
+    );
+  });
+
+  test('persists the primary Google calendar as the first default Selected Calendar', async () => {
+    getSession.mockResolvedValue({
+      user: { id: 'user-1', email: 'user@example.com', emailVerified: true }
+    });
+    savedCalendarConnection.status = 'connected';
+    providerCalendars.push(
+      {
+        id: 'primary',
+        summary: 'Ada Lovelace',
+        backgroundColor: '#3f51b5',
+        primary: true
+      },
+      {
+        id: 'work',
+        summary: 'Work',
+        backgroundColor: '#0b8043',
+        primary: false
+      }
+    );
+
+    await loadPage();
+
+    expect(selectedCalendarWrites).toEqual([
+      {
+        userId: 'user-1',
+        calendars: [
+          {
+            id: 'primary',
+            summary: 'Ada Lovelace',
+            backgroundColor: '#3f51b5',
+            primary: true
+          }
+        ]
+      }
+    ]);
   });
 
   test('loads signed-in User Summary Configuration from server persistence', async () => {
@@ -371,7 +496,8 @@ describe('Daily page server load', () => {
       summaryConfiguration: savedConfiguration,
       todoState: savedTodoState,
       weatherLocation: savedWeatherLocation,
-      deliveryRecords: savedDeliveryRecords
+      deliveryRecords: savedDeliveryRecords,
+      selectedCalendarConfiguration: null
     });
   });
 
@@ -451,7 +577,8 @@ describe('Daily page server load', () => {
         nextTodoId: 1
       },
       weatherLocation: null,
-      deliveryRecords: []
+      deliveryRecords: [],
+      selectedCalendarConfiguration: null
     });
   });
 
@@ -476,7 +603,8 @@ describe('Daily page server load', () => {
         nextTodoId: 1
       },
       weatherLocation: null,
-      deliveryRecords: []
+      deliveryRecords: [],
+      selectedCalendarConfiguration: null
     });
     expect(console.warn).toHaveBeenCalledWith(
       'Failed to load User Summary Configuration.',
@@ -504,7 +632,8 @@ describe('Daily page server load', () => {
         nextTodoId: 1
       },
       weatherLocation: null,
-      deliveryRecords: []
+      deliveryRecords: [],
+      selectedCalendarConfiguration: null
     });
   });
 

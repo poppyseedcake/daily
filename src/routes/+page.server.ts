@@ -18,6 +18,11 @@ import {
   calendarReadinessForAuthMode,
   calendarReadinessForUserConnection
 } from '$lib/calendarReadiness';
+import { buildSelectedCalendarConfiguration } from '$lib/selectedCalendars';
+import {
+  googleCalendarListProvider,
+  loadGoogleCalendarAccessToken
+} from '$lib/server/googleCalendarList';
 import { loadUserSummaryConfiguration } from '$lib/server/summaryConfigurationPersistence';
 import { loadUserTodoState } from '$lib/server/todoPersistence';
 import { loadUserWeatherLocation } from '$lib/server/weatherLocationPersistence';
@@ -120,6 +125,48 @@ export const load = async ({ request }) => {
           return { status: 'not-connected' } as const;
         })
       : null;
+  const selectedCalendarConfiguration =
+    authState.mode === 'user' && calendarConnection?.status === 'connected'
+      ? await (async () => {
+          try {
+            const accessToken = await loadGoogleCalendarAccessToken(authState.userId);
+
+            if (!accessToken) {
+              return null;
+            }
+
+            const providerCalendars = await googleCalendarListProvider.loadCalendars(accessToken);
+            const savedCalendars = await userCalendarConnectionStore.loadSelectedCalendars(authState.userId);
+            const configuration = buildSelectedCalendarConfiguration({
+              providerCalendars,
+              savedCalendars
+            });
+
+            if (savedCalendars.length === 0 && configuration.selectedCalendarIds.length > 0) {
+              await userCalendarConnectionStore.saveSelectedCalendars(
+                authState.userId,
+                configuration.calendars
+                  .filter((calendar) => calendar.selected)
+                  .map((calendar) => ({
+                    id: calendar.id,
+                    summary: calendar.summary,
+                    backgroundColor: calendar.backgroundColor,
+                    primary: calendar.primary
+                  }))
+              );
+            }
+
+            return configuration;
+          } catch (error: unknown) {
+            console.warn('Failed to load User Selected Calendar configuration.', {
+              userId: authState.userId,
+              error
+            });
+
+            return null;
+          }
+        })()
+      : null;
 
   return {
     authState,
@@ -131,7 +178,8 @@ export const load = async ({ request }) => {
     summaryConfiguration,
     todoState,
     weatherLocation,
-    deliveryRecords
+    deliveryRecords,
+    selectedCalendarConfiguration
   };
 };
 
