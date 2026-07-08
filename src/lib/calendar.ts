@@ -3,14 +3,25 @@ import type { SavedSelectedCalendar } from './selectedCalendars';
 import type { UserTimeZone } from './summaryConfiguration';
 import { buildWeekAhead, getLocalToday } from './summaryDates';
 
-export type CalendarProviderEvent = {
-  id: string;
-  calendarId: string;
-  calendarSummary: string;
-  summary: string;
-  start: string;
-  end: string;
-};
+export type CalendarProviderEvent =
+  | {
+      kind: 'timed';
+      id: string;
+      calendarId: string;
+      calendarSummary: string;
+      summary: string;
+      start: string;
+      end: string;
+    }
+  | {
+      kind: 'all-day';
+      id: string;
+      calendarId: string;
+      calendarSummary: string;
+      summary: string;
+      startDate: string;
+      endDate: string;
+    };
 
 export type CalendarEventProvider = {
   fetchEvents: (request: {
@@ -19,6 +30,12 @@ export type CalendarEventProvider = {
     timeMax: string;
     timeZone: UserTimeZone;
   }) => Promise<CalendarProviderEvent[]>;
+};
+
+export type AllDayCalendarEvent = {
+  id: string;
+  title: string;
+  calendarLabel: string;
 };
 
 export type TimedCalendarEvent = {
@@ -30,12 +47,14 @@ export type TimedCalendarEvent = {
 
 export type CalendarDay = {
   label: string;
-  events: TimedCalendarEvent[];
+  allDayEvents: AllDayCalendarEvent[];
+  timedEvents: TimedCalendarEvent[];
 };
 
 export type CalendarSection = {
   label: 'Calendar';
-  days: CalendarDay[];
+  today: CalendarDay | null;
+  weekAhead: CalendarDay[];
 };
 
 export const buildCalendarEventFetchRequest = ({
@@ -81,44 +100,69 @@ export const buildCalendarSection = ({
   const selectedCalendarLabels = new Map(
     selectedCalendars.map((calendar) => [calendar.id, calendar.summary])
   );
-  const eventsByDate = new Map<string, TimedCalendarEvent[]>();
+  const eventsByDate = new Map<
+    string,
+    {
+      allDayEvents: AllDayCalendarEvent[];
+      timedEvents: TimedCalendarEvent[];
+    }
+  >();
 
   for (const event of providerEvents) {
-    const startsAt = Temporal.Instant.from(event.start).toZonedDateTimeISO(userTimeZone);
-    const localDate = startsAt.toPlainDate().toString();
+    const localDate =
+      event.kind === 'timed'
+        ? Temporal.Instant.from(event.start).toZonedDateTimeISO(userTimeZone).toPlainDate().toString()
+        : event.startDate;
 
     if (!weekAhead.some((date) => date.toString() === localDate)) {
       continue;
     }
 
-    const localEvents = eventsByDate.get(localDate) ?? [];
-    localEvents.push({
-      id: event.id,
-      title: event.summary,
-      calendarLabel: selectedCalendarLabels.get(event.calendarId) ?? event.calendarSummary,
-      localStartTime: formatLocalTime(startsAt)
-    });
+    const localEvents = eventsByDate.get(localDate) ?? { allDayEvents: [], timedEvents: [] };
+    const calendarLabel = selectedCalendarLabels.get(event.calendarId) ?? event.calendarSummary;
+
+    if (event.kind === 'timed') {
+      localEvents.timedEvents.push({
+        id: event.id,
+        title: event.summary,
+        calendarLabel,
+        localStartTime: formatLocalTime(
+          Temporal.Instant.from(event.start).toZonedDateTimeISO(userTimeZone)
+        )
+      });
+    } else {
+      localEvents.allDayEvents.push({
+        id: event.id,
+        title: event.summary,
+        calendarLabel
+      });
+    }
+
     eventsByDate.set(localDate, localEvents);
   }
 
+  const days = weekAhead.flatMap((date, index): CalendarDay[] => {
+    const events = eventsByDate.get(date.toString()) ?? { allDayEvents: [], timedEvents: [] };
+
+    if (events.allDayEvents.length === 0 && events.timedEvents.length === 0) {
+      return [];
+    }
+
+    return [
+      {
+        label: index === 0 ? 'Today' : formatDayLabel(date),
+        allDayEvents: events.allDayEvents,
+        timedEvents: events.timedEvents.toSorted((left, right) =>
+          left.localStartTime.localeCompare(right.localStartTime)
+        )
+      }
+    ];
+  });
+
   return {
     label: 'Calendar',
-    days: weekAhead.flatMap((date, index) => {
-      const events = eventsByDate.get(date.toString()) ?? [];
-
-      if (events.length === 0) {
-        return [];
-      }
-
-      return [
-        {
-          label: index === 0 ? 'Today' : formatDayLabel(date),
-          events: events.toSorted((left, right) =>
-            left.localStartTime.localeCompare(right.localStartTime)
-          )
-        }
-      ];
-    })
+    today: days.find((day) => day.label === 'Today') ?? null,
+    weekAhead: days.filter((day) => day.label !== 'Today')
   };
 };
 

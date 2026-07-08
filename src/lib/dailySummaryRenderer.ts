@@ -100,23 +100,51 @@ const buildVisibleSection = (
 };
 
 const renderCalendarSection = (calendarSection: CalendarSection): RenderedSection => {
-  const html = calendarSection.days
-    .map(
-      (day) =>
-        `<h3>${escapeHtml(day.label)}</h3><ul>${day.events.map((event) => `<li><time>${escapeHtml(event.localStartTime)}</time> ${escapeHtml(event.title)} <span>(${escapeHtml(event.calendarLabel)})</span></li>`).join('')}</ul>`
-    )
+  const today = calendarSection.today ? renderCalendarDay(calendarSection.today) : null;
+  const weekAhead = calendarSection.weekAhead.map(renderCalendarDay);
+  const html = [
+    today?.html,
+    weekAhead.length > 0
+      ? `<h3>Week Ahead</h3>${weekAhead.map((day) => day.html).join('')}`
+      : null
+  ]
+    .filter(Boolean)
     .join('');
-  const text = calendarSection.days
-    .map(
-      (day) =>
-        `${day.label}\n${day.events.map((event) => `${event.localStartTime} ${event.title} (${event.calendarLabel})`).join('\n')}`
-    )
+  const text = [
+    today?.text,
+    weekAhead.length > 0 ? `Week Ahead\n${weekAhead.map((day) => day.text).join('\n\n')}` : null
+  ]
+    .filter(Boolean)
     .join('\n\n');
 
   return {
     label: calendarSection.label,
     html,
     text
+  };
+};
+
+const renderCalendarDay = (day: CalendarSection['weekAhead'][number]) => {
+  const htmlEvents = [
+    ...day.allDayEvents.map(
+      (event) =>
+        `<li>All day ${escapeHtml(event.title)} <span>(${escapeHtml(event.calendarLabel)})</span></li>`
+    ),
+    ...day.timedEvents.map(
+      (event) =>
+        `<li><time>${escapeHtml(event.localStartTime)}</time> ${escapeHtml(event.title)} <span>(${escapeHtml(event.calendarLabel)})</span></li>`
+    )
+  ];
+  const textEvents = [
+    ...day.allDayEvents.map((event) => `All day ${event.title} (${event.calendarLabel})`),
+    ...day.timedEvents.map(
+      (event) => `${event.localStartTime} ${event.title} (${event.calendarLabel})`
+    )
+  ];
+
+  return {
+    html: `<h4>${escapeHtml(day.label)}</h4><ul>${htmlEvents.join('')}</ul>`,
+    text: `${day.label}\n${textEvents.join('\n')}`
   };
 };
 

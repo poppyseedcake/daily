@@ -96,8 +96,6 @@ export const googleCalendarEventProvider = (accessToken: string): CalendarEventP
           if (
             !event.id ||
             !event.summary ||
-            !event.start?.dateTime ||
-            !event.end?.dateTime ||
             event.attendees?.some(
               (attendee) => attendee.self === true && attendee.responseStatus === 'declined'
             )
@@ -105,16 +103,35 @@ export const googleCalendarEventProvider = (accessToken: string): CalendarEventP
             return [];
           }
 
-          return [
-            {
-              id: event.id,
-              calendarId,
-              calendarSummary: calendarId,
-              summary: event.summary,
-              start: event.start.dateTime,
-              end: event.end.dateTime
-            }
-          ];
+          if (event.start?.dateTime && event.end?.dateTime) {
+            return [
+              {
+                kind: 'timed',
+                id: event.id,
+                calendarId,
+                calendarSummary: calendarId,
+                summary: event.summary,
+                start: event.start.dateTime,
+                end: event.end.dateTime
+              }
+            ];
+          }
+
+          if (event.start?.date && event.end?.date) {
+            return [
+              {
+                kind: 'all-day',
+                id: event.id,
+                calendarId,
+                calendarSummary: calendarId,
+                summary: event.summary,
+                startDate: event.start.date,
+                endDate: event.end.date
+              }
+            ];
+          }
+
+          return [];
         });
       })
     );

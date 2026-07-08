@@ -893,6 +893,11 @@
   });
 
   $effect(() => {
+    if (authState.mode === 'user') {
+      renderedSummaryHtml = data?.renderedSummaryHtml ?? '';
+      return;
+    }
+
     const renderVersion = ++previewRenderVersion;
 
     void buildDailySummaryPreviewInput({

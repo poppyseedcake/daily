@@ -166,6 +166,57 @@ export const load = async ({ request }) => {
 
             return null;
           }
+      })()
+      : null;
+  const renderedSummaryHtml =
+    authState.mode === 'user'
+      ? await (async () => {
+          const validConfiguration = summaryConfigurationSchema.safeParse(summaryConfiguration);
+          const validTodoState = todoStateSchema.safeParse(todoState);
+
+          if (!validConfiguration.success || !validTodoState.success) {
+            return null;
+          }
+
+          const selectedCalendars =
+            calendarConnection?.status === 'connected'
+              ? (selectedCalendarConfiguration?.calendars ?? [])
+                  .filter((calendar) => calendar.selected)
+                  .map((calendar) => ({
+                    id: calendar.id,
+                    summary: calendar.summary,
+                    backgroundColor: calendar.backgroundColor,
+                    primary: calendar.primary
+                  }))
+              : [];
+          const calendarAccessToken =
+            calendarConnection?.status === 'connected'
+              ? await loadGoogleCalendarAccessToken(authState.userId).catch((error: unknown) => {
+                  console.warn('Failed to load User Calendar access token for preview.', {
+                    userId: authState.userId,
+                    error
+                  });
+
+                  return null;
+                })
+              : null;
+
+          return renderDailySummary(
+            await buildDailySummaryPreviewInput({
+              authMode: 'user',
+              configuration: validConfiguration.data,
+              todoCategories: validTodoState.data.todoCategories,
+              todoTasks: validTodoState.data.todoTasks,
+              weatherLocation,
+              calendarReadiness: calendarConnection
+                ? calendarReadinessForUserConnection(calendarConnection)
+                : calendarReadinessForAuthMode('user'),
+              selectedCalendars,
+              calendarEventProvider: calendarAccessToken
+                ? googleCalendarEventProvider(calendarAccessToken)
+                : undefined
+            })
+          ).html;
         })()
       : null;
 
@@ -180,7 +231,8 @@ export const load = async ({ request }) => {
     todoState,
     weatherLocation,
     deliveryRecords,
-    selectedCalendarConfiguration
+    selectedCalendarConfiguration,
+    renderedSummaryHtml
   };
 };
 
@@ -224,15 +276,6 @@ export const actions = {
     );
     const todoState = await loadUserTodoState(userTodoStore, authState.userId);
     const weatherLocation = await loadUserWeatherLocation(userWeatherLocationStore, authState.userId);
-    const calendarConnection = await userCalendarConnectionStore.load(authState.userId);
-    const selectedCalendars =
-      calendarConnection.status === 'connected'
-        ? await userCalendarConnectionStore.loadSelectedCalendars(authState.userId)
-        : [];
-    const calendarAccessToken =
-      calendarConnection.status === 'connected'
-        ? await loadGoogleCalendarAccessToken(authState.userId)
-        : null;
     const validConfiguration = summaryConfigurationSchema.safeParse(configuration);
     const validTodoState = todoStateSchema.safeParse(todoState);
 
@@ -246,11 +289,7 @@ export const actions = {
         todoCategories: validTodoState.data.todoCategories,
         todoTasks: validTodoState.data.todoTasks,
         weatherLocation,
-        calendarReadiness: calendarReadinessForUserConnection(calendarConnection),
-        selectedCalendars,
-        calendarEventProvider: calendarAccessToken
-          ? googleCalendarEventProvider(calendarAccessToken)
-          : undefined
+        calendarReadiness: calendarReadinessForAuthMode('user')
       })
     );
     const message = {

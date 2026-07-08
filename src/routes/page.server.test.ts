@@ -218,6 +218,7 @@ vi.mock('$lib/server/googleCalendarList', () => ({
 
       return [
         {
+          kind: 'timed',
           id: 'calendar-event-1',
           calendarId: 'work',
           calendarSummary: 'Work',
@@ -407,7 +408,8 @@ describe('Daily page server load', () => {
       },
       weatherLocation: null,
       deliveryRecords: [],
-      selectedCalendarConfiguration: null
+      selectedCalendarConfiguration: null,
+      renderedSummaryHtml: null
     });
   });
 
@@ -460,6 +462,39 @@ describe('Daily page server load', () => {
         }
       })
     );
+  });
+
+  test('loads live selected Calendar Events into the signed-in User Daily Summary preview', async () => {
+    getSession.mockResolvedValue({
+      user: { id: 'user-1', email: 'user@example.com', emailVerified: true }
+    });
+    savedCalendarConnection.status = 'connected';
+    savedSelectedCalendars.push({
+      id: 'work',
+      summary: 'Work',
+      backgroundColor: '#0b8043',
+      primary: false
+    });
+    providerCalendars.push({
+      id: 'work',
+      summary: 'Work',
+      backgroundColor: '#0b8043',
+      primary: false
+    });
+
+    await expect(loadPage()).resolves.toEqual(
+      expect.objectContaining({
+        renderedSummaryHtml: expect.stringContaining('Planning')
+      })
+    );
+    expect(sentCalendarEventRequests).toEqual([
+      {
+        calendarIds: ['work'],
+        timeMin: '2026-07-07T04:00:00Z',
+        timeMax: '2026-07-14T04:00:00Z',
+        timeZone: 'America/New_York'
+      }
+    ]);
   });
 
   test('persists the primary Google calendar as the first default Selected Calendar', async () => {
@@ -516,7 +551,8 @@ describe('Daily page server load', () => {
       todoState: savedTodoState,
       weatherLocation: savedWeatherLocation,
       deliveryRecords: savedDeliveryRecords,
-      selectedCalendarConfiguration: null
+      selectedCalendarConfiguration: null,
+      renderedSummaryHtml: expect.any(String)
     });
   });
 
@@ -597,7 +633,8 @@ describe('Daily page server load', () => {
       },
       weatherLocation: null,
       deliveryRecords: [],
-      selectedCalendarConfiguration: null
+      selectedCalendarConfiguration: null,
+      renderedSummaryHtml: expect.any(String)
     });
   });
 
@@ -623,7 +660,8 @@ describe('Daily page server load', () => {
       },
       weatherLocation: null,
       deliveryRecords: [],
-      selectedCalendarConfiguration: null
+      selectedCalendarConfiguration: null,
+      renderedSummaryHtml: null
     });
     expect(console.warn).toHaveBeenCalledWith(
       'Failed to load User Summary Configuration.',
@@ -652,7 +690,8 @@ describe('Daily page server load', () => {
       },
       weatherLocation: null,
       deliveryRecords: [],
-      selectedCalendarConfiguration: null
+      selectedCalendarConfiguration: null,
+      renderedSummaryHtml: expect.any(String)
     });
   });
 
@@ -735,7 +774,7 @@ describe('Daily page server load', () => {
     ]);
   });
 
-  test('sends live selected Calendar Events in a signed-in User test Daily Summary', async () => {
+  test('does not fetch live Calendar Events for out-of-scope test Daily Summary delivery', async () => {
     getSession.mockResolvedValue({
       user: { id: 'user-1', email: 'user@example.com', emailVerified: true }
     });
@@ -750,18 +789,11 @@ describe('Daily page server load', () => {
     const result = await sendTestDailySummary();
 
     expect(result).toEqual({ outcome: 'sent' });
-    expect(sentCalendarEventRequests).toEqual([
-      {
-        calendarIds: ['work'],
-        timeMin: '2026-07-07T04:00:00Z',
-        timeMax: '2026-07-14T04:00:00Z',
-        timeZone: 'America/New_York'
-      }
-    ]);
+    expect(sentCalendarEventRequests).toEqual([]);
     expect(sentMessages).toEqual([
       expect.objectContaining({
-        html: expect.stringContaining('Planning'),
-        text: expect.stringContaining('Today\n11:00 Planning (Work)')
+        html: expect.not.stringContaining('Planning'),
+        text: expect.not.stringContaining('Today\n11:00 Planning (Work)')
       })
     ]);
     expect(recordedDeliveryRecords).toEqual([

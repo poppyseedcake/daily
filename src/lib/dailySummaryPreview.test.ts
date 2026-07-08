@@ -92,6 +92,7 @@ describe('Daily Summary preview input', () => {
     const calendarEventProvider = {
       fetchEvents: vi.fn().mockResolvedValue([
         {
+          kind: 'timed',
           id: 'later-today',
           calendarId: 'work',
           calendarSummary: 'Work',
@@ -100,6 +101,7 @@ describe('Daily Summary preview input', () => {
           end: '2026-07-08T16:30:00.000Z'
         },
         {
+          kind: 'timed',
           id: 'early-today',
           calendarId: 'personal',
           calendarSummary: 'Personal',
@@ -108,12 +110,22 @@ describe('Daily Summary preview input', () => {
           end: '2026-07-08T12:30:00.000Z'
         },
         {
+          kind: 'timed',
           id: 'tomorrow',
           calendarId: 'work',
           calendarSummary: 'Work',
           summary: 'Planning',
           start: '2026-07-09T15:00:00.000Z',
           end: '2026-07-09T16:00:00.000Z'
+        },
+        {
+          kind: 'all-day',
+          id: 'all-day-tomorrow',
+          calendarId: 'personal',
+          calendarSummary: 'Personal',
+          summary: 'Conference',
+          startDate: '2026-07-09',
+          endDate: '2026-07-10'
         }
       ])
     };
@@ -145,7 +157,7 @@ describe('Daily Summary preview input', () => {
       timeZone: 'America/New_York'
     });
     expect(rendered.text).toContain('Calendar\nToday\n08:00 School drop-off (Personal)\n12:00 Team retro (Work)');
-    expect(rendered.text).toContain('Thu, Jul 9\n11:00 Planning (Work)');
+    expect(rendered.text).toContain('Week Ahead\nThu, Jul 9\nAll day Conference (Personal)\n11:00 Planning (Work)');
     expect(rendered.html).toContain('Today');
     expect(rendered.html).toContain('08:00');
     expect(rendered.html).toContain('School drop-off');
