@@ -4,12 +4,19 @@ import type { SummaryConfiguration } from './summaryConfiguration';
 import { buildTodoSection, type TodoCategory, type TodoTask } from './todo';
 import type { WeatherLocation } from './weatherLocation';
 import {
+  calendarReadinessForAuthMode,
+  type CalendarReadiness,
+  type CalendarReadinessAuthMode
+} from './calendarReadiness';
+import {
   buildWeatherSection,
   openMeteoWeatherForecastProvider,
   type WeatherForecastProvider
 } from './weatherForecast';
 
 export type DailySummaryPreviewSetup = {
+  authMode?: CalendarReadinessAuthMode;
+  calendarReadiness?: CalendarReadiness;
   configuration: SummaryConfiguration;
   todoCategories: TodoCategory[];
   todoTasks: TodoTask[];
@@ -19,6 +26,8 @@ export type DailySummaryPreviewSetup = {
 };
 
 export const buildDailySummaryPreviewInput = async ({
+  authMode = 'visitor',
+  calendarReadiness = calendarReadinessForAuthMode(authMode),
   configuration,
   todoCategories,
   todoTasks,
@@ -43,11 +52,18 @@ export const buildDailySummaryPreviewInput = async ({
         label: 'Mock Commute',
         detail: 'Mock provider data: 24 minutes by tram to the office.'
       },
-      calendar: {
-        status: 'available',
-        label: demoCalendar.label,
-        detail: demoCalendar.summaryDetail
-      },
+      calendar:
+        calendarReadiness.status === 'demo'
+          ? {
+              status: 'available',
+              label: calendarReadiness.label,
+              detail: demoCalendar.summaryDetail
+            }
+          : {
+              status: 'unavailable',
+              label: calendarReadiness.label,
+              reason: calendarReadiness.unavailableReason
+            },
       todo: {
         status: 'available',
         label: 'Todo',

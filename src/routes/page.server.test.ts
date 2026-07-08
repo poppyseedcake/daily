@@ -78,6 +78,20 @@ const {
   ]
 }));
 
+const visitorCalendarReadiness = {
+  status: 'demo',
+  label: 'Demo Calendar',
+  detail: 'Sample Calendar Events for Visitor mode'
+} as const;
+
+const userCalendarReadiness = {
+  status: 'not-connected',
+  label: 'Calendar',
+  statusLabel: 'Calendar not connected',
+  detail: 'Calendar Events will appear after Google Calendar setup is available.',
+  unavailableReason: 'Connect Google Calendar to include Calendar Events.'
+} as const;
+
 vi.mock('$lib/server/auth', () => ({
   auth: {
     api: {
@@ -284,6 +298,7 @@ describe('Daily page server load', () => {
     await expect(loadPage()).resolves.toEqual({
       authState: { mode: 'visitor' },
       isAdministrator: false,
+      calendarReadiness: visitorCalendarReadiness,
       summaryConfiguration: null,
       todoState: {
         todoCategories: [],
@@ -307,6 +322,7 @@ describe('Daily page server load', () => {
         summaryRecipient: 'user@example.com'
       },
       isAdministrator: false,
+      calendarReadiness: userCalendarReadiness,
       summaryConfiguration: savedConfiguration,
       todoState: savedTodoState,
       weatherLocation: savedWeatherLocation,
@@ -326,6 +342,7 @@ describe('Daily page server load', () => {
         summaryRecipient: 'new@example.com'
       },
       isAdministrator: false,
+      calendarReadiness: userCalendarReadiness,
       summaryConfiguration: defaultSummaryConfiguration,
       todoState: {
         todoCategories: [],
@@ -350,6 +367,7 @@ describe('Daily page server load', () => {
         summaryRecipient: 'user@example.com'
       },
       isAdministrator: false,
+      calendarReadiness: userCalendarReadiness,
       summaryConfiguration: null,
       todoState: {
         todoCategories: [],
@@ -377,6 +395,7 @@ describe('Daily page server load', () => {
         summaryRecipient: 'Admin@Example.com'
       },
       isAdministrator: true,
+      calendarReadiness: userCalendarReadiness,
       summaryConfiguration: defaultSummaryConfiguration,
       todoState: {
         todoCategories: [],
@@ -413,6 +432,18 @@ describe('Daily page server load', () => {
     expect(sentMessages[0]).toEqual(
       expect.objectContaining({
         text: expect.stringContaining('Mock Commute')
+      })
+    );
+    expect(sentMessages[0]).toEqual(
+      expect.objectContaining({
+        html: expect.stringContaining('Connect Google Calendar to include Calendar Events.'),
+        text: expect.stringContaining('Calendar\nConnect Google Calendar to include Calendar Events.')
+      })
+    );
+    expect(sentMessages[0]).toEqual(
+      expect.objectContaining({
+        html: expect.not.stringContaining('Demo Calendar'),
+        text: expect.not.stringContaining('Demo Calendar')
       })
     );
     expect(sentForecastRequests).toEqual([

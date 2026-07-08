@@ -95,6 +95,8 @@ test('Visitor opens Daily into the usable main panel', async ({ page }) => {
     '/auth/google'
   );
   await expect(page.getByText('Google Calendar')).not.toBeVisible();
+  await expect(page.getByText('Connect Google Calendar')).not.toBeVisible();
+  await expect(page.getByText('Selected Calendar')).not.toBeVisible();
   await expect(page.getByRole('button', { name: 'Preview Daily Summary' })).toBeVisible();
 });
 
