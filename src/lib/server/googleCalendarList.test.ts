@@ -113,6 +113,20 @@ describe('Google Calendar list provider', () => {
             summary: 'Conference',
             start: { date: '2026-07-08' },
             end: { date: '2026-07-09' }
+          },
+          {
+            id: 'declined-event',
+            summary: 'Declined planning',
+            start: { dateTime: '2026-07-08T15:00:00.000Z' },
+            end: { dateTime: '2026-07-08T16:00:00.000Z' },
+            attendees: [{ self: true, responseStatus: 'declined' }]
+          },
+          {
+            id: 'canceled-event',
+            summary: 'Canceled planning',
+            status: 'cancelled',
+            start: { dateTime: '2026-07-08T17:00:00.000Z' },
+            end: { dateTime: '2026-07-08T18:00:00.000Z' }
           }
         ]
       })
