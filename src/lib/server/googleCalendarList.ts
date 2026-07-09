@@ -22,6 +22,7 @@ type GoogleCalendarEventsResponse = {
   items?: Array<{
     id?: string;
     summary?: string;
+    status?: string;
     start?: {
       dateTime?: string;
       date?: string;
@@ -96,6 +97,7 @@ export const googleCalendarEventProvider = (accessToken: string): CalendarEventP
           if (
             !event.id ||
             !event.summary ||
+            event.status === 'cancelled' ||
             event.attendees?.some(
               (attendee) => attendee.self === true && attendee.responseStatus === 'declined'
             )

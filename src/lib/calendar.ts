@@ -3,8 +3,13 @@ import type { SavedSelectedCalendar } from './selectedCalendars';
 import type { UserTimeZone } from './summaryConfiguration';
 import { buildWeekAhead, getLocalToday } from './summaryDates';
 
+type CalendarProviderEventStatus = {
+  status?: 'cancelled';
+  selfResponseStatus?: 'declined';
+};
+
 export type CalendarProviderEvent =
-  | {
+  | (CalendarProviderEventStatus & {
       kind: 'timed';
       id: string;
       calendarId: string;
@@ -12,8 +17,8 @@ export type CalendarProviderEvent =
       summary: string;
       start: string;
       end: string;
-    }
-  | {
+    })
+  | (CalendarProviderEventStatus & {
       kind: 'all-day';
       id: string;
       calendarId: string;
@@ -21,7 +26,7 @@ export type CalendarProviderEvent =
       summary: string;
       startDate: string;
       endDate: string;
-    };
+    });
 
 export type CalendarEventProvider = {
   fetchEvents: (request: {
@@ -109,19 +114,23 @@ export const buildCalendarSection = ({
   >();
 
   for (const event of providerEvents) {
-    const localDate =
-      event.kind === 'timed'
-        ? Temporal.Instant.from(event.start).toZonedDateTimeISO(userTimeZone).toPlainDate().toString()
-        : event.startDate;
-
-    if (!weekAhead.some((date) => date.toString() === localDate)) {
+    if (event.status === 'cancelled' || event.selfResponseStatus === 'declined') {
       continue;
     }
 
-    const localEvents = eventsByDate.get(localDate) ?? { allDayEvents: [], timedEvents: [] };
     const calendarLabel = selectedCalendarLabels.get(event.calendarId) ?? event.calendarSummary;
 
     if (event.kind === 'timed') {
+      const localDate = Temporal.Instant.from(event.start)
+        .toZonedDateTimeISO(userTimeZone)
+        .toPlainDate()
+        .toString();
+
+      if (!weekAhead.some((date) => date.toString() === localDate)) {
+        continue;
+      }
+
+      const localEvents = eventsByDate.get(localDate) ?? { allDayEvents: [], timedEvents: [] };
       localEvents.timedEvents.push({
         id: event.id,
         title: event.summary,
@@ -130,15 +139,19 @@ export const buildCalendarSection = ({
           Temporal.Instant.from(event.start).toZonedDateTimeISO(userTimeZone)
         )
       });
+      eventsByDate.set(localDate, localEvents);
     } else {
-      localEvents.allDayEvents.push({
-        id: event.id,
-        title: event.summary,
-        calendarLabel
-      });
+      for (const date of allDayEventDatesInWindow(event, weekAhead)) {
+        const localDate = date.toString();
+        const localEvents = eventsByDate.get(localDate) ?? { allDayEvents: [], timedEvents: [] };
+        localEvents.allDayEvents.push({
+          id: event.id,
+          title: event.summary,
+          calendarLabel
+        });
+        eventsByDate.set(localDate, localEvents);
+      }
     }
-
-    eventsByDate.set(localDate, localEvents);
   }
 
   const days = weekAhead.flatMap((date, index): CalendarDay[] => {
@@ -164,6 +177,18 @@ export const buildCalendarSection = ({
     today: days.find((day) => day.label === 'Today') ?? null,
     weekAhead: days.filter((day) => day.label !== 'Today')
   };
+};
+
+const allDayEventDatesInWindow = (
+  event: Extract<CalendarProviderEvent, { kind: 'all-day' }>,
+  weekAhead: Temporal.PlainDate[]
+) => {
+  const eventStart = Temporal.PlainDate.from(event.startDate);
+  const eventEnd = Temporal.PlainDate.from(event.endDate);
+
+  return weekAhead.filter(
+    (date) => Temporal.PlainDate.compare(date, eventStart) >= 0 && Temporal.PlainDate.compare(date, eventEnd) < 0
+  );
 };
 
 const formatInstantForProvider = (instant: Temporal.Instant) =>
