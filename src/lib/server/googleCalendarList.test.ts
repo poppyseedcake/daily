@@ -199,6 +199,7 @@ describe('Google Calendar list provider', () => {
   });
 
   test('maps rejected Calendar credentials to a reconnect-required provider outcome', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     vi.stubGlobal(
       'fetch',
       vi.fn().mockResolvedValue({
@@ -218,6 +219,39 @@ describe('Google Calendar list provider', () => {
       outcome: 'unavailable',
       reason: 'Reconnect Google Calendar to include Calendar Events.'
     });
+    expect(warn).toHaveBeenCalledWith('Google Calendar Events are unavailable.', {
+      classification: 'authorization-failed',
+      status: 401
+    });
+  });
+
+  test('reports Calendar provider failures with privacy-safe diagnostics', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 503
+      })
+    );
+
+    await expect(
+      googleCalendarEventProvider('secret-access-token').fetchEvents({
+        calendarIds: ['private-calendar-id'],
+        timeMin: '2026-07-07T04:00:00Z',
+        timeMax: '2026-07-14T04:00:00Z',
+        timeZone: 'America/New_York'
+      })
+    ).resolves.toEqual({
+      outcome: 'unavailable',
+      reason: 'Live Calendar is unavailable right now.'
+    });
+    expect(warn).toHaveBeenCalledWith('Google Calendar Events are unavailable.', {
+      classification: 'provider-unavailable',
+      status: 503
+    });
+    expect(JSON.stringify(warn.mock.calls)).not.toContain('secret-access-token');
+    expect(JSON.stringify(warn.mock.calls)).not.toContain('private-calendar-id');
   });
 
   test('loads the newest Calendar-scoped access token when it is still valid', async () => {
@@ -241,6 +275,26 @@ describe('Google Calendar list provider', () => {
     refreshGoogleAccessToken.mockResolvedValue({ accessToken: 'refreshed-access-token' });
 
     await expect(loadGoogleCalendarAccessToken('user-1')).resolves.toBe('refreshed-access-token');
+    expect(refreshGoogleAccessToken).toHaveBeenCalledWith({
+      body: {
+        providerId: 'google',
+        accountId: 'google-subject-1',
+        userId: 'user-1'
+      }
+    });
+  });
+
+  test('returns an unavailable token when refresh credentials are rejected', async () => {
+    authAccounts.push({
+      account_id: 'google-subject-1',
+      access_token: 'expired-access-token',
+      access_token_expires_at: new Date(Date.now() - 60_000),
+      refresh_token: 'revoked-refresh-token',
+      scope: 'openid email https://www.googleapis.com/auth/calendar.readonly'
+    });
+    refreshGoogleAccessToken.mockRejectedValue(new Error('revoked-refresh-token'));
+
+    await expect(loadGoogleCalendarAccessToken('user-1')).resolves.toBeNull();
     expect(refreshGoogleAccessToken).toHaveBeenCalledWith({
       body: {
         providerId: 'google',

@@ -5,7 +5,7 @@
   import type { ActionData, PageData } from './$types';
   import Panel from '$lib/components/Panel.svelte';
   import { calendarReadinessForAuthMode } from '$lib/calendarReadiness';
-  import { buildDailySummaryPreviewInput } from '$lib/dailySummaryPreview';
+  import { buildDailySummaryInput } from '$lib/dailySummaryPreview';
   import type { DeliveryRecord } from '$lib/deliveryRecords';
   import { buildDemoCalendarSection } from '$lib/demoCalendar';
   import { renderDailySummary } from '$lib/dailySummaryRenderer';
@@ -900,7 +900,7 @@
 
     const renderVersion = ++previewRenderVersion;
 
-    void buildDailySummaryPreviewInput({
+    void buildDailySummaryInput({
       calendarReadiness,
       configuration: previewConfiguration,
       todoCategories,
@@ -1903,12 +1903,10 @@
           </p>
         </Panel>
       {/if}
-      <Panel title="Scope Guard" eyebrow="Milestone 5 boundaries">
+      <Panel title="Scope Guard" eyebrow="Remaining delivery scope">
         <ul class="list-disc space-y-2 pl-5">
-          <li>No Calendar writes or attendee changes</li>
-          <li>No Calendar sync, event cache, or webhooks</li>
+          <li>No provider connections</li>
           <li>No scheduled worker</li>
-          <li>No Google Maps commute estimates</li>
         </ul>
       </Panel>
     </aside>

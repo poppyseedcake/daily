@@ -1,5 +1,5 @@
 import { describe, expect, test, vi } from 'vitest';
-import { buildDailySummaryPreviewInput } from './dailySummaryPreview';
+import { buildDailySummaryInput } from './dailySummaryPreview';
 import { renderDailySummary } from './dailySummaryRenderer';
 import type { SummaryConfiguration } from './summaryConfiguration';
 import type { TodoCategory, TodoTask } from './todo';
@@ -39,7 +39,7 @@ const todoTasks: TodoTask[] = [
 
 describe('Daily Summary preview input', () => {
   test('renders Visitor setup with Demo Calendar through the Daily Summary input shape', async () => {
-    const visitorPreview = await buildDailySummaryPreviewInput({
+    const visitorPreview = await buildDailySummaryInput({
       configuration,
       todoCategories,
       todoTasks
@@ -56,7 +56,7 @@ describe('Daily Summary preview input', () => {
     const calendarEventProvider = {
       fetchEvents: vi.fn().mockResolvedValue({ outcome: 'available', events: [] } as const)
     };
-    const preview = await buildDailySummaryPreviewInput({
+    const preview = await buildDailySummaryInput({
       authMode: 'user',
       configuration,
       todoCategories,
@@ -76,7 +76,7 @@ describe('Daily Summary preview input', () => {
   });
 
   test('does not render a connected Calendar placeholder as available event data', async () => {
-    const preview = await buildDailySummaryPreviewInput({
+    const preview = await buildDailySummaryInput({
       configuration,
       todoCategories,
       todoTasks,
@@ -142,7 +142,7 @@ describe('Daily Summary preview input', () => {
       } as const)
     };
 
-    const preview = await buildDailySummaryPreviewInput({
+    const preview = await buildDailySummaryInput({
       authMode: 'user',
       configuration,
       todoCategories,
@@ -188,7 +188,7 @@ describe('Daily Summary preview input', () => {
       fetchEvents: vi.fn().mockResolvedValue({ outcome: 'available', events: [] } as const)
     };
 
-    const preview = await buildDailySummaryPreviewInput({
+    const preview = await buildDailySummaryInput({
       authMode: 'user',
       configuration,
       todoCategories,
@@ -212,11 +212,12 @@ describe('Daily Summary preview input', () => {
   });
 
   test('renders Calendar provider failures as unavailable without failing other Summary Sections', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const calendarEventProvider = {
       fetchEvents: vi.fn().mockRejectedValue(new Error('Private planning title'))
     };
 
-    const preview = await buildDailySummaryPreviewInput({
+    const preview = await buildDailySummaryInput({
       authMode: 'user',
       configuration,
       todoCategories,
@@ -239,6 +240,11 @@ describe('Daily Summary preview input', () => {
     expect(rendered.text).toContain('Mock Commute');
     expect(rendered.text).toContain('Buy coffee !');
     expect(rendered.text).not.toContain('Private planning title');
+    expect(warn).toHaveBeenCalledWith(
+      'Calendar Event provider failed during Daily Summary generation.'
+    );
+    expect(JSON.stringify(warn.mock.calls)).not.toContain('Private planning title');
+    warn.mockRestore();
   });
 
   test('renders the provider reconnect reason when Calendar credentials were revoked', async () => {
@@ -249,7 +255,7 @@ describe('Daily Summary preview input', () => {
       } as const)
     };
 
-    const preview = await buildDailySummaryPreviewInput({
+    const preview = await buildDailySummaryInput({
       authMode: 'user',
       configuration,
       todoCategories,
@@ -279,7 +285,7 @@ describe('Daily Summary preview input', () => {
     const calendarEventProvider = {
       fetchEvents: vi.fn().mockResolvedValue({ outcome: 'available', events: [] } as const)
     };
-    const preview = await buildDailySummaryPreviewInput({
+    const preview = await buildDailySummaryInput({
       authMode: 'user',
       configuration: {
         ...configuration,
@@ -326,7 +332,7 @@ describe('Daily Summary preview input', () => {
       })
     };
 
-    const preview = await buildDailySummaryPreviewInput({
+    const preview = await buildDailySummaryInput({
       configuration,
       todoCategories,
       todoTasks,
@@ -364,7 +370,7 @@ describe('Daily Summary preview input', () => {
       })
     };
 
-    const preview = await buildDailySummaryPreviewInput({
+    const preview = await buildDailySummaryInput({
       configuration: {
         ...configuration,
         sections: {
@@ -397,7 +403,7 @@ describe('Daily Summary preview input', () => {
       })
     };
 
-    const preview = await buildDailySummaryPreviewInput({
+    const preview = await buildDailySummaryInput({
       configuration,
       todoCategories,
       todoTasks,
@@ -418,7 +424,7 @@ describe('Daily Summary preview input', () => {
   });
 
   test('keeps provider placeholders out of the persisted User setup shape', async () => {
-    const preview = await buildDailySummaryPreviewInput({
+    const preview = await buildDailySummaryInput({
       configuration,
       todoCategories,
       todoTasks
@@ -440,7 +446,7 @@ describe('Daily Summary preview input', () => {
   });
 
   test('omits empty Todo content instead of rendering it as unavailable in preview', async () => {
-    const preview = await buildDailySummaryPreviewInput({
+    const preview = await buildDailySummaryInput({
       configuration: {
         ...configuration,
         sections: {

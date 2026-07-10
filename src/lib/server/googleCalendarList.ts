@@ -39,11 +39,14 @@ type GoogleCalendarEventsResponse = {
   }>;
 };
 
-class GoogleCalendarEventsRequestError extends Error {
-  constructor(readonly status: number) {
-    super(`Google Calendar events request failed: ${status}`);
+class GoogleCalendarRequestError extends Error {
+  constructor(readonly status: number, operation: 'list' | 'events') {
+    super(`Google Calendar ${operation} request failed: ${status}`);
   }
 }
+
+export const isGoogleCalendarAuthorizationFailure = (error: unknown) =>
+  error instanceof GoogleCalendarRequestError && (error.status === 401 || error.status === 403);
 
 export const googleCalendarListProvider: GoogleCalendarListProvider = {
   async loadCalendars(accessToken) {
@@ -54,7 +57,7 @@ export const googleCalendarListProvider: GoogleCalendarListProvider = {
     });
 
     if (!response.ok) {
-      throw new Error(`Google Calendar list request failed: ${response.status}`);
+      throw new GoogleCalendarRequestError(response.status, 'list');
     }
 
     const payload = (await response.json()) as GoogleCalendarListResponse;
@@ -96,7 +99,7 @@ export const googleCalendarEventProvider = (accessToken: string): CalendarEventP
           );
 
           if (!response.ok) {
-            throw new GoogleCalendarEventsRequestError(response.status);
+            throw new GoogleCalendarRequestError(response.status, 'events');
           }
 
           const payload = (await response.json()) as GoogleCalendarEventsResponse;
@@ -148,13 +151,18 @@ export const googleCalendarEventProvider = (accessToken: string): CalendarEventP
 
       return { outcome: 'available', events: eventLists.flat() };
     } catch (error) {
+      const authorizationFailed = isGoogleCalendarAuthorizationFailure(error);
+
+      console.warn('Google Calendar Events are unavailable.', {
+        classification: authorizationFailed ? 'authorization-failed' : 'provider-unavailable',
+        status: error instanceof GoogleCalendarRequestError ? error.status : null
+      });
+
       return {
         outcome: 'unavailable',
-        reason:
-          error instanceof GoogleCalendarEventsRequestError &&
-          (error.status === 401 || error.status === 403)
-            ? 'Reconnect Google Calendar to include Calendar Events.'
-            : 'Live Calendar is unavailable right now.'
+        reason: authorizationFailed
+          ? 'Reconnect Google Calendar to include Calendar Events.'
+          : 'Live Calendar is unavailable right now.'
       };
     }
   }

@@ -20,7 +20,7 @@ import {
   type WeatherForecastProvider
 } from './weatherForecast';
 
-export type DailySummaryPreviewSetup = {
+export type DailySummaryGenerationSetup = {
   authMode?: CalendarReadinessAuthMode;
   calendarReadiness?: CalendarReadiness;
   configuration: SummaryConfiguration;
@@ -33,7 +33,7 @@ export type DailySummaryPreviewSetup = {
   now?: Date;
 };
 
-export const buildDailySummaryPreviewInput = async ({
+export const buildDailySummaryInput = async ({
   authMode = 'visitor',
   calendarReadiness = calendarReadinessForAuthMode(authMode),
   configuration,
@@ -44,15 +44,14 @@ export const buildDailySummaryPreviewInput = async ({
   selectedCalendars = [],
   calendarEventProvider,
   now = new Date()
-}: DailySummaryPreviewSetup): Promise<DailySummaryInput> => {
-  const demoCalendar = buildDemoCalendarSection({ userTimeZone: configuration.userTimeZone });
-  const weather = await buildPreviewWeatherSection({
+}: DailySummaryGenerationSetup): Promise<DailySummaryInput> => {
+  const weather = await buildWeatherGenerationState({
     configuration,
     weatherLocation,
     weatherProvider,
     now
   });
-  const calendarSection = await buildPreviewCalendarSection({
+  const calendarGeneration = await buildCalendarGenerationResult({
     calendarReadiness,
     configuration,
     selectedCalendars,
@@ -69,26 +68,19 @@ export const buildDailySummaryPreviewInput = async ({
         label: 'Mock Commute',
         detail: 'Mock provider data: 24 minutes by tram to the office.'
       },
-      calendar:
-        calendarReadiness.status === 'demo'
-          ? {
-              status: 'available',
-              label: calendarReadiness.label,
-              detail: demoCalendar.summaryDetail
-            }
-          : calendarSection.sectionState,
+      calendar: calendarGeneration.sectionState,
       todo: {
         status: 'available',
         label: 'Todo',
         detail: 'No active Todo Tasks.'
       }
     },
-    calendarSection: calendarSection.calendarSection,
+    calendarSection: calendarGeneration.calendarSection,
     todoSection: buildTodoSection(todoCategories, todoTasks)
   };
 };
 
-const buildPreviewCalendarSection = async ({
+const buildCalendarGenerationResult = async ({
   calendarReadiness,
   configuration,
   selectedCalendars,
@@ -110,7 +102,9 @@ const buildPreviewCalendarSection = async ({
       sectionState: {
         status: 'available',
         label: calendarReadiness.label,
-        detail: calendarReadiness.detail
+        detail: buildDemoCalendarSection({
+          userTimeZone: configuration.userTimeZone
+        }).summaryDetail
       }
     };
   }
@@ -189,6 +183,8 @@ const buildPreviewCalendarSection = async ({
       }
     };
   } catch {
+    console.warn('Calendar Event provider failed during Daily Summary generation.');
+
     return {
       calendarSection: null,
       sectionState: {
@@ -200,7 +196,7 @@ const buildPreviewCalendarSection = async ({
   }
 };
 
-const buildPreviewWeatherSection = async ({
+const buildWeatherGenerationState = async ({
   configuration,
   weatherLocation,
   weatherProvider,

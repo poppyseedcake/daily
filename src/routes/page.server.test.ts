@@ -42,7 +42,7 @@ const {
     outcome: 'available' as 'available' | 'unavailable'
   },
   calendarListProviderMode: {
-    outcome: 'available' as 'available' | 'unavailable'
+    outcome: 'available' as 'available' | 'unavailable' | 'authorization-failed'
   },
   calendarEventProviderMode: {
     outcome: 'available' as 'available' | 'unavailable' | 'private-failure'
@@ -223,12 +223,19 @@ vi.mock('$lib/server/db/calendarConnectionStore', () => ({
 vi.mock('$lib/server/googleCalendarList', () => ({
   googleCalendarListProvider: {
     async loadCalendars() {
+      if (calendarListProviderMode.outcome === 'authorization-failed') {
+        throw new Error('calendar-authorization-failed');
+      }
+
       if (calendarListProviderMode.outcome === 'unavailable') {
         throw new Error('Private calendar list payload');
       }
 
       return providerCalendars;
     }
+  },
+  isGoogleCalendarAuthorizationFailure(error: unknown) {
+    return error instanceof Error && error.message === 'calendar-authorization-failed';
   },
   googleCalendarEventProvider: () => ({
     async fetchEvents(request: unknown) {
@@ -591,6 +598,34 @@ describe('Daily page server load', () => {
     expect(JSON.stringify(vi.mocked(console.warn).mock.calls)).not.toContain(
       'Private calendar list payload'
     );
+  });
+
+  test('reports revoked Calendar list credentials as reconnect-required instead of connected', async () => {
+    getSession.mockResolvedValue({
+      user: { id: 'user-1', email: 'user@example.com', emailVerified: true }
+    });
+    savedCalendarConnection.status = 'connected';
+    savedSelectedCalendars.push({
+      id: 'work',
+      summary: 'Work',
+      backgroundColor: '#0b8043',
+      primary: false
+    });
+    calendarListProviderMode.outcome = 'authorization-failed';
+
+    await expect(loadPage()).resolves.toEqual(
+      expect.objectContaining({
+        calendarReadiness: expect.objectContaining({
+          status: 'reconnect-required',
+          unavailableReason: 'Reconnect Google Calendar to include Calendar Events.'
+        }),
+        renderedSummaryHtml: expect.stringContaining(
+          'Reconnect Google Calendar to include Calendar Events.'
+        )
+      })
+    );
+    expect(sentCalendarEventRequests).toEqual([]);
+    expect(selectedCalendarWrites).toEqual([]);
   });
 
   test('persists the primary Google calendar as the first default Selected Calendar', async () => {
