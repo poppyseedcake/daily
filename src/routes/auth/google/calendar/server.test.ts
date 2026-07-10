@@ -52,6 +52,12 @@ describe('Google Calendar consent route', () => {
       },
       returnHeaders: true
     });
+    const requestedScopes = linkSocialAccount.mock.calls[0]?.[0].body.scopes as string[];
+    expect(requestedScopes.filter((scope) => scope.includes('calendar'))).toEqual([
+      'https://www.googleapis.com/auth/calendar.readonly'
+    ]);
+    expect(requestedScopes).not.toContain('https://www.googleapis.com/auth/calendar');
+    expect(requestedScopes).not.toContain('https://www.googleapis.com/auth/calendar.events');
   });
 
   test('does not start Calendar consent for a Visitor', async () => {

@@ -21,6 +21,13 @@ export type CalendarReadiness =
       unavailableReason: 'Connect Google Calendar to include Calendar Events.';
     }
   | {
+      status: 'reconnect-required';
+      label: 'Calendar';
+      statusLabel: 'Calendar needs to be reconnected';
+      detail: 'Stored Google Calendar credentials are no longer usable.';
+      unavailableReason: 'Reconnect Google Calendar to include Calendar Events.';
+    }
+  | {
       status: 'connected';
       label: 'Calendar';
       statusLabel: 'Calendar connected';
@@ -72,3 +79,11 @@ export const calendarReadinessForUserConnection = (
 
   return calendarReadinessForAuthMode('user');
 };
+
+export const calendarReadinessForUnavailableCredentials = (): CalendarReadiness => ({
+  status: 'reconnect-required',
+  label: 'Calendar',
+  statusLabel: 'Calendar needs to be reconnected',
+  detail: 'Stored Google Calendar credentials are no longer usable.',
+  unavailableReason: 'Reconnect Google Calendar to include Calendar Events.'
+});

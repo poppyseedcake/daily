@@ -1,4 +1,4 @@
-import { getTableName } from 'drizzle-orm';
+import { getTableColumns, getTableName } from 'drizzle-orm';
 import { describe, expect, test } from 'vitest';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import {
@@ -155,5 +155,53 @@ describe('Daily database schema', () => {
     expect(migrations).not.toContain('weather_payload');
     expect(migrations).not.toContain('forecast_payload');
     expect(migrations).not.toContain('open_meteo_payload');
+  });
+
+  test('keeps Calendar Event and rendered Calendar content out of durable tables', () => {
+    expect(Object.keys(getTableColumns(deliveryRecords))).toEqual([
+      'id',
+      'userId',
+      'attemptType',
+      'requestedAt',
+      'completedAt',
+      'deliveryStatus',
+      'providerName',
+      'providerMessageId',
+      'providerStatusMetadata',
+      'errorClassification'
+    ]);
+
+    const migrations = readdirSync('drizzle')
+      .filter((fileName) => fileName.endsWith('.sql'))
+      .map((fileName) => readFileSync(`drizzle/${fileName}`, 'utf8').toLowerCase())
+      .join('\n');
+
+    for (const forbiddenStorage of [
+      'create table `calendar_events`',
+      'calendar_event_payload',
+      'event_title',
+      'event_description',
+      'event_location',
+      'event_attendees',
+      'rendered_calendar',
+      'calendar_webhook',
+      'calendar_sync',
+      'calendar_event_cache'
+    ]) {
+      expect(migrations).not.toContain(forbiddenStorage);
+    }
+  });
+
+  test('does not expose Calendar sync, webhook, or scheduled-worker entry points', () => {
+    const productionRoutePaths = readdirSync('src/routes', {
+      recursive: true,
+      encoding: 'utf8'
+    }).filter((path) => !path.includes('.test.'));
+    const packageJson = JSON.parse(readFileSync('package.json', 'utf8')) as {
+      scripts: Record<string, string>;
+    };
+
+    expect(productionRoutePaths.filter((path) => /webhook|sync|worker|calendar-events?/i.test(path))).toEqual([]);
+    expect(Object.keys(packageJson.scripts).filter((script) => /webhook|sync|worker|cron/i.test(script))).toEqual([]);
   });
 });

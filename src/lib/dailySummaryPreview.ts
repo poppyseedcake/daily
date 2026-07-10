@@ -20,7 +20,7 @@ import {
   type WeatherForecastProvider
 } from './weatherForecast';
 
-export type DailySummaryPreviewSetup = {
+export type DailySummaryGenerationSetup = {
   authMode?: CalendarReadinessAuthMode;
   calendarReadiness?: CalendarReadiness;
   configuration: SummaryConfiguration;
@@ -33,7 +33,7 @@ export type DailySummaryPreviewSetup = {
   now?: Date;
 };
 
-export const buildDailySummaryPreviewInput = async ({
+export const buildDailySummaryInput = async ({
   authMode = 'visitor',
   calendarReadiness = calendarReadinessForAuthMode(authMode),
   configuration,
@@ -44,15 +44,14 @@ export const buildDailySummaryPreviewInput = async ({
   selectedCalendars = [],
   calendarEventProvider,
   now = new Date()
-}: DailySummaryPreviewSetup): Promise<DailySummaryInput> => {
-  const demoCalendar = buildDemoCalendarSection({ userTimeZone: configuration.userTimeZone });
-  const weather = await buildPreviewWeatherSection({
+}: DailySummaryGenerationSetup): Promise<DailySummaryInput> => {
+  const weather = await buildWeatherGenerationState({
     configuration,
     weatherLocation,
     weatherProvider,
     now
   });
-  const calendarSection = await buildPreviewCalendarSection({
+  const calendarGeneration = await buildCalendarGenerationResult({
     calendarReadiness,
     configuration,
     selectedCalendars,
@@ -69,36 +68,19 @@ export const buildDailySummaryPreviewInput = async ({
         label: 'Mock Commute',
         detail: 'Mock provider data: 24 minutes by tram to the office.'
       },
-      calendar:
-        calendarReadiness.status === 'demo'
-          ? {
-              status: 'available',
-              label: calendarReadiness.label,
-              detail: demoCalendar.summaryDetail
-            }
-          : calendarReadiness.status === 'connected'
-            ? {
-                status: 'unavailable',
-                label: calendarReadiness.label,
-                reason: 'Calendar preview is unavailable until Calendar Events can be loaded.'
-              }
-          : {
-              status: 'unavailable',
-              label: calendarReadiness.label,
-              reason: calendarReadiness.unavailableReason
-            },
+      calendar: calendarGeneration.sectionState,
       todo: {
         status: 'available',
         label: 'Todo',
         detail: 'No active Todo Tasks.'
       }
     },
-    calendarSection,
+    calendarSection: calendarGeneration.calendarSection,
     todoSection: buildTodoSection(todoCategories, todoTasks)
   };
 };
 
-const buildPreviewCalendarSection = async ({
+const buildCalendarGenerationResult = async ({
   calendarReadiness,
   configuration,
   selectedCalendars,
@@ -110,34 +92,111 @@ const buildPreviewCalendarSection = async ({
   selectedCalendars: SavedSelectedCalendar[];
   calendarEventProvider: CalendarEventProvider | undefined;
   now: Date;
-}): Promise<DailySummaryInput['calendarSection']> => {
-  if (
-    calendarReadiness.status !== 'connected' ||
-    !configuration.sections.calendar ||
-    !calendarEventProvider
-  ) {
-    return null;
+}): Promise<{
+  calendarSection: DailySummaryInput['calendarSection'];
+  sectionState: DailySummaryInput['sections']['calendar'];
+}> => {
+  if (calendarReadiness.status === 'demo') {
+    return {
+      calendarSection: null,
+      sectionState: {
+        status: 'available',
+        label: calendarReadiness.label,
+        detail: buildDemoCalendarSection({
+          userTimeZone: configuration.userTimeZone
+        }).summaryDetail
+      }
+    };
+  }
+
+  if (calendarReadiness.status !== 'connected') {
+    return {
+      calendarSection: null,
+      sectionState: {
+        status: 'unavailable',
+        label: calendarReadiness.label,
+        reason: calendarReadiness.unavailableReason
+      }
+    };
+  }
+
+  if (!configuration.sections.calendar) {
+    return {
+      calendarSection: null,
+      sectionState: { status: 'available', label: 'Calendar', detail: '' }
+    };
+  }
+
+  if (selectedCalendars.length === 0) {
+    return {
+      calendarSection: null,
+      sectionState: {
+        status: 'available',
+        label: 'Calendar',
+        detail: 'No calendars are selected.'
+      }
+    };
+  }
+
+  if (!calendarEventProvider) {
+    return {
+      calendarSection: null,
+      sectionState: {
+        status: 'unavailable',
+        label: 'Calendar',
+        reason: 'Calendar preview is unavailable until Calendar Events can be loaded.'
+      }
+    };
   }
 
   try {
-    return buildCalendarSection({
-      providerEvents: await calendarEventProvider.fetchEvents(
-        buildCalendarEventFetchRequest({
-          selectedCalendars,
-          userTimeZone: configuration.userTimeZone,
-          now
-        })
-      ),
-      selectedCalendars,
-      userTimeZone: configuration.userTimeZone,
-      now
-    });
+    const providerResult = await calendarEventProvider.fetchEvents(
+      buildCalendarEventFetchRequest({
+        selectedCalendars,
+        userTimeZone: configuration.userTimeZone,
+        now
+      })
+    );
+
+    if (providerResult.outcome === 'unavailable') {
+      return {
+        calendarSection: null,
+        sectionState: {
+          status: 'unavailable',
+          label: 'Calendar',
+          reason: providerResult.reason
+        }
+      };
+    }
+
+    return {
+      calendarSection: buildCalendarSection({
+        providerEvents: providerResult.events,
+        selectedCalendars,
+        userTimeZone: configuration.userTimeZone,
+        now
+      }),
+      sectionState: {
+        status: 'available',
+        label: 'Calendar',
+        detail: 'No Calendar Events in the next week.'
+      }
+    };
   } catch {
-    return null;
+    console.warn('Calendar Event provider failed during Daily Summary generation.');
+
+    return {
+      calendarSection: null,
+      sectionState: {
+        status: 'unavailable',
+        label: 'Calendar',
+        reason: 'Live Calendar is unavailable right now.'
+      }
+    };
   }
 };
 
-const buildPreviewWeatherSection = async ({
+const buildWeatherGenerationState = async ({
   configuration,
   weatherLocation,
   weatherProvider,

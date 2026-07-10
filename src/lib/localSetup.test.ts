@@ -303,6 +303,9 @@ describe('Visitor Local Setup module', () => {
   test('creates a User setup import draft from a valid loaded Local Setup without demo provider data', () => {
     const localSetup: LocalSetupInput & {
       demoCalendar: { label: string };
+      calendarConnection: { accessToken: string };
+      selectedCalendars: Array<{ id: string; summary: string }>;
+      calendarEvents: Array<{ title: string; attendees: string[] }>;
       mockWeather: { label: string };
       mockCommute: { label: string };
     } = {
@@ -357,6 +360,11 @@ describe('Visitor Local Setup module', () => {
       ],
       nextTodoId: 5,
       demoCalendar: { label: 'Demo Calendar' },
+      calendarConnection: { accessToken: 'private-calendar-access-token' },
+      selectedCalendars: [{ id: 'demo-calendar', summary: 'Demo Calendar' }],
+      calendarEvents: [
+        { title: 'Private Calendar Event', attendees: ['friend@example.com'] }
+      ],
       mockWeather: { label: 'Mock Weather' },
       mockCommute: { label: 'Mock Commute' }
     };
@@ -436,6 +444,11 @@ describe('Visitor Local Setup module', () => {
       }
     });
     expect(JSON.stringify(draft)).not.toContain('Demo Calendar');
+    expect(JSON.stringify(draft)).not.toContain('private-calendar-access-token');
+    expect(JSON.stringify(draft)).not.toContain('Private Calendar Event');
+    expect(draft).not.toHaveProperty('calendarConnection');
+    expect(draft).not.toHaveProperty('selectedCalendars');
+    expect(draft).not.toHaveProperty('calendarEvents');
     expect(JSON.stringify(draft)).not.toContain('Mock Weather');
     expect(JSON.stringify(draft)).not.toContain('Mock Commute');
   });

@@ -5,23 +5,31 @@ import { userSummaryConfigurationStore } from '$lib/server/db/summaryConfigurati
 import { deliveryRecordStore } from '$lib/server/db/deliveryRecordStore';
 import { userTodoStore } from '$lib/server/db/todoStore';
 import { userWeatherLocationStore } from '$lib/server/db/weatherLocationStore';
-import { userCalendarConnectionStore } from '$lib/server/db/calendarConnectionStore';
+import {
+  userCalendarConnectionStore,
+  type CalendarConnection
+} from '$lib/server/db/calendarConnectionStore';
 import {
   DailySummaryDeliveryError,
   type DailySummaryDeliveryErrorClassification,
   dailySummaryDeliveryProvider,
   dailySummarySenderAddress
 } from '$lib/server/dailySummaryDelivery';
-import { buildDailySummaryPreviewInput } from '$lib/dailySummaryPreview';
+import { buildDailySummaryInput } from '$lib/dailySummaryPreview';
 import { renderDailySummary } from '$lib/dailySummaryRenderer';
 import {
   calendarReadinessForAuthMode,
+  calendarReadinessForUnavailableCredentials,
   calendarReadinessForUserConnection
 } from '$lib/calendarReadiness';
-import { buildSelectedCalendarConfiguration } from '$lib/selectedCalendars';
+import {
+  buildSelectedCalendarConfiguration,
+  type SavedSelectedCalendar
+} from '$lib/selectedCalendars';
 import {
   googleCalendarEventProvider,
   googleCalendarListProvider,
+  isGoogleCalendarAuthorizationFailure,
   loadGoogleCalendarAccessToken
 } from '$lib/server/googleCalendarList';
 import { loadUserSummaryConfiguration } from '$lib/server/summaryConfigurationPersistence';
@@ -50,6 +58,51 @@ const validationFailureResponse = {
   reason: 'validation-failed',
   message: 'The saved Daily Summary setup is invalid, so no provider request was made.'
 } as const;
+
+type CalendarGenerationContext = {
+  accessToken: string | null;
+  selectedCalendars: SavedSelectedCalendar[];
+  readiness: ReturnType<typeof calendarReadinessForUserConnection>;
+};
+
+const loadCalendarGenerationContext = async (
+  userId: string,
+  connection: CalendarConnection
+): Promise<CalendarGenerationContext> => {
+  if (connection.status !== 'connected') {
+    return {
+      accessToken: null,
+      selectedCalendars: [],
+      readiness: calendarReadinessForUserConnection(connection)
+    };
+  }
+
+  try {
+    const accessToken = await loadGoogleCalendarAccessToken(userId);
+
+    if (!accessToken) {
+      return {
+        accessToken: null,
+        selectedCalendars: [],
+        readiness: calendarReadinessForUnavailableCredentials()
+      };
+    }
+
+    return {
+      accessToken,
+      selectedCalendars: await userCalendarConnectionStore.loadSelectedCalendars(userId),
+      readiness: calendarReadinessForUserConnection(connection)
+    };
+  } catch {
+    console.warn('Failed to load Calendar generation configuration.', { userId });
+
+    return {
+      accessToken: null,
+      selectedCalendars: [],
+      readiness: calendarReadinessForUnavailableCredentials()
+    };
+  }
+};
 
 export const load = async ({ request }) => {
   const session = await auth.api.getSession({
@@ -126,25 +179,31 @@ export const load = async ({ request }) => {
           return { status: 'not-connected' } as const;
         })
       : null;
-  let calendarAccessToken: string | null = null;
+  const calendarGenerationContext =
+    authState.mode === 'user' && calendarConnection
+      ? await loadCalendarGenerationContext(authState.userId, calendarConnection)
+      : null;
+  let calendarReadiness =
+    calendarGenerationContext?.readiness ?? calendarReadinessForAuthMode(authState.mode);
+  const calendarListAccessToken = calendarGenerationContext?.accessToken;
   const selectedCalendarConfiguration =
-    authState.mode === 'user' && calendarConnection?.status === 'connected'
+    authState.mode === 'user' &&
+    calendarConnection?.status === 'connected' &&
+    calendarListAccessToken
       ? await (async () => {
           try {
-            calendarAccessToken = await loadGoogleCalendarAccessToken(authState.userId);
-
-            if (!calendarAccessToken) {
-              return null;
-            }
-
-            const providerCalendars = await googleCalendarListProvider.loadCalendars(calendarAccessToken);
-            const savedCalendars = await userCalendarConnectionStore.loadSelectedCalendars(authState.userId);
+            const providerCalendars = await googleCalendarListProvider.loadCalendars(
+              calendarListAccessToken
+            );
             const configuration = buildSelectedCalendarConfiguration({
               providerCalendars,
-              savedCalendars
+              savedCalendars: calendarGenerationContext.selectedCalendars
             });
 
-            if (savedCalendars.length === 0 && configuration.selectedCalendarIds.length > 0) {
+            if (
+              calendarGenerationContext.selectedCalendars.length === 0 &&
+              configuration.selectedCalendarIds.length > 0
+            ) {
               await userCalendarConnectionStore.saveSelectedCalendars(
                 authState.userId,
                 configuration.calendars
@@ -159,10 +218,18 @@ export const load = async ({ request }) => {
             }
 
             return configuration;
-          } catch (error: unknown) {
+          } catch (error) {
+            const authorizationFailed = isGoogleCalendarAuthorizationFailure(error);
+
+            if (authorizationFailed) {
+              calendarReadiness = calendarReadinessForUnavailableCredentials();
+            }
+
             console.warn('Failed to load User Selected Calendar configuration.', {
               userId: authState.userId,
-              error
+              classification: authorizationFailed
+                ? 'authorization-failed'
+                : 'provider-unavailable'
             });
 
             return null;
@@ -181,28 +248,28 @@ export const load = async ({ request }) => {
 
           const selectedCalendars =
             calendarConnection?.status === 'connected'
-              ? (selectedCalendarConfiguration?.calendars ?? [])
-                  .filter((calendar) => calendar.selected)
-                  .map((calendar) => ({
-                    id: calendar.id,
-                    summary: calendar.summary,
-                    backgroundColor: calendar.backgroundColor,
-                    primary: calendar.primary
-                  }))
+              ? selectedCalendarConfiguration
+                ? selectedCalendarConfiguration.calendars
+                    .filter((calendar) => calendar.selected)
+                    .map((calendar) => ({
+                      id: calendar.id,
+                      summary: calendar.summary,
+                      backgroundColor: calendar.backgroundColor,
+                      primary: calendar.primary
+                    }))
+                : (calendarGenerationContext?.selectedCalendars ?? [])
               : [];
           return renderDailySummary(
-            await buildDailySummaryPreviewInput({
+            await buildDailySummaryInput({
               authMode: 'user',
               configuration: validConfiguration.data,
               todoCategories: validTodoState.data.todoCategories,
               todoTasks: validTodoState.data.todoTasks,
               weatherLocation,
-              calendarReadiness: calendarConnection
-                ? calendarReadinessForUserConnection(calendarConnection)
-                : calendarReadinessForAuthMode('user'),
+              calendarReadiness,
               selectedCalendars,
-              calendarEventProvider: calendarAccessToken
-                ? googleCalendarEventProvider(calendarAccessToken)
+              calendarEventProvider: calendarGenerationContext?.accessToken
+                ? googleCalendarEventProvider(calendarGenerationContext.accessToken)
                 : undefined
             })
           ).html;
@@ -212,10 +279,7 @@ export const load = async ({ request }) => {
   return {
     authState,
     isAdministrator: isAdministratorAuthState(authState),
-    calendarReadiness:
-      authState.mode === 'user' && calendarConnection
-        ? calendarReadinessForUserConnection(calendarConnection)
-        : calendarReadinessForAuthMode(authState.mode),
+    calendarReadiness,
     summaryConfiguration,
     todoState,
     weatherLocation,
@@ -272,13 +336,26 @@ export const actions = {
       return validationFailureResponse;
     }
 
+    const calendarConnection = await userCalendarConnectionStore.load(authState.userId);
+    const calendarGenerationContext = validConfiguration.data.sections.calendar
+      ? await loadCalendarGenerationContext(authState.userId, calendarConnection)
+      : {
+          accessToken: null,
+          selectedCalendars: [],
+          readiness: calendarReadinessForAuthMode('user')
+        };
+
     const renderedSummary = renderDailySummary(
-      await buildDailySummaryPreviewInput({
+      await buildDailySummaryInput({
         configuration: validConfiguration.data,
         todoCategories: validTodoState.data.todoCategories,
         todoTasks: validTodoState.data.todoTasks,
         weatherLocation,
-        calendarReadiness: calendarReadinessForAuthMode('user')
+        calendarReadiness: calendarGenerationContext.readiness,
+        selectedCalendars: calendarGenerationContext.selectedCalendars,
+        calendarEventProvider: calendarGenerationContext.accessToken
+          ? googleCalendarEventProvider(calendarGenerationContext.accessToken)
+          : undefined
       })
     );
     const message = {

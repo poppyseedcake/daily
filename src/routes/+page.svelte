@@ -5,7 +5,7 @@
   import type { ActionData, PageData } from './$types';
   import Panel from '$lib/components/Panel.svelte';
   import { calendarReadinessForAuthMode } from '$lib/calendarReadiness';
-  import { buildDailySummaryPreviewInput } from '$lib/dailySummaryPreview';
+  import { buildDailySummaryInput } from '$lib/dailySummaryPreview';
   import type { DeliveryRecord } from '$lib/deliveryRecords';
   import { buildDemoCalendarSection } from '$lib/demoCalendar';
   import { renderDailySummary } from '$lib/dailySummaryRenderer';
@@ -900,7 +900,7 @@
 
     const renderVersion = ++previewRenderVersion;
 
-    void buildDailySummaryPreviewInput({
+    void buildDailySummaryInput({
       calendarReadiness,
       configuration: previewConfiguration,
       todoCategories,

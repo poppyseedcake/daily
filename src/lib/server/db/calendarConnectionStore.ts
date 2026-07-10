@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { and, asc, desc, eq } from 'drizzle-orm';
-import { googleCalendarReadScope } from '$lib/googleCalendarScopes';
+import { googleCalendarReadScope, parseGoogleProviderScopes } from '$lib/googleCalendarScopes';
 import type { SavedSelectedCalendar } from '$lib/selectedCalendars';
 import { db } from '$lib/server/db';
 import { authAccount, calendarConnections, selectedCalendars, users } from './schema';
@@ -38,14 +38,6 @@ const parseGrantedScopes = (value: string): string[] => {
   const parsed = JSON.parse(value) as unknown;
   return Array.isArray(parsed) ? parsed.filter((scope): scope is string => typeof scope === 'string') : [];
 };
-
-const parseProviderScopes = (value: string | null): string[] =>
-  value
-    ? value
-        .split(/\s+/)
-        .map((scope) => scope.trim())
-        .filter(Boolean)
-    : [];
 
 export const createUserCalendarConnectionStore = (
   database: CalendarConnectionDatabase
@@ -107,7 +99,7 @@ export const createUserCalendarConnectionStore = (
     const scopedAccount = rows
       .map((row) => ({
         row,
-        grantedScopes: parseProviderScopes(row.scope)
+        grantedScopes: parseGoogleProviderScopes(row.scope)
       }))
       .find((account) => account.grantedScopes.includes(googleCalendarReadScope));
 
