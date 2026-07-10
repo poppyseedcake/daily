@@ -329,17 +329,21 @@ export const actions = {
     );
     const todoState = await loadUserTodoState(userTodoStore, authState.userId);
     const weatherLocation = await loadUserWeatherLocation(userWeatherLocationStore, authState.userId);
-    const calendarConnection = await userCalendarConnectionStore.load(authState.userId);
-    const calendarGenerationContext = await loadCalendarGenerationContext(
-      authState.userId,
-      calendarConnection
-    );
     const validConfiguration = summaryConfigurationSchema.safeParse(configuration);
     const validTodoState = todoStateSchema.safeParse(todoState);
 
     if (!validConfiguration.success || !validTodoState.success) {
       return validationFailureResponse;
     }
+
+    const calendarConnection = await userCalendarConnectionStore.load(authState.userId);
+    const calendarGenerationContext = validConfiguration.data.sections.calendar
+      ? await loadCalendarGenerationContext(authState.userId, calendarConnection)
+      : {
+          accessToken: null,
+          selectedCalendars: [],
+          readiness: calendarReadinessForAuthMode('user')
+        };
 
     const renderedSummary = renderDailySummary(
       await buildDailySummaryInput({

@@ -11,6 +11,7 @@ const {
   providerCalendars,
   sentCalendarEventRequests,
   loadedGoogleCalendarAccessTokens,
+  loadedSelectedCalendars,
   calendarConnectionWrites,
   selectedCalendarWrites,
   savedDeliveryRecords,
@@ -52,6 +53,7 @@ const {
   sentForecastRequests: [] as unknown[],
   sentCalendarEventRequests: [] as unknown[],
   loadedGoogleCalendarAccessTokens: [] as string[],
+  loadedSelectedCalendars: [] as string[],
   sentMessages: [] as unknown[],
   savedConfiguration: {
     summaryTime: '18:45',
@@ -212,6 +214,7 @@ vi.mock('$lib/server/db/calendarConnectionStore', () => ({
       savedCalendarConnection.status = 'not-connected';
     },
     async loadSelectedCalendars(userId: string) {
+      loadedSelectedCalendars.push(userId);
       return userId === 'user-1' ? savedSelectedCalendars : [];
     },
     async saveSelectedCalendars(userId: string, calendars: unknown) {
@@ -417,6 +420,7 @@ describe('Daily page server load', () => {
     calendarAccessTokenMode.outcome = 'available';
     calendarListProviderMode.outcome = 'available';
     calendarEventProviderMode.outcome = 'available';
+    savedConfiguration.sections.calendar = true;
     validationFailure.enabled = false;
     savedCalendarConnection.status = 'not-connected';
     savedSelectedCalendars.length = 0;
@@ -427,6 +431,7 @@ describe('Daily page server load', () => {
     sentForecastRequests.length = 0;
     sentCalendarEventRequests.length = 0;
     loadedGoogleCalendarAccessTokens.length = 0;
+    loadedSelectedCalendars.length = 0;
     sentMessages.length = 0;
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-07-07T12:00:00.000Z'));
@@ -946,6 +951,33 @@ describe('Daily page server load', () => {
     ]);
     expect(JSON.stringify(recordedDeliveryRecords)).not.toContain('Planning');
     expect(JSON.stringify(recordedDeliveryRecords)).not.toContain('calendar-event-1');
+  });
+
+  test('does not load Calendar credentials when the Calendar section is disabled', async () => {
+    getSession.mockResolvedValue({
+      user: { id: 'user-1', email: 'user@example.com', emailVerified: true }
+    });
+    savedConfiguration.sections.calendar = false;
+    savedCalendarConnection.status = 'connected';
+    savedSelectedCalendars.push({
+      id: 'work',
+      summary: 'Work',
+      backgroundColor: '#0b8043',
+      primary: false
+    });
+
+    const result = await sendTestDailySummary();
+
+    expect(result).toEqual({ outcome: 'sent' });
+    expect(loadedGoogleCalendarAccessTokens).toEqual([]);
+    expect(loadedSelectedCalendars).toEqual([]);
+    expect(sentCalendarEventRequests).toEqual([]);
+    expect(sentMessages[0]).toEqual(
+      expect.objectContaining({
+        html: expect.not.stringContaining('Planning'),
+        text: expect.not.stringContaining('Planning')
+      })
+    );
   });
 
   test('sends an unavailable Calendar Section without retaining provider failure content', async () => {
