@@ -243,6 +243,14 @@ test('Visitor sees Demo Calendar content for the Week Ahead and can hide it from
   await expect(page.getByText('Planning check-in', { exact: true })).toBeVisible();
   await expect(page.getByText('Design review', { exact: true })).toBeVisible();
   await expect(page.getByText('Todo source is not connected yet.')).not.toBeVisible();
+  await expect(page.getByRole('link', { name: 'Connect Google Calendar' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Disconnect Google Calendar' })).toHaveCount(0);
+  await expect(page.getByText('Selected Calendars', { exact: true })).toHaveCount(0);
+  await expect(page.locator('input[id^="selected-calendar-"]')).toHaveCount(0);
+  await expect(page.getByText('No Calendar writes or attendee changes')).toBeVisible();
+  await expect(page.getByText('No Calendar sync, event cache, or webhooks')).toBeVisible();
+  await expect(page.getByText('No scheduled worker')).toBeVisible();
+  await expect(page.getByText('No Google Maps commute estimates')).toBeVisible();
 
   await page.locator('#calendar-section').uncheck();
   await expect(page.locator('#calendar-section')).not.toBeChecked();

@@ -53,11 +53,18 @@ describe('Daily Summary preview input', () => {
   });
 
   test('renders signed-in User Calendar as unavailable until Calendar is connected', async () => {
+    const calendarEventProvider = {
+      fetchEvents: vi.fn().mockResolvedValue({ outcome: 'available', events: [] } as const)
+    };
     const preview = await buildDailySummaryPreviewInput({
       authMode: 'user',
       configuration,
       todoCategories,
-      todoTasks
+      todoTasks,
+      selectedCalendars: [
+        { id: 'work', summary: 'Work', backgroundColor: '#1a73e8', primary: true }
+      ],
+      calendarEventProvider
     });
     const rendered = renderDailySummary(preview);
 
@@ -65,6 +72,7 @@ describe('Daily Summary preview input', () => {
     expect(rendered.html).toContain('Connect Google Calendar to include Calendar Events.');
     expect(rendered.text).not.toContain('Demo Calendar');
     expect(rendered.html).not.toContain('Demo Calendar');
+    expect(calendarEventProvider.fetchEvents).not.toHaveBeenCalled();
   });
 
   test('does not render a connected Calendar placeholder as available event data', async () => {
@@ -77,7 +85,10 @@ describe('Daily Summary preview input', () => {
         label: 'Calendar',
         statusLabel: 'Calendar connected',
         detail: 'Google Calendar is connected for this User.'
-      }
+      },
+      selectedCalendars: [
+        { id: 'work', summary: 'Work', backgroundColor: '#1a73e8', primary: true }
+      ]
     });
     const rendered = renderDailySummary(preview);
 
@@ -90,8 +101,9 @@ describe('Daily Summary preview input', () => {
 
   test('renders live selected Calendar Events for a signed-in User preview in local Week Ahead order', async () => {
     const calendarEventProvider = {
-      fetchEvents: vi.fn().mockResolvedValue([
-        {
+      fetchEvents: vi.fn().mockResolvedValue({
+        outcome: 'available',
+        events: [{
           kind: 'timed',
           id: 'later-today',
           calendarId: 'work',
@@ -126,8 +138,8 @@ describe('Daily Summary preview input', () => {
           summary: 'Conference',
           startDate: '2026-07-09',
           endDate: '2026-07-10'
-        }
-      ])
+        }]
+      } as const)
     };
 
     const preview = await buildDailySummaryPreviewInput({
@@ -165,9 +177,108 @@ describe('Daily Summary preview input', () => {
     expect(rendered.html.indexOf('School drop-off')).toBeLessThan(rendered.html.indexOf('Team retro'));
     expect(rendered.text.indexOf('Weather')).toBeLessThan(rendered.text.indexOf('Calendar'));
     expect(rendered.text.indexOf('Calendar')).toBeLessThan(rendered.text.indexOf('Todo Tasks'));
+    expect(JSON.stringify(preview.calendarSection)).toContain('Team retro');
+    expect(JSON.stringify(preview.calendarSection)).not.toContain('Draft update');
+    expect(JSON.stringify(preview.todoSection)).toContain('Draft update');
+    expect(JSON.stringify(preview.todoSection)).not.toContain('Team retro');
+  });
+
+  test('renders an empty Calendar state without fetching events when no calendars are selected', async () => {
+    const calendarEventProvider = {
+      fetchEvents: vi.fn().mockResolvedValue({ outcome: 'available', events: [] } as const)
+    };
+
+    const preview = await buildDailySummaryPreviewInput({
+      authMode: 'user',
+      configuration,
+      todoCategories,
+      todoTasks,
+      calendarReadiness: {
+        status: 'connected',
+        label: 'Calendar',
+        statusLabel: 'Calendar connected',
+        detail: 'Google Calendar is connected for this User.'
+      },
+      selectedCalendars: [],
+      calendarEventProvider,
+      now: new Date('2026-07-08T10:00:00.000Z')
+    });
+    const rendered = renderDailySummary(preview);
+
+    expect(calendarEventProvider.fetchEvents).not.toHaveBeenCalled();
+    expect(rendered.text).toContain('Calendar\nNo calendars are selected.');
+    expect(rendered.html).toContain('No calendars are selected.');
+    expect(rendered.text).not.toContain('unavailable');
+  });
+
+  test('renders Calendar provider failures as unavailable without failing other Summary Sections', async () => {
+    const calendarEventProvider = {
+      fetchEvents: vi.fn().mockRejectedValue(new Error('Private planning title'))
+    };
+
+    const preview = await buildDailySummaryPreviewInput({
+      authMode: 'user',
+      configuration,
+      todoCategories,
+      todoTasks,
+      calendarReadiness: {
+        status: 'connected',
+        label: 'Calendar',
+        statusLabel: 'Calendar connected',
+        detail: 'Google Calendar is connected for this User.'
+      },
+      selectedCalendars: [
+        { id: 'work', summary: 'Work', backgroundColor: '#1a73e8', primary: true }
+      ],
+      calendarEventProvider,
+      now: new Date('2026-07-08T10:00:00.000Z')
+    });
+    const rendered = renderDailySummary(preview);
+
+    expect(rendered.text).toContain('Calendar\nLive Calendar is unavailable right now.');
+    expect(rendered.text).toContain('Mock Commute');
+    expect(rendered.text).toContain('Buy coffee !');
+    expect(rendered.text).not.toContain('Private planning title');
+  });
+
+  test('renders the provider reconnect reason when Calendar credentials were revoked', async () => {
+    const calendarEventProvider = {
+      fetchEvents: vi.fn().mockResolvedValue({
+        outcome: 'unavailable',
+        reason: 'Reconnect Google Calendar to include Calendar Events.'
+      } as const)
+    };
+
+    const preview = await buildDailySummaryPreviewInput({
+      authMode: 'user',
+      configuration,
+      todoCategories,
+      todoTasks,
+      calendarReadiness: {
+        status: 'connected',
+        label: 'Calendar',
+        statusLabel: 'Calendar connected',
+        detail: 'Google Calendar is connected for this User.'
+      },
+      selectedCalendars: [
+        { id: 'work', summary: 'Work', backgroundColor: '#1a73e8', primary: true }
+      ],
+      calendarEventProvider,
+      now: new Date('2026-07-08T10:00:00.000Z')
+    });
+    const rendered = renderDailySummary(preview);
+
+    expect(rendered.text).toContain(
+      'Calendar\nReconnect Google Calendar to include Calendar Events.'
+    );
+    expect(rendered.text).toContain('Mock Commute');
+    expect(rendered.text).toContain('Buy coffee !');
   });
 
   test('omits signed-in User Calendar output when the Calendar Summary Section is disabled', async () => {
+    const calendarEventProvider = {
+      fetchEvents: vi.fn().mockResolvedValue({ outcome: 'available', events: [] } as const)
+    };
     const preview = await buildDailySummaryPreviewInput({
       authMode: 'user',
       configuration: {
@@ -178,7 +289,17 @@ describe('Daily Summary preview input', () => {
         }
       },
       todoCategories,
-      todoTasks
+      todoTasks,
+      calendarReadiness: {
+        status: 'connected',
+        label: 'Calendar',
+        statusLabel: 'Calendar connected',
+        detail: 'Google Calendar is connected for this User.'
+      },
+      selectedCalendars: [
+        { id: 'work', summary: 'Work', backgroundColor: '#1a73e8', primary: true }
+      ],
+      calendarEventProvider
     });
     const rendered = renderDailySummary(preview);
 
@@ -188,6 +309,7 @@ describe('Daily Summary preview input', () => {
     expect(rendered.html).not.toContain('Connect Google Calendar');
     expect(rendered.text).not.toContain('Demo Calendar');
     expect(rendered.html).not.toContain('Demo Calendar');
+    expect(calendarEventProvider.fetchEvents).not.toHaveBeenCalled();
   });
 
   test('renders live Weather from Weather Location coordinates in HTML and plain text', async () => {

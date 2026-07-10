@@ -34,7 +34,10 @@ export type CalendarEventProvider = {
     timeMin: string;
     timeMax: string;
     timeZone: UserTimeZone;
-  }) => Promise<CalendarProviderEvent[]>;
+  }) => Promise<
+    | { outcome: 'available'; events: CalendarProviderEvent[] }
+    | { outcome: 'unavailable'; reason: string }
+  >;
 };
 
 export type AllDayCalendarEvent = {

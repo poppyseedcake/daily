@@ -1,7 +1,8 @@
 import { and, desc, eq } from 'drizzle-orm';
-import { googleCalendarReadScope } from '$lib/googleCalendarScopes';
+import { googleCalendarReadScope, parseGoogleProviderScopes } from '$lib/googleCalendarScopes';
 import { db } from '$lib/server/db';
 import { authAccount } from '$lib/server/db/schema';
+import { auth } from '$lib/server/auth';
 import type { CalendarEventProvider, CalendarProviderEvent } from '$lib/calendar';
 import type { ProviderCalendarListEntry } from '$lib/selectedCalendars';
 
@@ -38,6 +39,12 @@ type GoogleCalendarEventsResponse = {
   }>;
 };
 
+class GoogleCalendarEventsRequestError extends Error {
+  constructor(readonly status: number) {
+    super(`Google Calendar events request failed: ${status}`);
+  }
+}
+
 export const googleCalendarListProvider: GoogleCalendarListProvider = {
   async loadCalendars(accessToken) {
     const response = await fetch('https://www.googleapis.com/calendar/v3/users/me/calendarList', {
@@ -69,76 +76,87 @@ export const googleCalendarListProvider: GoogleCalendarListProvider = {
 
 export const googleCalendarEventProvider = (accessToken: string): CalendarEventProvider => ({
   async fetchEvents({ calendarIds, timeMin, timeMax, timeZone }) {
-    const eventLists = await Promise.all(
-      calendarIds.map(async (calendarId) => {
-        const params = new URLSearchParams({
-          singleEvents: 'true',
-          orderBy: 'startTime',
-          timeMin,
-          timeMax,
-          timeZone
-        });
-        const response = await fetch(
-          `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events?${params.toString()}`,
-          {
-            headers: {
-              authorization: `Bearer ${accessToken}`
+    try {
+      const eventLists = await Promise.all(
+        calendarIds.map(async (calendarId) => {
+          const params = new URLSearchParams({
+            singleEvents: 'true',
+            orderBy: 'startTime',
+            timeMin,
+            timeMax,
+            timeZone
+          });
+          const response = await fetch(
+            `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events?${params.toString()}`,
+            {
+              headers: {
+                authorization: `Bearer ${accessToken}`
+              }
             }
+          );
+
+          if (!response.ok) {
+            throw new GoogleCalendarEventsRequestError(response.status);
           }
-        );
 
-        if (!response.ok) {
-          throw new Error(`Google Calendar events request failed: ${response.status}`);
-        }
+          const payload = (await response.json()) as GoogleCalendarEventsResponse;
 
-        const payload = (await response.json()) as GoogleCalendarEventsResponse;
+          return (payload.items ?? []).flatMap((event): CalendarProviderEvent[] => {
+            if (
+              !event.id ||
+              !event.summary ||
+              event.status === 'cancelled' ||
+              event.attendees?.some(
+                (attendee) => attendee.self === true && attendee.responseStatus === 'declined'
+              )
+            ) {
+              return [];
+            }
 
-        return (payload.items ?? []).flatMap((event): CalendarProviderEvent[] => {
-          if (
-            !event.id ||
-            !event.summary ||
-            event.status === 'cancelled' ||
-            event.attendees?.some(
-              (attendee) => attendee.self === true && attendee.responseStatus === 'declined'
-            )
-          ) {
+            if (event.start?.dateTime && event.end?.dateTime) {
+              return [
+                {
+                  kind: 'timed',
+                  id: event.id,
+                  calendarId,
+                  calendarSummary: '',
+                  summary: event.summary,
+                  start: event.start.dateTime,
+                  end: event.end.dateTime
+                }
+              ];
+            }
+
+            if (event.start?.date && event.end?.date) {
+              return [
+                {
+                  kind: 'all-day',
+                  id: event.id,
+                  calendarId,
+                  calendarSummary: '',
+                  summary: event.summary,
+                  startDate: event.start.date,
+                  endDate: event.end.date
+                }
+              ];
+            }
+
             return [];
-          }
+          });
+        })
+      );
 
-          if (event.start?.dateTime && event.end?.dateTime) {
-            return [
-              {
-                kind: 'timed',
-                id: event.id,
-                calendarId,
-                calendarSummary: '',
-                summary: event.summary,
-                start: event.start.dateTime,
-                end: event.end.dateTime
-              }
-            ];
-          }
-
-          if (event.start?.date && event.end?.date) {
-            return [
-              {
-                kind: 'all-day',
-                id: event.id,
-                calendarId,
-                calendarSummary: '',
-                summary: event.summary,
-                startDate: event.start.date,
-                endDate: event.end.date
-              }
-            ];
-          }
-
-          return [];
-        });
-      })
-    );
-
-    return eventLists.flat();
+      return { outcome: 'available', events: eventLists.flat() };
+    } catch (error) {
+      return {
+        outcome: 'unavailable',
+        reason:
+          error instanceof GoogleCalendarEventsRequestError &&
+          (error.status === 401 || error.status === 403)
+            ? 'Reconnect Google Calendar to include Calendar Events.'
+            : 'Live Calendar is unavailable right now.'
+      };
+    }
   }
 });
 
@@ -150,11 +168,33 @@ export const loadGoogleCalendarAccessToken = async (authUserId: string) => {
     orderBy: desc(authAccount.updated_at)
   });
 
-  const account = accounts.find((row) => row.scope?.split(/\s+/).includes(googleCalendarReadScope));
+  const account = accounts.find((row) =>
+    parseGoogleProviderScopes(row.scope).includes(googleCalendarReadScope)
+  );
 
-  if (!account?.access_token || tokenIsExpired(account.access_token_expires_at)) {
+  if (!account) {
     return null;
   }
 
-  return account.access_token;
+  if (account.access_token && !tokenIsExpired(account.access_token_expires_at)) {
+    return account.access_token;
+  }
+
+  if (!account.refresh_token) {
+    return null;
+  }
+
+  try {
+    const refreshedTokens = await auth.api.refreshToken({
+      body: {
+        providerId: 'google',
+        accountId: account.account_id,
+        userId: authUserId
+      }
+    });
+
+    return refreshedTokens.accessToken ?? null;
+  } catch {
+    return null;
+  }
 };

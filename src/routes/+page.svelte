@@ -1903,10 +1903,12 @@
           </p>
         </Panel>
       {/if}
-      <Panel title="Scope Guard" eyebrow="Remaining delivery scope">
+      <Panel title="Scope Guard" eyebrow="Milestone 5 boundaries">
         <ul class="list-disc space-y-2 pl-5">
-          <li>No provider connections</li>
+          <li>No Calendar writes or attendee changes</li>
+          <li>No Calendar sync, event cache, or webhooks</li>
           <li>No scheduled worker</li>
+          <li>No Google Maps commute estimates</li>
         </ul>
       </Panel>
     </aside>

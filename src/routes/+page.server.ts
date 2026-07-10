@@ -16,9 +16,13 @@ import { buildDailySummaryPreviewInput } from '$lib/dailySummaryPreview';
 import { renderDailySummary } from '$lib/dailySummaryRenderer';
 import {
   calendarReadinessForAuthMode,
+  calendarReadinessForUnavailableCredentials,
   calendarReadinessForUserConnection
 } from '$lib/calendarReadiness';
-import { buildSelectedCalendarConfiguration } from '$lib/selectedCalendars';
+import {
+  buildSelectedCalendarConfiguration,
+  type SavedSelectedCalendar
+} from '$lib/selectedCalendars';
 import {
   googleCalendarEventProvider,
   googleCalendarListProvider,
@@ -127,6 +131,7 @@ export const load = async ({ request }) => {
         })
       : null;
   let calendarAccessToken: string | null = null;
+  let selectedCalendarsForGeneration: SavedSelectedCalendar[] = [];
   const selectedCalendarConfiguration =
     authState.mode === 'user' && calendarConnection?.status === 'connected'
       ? await (async () => {
@@ -137,14 +142,19 @@ export const load = async ({ request }) => {
               return null;
             }
 
-            const providerCalendars = await googleCalendarListProvider.loadCalendars(calendarAccessToken);
-            const savedCalendars = await userCalendarConnectionStore.loadSelectedCalendars(authState.userId);
+            selectedCalendarsForGeneration =
+              await userCalendarConnectionStore.loadSelectedCalendars(authState.userId);
+            const providerCalendars =
+              await googleCalendarListProvider.loadCalendars(calendarAccessToken);
             const configuration = buildSelectedCalendarConfiguration({
               providerCalendars,
-              savedCalendars
+              savedCalendars: selectedCalendarsForGeneration
             });
 
-            if (savedCalendars.length === 0 && configuration.selectedCalendarIds.length > 0) {
+            if (
+              selectedCalendarsForGeneration.length === 0 &&
+              configuration.selectedCalendarIds.length > 0
+            ) {
               await userCalendarConnectionStore.saveSelectedCalendars(
                 authState.userId,
                 configuration.calendars
@@ -159,16 +169,21 @@ export const load = async ({ request }) => {
             }
 
             return configuration;
-          } catch (error: unknown) {
+          } catch {
             console.warn('Failed to load User Selected Calendar configuration.', {
-              userId: authState.userId,
-              error
+              userId: authState.userId
             });
 
             return null;
           }
       })()
       : null;
+  const calendarReadiness =
+    authState.mode === 'user' && calendarConnection
+      ? calendarConnection.status === 'connected' && !calendarAccessToken
+        ? calendarReadinessForUnavailableCredentials()
+        : calendarReadinessForUserConnection(calendarConnection)
+      : calendarReadinessForAuthMode(authState.mode);
   const renderedSummaryHtml =
     authState.mode === 'user'
       ? await (async () => {
@@ -181,14 +196,16 @@ export const load = async ({ request }) => {
 
           const selectedCalendars =
             calendarConnection?.status === 'connected'
-              ? (selectedCalendarConfiguration?.calendars ?? [])
-                  .filter((calendar) => calendar.selected)
-                  .map((calendar) => ({
-                    id: calendar.id,
-                    summary: calendar.summary,
-                    backgroundColor: calendar.backgroundColor,
-                    primary: calendar.primary
-                  }))
+              ? selectedCalendarConfiguration
+                ? selectedCalendarConfiguration.calendars
+                    .filter((calendar) => calendar.selected)
+                    .map((calendar) => ({
+                      id: calendar.id,
+                      summary: calendar.summary,
+                      backgroundColor: calendar.backgroundColor,
+                      primary: calendar.primary
+                    }))
+                : selectedCalendarsForGeneration
               : [];
           return renderDailySummary(
             await buildDailySummaryPreviewInput({
@@ -197,9 +214,7 @@ export const load = async ({ request }) => {
               todoCategories: validTodoState.data.todoCategories,
               todoTasks: validTodoState.data.todoTasks,
               weatherLocation,
-              calendarReadiness: calendarConnection
-                ? calendarReadinessForUserConnection(calendarConnection)
-                : calendarReadinessForAuthMode('user'),
+              calendarReadiness,
               selectedCalendars,
               calendarEventProvider: calendarAccessToken
                 ? googleCalendarEventProvider(calendarAccessToken)
@@ -212,10 +227,7 @@ export const load = async ({ request }) => {
   return {
     authState,
     isAdministrator: isAdministratorAuthState(authState),
-    calendarReadiness:
-      authState.mode === 'user' && calendarConnection
-        ? calendarReadinessForUserConnection(calendarConnection)
-        : calendarReadinessForAuthMode(authState.mode),
+    calendarReadiness,
     summaryConfiguration,
     todoState,
     weatherLocation,
@@ -265,6 +277,25 @@ export const actions = {
     );
     const todoState = await loadUserTodoState(userTodoStore, authState.userId);
     const weatherLocation = await loadUserWeatherLocation(userWeatherLocationStore, authState.userId);
+    const calendarConnection = await userCalendarConnectionStore.load(authState.userId);
+    let calendarAccessToken: string | null = null;
+    let selectedCalendars: SavedSelectedCalendar[] = [];
+
+    if (calendarConnection.status === 'connected') {
+      try {
+        calendarAccessToken = await loadGoogleCalendarAccessToken(authState.userId);
+        selectedCalendars = await userCalendarConnectionStore.loadSelectedCalendars(authState.userId);
+      } catch {
+        console.warn('Failed to load Calendar generation configuration for test delivery.', {
+          userId: authState.userId
+        });
+      }
+    }
+
+    const calendarReadiness =
+      calendarConnection.status === 'connected' && !calendarAccessToken
+        ? calendarReadinessForUnavailableCredentials()
+        : calendarReadinessForUserConnection(calendarConnection);
     const validConfiguration = summaryConfigurationSchema.safeParse(configuration);
     const validTodoState = todoStateSchema.safeParse(todoState);
 
@@ -278,7 +309,11 @@ export const actions = {
         todoCategories: validTodoState.data.todoCategories,
         todoTasks: validTodoState.data.todoTasks,
         weatherLocation,
-        calendarReadiness: calendarReadinessForAuthMode('user')
+        calendarReadiness,
+        selectedCalendars,
+        calendarEventProvider: calendarAccessToken
+          ? googleCalendarEventProvider(calendarAccessToken)
+          : undefined
       })
     );
     const message = {
