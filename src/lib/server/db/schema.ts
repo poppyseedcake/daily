@@ -156,6 +156,14 @@ export const googleMapsUsage = sqliteTable(
   },
   (table) => [
     primaryKey({ columns: [table.periodKind, table.periodStartUtc, table.category] }),
+    check(
+      'google_maps_usage_period_kind_check',
+      sql`${table.periodKind} IN ('day', 'month')`
+    ),
+    check(
+      'google_maps_usage_category_check',
+      sql`${table.category} IN ('map-point-selection', 'commute-estimate')`
+    ),
     check('google_maps_usage_request_count_check', sql`${table.requestCount} >= 0`)
   ]
 );

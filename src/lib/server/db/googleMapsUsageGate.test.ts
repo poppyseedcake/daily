@@ -25,9 +25,9 @@ const createDatabase = (path = ':memory:', initialize = true) => {
   if (initialize) {
     database.exec(`
       CREATE TABLE google_maps_usage (
-        period_kind text NOT NULL,
+        period_kind text NOT NULL CHECK (period_kind IN ('day', 'month')),
         period_start_utc text NOT NULL,
-        category text NOT NULL,
+        category text NOT NULL CHECK (category IN ('map-point-selection', 'commute-estimate')),
         request_count integer NOT NULL CHECK (request_count >= 0),
         PRIMARY KEY (period_kind, period_start_utc, category)
       )
@@ -216,6 +216,20 @@ describe('Google Maps usage gate', () => {
         GOOGLE_MAPS_GLOBAL_MONTHLY_CAP: 'not-a-number'
       })
     ).toThrow('Google Maps global caps must be positive integers');
+  });
+
+  test('rejects unrecognized usage categories at the SQLite boundary', () => {
+    const database = createDatabase();
+    const insertUnknownCategory = database.prepare(`
+      INSERT INTO google_maps_usage (
+        period_kind,
+        period_start_utc,
+        category,
+        request_count
+      ) VALUES ('day', '2026-07-12', 'unknown-provider-call', 1)
+    `);
+
+    expect(() => insertUnknownCategory.run()).toThrow();
   });
 
   test('keeps a failed provider call reserved and blocks the next call before provider admission', async () => {
