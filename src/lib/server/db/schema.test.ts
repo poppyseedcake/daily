@@ -8,6 +8,7 @@ import {
   authVerification,
   calendarConnections,
   deliveryRecords,
+  googleMapsUsage,
   selectedCalendars,
   summaryConfigurations,
   todoCategories,
@@ -27,6 +28,7 @@ describe('Daily database schema', () => {
       getTableName(calendarConnections),
       getTableName(selectedCalendars),
       getTableName(deliveryRecords),
+      getTableName(googleMapsUsage),
       getTableName(authUser),
       getTableName(authSession),
       getTableName(authAccount),
@@ -40,6 +42,7 @@ describe('Daily database schema', () => {
       'calendar_connections',
       'selected_calendars',
       'delivery_records',
+      'google_maps_usage',
       'auth_user',
       'auth_session',
       'auth_account',
@@ -100,6 +103,20 @@ describe('Daily database schema', () => {
     expect(migration).toContain(
       'CREATE INDEX `delivery_records_user_requested_at_idx` ON `delivery_records` (`user_id`,`requested_at`)'
     );
+  });
+
+  test('ships privacy-safe Google Maps usage counters in an upgrade migration', () => {
+    const migrationPath = 'drizzle/0006_add_google_maps_usage.sql';
+
+    expect(existsSync(migrationPath)).toBe(true);
+
+    const migration = readFileSync(migrationPath, 'utf8');
+
+    expect(migration).toContain('CREATE TABLE `google_maps_usage`');
+    expect(migration).toContain('`period_start_utc` text NOT NULL');
+    expect(migration).toContain('`category` text NOT NULL');
+    expect(migration).toContain('`request_count` integer NOT NULL');
+    expect(migration).not.toMatch(/origin|destination|route_name|provider_payload|rendered/i);
   });
 
   test('ships Weather Locations in an upgrade migration without forecast snapshots', () => {

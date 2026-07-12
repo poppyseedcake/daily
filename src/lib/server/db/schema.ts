@@ -1,5 +1,5 @@
 import { relations, sql } from 'drizzle-orm';
-import { index, integer, real, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
+import { check, index, integer, primaryKey, real, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
 
 export const users = sqliteTable(
   'users',
@@ -142,6 +142,22 @@ export const deliveryRecords = sqliteTable(
       table.requestedAt
     )
   })
+);
+
+export const googleMapsUsage = sqliteTable(
+  'google_maps_usage',
+  {
+    periodKind: text('period_kind', { enum: ['day', 'month'] }).notNull(),
+    periodStartUtc: text('period_start_utc').notNull(),
+    category: text('category', {
+      enum: ['map-point-selection', 'commute-estimate']
+    }).notNull(),
+    requestCount: integer('request_count').notNull()
+  },
+  (table) => [
+    primaryKey({ columns: [table.periodKind, table.periodStartUtc, table.category] }),
+    check('google_maps_usage_request_count_check', sql`${table.requestCount} >= 0`)
+  ]
 );
 
 export const authUser = sqliteTable(
