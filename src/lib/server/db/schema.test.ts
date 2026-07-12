@@ -9,6 +9,7 @@ import {
   calendarConnections,
   deliveryRecords,
   googleMapsUsage,
+  googleMapsPersonUsage,
   selectedCalendars,
   summaryConfigurations,
   todoCategories,
@@ -29,6 +30,7 @@ describe('Daily database schema', () => {
       getTableName(selectedCalendars),
       getTableName(deliveryRecords),
       getTableName(googleMapsUsage),
+      getTableName(googleMapsPersonUsage),
       getTableName(authUser),
       getTableName(authSession),
       getTableName(authAccount),
@@ -43,6 +45,7 @@ describe('Daily database schema', () => {
       'selected_calendars',
       'delivery_records',
       'google_maps_usage',
+      'google_maps_person_usage',
       'auth_user',
       'auth_session',
       'auth_account',
@@ -125,12 +128,28 @@ describe('Daily database schema', () => {
     );
     expect(migration).toContain('`request_count` integer NOT NULL');
     expect(migration).not.toMatch(/origin|destination|route_name|provider_payload|rendered/i);
-    expect(journal.entries.at(-1)).toEqual({
+    expect(journal.entries.find(({ idx }) => idx === 6)).toEqual({
       idx: 6,
       tag: '0006_add_google_maps_usage',
       version: '6',
       when: 1783843200006,
       breakpoints: true
+    });
+  });
+
+  test('ships opaque per-person Google Maps counters without Admin-facing metadata', () => {
+    const migration = readFileSync('drizzle/0007_add_google_maps_person_usage.sql', 'utf8');
+    const journal = JSON.parse(readFileSync('drizzle/meta/_journal.json', 'utf8')) as {
+      entries: Array<{ idx: number; tag: string }>;
+    };
+
+    expect(migration).toContain('CREATE TABLE `google_maps_person_usage`');
+    expect(migration).toContain('`period_start_utc` text NOT NULL');
+    expect(migration).toContain('`person_usage_identity` text NOT NULL');
+    expect(migration).not.toMatch(/user_id|email|visitor_token|attribution_secret|category/i);
+    expect(journal.entries.at(-1)).toMatchObject({
+      idx: 7,
+      tag: '0007_add_google_maps_person_usage'
     });
   });
 

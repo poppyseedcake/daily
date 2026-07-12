@@ -3,23 +3,26 @@ import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import type {
   GoogleMapsAdmission,
   GoogleMapsCallCategory,
+  GoogleMapsPersonAttribution,
   GoogleMapsUsageGate
 } from '../googleMapsRequestGateway';
 import * as schema from './schema';
 
 type GoogleMapsDatabase = BetterSQLite3Database<typeof schema>;
-const { googleMapsUsage } = schema;
+const { googleMapsPersonUsage, googleMapsUsage } = schema;
 
 export type GoogleMapsUsageGateOptions = {
   database: GoogleMapsDatabase;
   dailyCap: number;
   monthlyCap: number;
+  perPersonDailyLimit: number;
   now?: () => Date;
 };
 
 export type GoogleMapsUsageCapsEnvironment = {
   GOOGLE_MAPS_GLOBAL_DAILY_CAP?: string;
   GOOGLE_MAPS_GLOBAL_MONTHLY_CAP?: string;
+  GOOGLE_MAPS_PER_PERSON_DAILY_LIMIT?: string;
 };
 
 type UsageByCategory = Record<GoogleMapsCallCategory, number>;
@@ -55,30 +58,34 @@ const positiveInteger = (value: string | undefined): number | null => {
 
 export const readGoogleMapsUsageCaps = (
   environment: GoogleMapsUsageCapsEnvironment
-): Pick<GoogleMapsUsageGateOptions, 'dailyCap' | 'monthlyCap'> => {
+): Pick<GoogleMapsUsageGateOptions, 'dailyCap' | 'monthlyCap' | 'perPersonDailyLimit'> => {
   const dailyCap = positiveInteger(environment.GOOGLE_MAPS_GLOBAL_DAILY_CAP);
   const monthlyCap = positiveInteger(environment.GOOGLE_MAPS_GLOBAL_MONTHLY_CAP);
+  const perPersonDailyLimit = positiveInteger(environment.GOOGLE_MAPS_PER_PERSON_DAILY_LIMIT);
 
-  if (dailyCap === null || monthlyCap === null) {
-    throw new Error('Google Maps global caps must be positive integers');
+  if (dailyCap === null || monthlyCap === null || perPersonDailyLimit === null) {
+    throw new Error('Google Maps usage limits must be positive integers');
   }
 
-  return { dailyCap, monthlyCap };
+  return { dailyCap, monthlyCap, perPersonDailyLimit };
 };
 
 export const createGoogleMapsUsageGate = ({
   database,
   dailyCap,
   monthlyCap,
+  perPersonDailyLimit,
   now = () => new Date()
 }: GoogleMapsUsageGateOptions): GoogleMapsDurableUsageGate => {
   if (
     !Number.isSafeInteger(dailyCap) ||
     dailyCap <= 0 ||
     !Number.isSafeInteger(monthlyCap) ||
-    monthlyCap <= 0
+    monthlyCap <= 0 ||
+    !Number.isSafeInteger(perPersonDailyLimit) ||
+    perPersonDailyLimit <= 0
   ) {
-    throw new Error('Google Maps global caps must be positive integers');
+    throw new Error('Google Maps usage limits must be positive integers');
   }
 
   const usageForPeriod = (source: GoogleMapsDatabase, period: UsagePeriod) =>
@@ -150,29 +157,72 @@ export const createGoogleMapsUsageGate = ({
     };
   };
 
-  const admit = (category: GoogleMapsCallCategory, periods: [UsagePeriod, UsagePeriod]) =>
+  const personUsageForDay = (
+    source: GoogleMapsDatabase,
+    day: UsagePeriod,
+    attribution: GoogleMapsPersonAttribution
+  ) =>
+    source
+      .select({ requestCount: googleMapsPersonUsage.requestCount })
+      .from(googleMapsPersonUsage)
+      .where(
+        and(
+          eq(googleMapsPersonUsage.periodStartUtc, day.start),
+          eq(googleMapsPersonUsage.personUsageIdentity, attribution.personUsageIdentity)
+        )
+      )
+      .get()?.requestCount ?? 0;
+
+  const reservePersonUsage = (
+    source: GoogleMapsDatabase,
+    day: UsagePeriod,
+    attribution: GoogleMapsPersonAttribution
+  ) =>
+    source
+      .insert(googleMapsPersonUsage)
+      .values({
+        periodStartUtc: day.start,
+        personUsageIdentity: attribution.personUsageIdentity,
+        requestCount: 1
+      })
+      .onConflictDoUpdate({
+        target: [googleMapsPersonUsage.periodStartUtc, googleMapsPersonUsage.personUsageIdentity],
+        set: { requestCount: sql`${googleMapsPersonUsage.requestCount} + 1` }
+      })
+      .run();
+
+  const admit = (
+    category: GoogleMapsCallCategory,
+    attribution: GoogleMapsPersonAttribution,
+    periods: [UsagePeriod, UsagePeriod]
+  ) =>
     database.transaction(
       (transaction): GoogleMapsAdmission => {
-      const [day, month] = periods;
+        const [day, month] = periods;
 
-      if (usageForPeriod(transaction, day) >= dailyCap) {
-        return { outcome: 'suspended', reason: 'global-daily-cap' };
-      }
+        if (personUsageForDay(transaction, day, attribution) >= perPersonDailyLimit) {
+          return { outcome: 'suspended', reason: 'per-person-daily-limit' };
+        }
 
-      if (usageForPeriod(transaction, month) >= monthlyCap) {
-        return { outcome: 'suspended', reason: 'global-monthly-cap' };
-      }
+        if (usageForPeriod(transaction, day) >= dailyCap) {
+          return { outcome: 'suspended', reason: 'global-daily-cap' };
+        }
 
-      reserve(transaction, day, category);
-      reserve(transaction, month, category);
-      return { outcome: 'admitted' };
+        if (usageForPeriod(transaction, month) >= monthlyCap) {
+          return { outcome: 'suspended', reason: 'global-monthly-cap' };
+        }
+
+        reserve(transaction, day, category);
+        reserve(transaction, month, category);
+        reservePersonUsage(transaction, day, attribution);
+        return { outcome: 'admitted' };
       },
       { behavior: 'immediate' }
     );
 
   return {
-    async admit(category) {
-      return admit(category, utcPeriodsFor(now()));
+    async admit(category, attribution) {
+      return admit(category, attribution, utcPeriodsFor(now()));
     },
     async currentUsage() {
       const [day, month] = utcPeriodsFor(now());

@@ -8,6 +8,7 @@ import {
   createGoogleMapsRequestGateway,
   type GoogleMapsProvider
 } from '../googleMapsRequestGateway';
+import { createGoogleMapsPersonAttribution } from '../googleMapsPersonAttribution';
 import {
   createGoogleMapsUsageGate,
   readGoogleMapsUsageCaps
@@ -31,6 +32,13 @@ const createDatabase = (path = ':memory:', initialize = true) => {
         request_count integer NOT NULL CHECK (request_count >= 0),
         PRIMARY KEY (period_kind, period_start_utc, category)
       )
+      ;
+      CREATE TABLE google_maps_person_usage (
+        period_start_utc text NOT NULL,
+        person_usage_identity text NOT NULL,
+        request_count integer NOT NULL CHECK (request_count >= 0),
+        PRIMARY KEY (period_start_utc, person_usage_identity)
+      )
     `);
   }
   databases.push(database);
@@ -51,18 +59,21 @@ afterEach(() => {
 });
 
 describe('Google Maps usage gate', () => {
+  const person = { personUsageIdentity: 'privacy-safe-person-a' };
+
   test('admits calls immediately below both caps and rejects calls at either cap', async () => {
     const database = createDatabase();
     const gate = createGoogleMapsUsageGate({
       database: drizzleDatabase(database),
       dailyCap: 2,
       monthlyCap: 3,
+      perPersonDailyLimit: 100,
       now: () => new Date('2026-07-12T23:59:59.000Z')
     });
 
-    await expect(gate.admit('map-point-selection')).resolves.toEqual({ outcome: 'admitted' });
-    await expect(gate.admit('commute-estimate')).resolves.toEqual({ outcome: 'admitted' });
-    await expect(gate.admit('map-point-selection')).resolves.toEqual({
+    await expect(gate.admit('map-point-selection', person)).resolves.toEqual({ outcome: 'admitted' });
+    await expect(gate.admit('commute-estimate', person)).resolves.toEqual({ outcome: 'admitted' });
+    await expect(gate.admit('map-point-selection', person)).resolves.toEqual({
       outcome: 'suspended',
       reason: 'global-daily-cap'
     });
@@ -71,13 +82,55 @@ describe('Google Maps usage gate', () => {
       database: drizzleDatabase(database),
       dailyCap: 2,
       monthlyCap: 3,
+      perPersonDailyLimit: 100,
       now: () => new Date('2026-07-13T00:00:00.000Z')
     });
-    await expect(nextDay.admit('commute-estimate')).resolves.toEqual({ outcome: 'admitted' });
-    await expect(nextDay.admit('map-point-selection')).resolves.toEqual({
+    await expect(nextDay.admit('commute-estimate', person)).resolves.toEqual({ outcome: 'admitted' });
+    await expect(nextDay.admit('map-point-selection', person)).resolves.toEqual({
       outcome: 'suspended',
       reason: 'global-monthly-cap'
     });
+  });
+
+  test('limits one person without suspending another and resets at the UTC daily boundary', async () => {
+    const database = createDatabase();
+    let currentTime = new Date('2026-07-12T23:59:59.999Z');
+    const gate = createGoogleMapsUsageGate({
+      database: drizzleDatabase(database),
+      dailyCap: 20,
+      monthlyCap: 20,
+      perPersonDailyLimit: 2,
+      now: () => currentTime
+    });
+    let visitorToken: string | undefined;
+    const personA = createGoogleMapsPersonAttribution({
+      authState: { mode: 'visitor' },
+      cookies: {
+        get: () => visitorToken,
+        set: (_name, value) => { visitorToken = value; }
+      },
+      secret: 'test-attribution-secret-with-at-least-32-bytes'
+    });
+    const personB = createGoogleMapsPersonAttribution({
+      authState: {
+        mode: 'user',
+        userId: 'signed-in-user-b',
+        summaryRecipient: 'person-b@example.test'
+      },
+      cookies: { get: () => undefined, set: () => undefined },
+      secret: 'test-attribution-secret-with-at-least-32-bytes'
+    });
+
+    await expect(gate.admit('map-point-selection', personA)).resolves.toEqual({ outcome: 'admitted' });
+    await expect(gate.admit('commute-estimate', personA)).resolves.toEqual({ outcome: 'admitted' });
+    await expect(gate.admit('commute-estimate', personA)).resolves.toEqual({
+      outcome: 'suspended',
+      reason: 'per-person-daily-limit'
+    });
+    await expect(gate.admit('commute-estimate', personB)).resolves.toEqual({ outcome: 'admitted' });
+
+    currentTime = new Date('2026-07-13T00:00:00.000Z');
+    await expect(gate.admit('map-point-selection', personA)).resolves.toEqual({ outcome: 'admitted' });
   });
 
   test('rolls daily and monthly periods over at UTC boundaries', async () => {
@@ -87,17 +140,18 @@ describe('Google Maps usage gate', () => {
       database: drizzleDatabase(database),
       dailyCap: 1,
       monthlyCap: 1,
+      perPersonDailyLimit: 100,
       now: () => currentTime
     });
 
-    await expect(gate.admit('commute-estimate')).resolves.toEqual({ outcome: 'admitted' });
-    await expect(gate.admit('commute-estimate')).resolves.toEqual({
+    await expect(gate.admit('commute-estimate', person)).resolves.toEqual({ outcome: 'admitted' });
+    await expect(gate.admit('commute-estimate', person)).resolves.toEqual({
       outcome: 'suspended',
       reason: 'global-daily-cap'
     });
 
     currentTime = new Date('2026-08-01T00:00:00.000Z');
-    await expect(gate.admit('map-point-selection')).resolves.toEqual({ outcome: 'admitted' });
+    await expect(gate.admit('map-point-selection', person)).resolves.toEqual({ outcome: 'admitted' });
   });
 
   test('rejects calls when reconfigured caps are already below persisted usage', async () => {
@@ -106,19 +160,21 @@ describe('Google Maps usage gate', () => {
       database: drizzleDatabase(dailyDatabase),
       dailyCap: 4,
       monthlyCap: 4,
+      perPersonDailyLimit: 100,
       now: () => new Date('2026-07-12T12:00:00.000Z')
     });
-    await initialDailyGate.admit('map-point-selection');
-    await initialDailyGate.admit('commute-estimate');
-    await initialDailyGate.admit('commute-estimate');
+    await initialDailyGate.admit('map-point-selection', person);
+    await initialDailyGate.admit('commute-estimate', person);
+    await initialDailyGate.admit('commute-estimate', person);
 
     const reducedDailyGate = createGoogleMapsUsageGate({
       database: drizzleDatabase(dailyDatabase),
       dailyCap: 2,
       monthlyCap: 4,
+      perPersonDailyLimit: 100,
       now: () => new Date('2026-07-12T12:01:00.000Z')
     });
-    await expect(reducedDailyGate.admit('map-point-selection')).resolves.toEqual({
+    await expect(reducedDailyGate.admit('map-point-selection', person)).resolves.toEqual({
       outcome: 'suspended',
       reason: 'global-daily-cap'
     });
@@ -127,9 +183,10 @@ describe('Google Maps usage gate', () => {
       database: drizzleDatabase(dailyDatabase),
       dailyCap: 4,
       monthlyCap: 2,
+      perPersonDailyLimit: 100,
       now: () => new Date('2026-07-13T12:00:00.000Z')
     });
-    await expect(reducedMonthlyGate.admit('map-point-selection')).resolves.toEqual({
+    await expect(reducedMonthlyGate.admit('map-point-selection', person)).resolves.toEqual({
       outcome: 'suspended',
       reason: 'global-monthly-cap'
     });
@@ -142,11 +199,12 @@ describe('Google Maps usage gate', () => {
       database: drizzleDatabase(firstDatabase),
       dailyCap: 3,
       monthlyCap: 3,
+      perPersonDailyLimit: 100,
       now: () => new Date('2026-07-12T12:00:00.000Z')
     });
 
-    await firstGate.admit('map-point-selection');
-    await firstGate.admit('commute-estimate');
+    await firstGate.admit('map-point-selection', person);
+    await firstGate.admit('commute-estimate', person);
     firstDatabase.close();
     databases.splice(databases.indexOf(firstDatabase), 1);
 
@@ -155,6 +213,7 @@ describe('Google Maps usage gate', () => {
       database: drizzleDatabase(restartedDatabase),
       dailyCap: 3,
       monthlyCap: 3,
+      perPersonDailyLimit: 100,
       now: () => new Date('2026-07-12T12:01:00.000Z')
     });
 
@@ -171,8 +230,8 @@ describe('Google Maps usage gate', () => {
         byCategory: { 'map-point-selection': 1, 'commute-estimate': 1 }
       }
     });
-    await expect(restartedGate.admit('commute-estimate')).resolves.toEqual({ outcome: 'admitted' });
-    await expect(restartedGate.admit('map-point-selection')).resolves.toEqual({
+    await expect(restartedGate.admit('commute-estimate', person)).resolves.toEqual({ outcome: 'admitted' });
+    await expect(restartedGate.admit('map-point-selection', person)).resolves.toEqual({
       outcome: 'suspended',
       reason: 'global-daily-cap'
     });
@@ -185,6 +244,7 @@ describe('Google Maps usage gate', () => {
     const options = {
       dailyCap: 5,
       monthlyCap: 5,
+      perPersonDailyLimit: 100,
       now: () => new Date('2026-07-12T12:00:00.000Z')
     };
     const gates = [
@@ -194,7 +254,7 @@ describe('Google Maps usage gate', () => {
 
     const outcomes = await Promise.all(
       Array.from({ length: 12 }, (_, index) =>
-        gates[index % gates.length]!.admit(index % 2 === 0 ? 'map-point-selection' : 'commute-estimate')
+        gates[index % gates.length]!.admit(index % 2 === 0 ? 'map-point-selection' : 'commute-estimate', person)
       )
     );
 
@@ -206,16 +266,43 @@ describe('Google Maps usage gate', () => {
     expect(
       readGoogleMapsUsageCaps({
         GOOGLE_MAPS_GLOBAL_DAILY_CAP: '25',
-        GOOGLE_MAPS_GLOBAL_MONTHLY_CAP: '500'
+        GOOGLE_MAPS_GLOBAL_MONTHLY_CAP: '500',
+        GOOGLE_MAPS_PER_PERSON_DAILY_LIMIT: '50'
       })
-    ).toEqual({ dailyCap: 25, monthlyCap: 500 });
+    ).toEqual({ dailyCap: 25, monthlyCap: 500, perPersonDailyLimit: 50 });
 
     expect(() =>
       readGoogleMapsUsageCaps({
         GOOGLE_MAPS_GLOBAL_DAILY_CAP: '0',
-        GOOGLE_MAPS_GLOBAL_MONTHLY_CAP: 'not-a-number'
+        GOOGLE_MAPS_GLOBAL_MONTHLY_CAP: 'not-a-number',
+        GOOGLE_MAPS_PER_PERSON_DAILY_LIMIT: '-1'
       })
-    ).toThrow('Google Maps global caps must be positive integers');
+    ).toThrow('Google Maps usage limits must be positive integers');
+  });
+
+  test('atomically admits no more concurrent requests for one person than their limit', async () => {
+    const path = createDatabasePath();
+    const firstDatabase = createDatabase(path);
+    const secondDatabase = createDatabase(path, false);
+    const options = {
+      dailyCap: 20,
+      monthlyCap: 20,
+      perPersonDailyLimit: 3,
+      now: () => new Date('2026-07-12T12:00:00.000Z')
+    };
+    const gates = [
+      createGoogleMapsUsageGate({ database: drizzleDatabase(firstDatabase), ...options }),
+      createGoogleMapsUsageGate({ database: drizzleDatabase(secondDatabase), ...options })
+    ];
+
+    const outcomes = await Promise.all(
+      Array.from({ length: 10 }, (_, index) =>
+        gates[index % gates.length]!.admit('commute-estimate', person)
+      )
+    );
+
+    expect(outcomes.filter(({ outcome }) => outcome === 'admitted')).toHaveLength(3);
+    expect(outcomes.filter(({ outcome }) => outcome === 'suspended')).toHaveLength(7);
   });
 
   test('rejects unrecognized usage categories at the SQLite boundary', () => {
@@ -238,6 +325,7 @@ describe('Google Maps usage gate', () => {
       database: drizzleDatabase(database),
       dailyCap: 1,
       monthlyCap: 1,
+      perPersonDailyLimit: 100,
       now: () => new Date('2026-07-12T12:00:00.000Z')
     });
     let providerCalls = 0;
@@ -253,6 +341,7 @@ describe('Google Maps usage gate', () => {
     };
     const gateway = createGoogleMapsRequestGateway({
       provider,
+      attribution: { personUsageIdentity: "test-person" },
       usageGate,
       environmentKillSwitch: false,
       diagnostics: () => undefined

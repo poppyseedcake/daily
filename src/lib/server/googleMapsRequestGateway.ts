@@ -46,8 +46,15 @@ export type GoogleMapsAdmission =
   | { outcome: 'admitted' }
   | { outcome: 'suspended'; reason: GoogleMapsSuspensionReason };
 
+export type GoogleMapsPersonAttribution = {
+  personUsageIdentity: string;
+};
+
 export type GoogleMapsUsageGate = {
-  admit: (category: GoogleMapsCallCategory) => Promise<GoogleMapsAdmission>;
+  admit: (
+    category: GoogleMapsCallCategory,
+    attribution: GoogleMapsPersonAttribution
+  ) => Promise<GoogleMapsAdmission>;
 };
 
 export type GoogleMapsDiagnosticsEvent = {
@@ -86,6 +93,7 @@ export type GoogleMapsEnvironment = {
 export type GoogleMapsRequestGatewayOptions = {
   provider: GoogleMapsProvider;
   usageGate: GoogleMapsUsageGate;
+  attribution: GoogleMapsPersonAttribution;
   environment?: GoogleMapsEnvironment;
   environmentKillSwitch?: boolean | (() => boolean);
   diagnostics?: (event: GoogleMapsDiagnosticsEvent) => void;
@@ -124,6 +132,7 @@ export const isGoogleMapsEnvironmentKillSwitchEnabled = (value: unknown): boolea
 export const createGoogleMapsRequestGateway = ({
   provider,
   usageGate,
+  attribution,
   environment = env,
   environmentKillSwitch,
   diagnostics = defaultDiagnostics
@@ -162,7 +171,7 @@ export const createGoogleMapsRequestGateway = ({
     let admission: GoogleMapsAdmission;
 
     try {
-      admission = await usageGate.admit(category);
+      admission = await usageGate.admit(category, attribution);
     } catch {
       return unavailable(category, 'usage-gate-unavailable');
     }

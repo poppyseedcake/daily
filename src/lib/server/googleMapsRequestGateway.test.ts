@@ -37,6 +37,7 @@ describe('Google Maps request gateway', () => {
     const gateway = createGoogleMapsRequestGateway({
       provider,
       usageGate: createAdmittingGate(categories),
+      attribution: { personUsageIdentity: "test-person" },
       environmentKillSwitch: false,
       diagnostics: vi.fn()
     });
@@ -65,6 +66,7 @@ describe('Google Maps request gateway', () => {
     const gateway = createGoogleMapsRequestGateway({
       provider,
       usageGate: createAdmittingGate(categories),
+      attribution: { personUsageIdentity: "test-person" },
       environment: { GOOGLE_MAPS_KILL_SWITCH: 'true' },
       diagnostics: (event) => diagnostics.push(event)
     });
@@ -92,6 +94,7 @@ describe('Google Maps request gateway', () => {
     const gateway = createGoogleMapsRequestGateway({
       provider,
       usageGate: createAdmittingGate([]),
+      attribution: { personUsageIdentity: "test-person" },
       environmentKillSwitch: true,
       diagnostics: () => {
         throw new Error('diagnostics unavailable');
@@ -113,6 +116,7 @@ describe('Google Maps request gateway', () => {
     };
     const gateway = createGoogleMapsRequestGateway({
       provider,
+      attribution: { personUsageIdentity: "test-person" },
       usageGate,
       environmentKillSwitch: false,
       diagnostics: (event) => diagnostics.push(event)
@@ -140,6 +144,7 @@ describe('Google Maps request gateway', () => {
     };
     const gateway = createGoogleMapsRequestGateway({
       provider,
+      attribution: { personUsageIdentity: "test-person" },
       usageGate,
       environmentKillSwitch: false,
       diagnostics: (event) => diagnostics.push(event)
@@ -167,6 +172,7 @@ describe('Google Maps request gateway', () => {
     const gateway = createGoogleMapsRequestGateway({
       provider,
       usageGate: createAdmittingGate([]),
+      attribution: { personUsageIdentity: "test-person" },
       environmentKillSwitch: false,
       diagnostics: (event) => diagnostics.push(event)
     });
@@ -195,6 +201,7 @@ describe('Google Maps request gateway', () => {
     const gateway = createGoogleMapsRequestGateway({
       provider,
       usageGate: createAdmittingGate([]),
+      attribution: { personUsageIdentity: "test-person" },
       environmentKillSwitch: false,
       diagnostics: (event) => diagnostics.push(event)
     });
@@ -221,6 +228,7 @@ describe('Google Maps request gateway', () => {
     };
     const gateway = createGoogleMapsRequestGateway({
       provider,
+      attribution: { personUsageIdentity: "test-person" },
       usageGate,
       environmentKillSwitch: () => killSwitchActive,
       diagnostics: vi.fn()
@@ -241,6 +249,7 @@ describe('Google Maps request gateway', () => {
     const diagnostics: GoogleMapsDiagnosticsEvent[] = [];
     const gateway = createGoogleMapsRequestGateway({
       provider,
+      attribution: { personUsageIdentity: "test-person" },
       usageGate,
       environmentKillSwitch: false,
       diagnostics: (event) => diagnostics.push(event)
