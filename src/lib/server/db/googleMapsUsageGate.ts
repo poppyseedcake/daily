@@ -145,7 +145,7 @@ export const createGoogleMapsUsageGate = ({
 
     return {
       periodStart: period.start,
-      total: byCategory['map-point-selection'] + byCategory['commute-estimate'],
+      total: usageForPeriod(database, period),
       byCategory
     };
   };

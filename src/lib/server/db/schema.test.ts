@@ -107,16 +107,31 @@ describe('Daily database schema', () => {
 
   test('ships privacy-safe Google Maps usage counters in an upgrade migration', () => {
     const migrationPath = 'drizzle/0006_add_google_maps_usage.sql';
+    const journalPath = 'drizzle/meta/_journal.json';
 
     expect(existsSync(migrationPath)).toBe(true);
+    expect(existsSync(journalPath)).toBe(true);
 
     const migration = readFileSync(migrationPath, 'utf8');
+    const journal = JSON.parse(readFileSync(journalPath, 'utf8')) as {
+      entries: Array<{ idx: number; tag: string }>;
+    };
 
     expect(migration).toContain('CREATE TABLE `google_maps_usage`');
     expect(migration).toContain('`period_start_utc` text NOT NULL');
-    expect(migration).toContain('`category` text NOT NULL');
+    expect(migration).toContain("CHECK (`period_kind` IN ('day', 'month'))");
+    expect(migration).toContain(
+      "CHECK (`category` IN ('map-point-selection', 'commute-estimate'))"
+    );
     expect(migration).toContain('`request_count` integer NOT NULL');
     expect(migration).not.toMatch(/origin|destination|route_name|provider_payload|rendered/i);
+    expect(journal.entries.at(-1)).toEqual({
+      idx: 6,
+      tag: '0006_add_google_maps_usage',
+      version: '6',
+      when: 1783843200006,
+      breakpoints: true
+    });
   });
 
   test('ships Weather Locations in an upgrade migration without forecast snapshots', () => {
