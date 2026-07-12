@@ -168,6 +168,19 @@ export const googleMapsUsage = sqliteTable(
   ]
 );
 
+export const googleMapsPersonUsage = sqliteTable(
+  'google_maps_person_usage',
+  {
+    periodStartUtc: text('period_start_utc').notNull(),
+    personUsageIdentity: text('person_usage_identity').notNull(),
+    requestCount: integer('request_count').notNull()
+  },
+  (table) => [
+    primaryKey({ columns: [table.periodStartUtc, table.personUsageIdentity] }),
+    check('google_maps_person_usage_request_count_check', sql`${table.requestCount} >= 0`)
+  ]
+);
+
 export const authUser = sqliteTable(
   'auth_user',
   {

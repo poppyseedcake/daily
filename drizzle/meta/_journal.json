@@ -50,6 +50,13 @@
       "when": 1783843200006,
       "tag": "0006_add_google_maps_usage",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1783890000000,
+      "tag": "0007_add_google_maps_person_usage",
+      "breakpoints": true
     }
   ]
 }
