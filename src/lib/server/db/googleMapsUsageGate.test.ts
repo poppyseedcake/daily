@@ -102,13 +102,9 @@ describe('Google Maps usage gate', () => {
       perPersonDailyLimit: 2,
       now: () => currentTime
     });
-    let visitorToken: string | undefined;
     const personA = createGoogleMapsPersonAttribution({
       authState: { mode: 'visitor' },
-      cookies: {
-        get: () => visitorToken,
-        set: (_name, value) => { visitorToken = value; }
-      },
+      visitorRequest: { clientAddress: '203.0.113.10', userAgent: 'Test Browser/1.0' },
       secret: 'test-attribution-secret-with-at-least-32-bytes'
     });
     const personB = createGoogleMapsPersonAttribution({
@@ -117,7 +113,6 @@ describe('Google Maps usage gate', () => {
         userId: 'signed-in-user-b',
         summaryRecipient: 'person-b@example.test'
       },
-      cookies: { get: () => undefined, set: () => undefined },
       secret: 'test-attribution-secret-with-at-least-32-bytes'
     });
 
