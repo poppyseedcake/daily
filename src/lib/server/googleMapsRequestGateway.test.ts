@@ -87,6 +87,24 @@ describe('Google Maps request gateway', () => {
     ]);
   });
 
+  test('keeps the typed unavailable result when diagnostics fail', async () => {
+    const provider = createProvider();
+    const gateway = createGoogleMapsRequestGateway({
+      provider,
+      usageGate: createAdmittingGate([]),
+      environmentKillSwitch: true,
+      diagnostics: () => {
+        throw new Error('diagnostics unavailable');
+      }
+    });
+
+    await expect(gateway.selectPoint({ latitude: origin.latitude, longitude: origin.longitude })).resolves.toEqual({
+      outcome: 'unavailable',
+      reason: 'environment-kill-switch'
+    });
+    expect(provider.selectPoint).not.toHaveBeenCalled();
+  });
+
   test('returns a typed suspension from the shared usage gate without invoking the provider', async () => {
     const provider = createProvider();
     const diagnostics: GoogleMapsDiagnosticsEvent[] = [];
@@ -108,6 +126,33 @@ describe('Google Maps request gateway', () => {
     expect(provider.estimateCommute).not.toHaveBeenCalled();
     expect(diagnostics).toEqual([
       { category: 'commute-estimate', outcome: 'unavailable', reason: 'global-daily-cap' }
+    ]);
+  });
+
+  test('does not log an unexpected runtime suspension reason from the usage gate', async () => {
+    const provider = createProvider();
+    const diagnostics: GoogleMapsDiagnosticsEvent[] = [];
+    const usageGate: GoogleMapsUsageGate = {
+      admit: vi.fn().mockResolvedValue({
+        outcome: 'suspended',
+        reason: 'Commute Origin: 123 Private St' as never
+      })
+    };
+    const gateway = createGoogleMapsRequestGateway({
+      provider,
+      usageGate,
+      environmentKillSwitch: false,
+      diagnostics: (event) => diagnostics.push(event)
+    });
+
+    await expect(gateway.estimateCommute({ origin, destination })).resolves.toEqual({
+      outcome: 'unavailable',
+      reason: 'usage-gate-unavailable'
+    });
+    expect(provider.estimateCommute).not.toHaveBeenCalled();
+    expect(JSON.stringify(diagnostics)).not.toContain('123 Private St');
+    expect(diagnostics).toEqual([
+      { category: 'commute-estimate', outcome: 'unavailable', reason: 'usage-gate-unavailable' }
     ]);
   });
 

@@ -101,6 +101,14 @@ const googleMapsCommuteEstimateSchema = z.object({
   durationMinutes: z.number().finite().nonnegative()
 });
 
+const googleMapsSuspensionReasonSchema = z.enum([
+  'environment-kill-switch',
+  'admin-kill-switch',
+  'per-person-daily-limit',
+  'global-daily-cap',
+  'global-monthly-cap'
+]);
+
 const defaultDiagnostics = (event: GoogleMapsDiagnosticsEvent) => {
   console.warn('Google Maps request is unavailable.', event);
 };
@@ -132,7 +140,13 @@ export const createGoogleMapsRequestGateway = ({
     reason: GoogleMapsUnavailableReason
   ): GoogleMapsUnavailableResult => {
     const result = { outcome: 'unavailable' as const, reason };
-    diagnostics({ category, ...result });
+
+    try {
+      diagnostics({ category, ...result });
+    } catch {
+      // Diagnostics must not change the protected request outcome.
+    }
+
     return result;
   };
 
@@ -154,7 +168,9 @@ export const createGoogleMapsRequestGateway = ({
     }
 
     if (admission.outcome === 'suspended') {
-      return unavailable(category, admission.reason);
+      const reason = googleMapsSuspensionReasonSchema.safeParse(admission.reason);
+
+      return unavailable(category, reason.success ? reason.data : 'usage-gate-unavailable');
     }
 
     if (environmentStopIsActive()) {
