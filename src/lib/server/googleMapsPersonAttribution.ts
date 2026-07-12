@@ -1,33 +1,21 @@
-import { createHmac, randomBytes } from 'node:crypto';
+import { createHmac } from 'node:crypto';
 import type { DailyPageAuthState } from './pageAuthState';
 import type { GoogleMapsPersonAttribution } from './googleMapsRequestGateway';
 
-const visitorCookieName = 'daily-maps-visitor';
-
-type AttributionCookies = {
-  get: (name: string) => string | undefined;
-  set: (
-    name: string,
-    value: string,
-    options: {
-      httpOnly: boolean;
-      sameSite: 'lax';
-      secure: boolean;
-      path: string;
-      maxAge: number;
-    }
-  ) => void;
+type VisitorRequestAttribution = {
+  clientAddress: string;
+  userAgent: string;
 };
 
 export type GoogleMapsPersonAttributionOptions = {
   authState: DailyPageAuthState;
-  cookies: AttributionCookies;
+  visitorRequest?: VisitorRequestAttribution;
   secret: string;
 };
 
 export const createGoogleMapsPersonAttribution = ({
   authState,
-  cookies,
+  visitorRequest,
   secret
 }: GoogleMapsPersonAttributionOptions): GoogleMapsPersonAttribution => {
   if (Buffer.byteLength(secret) < 32) {
@@ -39,20 +27,14 @@ export const createGoogleMapsPersonAttribution = ({
   if (authState.mode === 'user') {
     privateIdentity = `user:${authState.userId}`;
   } else {
-    let visitorIdentity = cookies.get(visitorCookieName);
+    const clientAddress = visitorRequest?.clientAddress.trim();
+    const userAgent = visitorRequest?.userAgent.trim().toLowerCase();
 
-    if (!visitorIdentity) {
-      visitorIdentity = randomBytes(32).toString('base64url');
-      cookies.set(visitorCookieName, visitorIdentity, {
-        httpOnly: true,
-        sameSite: 'lax',
-        secure: true,
-        path: '/',
-        maxAge: 60 * 60 * 24 * 365
-      });
+    if (!clientAddress || !userAgent) {
+      throw new Error('Visitor Google Maps attribution requires trusted request metadata');
     }
 
-    privateIdentity = `visitor:${visitorIdentity}`;
+    privateIdentity = `visitor:${clientAddress}\0${userAgent}`;
   }
 
   return {
