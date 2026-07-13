@@ -18,9 +18,12 @@ const {
   savedDeliveryRecords,
   recordedDeliveryRecords,
   sentForecastRequests,
+  sentCommuteEstimateRequests,
+  commuteUsageAdmissions,
   sentMessages,
   deliveryProviderMode,
   weatherProviderMode,
+  commuteProviderMode,
   calendarAccessTokenMode,
   calendarListProviderMode,
   calendarEventProviderMode,
@@ -40,6 +43,9 @@ const {
   weatherProviderMode: {
     outcome: 'available' as 'available' | 'unavailable'
   },
+  commuteProviderMode: {
+    outcome: 'available' as 'available' | 'provider-unavailable' | 'suspended'
+  },
   calendarAccessTokenMode: {
     outcome: 'available' as 'available' | 'unavailable'
   },
@@ -52,6 +58,8 @@ const {
   validationFailure: { enabled: false },
   recordedDeliveryRecords: [] as Array<{ userId: string; record: unknown }>,
   sentForecastRequests: [] as unknown[],
+  sentCommuteEstimateRequests: [] as unknown[],
+  commuteUsageAdmissions: [] as unknown[],
   sentCalendarEventRequests: [] as unknown[],
   loadedGoogleCalendarAccessTokens: [] as string[],
   loadedSelectedCalendars: [] as string[],
@@ -88,8 +96,16 @@ const {
     longitude: 21.0122
   },
   savedCommuteSetup: {
-    routes: [],
-    days: ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'] as const
+    routes: [] as Array<{
+      id: string;
+      name: string;
+      origin: { label: string; latitude: number; longitude: number };
+      destination: { label: string; latitude: number; longitude: number };
+      enabled: boolean;
+    }>,
+    days: ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'] as Array<
+      'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday'
+    >
   },
   savedCalendarConnection: {
     status: 'not-connected' as 'not-connected' | 'connected' | 'failed'
@@ -136,6 +152,14 @@ const userCalendarReadiness = {
   detail: 'Calendar Events will appear after Google Calendar setup is available.',
   unavailableReason: 'Connect Google Calendar to include Calendar Events.'
 } as const;
+
+const commuteRoute = (id: string, name: string, enabled = true) => ({
+  id,
+  name,
+  origin: { label: `${name} origin`, latitude: 52.1, longitude: 21.1 },
+  destination: { label: `${name} destination`, latitude: 52.2, longitude: 21.2 },
+  enabled
+});
 
 vi.mock('$lib/server/auth', () => ({
   auth: {
@@ -372,6 +396,46 @@ vi.mock('$env/dynamic/private', () => ({
   }
 }));
 
+vi.mock('$lib/server/googleMapsOperations', async () => {
+  const { createGoogleMapsRequestGateway } = await vi.importActual<
+    typeof import('$lib/server/googleMapsRequestGateway')
+  >('$lib/server/googleMapsRequestGateway');
+
+  return {
+    googleMapsOperations: {
+      requestGateway: () => createGoogleMapsRequestGateway({
+        environment: {},
+        attribution: { personUsageIdentity: 'test-user-1' },
+        diagnostics: () => {},
+        usageGate: {
+          async admit(category, attribution) {
+            commuteUsageAdmissions.push({ category, attribution });
+            return commuteProviderMode.outcome === 'suspended'
+              ? { outcome: 'suspended', reason: 'per-person-daily-limit' }
+              : { outcome: 'admitted' };
+          }
+        },
+        provider: {
+          async selectPoint() {
+            throw new Error('not used');
+          },
+          async estimateCommute(request) {
+            sentCommuteEstimateRequests.push(request);
+
+            if (commuteProviderMode.outcome === 'provider-unavailable') {
+              throw new Error('fake provider unavailable');
+            }
+
+            return {
+              durationMinutes: sentCommuteEstimateRequests.length === 1 ? 24.4 : 38.7
+            };
+          }
+        }
+      })
+    }
+  };
+});
+
 vi.mock('$lib/weatherForecast', async () => {
   const actual = await vi.importActual<typeof import('$lib/weatherForecast')>('$lib/weatherForecast');
 
@@ -435,10 +499,14 @@ describe('Daily page server load', () => {
     loadFailure.enabled = false;
     deliveryProviderMode.outcome = 'accepted';
     weatherProviderMode.outcome = 'available';
+    commuteProviderMode.outcome = 'available';
     calendarAccessTokenMode.outcome = 'available';
     calendarListProviderMode.outcome = 'available';
     calendarEventProviderMode.outcome = 'available';
     savedConfiguration.sections.calendar = true;
+    savedConfiguration.sections.commute = true;
+    savedCommuteSetup.routes.length = 0;
+    savedCommuteSetup.days.splice(0, savedCommuteSetup.days.length, 'monday', 'tuesday', 'wednesday', 'thursday', 'friday');
     validationFailure.enabled = false;
     savedCalendarConnection.status = 'not-connected';
     savedSelectedCalendars.length = 0;
@@ -447,6 +515,8 @@ describe('Daily page server load', () => {
     calendarConnectionWrites.length = 0;
     recordedDeliveryRecords.length = 0;
     sentForecastRequests.length = 0;
+    sentCommuteEstimateRequests.length = 0;
+    commuteUsageAdmissions.length = 0;
     sentCalendarEventRequests.length = 0;
     loadedGoogleCalendarAccessTokens.length = 0;
     loadedSelectedCalendars.length = 0;
@@ -941,6 +1011,102 @@ describe('Daily page server load', () => {
       })
     ]);
   });
+
+  test('uses live qualifying Commute Routes in HTML and text test delivery', async () => {
+    getSession.mockResolvedValue({
+      user: { id: 'user-1', email: 'user@example.com', emailVerified: true }
+    });
+    savedCommuteSetup.routes.push(
+      commuteRoute('route-office', 'Office'),
+      commuteRoute('route-school', 'School'),
+      commuteRoute('route-disabled', 'Disabled route', false)
+    );
+
+    await expect(sendTestDailySummary()).resolves.toEqual({ outcome: 'sent' });
+
+    expect(sentCommuteEstimateRequests).toEqual([
+      {
+        origin: savedCommuteSetup.routes[0]?.origin,
+        destination: savedCommuteSetup.routes[0]?.destination
+      },
+      {
+        origin: savedCommuteSetup.routes[1]?.origin,
+        destination: savedCommuteSetup.routes[1]?.destination
+      }
+    ]);
+    expect(commuteUsageAdmissions).toEqual([
+      {
+        category: 'commute-estimate',
+        attribution: { personUsageIdentity: 'test-user-1' }
+      },
+      {
+        category: 'commute-estimate',
+        attribution: { personUsageIdentity: 'test-user-1' }
+      }
+    ]);
+    expect(sentMessages).toEqual([
+      expect.objectContaining({
+        html: expect.stringContaining('<li>Office: 24 minutes</li><li>School: 39 minutes</li>'),
+        text: expect.stringContaining('Commute\nOffice: 24 minutes\nSchool: 39 minutes')
+      })
+    ]);
+    expect(JSON.stringify(sentMessages)).not.toContain('Disabled route');
+  });
+
+  test.each([
+    ['Commute is disabled', () => { savedConfiguration.sections.commute = false; }],
+    ['the local weekday is not a Commute Day', () => { savedCommuteSetup.days.splice(0); }],
+    ['there are no enabled routes', () => { savedCommuteSetup.routes[0]!.enabled = false; }]
+  ])('makes no Maps estimate call when %s during test delivery', async (_scenario, arrange) => {
+    getSession.mockResolvedValue({
+      user: { id: 'user-1', email: 'user@example.com', emailVerified: true }
+    });
+    savedCommuteSetup.routes.push(commuteRoute('route-office', 'Office'));
+    arrange();
+
+    await expect(sendTestDailySummary()).resolves.toEqual({ outcome: 'sent' });
+
+    expect(sentCommuteEstimateRequests).toEqual([]);
+    expect(commuteUsageAdmissions).toEqual([]);
+    expect(sentMessages[0]).toEqual(
+      expect.objectContaining({ text: expect.not.stringContaining('Commute') })
+    );
+  });
+
+  test.each(['provider-unavailable', 'suspended'] as const)(
+    'keeps test delivery working with a section-level unavailable state when Commute is %s',
+    async (outcome) => {
+      getSession.mockResolvedValue({
+        user: { id: 'user-1', email: 'user@example.com', emailVerified: true }
+      });
+      savedCommuteSetup.routes.push(commuteRoute('route-office', 'Office'));
+      savedCalendarConnection.status = 'connected';
+      savedSelectedCalendars.push({
+        id: 'work',
+        summary: 'Work',
+        backgroundColor: '#0b8043',
+        primary: false
+      });
+      commuteProviderMode.outcome = outcome;
+
+      await expect(sendTestDailySummary()).resolves.toEqual({ outcome: 'sent' });
+
+      expect(commuteUsageAdmissions).toHaveLength(1);
+      expect(sentCommuteEstimateRequests).toHaveLength(outcome === 'suspended' ? 0 : 1);
+      expect(sentMessages).toEqual([
+        expect.objectContaining({
+          html: expect.stringContaining('Live Commute is unavailable right now.'),
+          text: expect.stringContaining('Commute\nLive Commute is unavailable right now.')
+        })
+      ]);
+      expect(sentMessages[0]).toEqual(
+        expect.objectContaining({
+          text: expect.stringMatching(/Weather[\s\S]*Planning[\s\S]*Draft update/),
+          html: expect.stringContaining('Planning')
+        })
+      );
+    }
+  );
 
   test('sends live selected Calendar Events in HTML and text test delivery', async () => {
     getSession.mockResolvedValue({
