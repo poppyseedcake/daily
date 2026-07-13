@@ -64,6 +64,13 @@
       "when": 1783936800000,
       "tag": "0008_add_google_maps_control",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1783980000000,
+      "tag": "0009_add_google_maps_cap_alerts",
+      "breakpoints": true
     }
   ]
 }

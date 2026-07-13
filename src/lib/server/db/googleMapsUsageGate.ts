@@ -9,14 +9,35 @@ import type {
 import * as schema from './schema';
 
 type GoogleMapsDatabase = BetterSQLite3Database<typeof schema>;
-const { googleMapsControl, googleMapsPersonUsage, googleMapsUsage } = schema;
+const { googleMapsCapAlerts, googleMapsControl, googleMapsPersonUsage, googleMapsUsage } = schema;
+
+export type GoogleMapsCapAlert = {
+  capType: 'daily' | 'monthly';
+  timeBasis: 'UTC';
+  suspensionReason: 'global-daily-cap' | 'global-monthly-cap';
+  daily: GoogleMapsUsageSnapshot['day'] & { cap: number };
+  monthly: GoogleMapsUsageSnapshot['month'] & { cap: number };
+};
+
+export type GoogleMapsCapAlertDelivery = {
+  send: (alert: GoogleMapsCapAlert) => Promise<void>;
+};
+
+export type GoogleMapsCapAlertDiagnosticsEvent = {
+  capType: 'daily' | 'monthly';
+  periodStart: string;
+  outcome: 'failed';
+  failureCode: 'delivery-failed';
+};
 
 export type GoogleMapsUsageGateOptions = {
   database: GoogleMapsDatabase;
   dailyCap: number;
   monthlyCap: number;
   perPersonDailyLimit: number;
+  capAlertDelivery: GoogleMapsCapAlertDelivery;
   now?: () => Date;
+  capAlertDiagnostics?: (event: GoogleMapsCapAlertDiagnosticsEvent) => void;
 };
 
 export type GoogleMapsUsageCapsEnvironment = {
@@ -108,7 +129,11 @@ export const createGoogleMapsUsageGate = ({
   dailyCap,
   monthlyCap,
   perPersonDailyLimit,
-  now = () => new Date()
+  capAlertDelivery,
+  now = () => new Date(),
+  capAlertDiagnostics = (event) => {
+    console.warn('Google Maps cap alert delivery failed.', event);
+  }
 }: GoogleMapsUsageGateOptions): GoogleMapsDurableUsageGate => {
   if (
     !Number.isSafeInteger(dailyCap) ||
@@ -158,13 +183,13 @@ export const createGoogleMapsUsageGate = ({
       })
       .run();
 
-  const snapshotFor = (period: UsagePeriod) => {
+  const snapshotFor = (source: GoogleMapsDatabase, period: UsagePeriod) => {
     const byCategory: UsageByCategory = {
       'map-point-selection': 0,
       'commute-estimate': 0
     };
 
-    const rows = database
+    const rows = source
       .select({
         category: googleMapsUsage.category,
         requestCount: googleMapsUsage.requestCount
@@ -185,9 +210,61 @@ export const createGoogleMapsUsageGate = ({
 
     return {
       periodStart: period.start,
-      total: usageForPeriod(database, period),
+      total: usageForPeriod(source, period),
       byCategory
     };
+  };
+
+  const claimCapAlert = (
+    source: GoogleMapsDatabase,
+    capType: 'daily' | 'monthly',
+    periodStartUtc: string,
+    claimedAt: string
+  ) =>
+    source
+      .insert(googleMapsCapAlerts)
+      .values({
+        capType,
+        periodStartUtc,
+        deliveryStatus: 'pending',
+        claimedAt
+      })
+      .onConflictDoNothing()
+      .run().changes === 1;
+
+  const capAlert = (
+    source: GoogleMapsDatabase,
+    capType: 'daily' | 'monthly',
+    day: UsagePeriod,
+    month: UsagePeriod
+  ): GoogleMapsCapAlert => ({
+    capType,
+    timeBasis: 'UTC',
+    suspensionReason: capType === 'daily' ? 'global-daily-cap' : 'global-monthly-cap',
+    daily: { ...snapshotFor(source, day), cap: dailyCap },
+    monthly: { ...snapshotFor(source, month), cap: monthlyCap }
+  });
+
+  const claimReachedCapAlerts = (
+    source: GoogleMapsDatabase,
+    day: UsagePeriod,
+    month: UsagePeriod,
+    claimedAt: string
+  ) => {
+    const alerts: GoogleMapsCapAlert[] = [];
+    if (
+      usageForPeriod(source, day) >= dailyCap &&
+      claimCapAlert(source, 'daily', day.start, claimedAt)
+    ) {
+      alerts.push(capAlert(source, 'daily', day, month));
+    }
+    if (
+      usageForPeriod(source, month) >= monthlyCap &&
+      claimCapAlert(source, 'monthly', month.start, claimedAt)
+    ) {
+      alerts.push(capAlert(source, 'monthly', day, month));
+    }
+    return alerts;
   };
 
   const personUsageForDay = (
@@ -234,32 +311,45 @@ export const createGoogleMapsUsageGate = ({
   const admit = (
     category: GoogleMapsCallCategory,
     attribution: GoogleMapsPersonAttribution,
-    periods: [UsagePeriod, UsagePeriod]
+    periods: [UsagePeriod, UsagePeriod],
+    claimedAt: string
   ) =>
     database.transaction(
-      (transaction): GoogleMapsAdmission => {
+      (transaction): { admission: GoogleMapsAdmission; alerts: GoogleMapsCapAlert[] } => {
         const [day, month] = periods;
 
         if (adminKillSwitchEnabled(transaction)) {
-          return { outcome: 'suspended', reason: 'admin-kill-switch' };
+          return { admission: { outcome: 'suspended', reason: 'admin-kill-switch' }, alerts: [] };
         }
 
         if (personUsageForDay(transaction, day, attribution) >= perPersonDailyLimit) {
-          return { outcome: 'suspended', reason: 'per-person-daily-limit' };
+          return {
+            admission: { outcome: 'suspended', reason: 'per-person-daily-limit' },
+            alerts: []
+          };
         }
 
         if (usageForPeriod(transaction, day) >= dailyCap) {
-          return { outcome: 'suspended', reason: 'global-daily-cap' };
+          return {
+            admission: { outcome: 'suspended', reason: 'global-daily-cap' },
+            alerts: claimReachedCapAlerts(transaction, day, month, claimedAt)
+          };
         }
 
         if (usageForPeriod(transaction, month) >= monthlyCap) {
-          return { outcome: 'suspended', reason: 'global-monthly-cap' };
+          return {
+            admission: { outcome: 'suspended', reason: 'global-monthly-cap' },
+            alerts: claimReachedCapAlerts(transaction, day, month, claimedAt)
+          };
         }
 
         reserve(transaction, day, category);
         reserve(transaction, month, category);
         reservePersonUsage(transaction, day, attribution);
-        return { outcome: 'admitted' };
+        return {
+          admission: { outcome: 'admitted' },
+          alerts: claimReachedCapAlerts(transaction, day, month, claimedAt)
+        };
       },
       { behavior: 'immediate' }
     );
@@ -268,14 +358,60 @@ export const createGoogleMapsUsageGate = ({
     const [day, month] = utcPeriodsFor(now());
     return {
       timeBasis: 'UTC',
-      day: snapshotFor(day),
-      month: snapshotFor(month)
+      day: snapshotFor(database, day),
+      month: snapshotFor(database, month)
     };
   };
 
   return {
     async admit(category, attribution) {
-      return admit(category, attribution, utcPeriodsFor(now()));
+      const attemptedAt = now();
+      const result = admit(category, attribution, utcPeriodsFor(attemptedAt), attemptedAt.toISOString());
+
+      for (const alert of result.alerts) {
+        const periodStart =
+          alert.capType === 'daily' ? alert.daily.periodStart : alert.monthly.periodStart;
+        const alertRecord = and(
+          eq(googleMapsCapAlerts.capType, alert.capType),
+          eq(googleMapsCapAlerts.periodStartUtc, periodStart)
+        );
+
+        try {
+          await capAlertDelivery.send(alert);
+          database
+            .update(googleMapsCapAlerts)
+            .set({ deliveryStatus: 'delivered', completedAt: attemptedAt.toISOString() })
+            .where(alertRecord)
+            .run();
+        } catch {
+          try {
+            database
+              .update(googleMapsCapAlerts)
+              .set({
+                deliveryStatus: 'failed',
+                completedAt: attemptedAt.toISOString(),
+                failureCode: 'delivery-failed'
+              })
+              .where(alertRecord)
+              .run();
+          } catch {
+            // The durable claim still prevents a duplicate alert attempt.
+          }
+
+          try {
+            capAlertDiagnostics({
+              capType: alert.capType,
+              periodStart,
+              outcome: 'failed',
+              failureCode: 'delivery-failed'
+            });
+          } catch {
+            // Diagnostics must not change the protected request outcome.
+          }
+        }
+      }
+
+      return result.admission;
     },
     async currentUsage() {
       return currentUsage();

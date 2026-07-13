@@ -8,6 +8,7 @@ import {
   authVerification,
   calendarConnections,
   deliveryRecords,
+  googleMapsCapAlerts,
   googleMapsControl,
   googleMapsUsage,
   googleMapsPersonUsage,
@@ -30,6 +31,7 @@ describe('Daily database schema', () => {
       getTableName(calendarConnections),
       getTableName(selectedCalendars),
       getTableName(deliveryRecords),
+      getTableName(googleMapsCapAlerts),
       getTableName(googleMapsControl),
       getTableName(googleMapsUsage),
       getTableName(googleMapsPersonUsage),
@@ -46,6 +48,7 @@ describe('Daily database schema', () => {
       'calendar_connections',
       'selected_calendars',
       'delivery_records',
+      'google_maps_cap_alerts',
       'google_maps_control',
       'google_maps_usage',
       'google_maps_person_usage',
@@ -166,9 +169,34 @@ describe('Daily database schema', () => {
     expect(migration).toContain("CHECK (`control_key` = 'admin-kill-switch')");
     expect(migration).toContain('CHECK (`enabled` IN (0, 1))');
     expect(migration).not.toMatch(/user_id|email|origin|destination|route|provider|summary/i);
-    expect(journal.entries.at(-1)).toMatchObject({
+    expect(journal.entries.find(({ idx }) => idx === 8)).toMatchObject({
       idx: 8,
       tag: '0008_add_google_maps_control'
+    });
+  });
+
+  test('ships durable privacy-safe Google Maps cap alert deduplication state', () => {
+    const migrationPath = 'drizzle/0009_add_google_maps_cap_alerts.sql';
+
+    expect(existsSync(migrationPath)).toBe(true);
+
+    const migration = readFileSync(migrationPath, 'utf8');
+    const journal = JSON.parse(readFileSync('drizzle/meta/_journal.json', 'utf8')) as {
+      entries: Array<{ idx: number; tag: string }>;
+    };
+
+    expect(migration).toContain('CREATE TABLE `google_maps_cap_alerts`');
+    expect(migration).toContain("CHECK (`cap_type` IN ('daily', 'monthly'))");
+    expect(migration).toContain(
+      "CHECK (`delivery_status` IN ('pending', 'delivered', 'failed'))"
+    );
+    expect(migration).toContain('PRIMARY KEY(`cap_type`, `period_start_utc`)');
+    expect(migration).not.toMatch(
+      /person|user_id|email|origin|destination|route|provider_payload|summary/i
+    );
+    expect(journal.entries.at(-1)).toMatchObject({
+      idx: 9,
+      tag: '0009_add_google_maps_cap_alerts'
     });
   });
 
