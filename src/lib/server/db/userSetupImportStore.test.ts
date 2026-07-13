@@ -6,8 +6,18 @@ import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import type { UserSetupImportDraft } from '$lib/localSetup';
 import * as schema from './schema';
 import { createUserCommuteSetupStore } from './commuteSetupStore';
-import { persistUserSetupImportDraftForNewUser } from './userSetupImportPersistence';
+import {
+  persistUserSetupImportDraftForNewUser as persistUserSetupImportDraftForNewUserWithClock
+} from './userSetupImportPersistence';
 import { createUserSetupImportStore } from './userSetupImportStore';
+
+const referenceInstant = Temporal.Instant.from('2026-06-22T00:00:00Z');
+const persistUserSetupImportDraftForNewUser = (
+  store: Parameters<typeof persistUserSetupImportDraftForNewUserWithClock>[0],
+  userId: string,
+  draft: Parameters<typeof persistUserSetupImportDraftForNewUserWithClock>[2],
+  instant = referenceInstant
+) => persistUserSetupImportDraftForNewUserWithClock(store, userId, draft, instant);
 
 const createTestDatabase = () => {
   const sqlite = new Database(':memory:');

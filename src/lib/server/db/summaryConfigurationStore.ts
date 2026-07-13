@@ -1,25 +1,16 @@
 import { randomUUID } from 'node:crypto';
 import { eq } from 'drizzle-orm';
 import { db } from '$lib/server/db';
-import { summaryConfigurationSchema, type SummaryConfiguration } from '$lib/summaryConfiguration';
+import type { SummaryConfiguration } from '$lib/summaryConfiguration';
 import { summaryConfigurations, users } from './schema';
-import type { UserSummaryConfigurationStore } from '../summaryConfigurationPersistence';
+import {
+  summaryConfigurationFromFlat,
+  type UserSummaryConfigurationStore
+} from '../summaryConfigurationPersistence';
 
 const toSummaryConfiguration = (
   row: typeof summaryConfigurations.$inferSelect
-): SummaryConfiguration =>
-  summaryConfigurationSchema.parse({
-    summaryTime: row.summaryTime,
-    userTimeZone: row.userTimeZone,
-    summaryTheme: row.summaryTheme,
-    summaryDeliveryEnabled: row.summaryDeliveryEnabled,
-    sections: {
-      weather: row.weatherSectionEnabled,
-      commute: row.commuteSectionEnabled,
-      calendar: row.calendarSectionEnabled,
-      todo: row.todoSectionEnabled
-    }
-  });
+): SummaryConfiguration => summaryConfigurationFromFlat(row);
 
 const toSummaryConfigurationRow = (
   userId: string,

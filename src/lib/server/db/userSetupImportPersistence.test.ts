@@ -1,9 +1,17 @@
+import { Temporal } from '@js-temporal/polyfill';
 import { describe, expect, test } from 'vitest';
 import type { UserSetupImportDraft } from '$lib/localSetup';
 import {
-  persistUserSetupImportDraftForNewUser,
+  persistUserSetupImportDraftForNewUser as persistUserSetupImportDraftForNewUserWithClock,
   type UserSetupImportPersistenceStore
 } from './userSetupImportPersistence';
+
+const referenceInstant = Temporal.Instant.from('2026-06-22T00:00:00Z');
+const persistUserSetupImportDraftForNewUser = (
+  store: UserSetupImportPersistenceStore,
+  userId: string,
+  draft: UserSetupImportDraft
+) => persistUserSetupImportDraftForNewUserWithClock(store, userId, draft, referenceInstant);
 
 const validDraft = (): UserSetupImportDraft => ({
   summaryConfiguration: {

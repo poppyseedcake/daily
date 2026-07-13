@@ -1,3 +1,7 @@
+import type { Temporal } from '@js-temporal/polyfill';
+import { calculateNextSummaryAt } from '$lib/nextSummarySchedule';
+import { defaultSummaryConfiguration } from '$lib/summaryConfiguration';
+
 export type DailyUserIdentity = {
   id: string;
   googleSubject: string;
@@ -5,7 +9,7 @@ export type DailyUserIdentity = {
 };
 
 export type DailyUserIdentityStore = {
-  upsertGoogleUser: (identity: DailyUserIdentity) => Promise<void>;
+  upsertGoogleUser: (identity: DailyUserIdentity, initialNextSummaryAt: string) => Promise<void>;
 };
 
 export type DailyUserIdentityOutcome =
@@ -28,14 +32,19 @@ const hasRequiredIdentity = (identity: DailyUserIdentity) =>
 
 export const persistDailyUserIdentity = async (
   store: DailyUserIdentityStore,
-  identity: DailyUserIdentity
+  identity: DailyUserIdentity,
+  referenceInstant: Temporal.Instant
 ): Promise<{ outcome: DailyUserIdentityOutcome }> => {
   if (!hasRequiredIdentity(identity)) {
     return { outcome: 'invalid-identity' };
   }
 
   try {
-    await store.upsertGoogleUser(identity);
+    const initialNextSummaryAt = calculateNextSummaryAt(
+      defaultSummaryConfiguration,
+      referenceInstant
+    )!.toString();
+    await store.upsertGoogleUser(identity, initialNextSummaryAt);
   } catch (error) {
     if (error instanceof DailyUserIdentityEmailConflictError) {
       return { outcome: 'email-already-owned' };
