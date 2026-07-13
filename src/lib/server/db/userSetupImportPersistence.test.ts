@@ -69,9 +69,11 @@ const validDraft = (): UserSetupImportDraft => ({
 
 const createStore = ({
   existingSetup = false,
+  existingCommuteSetup = false,
   failAfter
 }: {
   existingSetup?: boolean;
+  existingCommuteSetup?: boolean;
   failAfter?: 'summaryConfiguration' | 'todoCategories' | 'todoTasks' | 'commuteRoutes';
 } = {}): UserSetupImportPersistenceStore & {
   saved: {
@@ -116,6 +118,9 @@ const createStore = ({
       const result = work({
         hasExistingUserSetup() {
           return existingSetup;
+        },
+        hasExistingCommuteSetup() {
+          return existingCommuteSetup;
         },
         saveSummaryConfiguration(summaryConfiguration) {
           staged.summaryConfigurations.push(summaryConfiguration);

@@ -66,6 +66,7 @@ const userSetupImportDraftSchema = z.object({
 
 export type UserSetupImportPersistenceTransaction = {
   hasExistingUserSetup: (userId: string) => boolean;
+  hasExistingCommuteSetup: (userId: string) => boolean;
   saveSummaryConfiguration: (
     summaryConfiguration: UserSetupImportDraft['summaryConfiguration']
   ) => void;
@@ -123,12 +124,16 @@ export const persistUserSetupImportDraftForNewUser = async (
         return { outcome: 'skipped-existing-setup' };
       }
 
+      const preserveExistingCommuteSetup = transaction.hasExistingCommuteSetup(userId);
+
       transaction.saveSummaryConfiguration(result.data.summaryConfiguration);
       transaction.saveTodoCategories(result.data.todoCategories);
       transaction.saveTodoTasks(result.data.todoTasks);
       transaction.saveWeatherLocation(result.data.weatherLocation);
-      transaction.saveCommuteRoutes(result.data.commuteRoutes);
-      transaction.saveCommuteDays(userId, result.data.commuteDays);
+      if (!preserveExistingCommuteSetup) {
+        transaction.saveCommuteRoutes(result.data.commuteRoutes);
+        transaction.saveCommuteDays(userId, result.data.commuteDays);
+      }
 
       return { outcome: 'imported' };
     });
