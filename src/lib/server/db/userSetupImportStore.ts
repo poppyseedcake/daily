@@ -31,11 +31,6 @@ const hasExistingUserSetup = (database: Pick<SetupImportDatabase, 'select'>, use
         .select({ id: commuteRoutes.id })
         .from(commuteRoutes)
         .where(eq(commuteRoutes.userId, userId))
-        .get() ||
-      database
-        .select({ userId: commuteDays.userId })
-        .from(commuteDays)
-        .where(eq(commuteDays.userId, userId))
         .get()
   );
 
@@ -75,8 +70,17 @@ export const createUserSetupImportStore = (
           }
         },
         saveCommuteDays(userId, days) {
-          if (days.length > 0) {
-            transaction.insert(commuteDays).values(days.map((day) => ({ userId, day }))).run();
+          const existingCommuteDays = transaction
+            .select({ userId: commuteDays.userId })
+            .from(commuteDays)
+            .where(eq(commuteDays.userId, userId))
+            .get();
+
+          if (days.length > 0 && !existingCommuteDays) {
+            transaction
+              .insert(commuteDays)
+              .values(days.map((day) => ({ userId, day })))
+              .run();
           }
         }
       })

@@ -4,6 +4,7 @@ import { drizzle } from 'drizzle-orm/better-sqlite3';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import type { UserSetupImportDraft } from '$lib/localSetup';
 import * as schema from './schema';
+import { persistUserSetupImportDraftForNewUser } from './userSetupImportPersistence';
 import { createUserSetupImportStore } from './userSetupImportStore';
 
 const createTestDatabase = () => {
@@ -125,5 +126,26 @@ describe('SQLite User Setup import store', () => {
     });
 
     await expect(store.hasExistingUserSetup('user-1')).resolves.toBe(true);
+  });
+
+  test('imports the remaining Local Setup when only Commute Days already exist', async () => {
+    const store = createUserSetupImportStore(database);
+    const draft = validDraft();
+
+    await store.transaction((transaction) => {
+      transaction.saveCommuteDays('user-1', ['saturday', 'sunday']);
+    });
+
+    await expect(store.hasExistingUserSetup('user-1')).resolves.toBe(false);
+    await expect(persistUserSetupImportDraftForNewUser(store, 'user-1', draft)).resolves.toEqual({
+      outcome: 'imported'
+    });
+    expect(sqlite.prepare('select summary_time from summary_configurations').all()).toEqual([
+      { summary_time: '18:45' }
+    ]);
+    expect(sqlite.prepare('select day from commute_days order by day').all()).toEqual([
+      { day: 'saturday' },
+      { day: 'sunday' }
+    ]);
   });
 });

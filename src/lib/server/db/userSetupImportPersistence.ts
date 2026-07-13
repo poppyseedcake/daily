@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import type { UserSetupImportDraft } from '$lib/localSetup';
 import { summaryTimeSchema, userTimeZoneSchema } from '$lib/summaryConfiguration';
-import { commuteDaysSchema, commuteRouteSchema } from '$lib/commuteRoute';
+import { commuteDaysSchema, commutePointSchema, commuteRouteNameSchema } from '$lib/commuteRoute';
 
 const persistedSummaryConfigurationSchema = z.object({
   id: z.string().min(1),
@@ -41,22 +41,19 @@ const persistedWeatherLocationSchema = z.object({
   longitude: z.number().finite().min(-180).max(180)
 });
 
-const persistedCommuteRouteSchema = commuteRouteSchema.extend({
+const persistedCommuteRouteSchema = z.object({
+  id: z.string().trim().min(1).max(80),
   userId: z.string().min(1),
+  name: commuteRouteNameSchema,
+  originLabel: commutePointSchema.shape.label,
+  originLatitude: commutePointSchema.shape.latitude,
+  originLongitude: commutePointSchema.shape.longitude,
+  destinationLabel: commutePointSchema.shape.label,
+  destinationLatitude: commutePointSchema.shape.latitude,
+  destinationLongitude: commutePointSchema.shape.longitude,
+  enabled: z.boolean(),
   position: z.number().int().positive()
-}).transform((route) => ({
-  id: route.id,
-  userId: route.userId,
-  name: route.name,
-  originLabel: route.origin.label,
-  originLatitude: route.origin.latitude,
-  originLongitude: route.origin.longitude,
-  destinationLabel: route.destination.label,
-  destinationLatitude: route.destination.latitude,
-  destinationLongitude: route.destination.longitude,
-  enabled: route.enabled,
-  position: route.position
-}));
+});
 
 const userSetupImportDraftSchema = z.object({
   summaryConfiguration: persistedSummaryConfigurationSchema,
