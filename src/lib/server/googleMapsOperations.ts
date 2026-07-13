@@ -6,10 +6,12 @@ import {
   setGoogleMapsAdminKillSwitch
 } from '$lib/server/db/googleMapsUsageGate';
 import { isGoogleMapsEnvironmentKillSwitchEnabled } from '$lib/server/googleMapsRequestGateway';
+import { googleMapsCapAlertDelivery } from '$lib/server/googleMapsCapAlertDelivery';
 
 const usageGate = () =>
   createGoogleMapsUsageGate({
     database: db,
+    capAlertDelivery: googleMapsCapAlertDelivery,
     ...readGoogleMapsUsageCaps({
       GOOGLE_MAPS_GLOBAL_DAILY_CAP: env.GOOGLE_MAPS_GLOBAL_DAILY_CAP,
       GOOGLE_MAPS_GLOBAL_MONTHLY_CAP: env.GOOGLE_MAPS_GLOBAL_MONTHLY_CAP,

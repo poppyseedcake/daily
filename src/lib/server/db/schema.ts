@@ -193,6 +193,28 @@ export const googleMapsControl = sqliteTable(
   ]
 );
 
+export const googleMapsCapAlerts = sqliteTable(
+  'google_maps_cap_alerts',
+  {
+    capType: text('cap_type', { enum: ['daily', 'monthly'] }).notNull(),
+    periodStartUtc: text('period_start_utc').notNull(),
+    deliveryStatus: text('delivery_status', {
+      enum: ['pending', 'delivered', 'failed']
+    }).notNull(),
+    claimedAt: text('claimed_at').notNull(),
+    completedAt: text('completed_at'),
+    failureCode: text('failure_code')
+  },
+  (table) => [
+    primaryKey({ columns: [table.capType, table.periodStartUtc] }),
+    check('google_maps_cap_alerts_cap_type_check', sql`${table.capType} IN ('daily', 'monthly')`),
+    check(
+      'google_maps_cap_alerts_delivery_status_check',
+      sql`${table.deliveryStatus} IN ('pending', 'delivered', 'failed')`
+    )
+  ]
+);
+
 export const authUser = sqliteTable(
   'auth_user',
   {
