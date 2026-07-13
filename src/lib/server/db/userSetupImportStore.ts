@@ -1,6 +1,6 @@
 import { eq } from 'drizzle-orm';
 import { db } from '$lib/server/db';
-import { summaryConfigurations, todoCategories, todoTasks, weatherLocations } from './schema';
+import { commuteDays, commuteRoutes, summaryConfigurations, todoCategories, todoTasks, weatherLocations } from './schema';
 import type { UserSetupImportPersistenceStore } from './userSetupImportPersistence';
 
 type SetupImportDatabase = typeof db;
@@ -26,6 +26,16 @@ const hasExistingUserSetup = (database: Pick<SetupImportDatabase, 'select'>, use
         .select({ id: weatherLocations.id })
         .from(weatherLocations)
         .where(eq(weatherLocations.userId, userId))
+        .get() ||
+      database
+        .select({ id: commuteRoutes.id })
+        .from(commuteRoutes)
+        .where(eq(commuteRoutes.userId, userId))
+        .get() ||
+      database
+        .select({ userId: commuteDays.userId })
+        .from(commuteDays)
+        .where(eq(commuteDays.userId, userId))
         .get()
   );
 
@@ -57,6 +67,16 @@ export const createUserSetupImportStore = (
         saveWeatherLocation(weatherLocation) {
           if (weatherLocation) {
             transaction.insert(weatherLocations).values(weatherLocation).run();
+          }
+        },
+        saveCommuteRoutes(routes) {
+          if (routes.length > 0) {
+            transaction.insert(commuteRoutes).values(routes).run();
+          }
+        },
+        saveCommuteDays(userId, days) {
+          if (days.length > 0) {
+            transaction.insert(commuteDays).values(days.map((day) => ({ userId, day }))).run();
           }
         }
       })

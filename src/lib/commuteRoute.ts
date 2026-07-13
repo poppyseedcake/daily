@@ -22,6 +22,9 @@ export const commuteRouteSchema = commuteRouteDraftSchema.extend({
   id: z.string().trim().min(1).max(80),
   enabled: z.boolean()
 });
+export const commuteRouteUpdateSchema = commuteRouteDraftSchema.extend({
+  enabled: z.boolean()
+});
 export const commuteRoutesSchema = z.array(commuteRouteSchema).max(5);
 
 export const commuteDayValues = [

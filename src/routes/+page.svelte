@@ -77,6 +77,10 @@
   const initialWeatherLocation = data?.weatherLocation
     ? weatherLocationSchema.parse(data.weatherLocation)
     : null;
+  const initialCommuteSetup = data?.commuteSetup ?? {
+    routes: [] as CommuteRoute[],
+    days: [...defaultCommuteDays] as CommuteDay[]
+  };
   const deliveryRecords = $derived<DeliveryRecord[]>(data?.deliveryRecords ?? []);
   const initialSelectedCalendarConfiguration = data?.selectedCalendarConfiguration ?? null;
   const testDeliveryStatus = $derived(
@@ -145,8 +149,8 @@
   let weatherLocationStatusTone = $state<'success' | 'warning' | 'error' | 'neutral'>(
     initialWeatherLocation ? 'success' : 'neutral'
   );
-  let commuteRoutes = $state<CommuteRoute[]>([]);
-  let commuteDays = $state<CommuteDay[]>([...defaultCommuteDays]);
+  let commuteRoutes = $state<CommuteRoute[]>(initialCommuteSetup.routes);
+  let commuteDays = $state<CommuteDay[]>([...initialCommuteSetup.days]);
   let editingCommuteRouteId = $state<string | null>(null);
   let commuteRouteName = $state('');
   let commuteOriginLatitude = $state('52.2285');
@@ -660,9 +664,11 @@
       return;
     }
     if (editingCommuteRouteId) {
-      commuteRoutes = commuteRoutes.map((route) =>
-        route.id === editingCommuteRouteId ? { ...route, ...result.data } : route
-      );
+      if (authState.mode === 'user') {
+        void saveUserCommuteRoute(editingCommuteRouteId, { ...result.data, enabled: commuteRoutes.find((route) => route.id === editingCommuteRouteId)?.enabled ?? true });
+        return;
+      }
+      commuteRoutes = commuteRoutes.map((route) => route.id === editingCommuteRouteId ? { ...route, ...result.data } : route);
       clearCommuteRouteDraft();
       commuteRouteStatus = 'Commute Route updated in this browser only.';
       commuteRouteStatusTone = 'success';
@@ -672,6 +678,10 @@
       const number = Number(route.id.replace(/^route-/, ''));
       return Number.isInteger(number) ? Math.max(highest, number) : highest;
     }, 0) + 1}`;
+    if (authState.mode === 'user') {
+      void createUserCommuteRoute(result.data);
+      return;
+    }
     commuteRoutes = [...commuteRoutes, { ...result.data, id, enabled: true }];
     clearCommuteRouteDraft();
     commuteRouteStatus = 'Commute Route saved in this browser only.';
@@ -690,20 +700,110 @@
     commuteRouteStatusTone = 'neutral';
   };
   const deleteCommuteRoute = (route: CommuteRoute) => {
+    if (authState.mode === 'user') {
+      void deleteUserCommuteRoute(route);
+      return;
+    }
     commuteRoutes = commuteRoutes.filter((candidate) => candidate.id !== route.id);
     if (editingCommuteRouteId === route.id) clearCommuteRouteDraft();
     commuteRouteStatus = 'Commute Route deleted from this browser.';
     commuteRouteStatusTone = 'success';
   };
   const toggleCommuteRoute = (route: CommuteRoute) => {
+    if (authState.mode === 'user') {
+      void saveUserCommuteRoute(route.id, { ...route, enabled: !route.enabled });
+      return;
+    }
     commuteRoutes = commuteRoutes.map((candidate) =>
       candidate.id === route.id ? { ...candidate, enabled: !candidate.enabled } : candidate
     );
   };
   const toggleCommuteDay = (day: CommuteDay, checked: boolean) => {
-    commuteDays = checked
+    const nextDays = checked
       ? commuteDayValues.filter((candidate) => candidate === day || commuteDays.includes(candidate))
       : commuteDays.filter((candidate) => candidate !== day);
+    if (authState.mode === 'user') {
+      void saveUserCommuteDays(nextDays);
+      return;
+    }
+    commuteDays = nextDays;
+  };
+  const createUserCommuteRoute = async (draft: Omit<CommuteRoute, 'id' | 'enabled'>) => {
+    commuteRouteStatus = 'Saving Commute Route to your account...';
+    commuteRouteStatusTone = 'neutral';
+    try {
+      const response = await fetch('/commute-routes', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(draft) });
+      const result = (await response.json()) as { outcome?: string; route?: CommuteRoute };
+      if (response.ok && result.outcome === 'created' && result.route) {
+        commuteRoutes = [...commuteRoutes, result.route];
+        clearCommuteRouteDraft();
+        commuteRouteStatus = 'Commute Route saved to your account.';
+        commuteRouteStatusTone = 'success';
+        return;
+      }
+      commuteRouteStatus = result.outcome === 'route-limit-reached' ? 'You can save at most five Commute Routes.' : 'Commute Route save failed. Try again.';
+      commuteRouteStatusTone = response.status === 400 || response.status === 409 ? 'warning' : 'error';
+    } catch {
+      commuteRouteStatus = 'Commute Route save failed. Try again.';
+      commuteRouteStatusTone = 'error';
+    }
+  };
+  const saveUserCommuteRoute = async (routeId: string, route: Omit<CommuteRoute, 'id'>) => {
+    commuteRouteStatus = 'Saving Commute Route to your account...';
+    commuteRouteStatusTone = 'neutral';
+    try {
+      const response = await fetch(`/commute-routes/${encodeURIComponent(routeId)}`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(route) });
+      const result = (await response.json()) as { outcome?: string; route?: CommuteRoute };
+      if (response.ok && result.outcome === 'updated' && result.route) {
+        commuteRoutes = commuteRoutes.map((candidate) => candidate.id === routeId ? result.route! : candidate);
+        clearCommuteRouteDraft();
+        commuteRouteStatus = 'Commute Route saved to your account.';
+        commuteRouteStatusTone = 'success';
+        return;
+      }
+      commuteRouteStatus = result.outcome === 'not-found' ? 'Commute Route is no longer available.' : 'Commute Route save failed. Try again.';
+      commuteRouteStatusTone = response.status === 400 || response.status === 404 ? 'warning' : 'error';
+    } catch {
+      commuteRouteStatus = 'Commute Route save failed. Try again.';
+      commuteRouteStatusTone = 'error';
+    }
+  };
+  const deleteUserCommuteRoute = async (route: CommuteRoute) => {
+    commuteRouteStatus = 'Deleting Commute Route from your account...';
+    commuteRouteStatusTone = 'neutral';
+    try {
+      const response = await fetch(`/commute-routes/${encodeURIComponent(route.id)}`, { method: 'DELETE' });
+      if (response.ok) {
+        commuteRoutes = commuteRoutes.filter((candidate) => candidate.id !== route.id);
+        if (editingCommuteRouteId === route.id) clearCommuteRouteDraft();
+        commuteRouteStatus = 'Commute Route deleted from your account.';
+        commuteRouteStatusTone = 'success';
+        return;
+      }
+      commuteRouteStatus = 'Commute Route delete failed. Try again.';
+      commuteRouteStatusTone = response.status === 404 ? 'warning' : 'error';
+    } catch {
+      commuteRouteStatus = 'Commute Route delete failed. Try again.';
+      commuteRouteStatusTone = 'error';
+    }
+  };
+  const saveUserCommuteDays = async (days: CommuteDay[]) => {
+    commuteRouteStatus = 'Saving Commute Days to your account...';
+    commuteRouteStatusTone = 'neutral';
+    try {
+      const response = await fetch('/commute-days', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(days) });
+      if (response.ok) {
+        commuteDays = days;
+        commuteRouteStatus = 'Commute Days saved to your account.';
+        commuteRouteStatusTone = 'success';
+        return;
+      }
+      commuteRouteStatus = 'Commute Days save failed. Try again.';
+      commuteRouteStatusTone = response.status === 400 ? 'warning' : 'error';
+    } catch {
+      commuteRouteStatus = 'Commute Days save failed. Try again.';
+      commuteRouteStatusTone = 'error';
+    }
   };
   const persistSelectedCalendars = async (calendars: SelectedCalendarOption[]) => {
     selectedCalendarStatus = 'Saving Selected Calendars...';
@@ -1392,7 +1492,7 @@
         </Panel>
       {/if}
 
-      {#if enabledSections.commute && authState.mode === 'visitor'}
+      {#if enabledSections.commute}
         <Panel title="Commute Routes" eyebrow="Local Setup">
           <div class="space-y-4">
             <fieldset class="rounded-md border border-stone-200 p-3">

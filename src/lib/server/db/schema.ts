@@ -76,6 +76,41 @@ export const weatherLocations = sqliteTable('weather_locations', {
   longitude: real('longitude').notNull()
 });
 
+export const commuteRoutes = sqliteTable(
+  'commute_routes',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    originLabel: text('origin_label').notNull(),
+    originLatitude: real('origin_latitude').notNull(),
+    originLongitude: real('origin_longitude').notNull(),
+    destinationLabel: text('destination_label').notNull(),
+    destinationLatitude: real('destination_latitude').notNull(),
+    destinationLongitude: real('destination_longitude').notNull(),
+    enabled: integer('enabled', { mode: 'boolean' }).notNull().default(true),
+    position: integer('position').notNull()
+  },
+  (table) => ({
+    userPositionIdx: uniqueIndex('commute_routes_user_position_idx').on(table.userId, table.position)
+  })
+);
+
+export const commuteDays = sqliteTable(
+  'commute_days',
+  {
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    day: text('day', {
+      enum: ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
+    }).notNull()
+  },
+  (table) => [primaryKey({ columns: [table.userId, table.day] })]
+);
+
 export const calendarConnections = sqliteTable('calendar_connections', {
   id: text('id').primaryKey(),
   userId: text('user_id')
@@ -282,6 +317,8 @@ export const usersRelations = relations(users, ({ one, many }) => ({
   todoCategories: many(todoCategories),
   todoTasks: many(todoTasks),
   weatherLocation: one(weatherLocations),
+  commuteRoutes: many(commuteRoutes),
+  commuteDays: many(commuteDays),
   calendarConnection: one(calendarConnections),
   selectedCalendars: many(selectedCalendars),
   deliveryRecords: many(deliveryRecords)
@@ -316,6 +353,20 @@ export const todoTasksRelations = relations(todoTasks, ({ one }) => ({
 export const weatherLocationsRelations = relations(weatherLocations, ({ one }) => ({
   user: one(users, {
     fields: [weatherLocations.userId],
+    references: [users.id]
+  })
+}));
+
+export const commuteRoutesRelations = relations(commuteRoutes, ({ one }) => ({
+  user: one(users, {
+    fields: [commuteRoutes.userId],
+    references: [users.id]
+  })
+}));
+
+export const commuteDaysRelations = relations(commuteDays, ({ one }) => ({
+  user: one(users, {
+    fields: [commuteDays.userId],
     references: [users.id]
   })
 }));

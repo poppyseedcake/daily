@@ -6,6 +6,7 @@ const {
   savedConfiguration,
   savedTodoState,
   savedWeatherLocation,
+  savedCommuteSetup,
   savedCalendarConnection,
   savedSelectedCalendars,
   providerCalendars,
@@ -85,6 +86,10 @@ const {
     label: 'Warsaw, Masovian Voivodeship, Poland',
     latitude: 52.2297,
     longitude: 21.0122
+  },
+  savedCommuteSetup: {
+    routes: [],
+    days: ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'] as const
   },
   savedCalendarConnection: {
     status: 'not-connected' as 'not-connected' | 'connected' | 'failed'
@@ -188,6 +193,19 @@ vi.mock('$lib/server/db/weatherLocationStore', () => ({
       return userId === 'user-1' ? savedWeatherLocation : null;
     },
     async save() {}
+  }
+}));
+
+vi.mock('$lib/server/db/commuteSetupStore', () => ({
+  userCommuteSetupStore: {
+    async load(userId: string) {
+      if (loadFailure.enabled) throw new Error('store unavailable');
+      return userId === 'user-1' ? savedCommuteSetup : null;
+    },
+    async createRoute() { throw new Error('not implemented'); },
+    async updateRoute() { throw new Error('not implemented'); },
+    async deleteRoute() { return false; },
+    async saveDays() {}
   }
 }));
 
@@ -457,6 +475,7 @@ describe('Daily page server load', () => {
         nextTodoId: 1
       },
       weatherLocation: null,
+      commuteSetup: null,
       deliveryRecords: [],
       selectedCalendarConfiguration: null,
       renderedSummaryHtml: null
@@ -686,6 +705,7 @@ describe('Daily page server load', () => {
       summaryConfiguration: savedConfiguration,
       todoState: savedTodoState,
       weatherLocation: savedWeatherLocation,
+      commuteSetup: savedCommuteSetup,
       deliveryRecords: savedDeliveryRecords,
       selectedCalendarConfiguration: null,
       renderedSummaryHtml: expect.any(String)
@@ -768,6 +788,10 @@ describe('Daily page server load', () => {
         nextTodoId: 1
       },
       weatherLocation: null,
+      commuteSetup: {
+        routes: [],
+        days: ['monday', 'tuesday', 'wednesday', 'thursday', 'friday']
+      },
       deliveryRecords: [],
       selectedCalendarConfiguration: null,
       renderedSummaryHtml: expect.any(String)
@@ -795,6 +819,10 @@ describe('Daily page server load', () => {
         nextTodoId: 1
       },
       weatherLocation: null,
+      commuteSetup: {
+        routes: [],
+        days: ['monday', 'tuesday', 'wednesday', 'thursday', 'friday']
+      },
       deliveryRecords: [],
       selectedCalendarConfiguration: null,
       renderedSummaryHtml: null
@@ -825,6 +853,10 @@ describe('Daily page server load', () => {
         nextTodoId: 1
       },
       weatherLocation: null,
+      commuteSetup: {
+        routes: [],
+        days: ['monday', 'tuesday', 'wednesday', 'thursday', 'friday']
+      },
       deliveryRecords: [],
       selectedCalendarConfiguration: null,
       renderedSummaryHtml: expect.any(String)

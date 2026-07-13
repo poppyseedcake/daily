@@ -7,6 +7,8 @@ import {
   authUser,
   authVerification,
   calendarConnections,
+  commuteDays,
+  commuteRoutes,
   deliveryRecords,
   googleMapsCapAlerts,
   googleMapsControl,
@@ -28,6 +30,8 @@ describe('Daily database schema', () => {
       getTableName(todoCategories),
       getTableName(todoTasks),
       getTableName(weatherLocations),
+      getTableName(commuteRoutes),
+      getTableName(commuteDays),
       getTableName(calendarConnections),
       getTableName(selectedCalendars),
       getTableName(deliveryRecords),
@@ -45,6 +49,8 @@ describe('Daily database schema', () => {
       'todo_categories',
       'todo_tasks',
       'weather_locations',
+      'commute_routes',
+      'commute_days',
       'calendar_connections',
       'selected_calendars',
       'delivery_records',
@@ -194,9 +200,26 @@ describe('Daily database schema', () => {
     expect(migration).not.toMatch(
       /person|user_id|email|origin|destination|route|provider_payload|summary/i
     );
-    expect(journal.entries.at(-1)).toMatchObject({
+    expect(journal.entries.find(({ idx }) => idx === 9)).toMatchObject({
       idx: 9,
       tag: '0009_add_google_maps_cap_alerts'
+    });
+  });
+
+  test('ships User-scoped Commute Routes and shared Commute Days in an upgrade migration', () => {
+    const migration = readFileSync('drizzle/0010_add_commute_setup.sql', 'utf8');
+    const journal = JSON.parse(readFileSync('drizzle/meta/_journal.json', 'utf8')) as {
+      entries: Array<{ idx: number; tag: string }>;
+    };
+
+    expect(migration).toContain('CREATE TABLE `commute_routes`');
+    expect(migration).toContain('CREATE TABLE `commute_days`');
+    expect(migration).toContain('`user_id` text NOT NULL REFERENCES `users`(`id`)');
+    expect(migration).toContain('CREATE UNIQUE INDEX `commute_routes_user_position_idx`');
+    expect(migration).toContain('PRIMARY KEY(`user_id`, `day`)');
+    expect(journal.entries.find(({ idx }) => idx === 10)).toMatchObject({
+      idx: 10,
+      tag: '0010_add_commute_setup'
     });
   });
 

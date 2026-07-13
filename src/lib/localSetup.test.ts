@@ -59,6 +59,16 @@ describe('Visitor Local Setup module', () => {
         latitude: 52.2297,
         longitude: 21.0122
       },
+      commuteRoutes: [
+        {
+          id: 'visitor-route-1',
+          name: 'Morning commute',
+          origin: { label: 'Home', latitude: 52.2297, longitude: 21.0122 },
+          destination: { label: 'Office', latitude: 52.2318, longitude: 21.0067 },
+          enabled: false
+        }
+      ],
+      commuteDays: ['monday', 'wednesday', 'sunday'],
       todoCategories: [{ id: 'category-1', name: 'Home', position: 1 }],
       demoCalendar: { label: 'Demo Calendar' },
       mockWeather: { label: 'Mock Weather' },
@@ -278,7 +288,7 @@ describe('Visitor Local Setup module', () => {
         label: 'Warsaw, Poland',
         latitude: 52.2297,
         longitude: 21.0122
-      }
+      },
     };
 
     expect(saveLocalSetup(storage, setup).outcome).toBe('saved');
@@ -409,6 +419,16 @@ describe('Visitor Local Setup module', () => {
         latitude: 52.2297,
         longitude: 21.0122
       },
+      commuteRoutes: [
+        {
+          id: 'visitor-route-1',
+          name: 'Morning commute',
+          origin: { label: 'Home', latitude: 52.2297, longitude: 21.0122 },
+          destination: { label: 'Office', latitude: 52.2318, longitude: 21.0067 },
+          enabled: false
+        }
+      ],
+      commuteDays: ['monday', 'wednesday', 'sunday'],
       todoCategories: [
         { id: 'visitor-category-work', name: 'Work', position: 2 },
         { id: 'visitor-category-home', name: 'Home', position: 1 }
@@ -530,7 +550,23 @@ describe('Visitor Local Setup module', () => {
         label: 'Warsaw, Poland',
         latitude: 52.2297,
         longitude: 21.0122
-      }
+      },
+      commuteRoutes: [
+        {
+          id: 'visitor-route-1',
+          userId: 'user-1',
+          name: 'Morning commute',
+          originLabel: 'Home',
+          originLatitude: 52.2297,
+          originLongitude: 21.0122,
+          destinationLabel: 'Office',
+          destinationLatitude: 52.2318,
+          destinationLongitude: 21.0067,
+          enabled: false,
+          position: 1
+        }
+      ],
+      commuteDays: ['monday', 'wednesday', 'sunday']
     });
     expect(JSON.stringify(draft)).not.toContain('Demo Calendar');
     expect(JSON.stringify(draft)).not.toContain('private-calendar-access-token');
