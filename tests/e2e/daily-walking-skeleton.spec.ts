@@ -178,7 +178,11 @@ test('Visitor Weather Location persists after page refresh', async ({ page }) =>
   await page.getByLabel('City Search').fill('Warsaw');
   await expect(page.getByLabel('City Search')).toHaveValue('Warsaw');
   await page.getByRole('button', { name: 'Search' }).click();
-  await page.getByRole('button', { name: 'Select' }).first().click();
+  await page
+    .getByRole('list', { name: 'Weather Location search results' })
+    .getByRole('button', { name: 'Select' })
+    .first()
+    .click();
 
   await expect(page.getByText('Weather Location saved in this browser only.')).toBeVisible();
   await expect(page.getByText('Warsaw, Masovian Voivodeship, Poland')).toBeVisible();
@@ -194,6 +198,49 @@ test('Visitor Weather Location persists after page refresh', async ({ page }) =>
   await expect(
     page.getByText('Rainy. Low 12C, high 19C. Chance of precipitation 80%.')
   ).toBeVisible();
+});
+
+test('Visitor selects and retains a named Commute Route without changing Weather Location', async ({ page }) => {
+  await page.route('/commute-point-selection', async (route) => {
+    const request = route.request().postDataJSON() as { latitude: number; longitude: number };
+    const origin = request.latitude === 52.2285;
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        outcome: 'available',
+        point: origin
+          ? {
+              label: 'Warsaw Central Station, Warsaw, Poland',
+              latitude: 52.2285,
+              longitude: 21.0037
+            }
+          : {
+              label: 'Palace of Culture and Science, Warsaw, Poland',
+              latitude: 52.2318,
+              longitude: 21.0067
+            }
+      })
+    });
+  });
+  await page.goto('/');
+
+  await page.getByLabel('Route Name').fill('Morning commute');
+  await page.getByRole('button', { name: 'Select' }).first().click();
+  await page.getByRole('button', { name: 'Select' }).nth(1).click();
+  await page.getByRole('button', { name: 'Save Commute Route' }).click();
+
+  await expect(page.getByText('Commute Route saved in this browser only.')).toBeVisible();
+  await expect(page.getByText('Saved route: Morning commute')).toBeVisible();
+  await expect(page.getByText('Warsaw Central Station, Warsaw, Poland')).toBeVisible();
+  await expect(page.getByText('Palace of Culture and Science, Warsaw, Poland')).toBeVisible();
+  await expect(page.getByText('No Weather Location selected')).toBeVisible();
+
+  await page.reload();
+
+  await expect(page.getByText('Saved route: Morning commute')).toBeVisible();
+  await expect(page.getByText('Warsaw Central Station, Warsaw, Poland')).toBeVisible();
+  await expect(page.getByText('Palace of Culture and Science, Warsaw, Poland')).toBeVisible();
 });
 
 test('Visitor sees unavailable Weather Location search reason when geocoding fails', async ({ page }) => {
