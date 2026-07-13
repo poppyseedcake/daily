@@ -45,7 +45,14 @@
     type TodoUrgency
   } from '$lib/todo';
   import { weatherLocationSchema, type WeatherLocation } from '$lib/weatherLocation';
-  import { commuteRouteSchema, type CommutePoint, type CommuteRoute } from '$lib/commuteRoute';
+  import {
+    commuteDayValues,
+    commuteRouteDraftSchema,
+    defaultCommuteDays,
+    type CommuteDay,
+    type CommutePoint,
+    type CommuteRoute
+  } from '$lib/commuteRoute';
   import type { SelectedCalendarConfiguration, SelectedCalendarOption } from '$lib/selectedCalendars';
 
   const visitorAuthState = { mode: 'visitor' } as const;
@@ -138,7 +145,9 @@
   let weatherLocationStatusTone = $state<'success' | 'warning' | 'error' | 'neutral'>(
     initialWeatherLocation ? 'success' : 'neutral'
   );
-  let commuteRoute = $state<CommuteRoute | null>(null);
+  let commuteRoutes = $state<CommuteRoute[]>([]);
+  let commuteDays = $state<CommuteDay[]>([...defaultCommuteDays]);
+  let editingCommuteRouteId = $state<string | null>(null);
   let commuteRouteName = $state('');
   let commuteOriginLatitude = $state('52.2285');
   let commuteOriginLongitude = $state('21.0037');
@@ -304,14 +313,16 @@
   const applyLocalSetup = (setup: LocalSetup) => {
     updateSummaryConfiguration(setup.summaryConfiguration);
     weatherLocation = setup.weatherLocation;
-    commuteRoute = setup.commuteRoute;
-    commuteRouteName = setup.commuteRoute?.name ?? '';
-    commuteOrigin = setup.commuteRoute?.origin ?? null;
-    commuteDestination = setup.commuteRoute?.destination ?? null;
-    commuteOriginLatitude = setup.commuteRoute?.origin.latitude.toString() ?? '52.2285';
-    commuteOriginLongitude = setup.commuteRoute?.origin.longitude.toString() ?? '21.0037';
-    commuteDestinationLatitude = setup.commuteRoute?.destination.latitude.toString() ?? '52.2318';
-    commuteDestinationLongitude = setup.commuteRoute?.destination.longitude.toString() ?? '21.0067';
+    commuteRoutes = setup.commuteRoutes;
+    commuteDays = setup.commuteDays;
+    editingCommuteRouteId = null;
+    commuteRouteName = '';
+    commuteOrigin = null;
+    commuteDestination = null;
+    commuteOriginLatitude = '52.2285';
+    commuteOriginLongitude = '21.0037';
+    commuteDestinationLatitude = '52.2318';
+    commuteDestinationLongitude = '21.0067';
     weatherLocationSearchQuery = setup.weatherLocation?.label ?? '';
     weatherLocationStatus = setup.weatherLocation
       ? 'Weather Location saved in this browser only.'
@@ -325,7 +336,8 @@
     ...createDefaultLocalSetup(),
     summaryConfiguration: currentSummaryConfiguration(),
     weatherLocation,
-    commuteRoute,
+    commuteRoutes,
+    commuteDays,
     todoCategories,
     todoTasks,
     nextTodoId
@@ -621,8 +633,23 @@
       commuteRouteStatusTone = 'error';
     }
   };
+  const clearCommuteRouteDraft = () => {
+    editingCommuteRouteId = null;
+    commuteRouteName = '';
+    commuteOrigin = null;
+    commuteDestination = null;
+    commuteOriginLatitude = '52.2285';
+    commuteOriginLongitude = '21.0037';
+    commuteDestinationLatitude = '52.2318';
+    commuteDestinationLongitude = '21.0067';
+  };
   const saveCommuteRoute = () => {
-    const result = commuteRouteSchema.safeParse({
+    if (!editingCommuteRouteId && commuteRoutes.length >= 5) {
+      commuteRouteStatus = 'You can save at most five Commute Routes.';
+      commuteRouteStatusTone = 'warning';
+      return;
+    }
+    const result = commuteRouteDraftSchema.safeParse({
       name: commuteRouteName,
       origin: commuteOrigin,
       destination: commuteDestination
@@ -632,9 +659,51 @@
       commuteRouteStatusTone = 'warning';
       return;
     }
-    commuteRoute = result.data;
+    if (editingCommuteRouteId) {
+      commuteRoutes = commuteRoutes.map((route) =>
+        route.id === editingCommuteRouteId ? { ...route, ...result.data } : route
+      );
+      clearCommuteRouteDraft();
+      commuteRouteStatus = 'Commute Route updated in this browser only.';
+      commuteRouteStatusTone = 'success';
+      return;
+    }
+    const id = `route-${commuteRoutes.reduce((highest, route) => {
+      const number = Number(route.id.replace(/^route-/, ''));
+      return Number.isInteger(number) ? Math.max(highest, number) : highest;
+    }, 0) + 1}`;
+    commuteRoutes = [...commuteRoutes, { ...result.data, id, enabled: true }];
+    clearCommuteRouteDraft();
     commuteRouteStatus = 'Commute Route saved in this browser only.';
     commuteRouteStatusTone = 'success';
+  };
+  const editCommuteRoute = (route: CommuteRoute) => {
+    editingCommuteRouteId = route.id;
+    commuteRouteName = route.name;
+    commuteOrigin = route.origin;
+    commuteDestination = route.destination;
+    commuteOriginLatitude = route.origin.latitude.toString();
+    commuteOriginLongitude = route.origin.longitude.toString();
+    commuteDestinationLatitude = route.destination.latitude.toString();
+    commuteDestinationLongitude = route.destination.longitude.toString();
+    commuteRouteStatus = `Editing route: ${route.name}.`;
+    commuteRouteStatusTone = 'neutral';
+  };
+  const deleteCommuteRoute = (route: CommuteRoute) => {
+    commuteRoutes = commuteRoutes.filter((candidate) => candidate.id !== route.id);
+    if (editingCommuteRouteId === route.id) clearCommuteRouteDraft();
+    commuteRouteStatus = 'Commute Route deleted from this browser.';
+    commuteRouteStatusTone = 'success';
+  };
+  const toggleCommuteRoute = (route: CommuteRoute) => {
+    commuteRoutes = commuteRoutes.map((candidate) =>
+      candidate.id === route.id ? { ...candidate, enabled: !candidate.enabled } : candidate
+    );
+  };
+  const toggleCommuteDay = (day: CommuteDay, checked: boolean) => {
+    commuteDays = checked
+      ? commuteDayValues.filter((candidate) => candidate === day || commuteDays.includes(candidate))
+      : commuteDays.filter((candidate) => candidate !== day);
   };
   const persistSelectedCalendars = async (calendars: SelectedCalendarOption[]) => {
     selectedCalendarStatus = 'Saving Selected Calendars...';
@@ -1324,10 +1393,70 @@
       {/if}
 
       {#if enabledSections.commute && authState.mode === 'visitor'}
-        <Panel title="Commute Route" eyebrow="Local Setup">
+        <Panel title="Commute Routes" eyebrow="Local Setup">
           <div class="space-y-4">
+            <fieldset class="rounded-md border border-stone-200 p-3">
+              <legend class="px-1 font-medium text-stone-900">Commute Days</legend>
+              <div class="mt-2 flex flex-wrap gap-x-4 gap-y-2">
+                {#each commuteDayValues as day}
+                  <label class="flex items-center gap-2 text-sm text-stone-800">
+                    <input
+                      type="checkbox"
+                      aria-label={`${day[0]?.toUpperCase()}${day.slice(1)} Commute Day`}
+                      checked={commuteDays.includes(day)}
+                      disabled={!localSetupHydrated}
+                      onchange={(event) => toggleCommuteDay(day, readInputChecked(event))}
+                    />
+                    {day[0]?.toUpperCase()}{day.slice(1)}
+                  </label>
+                {/each}
+              </div>
+              <p class="mt-2 text-sm text-stone-600">Choose any days, including none.</p>
+            </fieldset>
+
+            <div class="space-y-2" aria-label="Saved Commute Routes">
+              {#if commuteRoutes.length === 0}
+                <p class="text-sm text-stone-600">No Commute Routes saved yet.</p>
+              {:else}
+                {#each commuteRoutes as route}
+                  <div class="flex flex-wrap items-center justify-between gap-3 rounded-md border border-stone-200 p-3">
+                    <div>
+                      <p class="font-medium text-stone-900">{route.name}</p>
+                      <p class="text-sm text-stone-600">{route.enabled ? 'Enabled' : 'Disabled'}</p>
+                    </div>
+                    <div class="flex flex-wrap gap-2">
+                      <button
+                        class="rounded-md border border-stone-300 px-3 py-1.5 text-sm font-semibold text-stone-800 hover:bg-stone-50"
+                        type="button"
+                        disabled={!localSetupHydrated}
+                        onclick={() => toggleCommuteRoute(route)}
+                      >
+                        {route.enabled ? 'Disable' : 'Enable'} {route.name}
+                      </button>
+                      <button
+                        class="rounded-md border border-stone-300 px-3 py-1.5 text-sm font-semibold text-stone-800 hover:bg-stone-50"
+                        type="button"
+                        disabled={!localSetupHydrated}
+                        onclick={() => editCommuteRoute(route)}
+                      >
+                        Edit {route.name}
+                      </button>
+                      <button
+                        class="rounded-md border border-red-300 px-3 py-1.5 text-sm font-semibold text-red-700 hover:bg-red-50"
+                        type="button"
+                        disabled={!localSetupHydrated}
+                        onclick={() => deleteCommuteRoute(route)}
+                      >
+                        Delete {route.name}
+                      </button>
+                    </div>
+                  </div>
+                {/each}
+              {/if}
+            </div>
+
             <label class="grid gap-1">
-              <span class="font-medium text-stone-800">Route Name</span>
+              <span class="font-medium text-stone-800">Route Name {editingCommuteRouteId ? '(editing)' : ''}</span>
               <input
                 class="h-10 rounded-md border border-stone-300 px-3"
                 aria-label="Route Name"
@@ -1397,10 +1526,17 @@
               onclick={saveCommuteRoute}
             >
               <Check size={18} aria-hidden="true" />
-              Save Commute Route
+              {editingCommuteRouteId ? 'Save Commute Route' : 'Add Commute Route'}
             </button>
-            {#if commuteRoute}
-              <p class="text-sm font-medium text-stone-900">Saved route: {commuteRoute.name}</p>
+            {#if editingCommuteRouteId}
+              <button
+                class="ml-2 rounded-md border border-stone-300 px-4 py-2 text-sm font-semibold text-stone-800 hover:bg-stone-50"
+                type="button"
+                disabled={!localSetupHydrated}
+                onclick={clearCommuteRouteDraft}
+              >
+                Cancel editing Commute Route
+              </button>
             {/if}
             <p
               class={`text-sm ${commuteRouteStatusTone === 'success' ? 'text-emerald-700' : commuteRouteStatusTone === 'warning' ? 'text-amber-700' : commuteRouteStatusTone === 'error' ? 'text-red-700' : 'text-stone-600'}`}

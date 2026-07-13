@@ -93,6 +93,13 @@ describe('Visitor Local Setup module', () => {
   test.each([
     ['invalid-json', '{'],
     ['schema-invalid', JSON.stringify({ version: localSetupVersion, summaryConfiguration: null })],
+    [
+      'schema-invalid',
+      JSON.stringify({
+        ...createDefaultLocalSetup(),
+        commuteDays: ['monday', 'monday']
+      })
+    ],
     ['schema-invalid', JSON.stringify({ ...createDefaultLocalSetup(), version: '2' })],
     [
       'unsupported-version',
@@ -163,7 +170,8 @@ describe('Visitor Local Setup module', () => {
       version: setup.version,
       summaryConfiguration: setup.summaryConfiguration,
       weatherLocation: null,
-      commuteRoute: null,
+      commuteRoutes: [],
+      commuteDays: ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'],
       todoCategories: setup.todoCategories,
       todoTasks: [{ ...setup.todoTasks[0], completed: false }],
       nextTodoId: setup.nextTodoId
@@ -285,7 +293,7 @@ describe('Visitor Local Setup module', () => {
     });
   });
 
-  test('round-trips one valid Visitor Commute Route independently of Weather Location', () => {
+  test('round-trips ordered Visitor Commute Routes and Commute Days independently of Weather Location', () => {
     const storage = memoryStorage();
     const setup: LocalSetupInput = {
       ...createDefaultLocalSetup(),
@@ -294,25 +302,38 @@ describe('Visitor Local Setup module', () => {
         latitude: 52.2297,
         longitude: 21.0122
       },
-      commuteRoute: {
-        name: 'Morning commute',
-        origin: {
-          label: 'Warsaw Central Station, Warsaw, Poland',
-          latitude: 52.2285,
-          longitude: 21.0037
+      commuteRoutes: [
+        {
+          id: 'route-1',
+          enabled: true,
+          name: 'Morning commute',
+          origin: {
+            label: 'Warsaw Central Station, Warsaw, Poland',
+            latitude: 52.2285,
+            longitude: 21.0037
+          },
+          destination: {
+            label: 'Palace of Culture and Science, Warsaw, Poland',
+            latitude: 52.2318,
+            longitude: 21.0067
+          }
         },
-        destination: {
-          label: 'Palace of Culture and Science, Warsaw, Poland',
-          latitude: 52.2318,
-          longitude: 21.0067
+        {
+          id: 'route-2',
+          enabled: false,
+          name: 'Evening commute',
+          origin: { label: 'Office', latitude: 52.2318, longitude: 21.0067 },
+          destination: { label: 'Home', latitude: 52.2285, longitude: 21.0037 }
         }
-      }
+      ],
+      commuteDays: ['monday', 'wednesday', 'sunday']
     };
 
     expect(saveLocalSetup(storage, setup).outcome).toBe('saved');
     expect(loadLocalSetup(storage).setup).toMatchObject({
       weatherLocation: setup.weatherLocation,
-      commuteRoute: setup.commuteRoute
+      commuteRoutes: setup.commuteRoutes,
+      commuteDays: setup.commuteDays
     });
   });
 
@@ -320,15 +341,36 @@ describe('Visitor Local Setup module', () => {
     const storage = memoryStorage();
     const unsafeSetup = {
       ...createDefaultLocalSetup(),
-      commuteRoute: {
+      commuteRoutes: [{
+        id: 'route-1',
+        enabled: true,
         name: 'Morning commute',
         origin: { label: 'Origin', latitude: 52.2, longitude: 21 },
         destination: null
-      }
+      }]
     } as unknown as LocalSetupInput;
 
     expect(saveLocalSetup(storage, unsafeSetup).outcome).toBe('write-failed');
     expect(storage.stored).toBeNull();
+  });
+
+  test('migrates a legacy single Commute Route to an enabled ordered route', () => {
+    const setup = createDefaultLocalSetup();
+    const storage = memoryStorage(
+      JSON.stringify({
+        ...setup,
+        commuteRoute: {
+          name: 'Morning commute',
+          origin: { label: 'Home', latitude: 52.2, longitude: 21 },
+          destination: { label: 'Office', latitude: 52.3, longitude: 21.1 }
+        }
+      })
+    );
+
+    expect(loadLocalSetup(storage).setup).toMatchObject({
+      commuteRoutes: [{ id: 'route-1', name: 'Morning commute', enabled: true }],
+      commuteDays: ['monday', 'tuesday', 'wednesday', 'thursday', 'friday']
+    });
   });
 
   test('returns a failed outcome when storage cannot be written', () => {

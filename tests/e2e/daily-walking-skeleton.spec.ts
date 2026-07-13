@@ -200,7 +200,7 @@ test('Visitor Weather Location persists after page refresh', async ({ page }) =>
   ).toBeVisible();
 });
 
-test('Visitor selects and retains a named Commute Route without changing Weather Location', async ({ page }) => {
+test('Visitor manages ordered Commute Routes and Commute Days in browser-local setup', async ({ page }) => {
   const pointSelections: Array<{ latitude: number; longitude: number }> = [];
   await page.route('/commute-point-selection', async (route) => {
     const request = route.request().postDataJSON() as { latitude: number; longitude: number };
@@ -232,22 +232,58 @@ test('Visitor selects and retains a named Commute Route without changing Weather
   await page.getByLabel('Destination longitude').fill('20');
   await page.getByRole('button', { name: 'Select' }).first().click();
   await page.getByRole('button', { name: 'Select' }).nth(1).click();
-  await page.getByRole('button', { name: 'Save Commute Route' }).click();
+  await page.getByRole('button', { name: 'Add Commute Route' }).click();
 
   await expect(page.getByText('Commute Route saved in this browser only.')).toBeVisible();
-  await expect(page.getByText('Saved route: Morning commute')).toBeVisible();
-  await expect(page.getByText('Origin point')).toBeVisible();
-  await expect(page.getByText('Destination point')).toBeVisible();
+  await expect(page.getByText('Morning commute', { exact: true })).toBeVisible();
   await expect(page.getByText('No Weather Location selected')).toBeVisible();
+
+  await page.getByRole('button', { name: 'Disable Morning commute' }).click();
+  await expect(page.getByText('Disabled', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Edit Morning commute' }).click();
+  await page.getByLabel('Route Name').fill('Evening commute');
+  await page.getByRole('button', { name: 'Save Commute Route' }).click();
+  await expect(page.getByText('Commute Route updated in this browser only.')).toBeVisible();
+  await expect(page.getByText('Evening commute', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Enable Evening commute' })).toBeVisible();
+
+  for (const routeName of ['Route two', 'Route three', 'Route four', 'Route five']) {
+    await page.getByLabel('Route Name').fill(routeName);
+    await page.getByLabel('Origin latitude').fill('50');
+    await page.getByLabel('Origin longitude').fill('19');
+    await page.getByLabel('Destination latitude').fill('51');
+    await page.getByLabel('Destination longitude').fill('20');
+    await page.getByRole('button', { name: 'Select' }).first().click();
+    await page.getByRole('button', { name: 'Select' }).nth(1).click();
+    await page.getByRole('button', { name: 'Add Commute Route' }).click();
+  }
+
+  const savedRoutes = page.locator('[aria-label="Saved Commute Routes"]');
+  await expect(savedRoutes.getByText('Evening commute', { exact: true })).toBeVisible();
+  await expect(savedRoutes.getByText('Route two', { exact: true })).toBeVisible();
+  await expect(savedRoutes.getByText('Route five', { exact: true })).toBeVisible();
+  await expect(savedRoutes.locator('> div')).toHaveCount(5);
+
+  await page.getByLabel('Route Name').fill('Route six');
+  await page.getByRole('button', { name: 'Add Commute Route' }).click();
+  await expect(page.getByText('You can save at most five Commute Routes.')).toBeVisible();
+
+  await page.getByLabel('Monday Commute Day').uncheck();
+  await page.getByLabel('Sunday Commute Day').check();
+  await page.getByRole('button', { name: 'Delete Route three' }).click();
+  await expect(savedRoutes.getByText('Route three', { exact: true })).toHaveCount(0);
 
   await page.reload();
 
-  await expect(page.getByText('Saved route: Morning commute')).toBeVisible();
-  await expect(page.getByText('Origin point')).toBeVisible();
-  await expect(page.getByText('Destination point')).toBeVisible();
-
-  await page.getByRole('button', { name: 'Select' }).first().click();
-  expect(pointSelections.at(-1)).toEqual({ latitude: 50, longitude: 19 });
+  await expect(page.getByText('Evening commute', { exact: true })).toBeVisible();
+  await expect(page.getByText('Route two', { exact: true })).toBeVisible();
+  await expect(page.getByText('Route three', { exact: true })).toHaveCount(0);
+  await expect(page.getByText('Route five', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Enable Evening commute' })).toBeVisible();
+  await expect(page.getByLabel('Monday Commute Day')).not.toBeChecked();
+  await expect(page.getByLabel('Sunday Commute Day')).toBeChecked();
+  expect(pointSelections).toContainEqual({ latitude: 50, longitude: 19 });
+  expect(pointSelections).toContainEqual({ latitude: 51, longitude: 20 });
 });
 
 test('Visitor sees unavailable Weather Location search reason when geocoding fails', async ({ page }) => {
