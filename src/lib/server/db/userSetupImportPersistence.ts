@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { UserSetupImportDraft } from '$lib/localSetup';
 import { summaryTimeSchema, userTimeZoneSchema } from '$lib/summaryConfiguration';
+import { commuteDaysSchema, commuteRouteSchema } from '$lib/commuteRoute';
 
 const persistedSummaryConfigurationSchema = z.object({
   id: z.string().min(1),
@@ -40,11 +41,30 @@ const persistedWeatherLocationSchema = z.object({
   longitude: z.number().finite().min(-180).max(180)
 });
 
+const persistedCommuteRouteSchema = commuteRouteSchema.extend({
+  userId: z.string().min(1),
+  position: z.number().int().positive()
+}).transform((route) => ({
+  id: route.id,
+  userId: route.userId,
+  name: route.name,
+  originLabel: route.origin.label,
+  originLatitude: route.origin.latitude,
+  originLongitude: route.origin.longitude,
+  destinationLabel: route.destination.label,
+  destinationLatitude: route.destination.latitude,
+  destinationLongitude: route.destination.longitude,
+  enabled: route.enabled,
+  position: route.position
+}));
+
 const userSetupImportDraftSchema = z.object({
   summaryConfiguration: persistedSummaryConfigurationSchema,
   todoCategories: z.array(persistedTodoCategorySchema),
   todoTasks: z.array(persistedTodoTaskSchema),
-  weatherLocation: persistedWeatherLocationSchema.nullable()
+  weatherLocation: persistedWeatherLocationSchema.nullable(),
+  commuteRoutes: z.array(persistedCommuteRouteSchema).max(5),
+  commuteDays: commuteDaysSchema
 });
 
 export type UserSetupImportPersistenceTransaction = {
@@ -55,6 +75,8 @@ export type UserSetupImportPersistenceTransaction = {
   saveTodoCategories: (todoCategories: UserSetupImportDraft['todoCategories']) => void;
   saveTodoTasks: (todoTasks: UserSetupImportDraft['todoTasks']) => void;
   saveWeatherLocation: (weatherLocation: UserSetupImportDraft['weatherLocation']) => void;
+  saveCommuteRoutes: (routes: UserSetupImportDraft['commuteRoutes']) => void;
+  saveCommuteDays: (userId: string, days: UserSetupImportDraft['commuteDays']) => void;
 };
 
 export type UserSetupImportPersistenceStore = {
@@ -72,7 +94,8 @@ const isDraftForUser = (userId: string, draft: UserSetupImportDraft) =>
     draft.summaryConfiguration.userId === userId &&
     draft.todoCategories.every((category) => category.userId === userId) &&
     draft.todoTasks.every((task) => task.userId === userId) &&
-    (draft.weatherLocation === null || draft.weatherLocation.userId === userId);
+    (draft.weatherLocation === null || draft.weatherLocation.userId === userId) &&
+    draft.commuteRoutes.every((route) => route.userId === userId);
 
 const hasValidTaskCategoryReferences = (draft: UserSetupImportDraft) => {
   const categoryIds = new Set(draft.todoCategories.map((category) => category.id));
@@ -107,6 +130,8 @@ export const persistUserSetupImportDraftForNewUser = async (
       transaction.saveTodoCategories(result.data.todoCategories);
       transaction.saveTodoTasks(result.data.todoTasks);
       transaction.saveWeatherLocation(result.data.weatherLocation);
+      transaction.saveCommuteRoutes(result.data.commuteRoutes);
+      transaction.saveCommuteDays(userId, result.data.commuteDays);
 
       return { outcome: 'imported' };
     });

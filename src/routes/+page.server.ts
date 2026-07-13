@@ -5,6 +5,7 @@ import { userSummaryConfigurationStore } from '$lib/server/db/summaryConfigurati
 import { deliveryRecordStore } from '$lib/server/db/deliveryRecordStore';
 import { userTodoStore } from '$lib/server/db/todoStore';
 import { userWeatherLocationStore } from '$lib/server/db/weatherLocationStore';
+import { userCommuteSetupStore } from '$lib/server/db/commuteSetupStore';
 import {
   userCalendarConnectionStore,
   type CalendarConnection
@@ -35,6 +36,7 @@ import {
 import { loadUserSummaryConfiguration } from '$lib/server/summaryConfigurationPersistence';
 import { loadUserTodoState } from '$lib/server/todoPersistence';
 import { loadUserWeatherLocation } from '$lib/server/weatherLocationPersistence';
+import { loadUserCommuteSetup } from '$lib/server/commuteSetupPersistence';
 import { summaryConfigurationSchema } from '$lib/summaryConfiguration';
 import { createDefaultTodoState, todoStateSchema } from '$lib/todo';
 
@@ -168,6 +170,13 @@ export const load = async ({ request }) => {
           return null;
         })
       : null;
+  const commuteSetup =
+    authState.mode === 'user'
+      ? await loadUserCommuteSetup(userCommuteSetupStore, authState.userId).catch((error: unknown) => {
+          console.warn('Failed to load User Commute setup.', { userId: authState.userId, error });
+          return { routes: [], days: ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'] as const };
+        })
+      : null;
   const calendarConnection =
     authState.mode === 'user'
       ? await userCalendarConnectionStore.load(authState.userId).catch((error: unknown) => {
@@ -283,6 +292,7 @@ export const load = async ({ request }) => {
     summaryConfiguration,
     todoState,
     weatherLocation,
+    commuteSetup,
     deliveryRecords,
     selectedCalendarConfiguration,
     renderedSummaryHtml

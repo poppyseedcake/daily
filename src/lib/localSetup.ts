@@ -91,12 +91,27 @@ export type UserSetupImportDraft = {
     latitude: number;
     longitude: number;
   } | null;
+  commuteRoutes: Array<{
+    id: string;
+    userId: string;
+    name: string;
+    originLabel: string;
+    originLatitude: number;
+    originLongitude: number;
+    destinationLabel: string;
+    destinationLatitude: number;
+    destinationLongitude: number;
+    enabled: boolean;
+    position: number;
+  }>;
+  commuteDays: CommuteDay[];
 };
 
 export type UserSetupImportDraftOptions = {
   userId: string;
   summaryConfigurationId: string;
   weatherLocationId: string;
+  nextCommuteRouteId?: (route: CommuteRoute) => string;
   nextTodoCategoryId: (category: TodoCategory) => string;
   nextTodoTaskId: (task: TodoTask) => string;
 };
@@ -331,6 +346,20 @@ export const createUserSetupImportDraftFromLocalSetup = (
           latitude: setup.weatherLocation.latitude,
           longitude: setup.weatherLocation.longitude
         }
-      : null
+      : null,
+    commuteRoutes: setup.commuteRoutes.map((route, index) => ({
+      id: options.nextCommuteRouteId?.(route) ?? route.id,
+      userId: options.userId,
+      name: route.name,
+      originLabel: route.origin.label,
+      originLatitude: route.origin.latitude,
+      originLongitude: route.origin.longitude,
+      destinationLabel: route.destination.label,
+      destinationLatitude: route.destination.latitude,
+      destinationLongitude: route.destination.longitude,
+      enabled: route.enabled,
+      position: index + 1
+    })),
+    commuteDays: setup.commuteDays
   };
 };

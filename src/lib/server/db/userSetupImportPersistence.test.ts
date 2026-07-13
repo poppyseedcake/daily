@@ -48,7 +48,9 @@ const validDraft = (): UserSetupImportDraft => ({
     label: 'Warsaw, Poland',
     latitude: 52.2297,
     longitude: 21.0122
-  }
+  },
+  commuteRoutes: [],
+  commuteDays: ['monday', 'tuesday', 'wednesday', 'thursday', 'friday']
 });
 
 const createStore = ({
@@ -63,13 +65,17 @@ const createStore = ({
     todoCategories: UserSetupImportDraft['todoCategories'];
     todoTasks: UserSetupImportDraft['todoTasks'];
     weatherLocations: NonNullable<UserSetupImportDraft['weatherLocation']>[];
+    commuteRoutes: UserSetupImportDraft['commuteRoutes'];
+    commuteDays: UserSetupImportDraft['commuteDays'];
   };
 } => {
   const saved = {
     summaryConfigurations: [] as UserSetupImportDraft['summaryConfiguration'][],
     todoCategories: [] as UserSetupImportDraft['todoCategories'],
     todoTasks: [] as UserSetupImportDraft['todoTasks'],
-    weatherLocations: [] as NonNullable<UserSetupImportDraft['weatherLocation']>[]
+    weatherLocations: [] as NonNullable<UserSetupImportDraft['weatherLocation']>[],
+    commuteRoutes: [] as UserSetupImportDraft['commuteRoutes'],
+    commuteDays: [] as UserSetupImportDraft['commuteDays']
   };
 
   return {
@@ -82,7 +88,9 @@ const createStore = ({
         summaryConfigurations: [...saved.summaryConfigurations],
         todoCategories: [...saved.todoCategories],
         todoTasks: [...saved.todoTasks],
-        weatherLocations: [...saved.weatherLocations]
+        weatherLocations: [...saved.weatherLocations],
+        commuteRoutes: [...saved.commuteRoutes],
+        commuteDays: [...saved.commuteDays]
       };
 
       const failIfNeeded = (step: typeof failAfter) => {
@@ -111,6 +119,12 @@ const createStore = ({
           if (weatherLocation) {
             staged.weatherLocations.push(weatherLocation);
           }
+        },
+        saveCommuteRoutes(routes) {
+          staged.commuteRoutes.push(...routes);
+        },
+        saveCommuteDays(_userId, days) {
+          staged.commuteDays.push(...days);
         }
       });
 
@@ -118,6 +132,8 @@ const createStore = ({
       saved.todoCategories = staged.todoCategories;
       saved.todoTasks = staged.todoTasks;
       saved.weatherLocations = staged.weatherLocations;
+      saved.commuteRoutes = staged.commuteRoutes;
+      saved.commuteDays = staged.commuteDays;
 
       return result;
     }

@@ -27,6 +27,7 @@ export const importVisitorLocalSetupForUser = async (
         userId,
         summaryConfigurationId: randomUUID(),
         weatherLocationId: randomUUID(),
+        nextCommuteRouteId: () => randomUUID(),
         nextTodoCategoryId: () => randomUUID(),
         nextTodoTaskId: () => randomUUID()
       }

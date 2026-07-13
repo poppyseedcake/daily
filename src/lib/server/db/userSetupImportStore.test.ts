@@ -11,6 +11,7 @@ const createTestDatabase = () => {
   sqlite.pragma('foreign_keys = ON');
   sqlite.exec(readFileSync('drizzle/0000_bootstrap_daily.sql', 'utf8'));
   sqlite.exec(readFileSync('drizzle/0003_add_weather_locations.sql', 'utf8'));
+  sqlite.exec(readFileSync('drizzle/0010_add_commute_setup.sql', 'utf8'));
 
   return {
     sqlite,
@@ -66,7 +67,9 @@ const validDraft = (): UserSetupImportDraft => ({
     label: 'Warsaw, Poland',
     latitude: 52.2297,
     longitude: 21.0122
-  }
+  },
+  commuteRoutes: [],
+  commuteDays: ['monday', 'tuesday', 'wednesday', 'thursday', 'friday']
 });
 
 describe('SQLite User Setup import store', () => {
@@ -94,6 +97,8 @@ describe('SQLite User Setup import store', () => {
       transaction.saveTodoCategories(draft.todoCategories);
       transaction.saveTodoTasks(draft.todoTasks);
       transaction.saveWeatherLocation(draft.weatherLocation);
+      transaction.saveCommuteRoutes(draft.commuteRoutes);
+      transaction.saveCommuteDays('user-1', draft.commuteDays);
     });
 
     await expect(store.hasExistingUserSetup('user-1')).resolves.toBe(true);
