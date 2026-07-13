@@ -181,6 +181,18 @@ export const googleMapsPersonUsage = sqliteTable(
   ]
 );
 
+export const googleMapsControl = sqliteTable(
+  'google_maps_control',
+  {
+    controlKey: text('control_key').primaryKey(),
+    enabled: integer('enabled', { mode: 'boolean' }).notNull().default(false)
+  },
+  (table) => [
+    check('google_maps_control_key_check', sql`${table.controlKey} = 'admin-kill-switch'`),
+    check('google_maps_control_enabled_check', sql`${table.enabled} IN (0, 1)`)
+  ]
+);
+
 export const authUser = sqliteTable(
   'auth_user',
   {

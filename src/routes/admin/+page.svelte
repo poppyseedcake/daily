@@ -1,6 +1,15 @@
 <script lang="ts">
   import { Activity, Database, MapPinned, ShieldCheck } from '@lucide/svelte';
   import Panel from '$lib/components/Panel.svelte';
+
+  let { data, form } = $props();
+
+  const suspensionLabels = {
+    'environment-kill-switch': 'Deployment environment kill switch',
+    'admin-kill-switch': 'Admin Panel kill switch',
+    'global-daily-cap': 'Daily usage cap reached',
+    'global-monthly-cap': 'Monthly usage cap reached'
+  } as const;
 </script>
 
 <svelte:head>
@@ -35,9 +44,84 @@
       </Panel>
 
       <Panel title="Google Maps Usage" eyebrow="Guardrail">
-        <div class="flex items-start gap-3">
-          <MapPinned class="mt-0.5 text-cyan-700" size={20} aria-hidden="true" />
-          <p>Placeholder for usage totals and kill switch state.</p>
+        <div class="space-y-5">
+          <div class="flex items-start justify-between gap-3">
+            <div class="flex items-center gap-3">
+              <MapPinned class="text-cyan-700" size={20} aria-hidden="true" />
+              <p class="font-medium">Google Maps is {data.googleMaps.effectiveState}.</p>
+            </div>
+            <span
+              class={`rounded-full px-2.5 py-1 text-xs font-semibold ${
+                data.googleMaps.effectiveState === 'active'
+                  ? 'bg-emerald-100 text-emerald-800'
+                  : 'bg-amber-100 text-amber-900'
+              }`}
+            >
+              {data.googleMaps.effectiveState === 'active' ? 'Active' : 'Suspended'}
+            </span>
+          </div>
+
+          {#if data.googleMaps.suspensionReason}
+            <p class="rounded-md bg-amber-50 p-3 text-sm text-amber-950">
+              Reason: {suspensionLabels[data.googleMaps.suspensionReason]}
+            </p>
+          {/if}
+
+          <dl class="grid gap-3 text-sm sm:grid-cols-2 md:grid-cols-1">
+            <div class="rounded-md border border-zinc-200 p-3">
+              <dt class="text-zinc-600">Daily usage · {data.googleMaps.daily.periodStart}</dt>
+              <dd class="mt-1 text-xl font-semibold">
+                {data.googleMaps.daily.total} / {data.googleMaps.daily.cap}
+              </dd>
+              <p class="mt-1 text-xs text-zinc-600">
+                Point selection {data.googleMaps.daily.byCategory['map-point-selection']} · Commute
+                estimates {data.googleMaps.daily.byCategory['commute-estimate']}
+              </p>
+            </div>
+            <div class="rounded-md border border-zinc-200 p-3">
+              <dt class="text-zinc-600">Monthly usage · {data.googleMaps.monthly.periodStart}</dt>
+              <dd class="mt-1 text-xl font-semibold">
+                {data.googleMaps.monthly.total} / {data.googleMaps.monthly.cap}
+              </dd>
+              <p class="mt-1 text-xs text-zinc-600">
+                Point selection {data.googleMaps.monthly.byCategory['map-point-selection']} · Commute
+                estimates {data.googleMaps.monthly.byCategory['commute-estimate']}
+              </p>
+            </div>
+          </dl>
+          <p class="text-xs text-zinc-500">Accounting and rollover use {data.googleMaps.timeBasis}.</p>
+
+          <div class="space-y-3 border-t border-zinc-200 pt-4 text-sm">
+            <div class="flex items-center justify-between gap-3">
+              <span>Deployment environment control</span>
+              <strong>{data.googleMaps.environmentKillSwitchEnabled ? 'Enabled' : 'Disabled'}</strong>
+            </div>
+            {#if data.googleMaps.environmentKillSwitchEnabled}
+              <p class="rounded-md bg-zinc-100 p-3 text-zinc-700">
+                Owned by deployment configuration. It has precedence and cannot be cleared here.
+              </p>
+            {/if}
+            <div class="flex items-center justify-between gap-3">
+              <span>Admin Panel SQLite control</span>
+              <strong>{data.googleMaps.adminKillSwitchEnabled ? 'Enabled' : 'Disabled'}</strong>
+            </div>
+            <form method="POST" action="?/setGoogleMapsKillSwitch">
+              <input
+                type="hidden"
+                name="enabled"
+                value={data.googleMaps.adminKillSwitchEnabled ? 'false' : 'true'}
+              />
+              <button
+                class="inline-flex h-10 items-center rounded-md bg-zinc-900 px-3 font-medium text-white hover:bg-zinc-700"
+                type="submit"
+              >
+                {data.googleMaps.adminKillSwitchEnabled ? 'Disable' : 'Enable'} Admin Panel kill switch
+              </button>
+            </form>
+            {#if form?.message}
+              <p class="text-red-700">{form.message}</p>
+            {/if}
+          </div>
         </div>
       </Panel>
 

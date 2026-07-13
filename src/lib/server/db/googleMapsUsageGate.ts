@@ -9,7 +9,7 @@ import type {
 import * as schema from './schema';
 
 type GoogleMapsDatabase = BetterSQLite3Database<typeof schema>;
-const { googleMapsPersonUsage, googleMapsUsage } = schema;
+const { googleMapsControl, googleMapsPersonUsage, googleMapsUsage } = schema;
 
 export type GoogleMapsUsageGateOptions = {
   database: GoogleMapsDatabase;
@@ -35,6 +35,25 @@ export type GoogleMapsUsageSnapshot = {
 
 export type GoogleMapsDurableUsageGate = GoogleMapsUsageGate & {
   currentUsage: () => Promise<GoogleMapsUsageSnapshot>;
+  currentOperations: (
+    environmentKillSwitchEnabled: boolean
+  ) => Promise<GoogleMapsOperationsSnapshot>;
+  setAdminKillSwitch: (enabled: boolean) => Promise<void>;
+};
+
+export type GoogleMapsOperationsSnapshot = {
+  timeBasis: 'UTC';
+  daily: GoogleMapsUsageSnapshot['day'] & { cap: number };
+  monthly: GoogleMapsUsageSnapshot['month'] & { cap: number };
+  environmentKillSwitchEnabled: boolean;
+  adminKillSwitchEnabled: boolean;
+  effectiveState: 'active' | 'suspended';
+  suspensionReason:
+    | 'environment-kill-switch'
+    | 'admin-kill-switch'
+    | 'global-daily-cap'
+    | 'global-monthly-cap'
+    | null;
 };
 
 type UsagePeriod = {
@@ -191,6 +210,13 @@ export const createGoogleMapsUsageGate = ({
       })
       .run();
 
+  const adminKillSwitchEnabled = (source: GoogleMapsDatabase) =>
+    source
+      .select({ enabled: googleMapsControl.enabled })
+      .from(googleMapsControl)
+      .where(eq(googleMapsControl.controlKey, 'admin-kill-switch'))
+      .get()?.enabled ?? false;
+
   const admit = (
     category: GoogleMapsCallCategory,
     attribution: GoogleMapsPersonAttribution,
@@ -199,6 +225,10 @@ export const createGoogleMapsUsageGate = ({
     database.transaction(
       (transaction): GoogleMapsAdmission => {
         const [day, month] = periods;
+
+        if (adminKillSwitchEnabled(transaction)) {
+          return { outcome: 'suspended', reason: 'admin-kill-switch' };
+        }
 
         if (personUsageForDay(transaction, day, attribution) >= perPersonDailyLimit) {
           return { outcome: 'suspended', reason: 'per-person-daily-limit' };
@@ -220,17 +250,54 @@ export const createGoogleMapsUsageGate = ({
       { behavior: 'immediate' }
     );
 
+  const currentUsage = (): GoogleMapsUsageSnapshot => {
+    const [day, month] = utcPeriodsFor(now());
+    return {
+      timeBasis: 'UTC',
+      day: snapshotFor(day),
+      month: snapshotFor(month)
+    };
+  };
+
   return {
     async admit(category, attribution) {
       return admit(category, attribution, utcPeriodsFor(now()));
     },
     async currentUsage() {
-      const [day, month] = utcPeriodsFor(now());
+      return currentUsage();
+    },
+    async currentOperations(environmentKillSwitchEnabled) {
+      const usage = currentUsage();
+      const adminEnabled = adminKillSwitchEnabled(database);
+      const suspensionReason = environmentKillSwitchEnabled
+        ? 'environment-kill-switch'
+        : adminEnabled
+          ? 'admin-kill-switch'
+          : usage.day.total >= dailyCap
+            ? 'global-daily-cap'
+            : usage.month.total >= monthlyCap
+              ? 'global-monthly-cap'
+              : null;
+
       return {
-        timeBasis: 'UTC',
-        day: snapshotFor(day),
-        month: snapshotFor(month)
+        timeBasis: usage.timeBasis,
+        daily: { ...usage.day, cap: dailyCap },
+        monthly: { ...usage.month, cap: monthlyCap },
+        environmentKillSwitchEnabled,
+        adminKillSwitchEnabled: adminEnabled,
+        effectiveState: suspensionReason === null ? 'active' : 'suspended',
+        suspensionReason
       };
+    },
+    async setAdminKillSwitch(enabled) {
+      database
+        .insert(googleMapsControl)
+        .values({ controlKey: 'admin-kill-switch', enabled })
+        .onConflictDoUpdate({
+          target: googleMapsControl.controlKey,
+          set: { enabled }
+        })
+        .run();
     }
   };
 };
