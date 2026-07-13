@@ -300,17 +300,28 @@ test('Visitor preview renders eligible Commute estimates and local unavailable b
       : { outcome: 'unavailable', reason: 'global-daily-cap' } });
   });
   await page.goto('/');
+  for (const day of ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']) {
+    await page.getByLabel(`${day} Commute Day`).check();
+  }
+  expect(estimateRequests).toBe(0);
   await page.getByLabel('Route Name').fill('Office route');
   await page.getByRole('button', { name: 'Select' }).first().click();
   await page.getByRole('button', { name: 'Select' }).nth(1).click();
   await page.getByRole('button', { name: 'Add Commute Route' }).click();
 
   await expect(page.getByText('Office route: 24 minutes')).toBeVisible();
-  expect(estimateRequests).toBeGreaterThan(0);
+  expect(estimateRequests).toBe(1);
+
+  for (const day of ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']) {
+    await page.getByLabel(`${day} Commute Day`).uncheck();
+  }
+  await expect(page.getByText('Office route: 24 minutes')).toHaveCount(0);
+  expect(estimateRequests).toBe(1);
 
   estimateOutcome = 'unavailable';
-  await page.getByRole('button', { name: 'Disable Office route' }).click();
-  await page.getByRole('button', { name: 'Enable Office route' }).click();
+  for (const day of ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']) {
+    await page.getByLabel(`${day} Commute Day`).check();
+  }
   await expect(page.getByText('Live Commute is unavailable right now.')).toBeVisible();
   await expect(page.getByText('Demo Calendar - sample Calendar Events for the Week Ahead.')).toBeVisible();
 });

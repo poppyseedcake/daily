@@ -11,6 +11,7 @@ import { createGoogleMapsRequestGateway } from './googleMapsRequestGateway';
 import { createGoogleMapsPersonAttribution } from './googleMapsPersonAttribution';
 import { createGoogleRoutesProvider } from './googleRoutesProvider';
 import type { DailyPageAuthState } from './pageAuthState';
+import { selectLocalPoint } from './localPointSelection';
 
 const usageGate = () =>
   createGoogleMapsUsageGate({
@@ -31,7 +32,10 @@ export const googleMapsOperations = {
   setAdminKillSwitch: async (enabled: boolean) => setGoogleMapsAdminKillSwitch(db, enabled),
   requestGateway: (authState: DailyPageAuthState, visitorRequest?: { clientAddress: string; userAgent: string }) =>
     createGoogleMapsRequestGateway({
-      provider: createGoogleRoutesProvider({ apiKey: env.GOOGLE_MAPS_API_KEY ?? '' }),
+      provider: {
+        selectPoint: async (request) => selectLocalPoint(request),
+        ...createGoogleRoutesProvider({ apiKey: env.GOOGLE_MAPS_API_KEY ?? '' })
+      },
       usageGate: usageGate(),
       attribution: createGoogleMapsPersonAttribution({
         authState,

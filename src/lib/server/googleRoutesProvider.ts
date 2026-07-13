@@ -8,10 +8,7 @@ const responseSchema = z.object({
 export const createGoogleRoutesProvider = ({ apiKey, fetcher = fetch }: {
   apiKey: string;
   fetcher?: typeof fetch;
-}): GoogleMapsProvider => ({
-  async selectPoint() {
-    throw new Error('Google Routes does not select map points.');
-  },
+}): Pick<GoogleMapsProvider, 'estimateCommute'> => ({
   async estimateCommute({ origin, destination }) {
     if (!apiKey) throw new Error('Google Maps API key is not configured.');
 

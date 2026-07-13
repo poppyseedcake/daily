@@ -69,6 +69,28 @@ describe('Daily Summary preview input', () => {
     expect(rendered.text).not.toContain('Gym');
   });
 
+  test.each(['light', 'dark'] as const)('keeps route-labeled Commute in fixed HTML and text order for the %s theme', async (summaryTheme) => {
+    const preview = await buildDailySummaryInput({
+      configuration: { ...configuration, summaryTheme },
+      todoCategories,
+      todoTasks,
+      commuteRoutes: [{ id: 'office', name: 'Office', enabled: true, origin: { label: 'Home', latitude: 40.1, longitude: -73.9 }, destination: { label: 'Office', latitude: 40.7, longitude: -74 } }],
+      commuteDays: ['wednesday'],
+      commuteEstimateProvider: { estimateCommute: vi.fn().mockResolvedValue({ outcome: 'available', estimate: { durationMinutes: 24 } }) },
+      weatherLocation: { label: 'New York', latitude: 40.7, longitude: -74 },
+      weatherProvider: { fetchDailyForecast: vi.fn().mockResolvedValue({ outcome: 'available', forecast: { daily: { time: ['2026-07-08'], weather_code: [0], temperature_2m_min: [18], temperature_2m_max: [27], precipitation_probability_max: [5] } } }) },
+      now: new Date('2026-07-09T02:30:00.000Z')
+    });
+    const rendered = renderDailySummary(preview);
+
+    for (const output of [rendered.html, rendered.text]) {
+      expect(output.indexOf('Weather')).toBeLessThan(output.indexOf('Commute'));
+      expect(output.indexOf('Commute')).toBeLessThan(output.indexOf('Demo Calendar'));
+      expect(output.indexOf('Demo Calendar')).toBeLessThan(output.indexOf('Todo Tasks'));
+      expect(output).toContain('Office: 24 minutes');
+    }
+  });
+
   test.each([
     ['disabled section', { sections: { ...configuration.sections, commute: false } }, ['wednesday']],
     ['non-Commute Day', {}, ['thursday']],
