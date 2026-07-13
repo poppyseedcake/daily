@@ -79,7 +79,7 @@ export const buildDailySummaryInput = async ({
     configuration,
     sections: {
       weather,
-      commute: commuteGeneration.state,
+      commute: commuteGeneration.sectionState,
       calendar: calendarGeneration.sectionState,
       todo: {
         status: 'available',
@@ -88,7 +88,7 @@ export const buildDailySummaryInput = async ({
       }
     },
     calendarSection: calendarGeneration.calendarSection,
-    commuteSection: commuteGeneration.section,
+    commuteSection: commuteGeneration.commuteSection,
     todoSection: buildTodoSection(todoCategories, todoTasks)
   };
 };
@@ -104,8 +104,8 @@ const buildCommuteGenerationResult = async ({ configuration, routes, days, provi
   provider: Pick<GoogleMapsRequestGateway, 'estimateCommute'> | undefined;
   now: Date;
 }): Promise<{
-  section: DailySummaryInput['commuteSection'];
-  state: DailySummaryInput['sections']['commute'];
+  commuteSection: DailySummaryInput['commuteSection'];
+  sectionState: DailySummaryInput['sections']['commute'];
 }> => {
   const localDay = commuteDayByIsoDay[
     Temporal.Instant.fromEpochMilliseconds(now.getTime())
@@ -114,11 +114,20 @@ const buildCommuteGenerationResult = async ({ configuration, routes, days, provi
   const enabledRoutes = routes.filter((route) => route.enabled);
 
   if (!configuration.sections.commute || !days.includes(localDay) || enabledRoutes.length === 0) {
-    return { section: null, state: { status: 'available', label: 'Commute', detail: '' } };
+    return { commuteSection: null, sectionState: { status: 'available', label: 'Commute', detail: '' } };
   }
 
+  const unavailable = () => ({
+    commuteSection: null,
+    sectionState: {
+      status: 'unavailable' as const,
+      label: 'Commute',
+      reason: 'Live Commute is unavailable right now.'
+    }
+  });
+
   if (!provider) {
-    return { section: null, state: { status: 'unavailable', label: 'Commute', reason: 'Live Commute is unavailable right now.' } };
+    return unavailable();
   }
 
   try {
@@ -128,21 +137,21 @@ const buildCommuteGenerationResult = async ({ configuration, routes, days, provi
     })));
 
     if (results.some(({ result }) => result.outcome === 'unavailable')) {
-      return { section: null, state: { status: 'unavailable', label: 'Commute', reason: 'Live Commute is unavailable right now.' } };
+      return unavailable();
     }
 
     return {
-      section: {
+      commuteSection: {
         label: 'Commute',
         estimates: results.map(({ route, result }) => ({
           routeName: route.name,
           durationMinutes: result.outcome === 'available' ? Math.round(result.estimate.durationMinutes) : 0
         }))
       },
-      state: { status: 'available', label: 'Commute', detail: '' }
+      sectionState: { status: 'available', label: 'Commute', detail: '' }
     };
   } catch {
-    return { section: null, state: { status: 'unavailable', label: 'Commute', reason: 'Live Commute is unavailable right now.' } };
+    return unavailable();
   }
 };
 

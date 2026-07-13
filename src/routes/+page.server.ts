@@ -68,6 +68,14 @@ type CalendarGenerationContext = {
   readiness: ReturnType<typeof calendarReadinessForUserConnection>;
 };
 
+const commuteEstimateProviderFor = (authState: ReturnType<typeof authStateFromSession>) => {
+  try {
+    return googleMapsOperations.requestGateway(authState);
+  } catch {
+    return undefined;
+  }
+};
+
 const loadCalendarGenerationContext = async (
   userId: string,
   connection: CalendarConnection
@@ -278,9 +286,7 @@ export const load = async ({ request }) => {
               weatherLocation,
               commuteRoutes: commuteSetup?.routes ?? [],
               commuteDays: commuteSetup?.days ?? [],
-              commuteEstimateProvider: (() => {
-                try { return googleMapsOperations.requestGateway(authState); } catch { return undefined; }
-              })(),
+              commuteEstimateProvider: commuteEstimateProviderFor(authState),
               calendarReadiness,
               selectedCalendars,
               calendarEventProvider: calendarGenerationContext?.accessToken
@@ -370,9 +376,7 @@ export const actions = {
         weatherLocation,
         commuteRoutes: commuteSetup.routes,
         commuteDays: commuteSetup.days,
-        commuteEstimateProvider: (() => {
-          try { return googleMapsOperations.requestGateway(authState); } catch { return undefined; }
-        })(),
+        commuteEstimateProvider: commuteEstimateProviderFor(authState),
         calendarReadiness: calendarGenerationContext.readiness,
         selectedCalendars: calendarGenerationContext.selectedCalendars,
         calendarEventProvider: calendarGenerationContext.accessToken
