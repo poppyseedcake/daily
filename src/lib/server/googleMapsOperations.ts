@@ -2,7 +2,8 @@ import { env } from '$env/dynamic/private';
 import { db } from '$lib/server/db';
 import {
   createGoogleMapsUsageGate,
-  readGoogleMapsUsageCaps
+  readGoogleMapsUsageCaps,
+  setGoogleMapsAdminKillSwitch
 } from '$lib/server/db/googleMapsUsageGate';
 import { isGoogleMapsEnvironmentKillSwitchEnabled } from '$lib/server/googleMapsRequestGateway';
 
@@ -21,5 +22,5 @@ export const googleMapsOperations = {
     usageGate().currentOperations(
       isGoogleMapsEnvironmentKillSwitchEnabled(env.GOOGLE_MAPS_KILL_SWITCH)
     ),
-  setAdminKillSwitch: (enabled: boolean) => usageGate().setAdminKillSwitch(enabled)
+  setAdminKillSwitch: async (enabled: boolean) => setGoogleMapsAdminKillSwitch(db, enabled)
 };

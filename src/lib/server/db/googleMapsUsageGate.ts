@@ -89,6 +89,20 @@ export const readGoogleMapsUsageCaps = (
   return { dailyCap, monthlyCap, perPersonDailyLimit };
 };
 
+export const setGoogleMapsAdminKillSwitch = (
+  database: GoogleMapsDatabase,
+  enabled: boolean
+): void => {
+  database
+    .insert(googleMapsControl)
+    .values({ controlKey: 'admin-kill-switch', enabled })
+    .onConflictDoUpdate({
+      target: googleMapsControl.controlKey,
+      set: { enabled }
+    })
+    .run();
+};
+
 export const createGoogleMapsUsageGate = ({
   database,
   dailyCap,
@@ -290,14 +304,7 @@ export const createGoogleMapsUsageGate = ({
       };
     },
     async setAdminKillSwitch(enabled) {
-      database
-        .insert(googleMapsControl)
-        .values({ controlKey: 'admin-kill-switch', enabled })
-        .onConflictDoUpdate({
-          target: googleMapsControl.controlKey,
-          set: { enabled }
-        })
-        .run();
+      setGoogleMapsAdminKillSwitch(database, enabled);
     }
   };
 };
