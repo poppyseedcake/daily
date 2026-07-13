@@ -36,6 +36,16 @@ const validLocalSetup = () => ({
       todo: true
     }
   },
+  commuteRoutes: [
+    {
+      id: 'visitor-route-1',
+      name: 'Morning commute',
+      origin: { label: 'Home', latitude: 52.2297, longitude: 21.0122 },
+      destination: { label: 'Office', latitude: 52.2318, longitude: 21.0067 },
+      enabled: false
+    }
+  ],
+  commuteDays: ['monday', 'wednesday', 'sunday'],
   todoCategories: [
     {
       id: 'visitor-category-work',
@@ -86,10 +96,12 @@ describe('Local Setup import route', () => {
     importVisitorLocalSetupForUser.mockResolvedValue({ outcome: 'imported' });
 
     const response = await putLocalSetup(validLocalSetup());
+    const responseBody = await response.clone().text();
 
     await expect(response.json()).resolves.toEqual({ outcome: 'imported' });
     expect(response.status).toBe(200);
     expect(importVisitorLocalSetupForUser).toHaveBeenCalledWith('user-1', validLocalSetup());
+    expect(responseBody).not.toContain('Home');
   });
 
   test('does not import when the request is not a signed-in User', async () => {
