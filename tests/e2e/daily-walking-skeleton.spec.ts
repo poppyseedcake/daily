@@ -138,7 +138,7 @@ test('Visitor configures Daily Summary state from the main panel', async ({ page
   await expect(page.getByText('Dark preview')).toBeVisible();
   await expect(page.getByText('Mock Weather')).not.toBeVisible();
   await expect(page.getByText('Todo source is not connected yet.')).not.toBeVisible();
-  await expect(page.getByText('Mock Commute')).toBeVisible();
+  await expect(page.getByText('Mock Commute')).toHaveCount(0);
   await expect(page.getByText('Demo Calendar - sample Calendar Events for the Week Ahead.')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Preview Daily Summary' })).toBeDisabled();
 });
@@ -284,6 +284,35 @@ test('Visitor manages ordered Commute Routes and Commute Days in browser-local s
   await expect(page.getByLabel('Sunday Commute Day')).toBeChecked();
   expect(pointSelections).toContainEqual({ latitude: 50, longitude: 19 });
   expect(pointSelections).toContainEqual({ latitude: 51, longitude: 20 });
+});
+
+test('Visitor preview renders eligible Commute estimates and local unavailable behavior without live Google calls', async ({ page }) => {
+  let estimateOutcome: 'available' | 'unavailable' = 'available';
+  let estimateRequests = 0;
+  await page.route('/commute-point-selection', async (route) => {
+    const point = route.request().postDataJSON() as { latitude: number; longitude: number };
+    await route.fulfill({ json: { outcome: 'available', point: { label: 'Selected point', ...point } } });
+  });
+  await page.route('/commute-estimate', async (route) => {
+    estimateRequests += 1;
+    await route.fulfill({ json: estimateOutcome === 'available'
+      ? { outcome: 'available', estimate: { durationMinutes: 24 } }
+      : { outcome: 'unavailable', reason: 'global-daily-cap' } });
+  });
+  await page.goto('/');
+  await page.getByLabel('Route Name').fill('Office route');
+  await page.getByRole('button', { name: 'Select' }).first().click();
+  await page.getByRole('button', { name: 'Select' }).nth(1).click();
+  await page.getByRole('button', { name: 'Add Commute Route' }).click();
+
+  await expect(page.getByText('Office route: 24 minutes')).toBeVisible();
+  expect(estimateRequests).toBeGreaterThan(0);
+
+  estimateOutcome = 'unavailable';
+  await page.getByRole('button', { name: 'Disable Office route' }).click();
+  await page.getByRole('button', { name: 'Enable Office route' }).click();
+  await expect(page.getByText('Live Commute is unavailable right now.')).toBeVisible();
+  await expect(page.getByText('Demo Calendar - sample Calendar Events for the Week Ahead.')).toBeVisible();
 });
 
 test('Visitor sees unavailable Weather Location search reason when geocoding fails', async ({ page }) => {

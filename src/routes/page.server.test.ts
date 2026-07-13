@@ -887,7 +887,7 @@ describe('Daily page server load', () => {
     );
     expect(sentMessages[0]).toEqual(
       expect.objectContaining({
-        text: expect.stringContaining('Mock Commute')
+        text: expect.not.stringContaining('Commute')
       })
     );
     expect(sentMessages[0]).toEqual(

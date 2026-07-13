@@ -3,6 +3,7 @@ import { buildDailySummaryInput } from './dailySummaryPreview';
 import { renderDailySummary } from './dailySummaryRenderer';
 import type { SummaryConfiguration } from './summaryConfiguration';
 import type { TodoCategory, TodoTask } from './todo';
+import type { CommuteRoute } from './commuteRoute';
 
 const configuration: SummaryConfiguration = {
   summaryTime: '18:45',
@@ -38,6 +39,72 @@ const todoTasks: TodoTask[] = [
 ];
 
 describe('Daily Summary preview input', () => {
+  test('fetches and renders one live estimate for every enabled route on the local Commute Day', async () => {
+    const routes: CommuteRoute[] = [
+      { id: 'office', name: 'Office', enabled: true, origin: { label: 'Home', latitude: 40.1, longitude: -73.9 }, destination: { label: 'Office', latitude: 40.7, longitude: -74 } },
+      { id: 'gym', name: 'Gym', enabled: false, origin: { label: 'Home', latitude: 40.1, longitude: -73.9 }, destination: { label: 'Gym', latitude: 40.5, longitude: -73.8 } },
+      { id: 'school', name: 'School run', enabled: true, origin: { label: 'Home', latitude: 40.1, longitude: -73.9 }, destination: { label: 'School', latitude: 40.6, longitude: -73.7 } }
+    ];
+    const commuteEstimateProvider = {
+      estimateCommute: vi.fn()
+        .mockResolvedValueOnce({ outcome: 'available', estimate: { durationMinutes: 24 } } as const)
+        .mockResolvedValueOnce({ outcome: 'available', estimate: { durationMinutes: 11 } } as const)
+    };
+
+    const preview = await buildDailySummaryInput({
+      configuration,
+      todoCategories,
+      todoTasks,
+      commuteRoutes: routes,
+      commuteDays: ['wednesday'],
+      commuteEstimateProvider,
+      now: new Date('2026-07-09T02:30:00.000Z')
+    });
+    const rendered = renderDailySummary(preview);
+
+    expect(commuteEstimateProvider.estimateCommute).toHaveBeenCalledTimes(2);
+    expect(rendered.text).toContain('Commute\nOffice: 24 minutes\nSchool run: 11 minutes');
+    expect(rendered.html).toContain('Office: 24 minutes');
+    expect(rendered.html).toContain('School run: 11 minutes');
+    expect(rendered.text).not.toContain('Gym');
+  });
+
+  test.each([
+    ['disabled section', { sections: { ...configuration.sections, commute: false } }, ['wednesday']],
+    ['non-Commute Day', {}, ['thursday']],
+    ['empty weekday selection', {}, []]
+  ] as const)('omits Commute without estimate requests for %s', async (_case, configurationPatch, commuteDays) => {
+    const commuteEstimateProvider = { estimateCommute: vi.fn() };
+    const preview = await buildDailySummaryInput({
+      configuration: { ...configuration, ...configurationPatch },
+      todoCategories,
+      todoTasks,
+      commuteRoutes: [{ id: 'office', name: 'Office', enabled: true, origin: { label: 'Home', latitude: 40.1, longitude: -73.9 }, destination: { label: 'Office', latitude: 40.7, longitude: -74 } }],
+      commuteDays,
+      commuteEstimateProvider,
+      now: new Date('2026-07-09T02:30:00.000Z')
+    });
+
+    expect(commuteEstimateProvider.estimateCommute).not.toHaveBeenCalled();
+    expect(renderDailySummary(preview).text).not.toContain('Commute');
+  });
+
+  test('keeps a protected estimate suspension local to the Commute Section', async () => {
+    const preview = await buildDailySummaryInput({
+      configuration,
+      todoCategories,
+      todoTasks,
+      commuteRoutes: [{ id: 'office', name: 'Office', enabled: true, origin: { label: 'Home', latitude: 40.1, longitude: -73.9 }, destination: { label: 'Office', latitude: 40.7, longitude: -74 } }],
+      commuteDays: ['wednesday'],
+      commuteEstimateProvider: { estimateCommute: vi.fn().mockResolvedValue({ outcome: 'unavailable', reason: 'global-daily-cap' }) },
+      now: new Date('2026-07-09T02:30:00.000Z')
+    });
+    const rendered = renderDailySummary(preview);
+
+    expect(rendered.text).toContain('Commute\nLive Commute is unavailable right now.');
+    expect(rendered.text).toContain('Demo Calendar');
+    expect(rendered.text).toContain('Todo Tasks');
+  });
   test('renders Visitor setup with Demo Calendar through the Daily Summary input shape', async () => {
     const visitorPreview = await buildDailySummaryInput({
       configuration,
@@ -46,7 +113,7 @@ describe('Daily Summary preview input', () => {
     });
 
     expect(renderDailySummary(visitorPreview).text).toContain('Choose a Weather Location to preview live weather.');
-    expect(renderDailySummary(visitorPreview).text).toContain('Mock Commute');
+    expect(renderDailySummary(visitorPreview).text).not.toContain('Commute');
     expect(renderDailySummary(visitorPreview).text).toContain('Demo Calendar');
     expect(renderDailySummary(visitorPreview).text).toContain('Buy coffee !');
     expect(renderDailySummary(visitorPreview).text).toContain('Work\nDraft update !');
@@ -237,7 +304,7 @@ describe('Daily Summary preview input', () => {
     const rendered = renderDailySummary(preview);
 
     expect(rendered.text).toContain('Calendar\nLive Calendar is unavailable right now.');
-    expect(rendered.text).toContain('Mock Commute');
+    expect(rendered.text).not.toContain('Commute');
     expect(rendered.text).toContain('Buy coffee !');
     expect(rendered.text).not.toContain('Private planning title');
     expect(warn).toHaveBeenCalledWith(
@@ -277,7 +344,7 @@ describe('Daily Summary preview input', () => {
     expect(rendered.text).toContain(
       'Calendar\nReconnect Google Calendar to include Calendar Events.'
     );
-    expect(rendered.text).toContain('Mock Commute');
+    expect(rendered.text).not.toContain('Commute');
     expect(rendered.text).toContain('Buy coffee !');
   });
 
@@ -418,7 +485,7 @@ describe('Daily Summary preview input', () => {
     const rendered = renderDailySummary(preview);
 
     expect(rendered.text).toContain('Weather\nLive weather is unavailable right now.');
-    expect(rendered.text).toContain('Mock Commute');
+    expect(rendered.text).not.toContain('Commute');
     expect(rendered.text).toContain('Demo Calendar');
     expect(rendered.text).toContain('Buy coffee !');
   });
@@ -437,7 +504,7 @@ describe('Daily Summary preview input', () => {
       nextTodoId: 3
     };
 
-    expect(preview.sections.commute).toMatchObject({ label: 'Mock Commute' });
+    expect(preview.sections.commute).toMatchObject({ label: 'Commute' });
     expect(preview.sections.calendar).toMatchObject({ label: 'Demo Calendar' });
     expect(persistedUserSetup).not.toHaveProperty('weather');
     expect(persistedUserSetup).not.toHaveProperty('commute');

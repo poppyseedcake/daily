@@ -1142,7 +1142,19 @@
       configuration: previewConfiguration,
       todoCategories,
       todoTasks,
-      weatherLocation
+      weatherLocation,
+      commuteRoutes,
+      commuteDays,
+      commuteEstimateProvider: {
+        async estimateCommute(request) {
+          const response = await fetch('/commute-estimate', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify(request)
+          });
+          return response.json();
+        }
+      }
     }).then((previewInput) => {
       if (renderVersion === previewRenderVersion) {
         renderedSummaryHtml = renderDailySummary(previewInput).html;
