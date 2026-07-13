@@ -12,7 +12,8 @@ export const users = sqliteTable(
       .default(sql`CURRENT_TIMESTAMP`),
     updatedAt: text('updated_at')
       .notNull()
-      .default(sql`CURRENT_TIMESTAMP`)
+      .default(sql`CURRENT_TIMESTAMP`),
+    nextSummaryAt: text('next_summary_at')
   },
   (table) => ({
     googleSubjectIdx: uniqueIndex('users_google_subject_idx').on(table.googleSubject),

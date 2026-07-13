@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import Database from 'better-sqlite3';
 import { drizzle } from 'drizzle-orm/better-sqlite3';
+import { Temporal } from '@js-temporal/polyfill';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import type { UserSetupImportDraft } from '$lib/localSetup';
 import * as schema from './schema';
@@ -14,6 +15,7 @@ const createTestDatabase = () => {
   sqlite.exec(readFileSync('drizzle/0000_bootstrap_daily.sql', 'utf8'));
   sqlite.exec(readFileSync('drizzle/0003_add_weather_locations.sql', 'utf8'));
   sqlite.exec(readFileSync('drizzle/0010_add_commute_setup.sql', 'utf8'));
+  sqlite.exec(readFileSync('drizzle/0011_add_next_summary_at.sql', 'utf8'));
 
   return {
     sqlite,
@@ -122,7 +124,7 @@ describe('SQLite User Setup import store', () => {
 
     await expect(store.hasExistingUserSetup('user-1')).resolves.toBe(false);
     await store.transaction((transaction) => {
-      transaction.saveSummaryConfiguration(draft.summaryConfiguration);
+      transaction.saveSummaryConfiguration(draft.summaryConfiguration, null);
       transaction.saveTodoCategories(draft.todoCategories);
       transaction.saveTodoTasks(draft.todoTasks);
       transaction.saveWeatherLocation(draft.weatherLocation);
@@ -177,6 +179,23 @@ describe('SQLite User Setup import store', () => {
       { day: 'sunday' },
       { day: 'wednesday' }
     ]);
+  });
+
+  test('saves an imported eligible configuration with its schedule in the same transaction', async () => {
+    const store = createUserSetupImportStore(database);
+    const draft = validDraft();
+    draft.summaryConfiguration.summaryDeliveryEnabled = true;
+
+    await persistUserSetupImportDraftForNewUser(
+      store,
+      'user-1',
+      draft,
+      Temporal.Instant.from('2026-06-22T16:45:00Z')
+    );
+
+    expect(sqlite.prepare('select next_summary_at from users where id = ?').get('user-1')).toEqual({
+      next_summary_at: '2026-06-23T16:45:00Z'
+    });
   });
 
   test('treats an existing Weather Location as existing User setup', async () => {

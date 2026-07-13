@@ -1,4 +1,5 @@
 import { json } from '@sveltejs/kit';
+import { Temporal } from '@js-temporal/polyfill';
 import { auth } from '$lib/server/auth';
 import { userSummaryConfigurationStore } from '$lib/server/db/summaryConfigurationStore';
 import { authStateFromSession } from '$lib/server/pageAuthState';
@@ -22,7 +23,12 @@ export const PUT = async ({ request }) => {
     return json({ outcome: 'invalid-configuration' }, { status: 400 });
   }
 
-  const result = await saveUserSummaryConfiguration(userSummaryConfigurationStore, authState.userId, payload);
+  const result = await saveUserSummaryConfiguration(
+    userSummaryConfigurationStore,
+    authState.userId,
+    payload,
+    Temporal.Now.instant()
+  );
 
   if (result.outcome === 'invalid-configuration') {
     return json(result, { status: 400 });
