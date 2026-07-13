@@ -1,4 +1,4 @@
-import { and, eq, sql, sum } from 'drizzle-orm';
+import { and, eq, lt, sql, sum } from 'drizzle-orm';
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import type {
   GoogleMapsAdmission,
@@ -10,6 +10,7 @@ import * as schema from './schema';
 
 type GoogleMapsDatabase = BetterSQLite3Database<typeof schema>;
 const { googleMapsCapAlerts, googleMapsControl, googleMapsPersonUsage, googleMapsUsage } = schema;
+const capAlertLeaseDurationMs = 5 * 60 * 1000;
 
 export type GoogleMapsCapAlert = {
   capType: 'daily' | 'monthly';
@@ -220,8 +221,12 @@ export const createGoogleMapsUsageGate = ({
     capType: 'daily' | 'monthly',
     periodStartUtc: string,
     claimedAt: string
-  ) =>
-    source
+  ) => {
+    const alertRecord = and(
+      eq(googleMapsCapAlerts.capType, capType),
+      eq(googleMapsCapAlerts.periodStartUtc, periodStartUtc)
+    );
+    const inserted = source
       .insert(googleMapsCapAlerts)
       .values({
         capType,
@@ -231,6 +236,26 @@ export const createGoogleMapsUsageGate = ({
       })
       .onConflictDoNothing()
       .run().changes === 1;
+
+    if (inserted) return true;
+
+    const leaseExpiredAt = new Date(
+      new Date(claimedAt).getTime() - capAlertLeaseDurationMs
+    ).toISOString();
+    return (
+      source
+        .update(googleMapsCapAlerts)
+        .set({ claimedAt })
+        .where(
+          and(
+            alertRecord,
+            eq(googleMapsCapAlerts.deliveryStatus, 'pending'),
+            lt(googleMapsCapAlerts.claimedAt, leaseExpiredAt)
+          )
+        )
+        .run().changes === 1
+    );
+  };
 
   const capAlert = (
     source: GoogleMapsDatabase,
@@ -363,54 +388,56 @@ export const createGoogleMapsUsageGate = ({
     };
   };
 
+  const deliverAlerts = async (alerts: GoogleMapsCapAlert[], attemptedAt: Date) => {
+    for (const alert of alerts) {
+      const periodStart =
+        alert.capType === 'daily' ? alert.daily.periodStart : alert.monthly.periodStart;
+      const alertRecord = and(
+        eq(googleMapsCapAlerts.capType, alert.capType),
+        eq(googleMapsCapAlerts.periodStartUtc, periodStart)
+      );
+
+      try {
+        await capAlertDelivery.send(alert);
+        database
+          .update(googleMapsCapAlerts)
+          .set({ deliveryStatus: 'delivered', completedAt: attemptedAt.toISOString() })
+          .where(alertRecord)
+          .run();
+      } catch {
+        try {
+          database
+            .update(googleMapsCapAlerts)
+            .set({
+              deliveryStatus: 'failed',
+              completedAt: attemptedAt.toISOString(),
+              failureCode: 'delivery-failed'
+            })
+            .where(alertRecord)
+            .run();
+        } catch {
+          // The durable claim still prevents a duplicate alert attempt.
+        }
+
+        try {
+          capAlertDiagnostics({
+            capType: alert.capType,
+            periodStart,
+            outcome: 'failed',
+            failureCode: 'delivery-failed'
+          });
+        } catch {
+          // Diagnostics must not change the protected request outcome.
+        }
+      }
+    }
+  };
+
   return {
     async admit(category, attribution) {
       const attemptedAt = now();
       const result = admit(category, attribution, utcPeriodsFor(attemptedAt), attemptedAt.toISOString());
-
-      for (const alert of result.alerts) {
-        const periodStart =
-          alert.capType === 'daily' ? alert.daily.periodStart : alert.monthly.periodStart;
-        const alertRecord = and(
-          eq(googleMapsCapAlerts.capType, alert.capType),
-          eq(googleMapsCapAlerts.periodStartUtc, periodStart)
-        );
-
-        try {
-          await capAlertDelivery.send(alert);
-          database
-            .update(googleMapsCapAlerts)
-            .set({ deliveryStatus: 'delivered', completedAt: attemptedAt.toISOString() })
-            .where(alertRecord)
-            .run();
-        } catch {
-          try {
-            database
-              .update(googleMapsCapAlerts)
-              .set({
-                deliveryStatus: 'failed',
-                completedAt: attemptedAt.toISOString(),
-                failureCode: 'delivery-failed'
-              })
-              .where(alertRecord)
-              .run();
-          } catch {
-            // The durable claim still prevents a duplicate alert attempt.
-          }
-
-          try {
-            capAlertDiagnostics({
-              capType: alert.capType,
-              periodStart,
-              outcome: 'failed',
-              failureCode: 'delivery-failed'
-            });
-          } catch {
-            // Diagnostics must not change the protected request outcome.
-          }
-        }
-      }
-
+      void Promise.resolve().then(() => deliverAlerts(result.alerts, attemptedAt));
       return result.admission;
     },
     async currentUsage() {

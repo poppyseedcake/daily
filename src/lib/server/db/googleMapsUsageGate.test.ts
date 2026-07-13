@@ -22,6 +22,7 @@ const drizzleDatabase = (database: Database.Database) => drizzle(database, { sch
 const databases: Database.Database[] = [];
 const temporaryDirectories: string[] = [];
 const noOpCapAlertDelivery = { send: async () => undefined };
+const flushAlertDeliveries = () => new Promise<void>((resolve) => setImmediate(resolve));
 const createTestGoogleMapsUsageGate = (
   options: Omit<GoogleMapsUsageGateOptions, 'capAlertDelivery'> &
     Partial<Pick<GoogleMapsUsageGateOptions, 'capAlertDelivery'>>
@@ -102,6 +103,7 @@ describe('Google Maps usage gate', () => {
       outcome: 'suspended',
       reason: 'global-daily-cap'
     });
+    await flushAlertDeliveries();
 
     expect(deliveredAlerts).toEqual([
       {
@@ -165,6 +167,7 @@ describe('Google Maps usage gate', () => {
       outcome: 'suspended',
       reason: 'global-monthly-cap'
     });
+    await flushAlertDeliveries();
 
     expect(deliveredAlerts.map(({ capType }) => capType)).toEqual(['monthly']);
   });
@@ -219,6 +222,77 @@ describe('Google Maps usage gate', () => {
     expect(JSON.stringify(diagnostics)).not.toContain('private alert provider failure');
   });
 
+  test('reclaims an expired pending alert after a restart', async () => {
+    const path = createDatabasePath();
+    const firstDatabase = createDatabase(path);
+    firstDatabase.exec(`
+      INSERT INTO google_maps_usage VALUES ('day', '2026-07-12', 'commute-estimate', 1);
+      INSERT INTO google_maps_usage VALUES ('month', '2026-07', 'commute-estimate', 1);
+      INSERT INTO google_maps_cap_alerts VALUES (
+        'daily', '2026-07-12', 'pending', '2026-07-12T11:54:00.000Z', NULL, NULL
+      );
+    `);
+    firstDatabase.close();
+    databases.splice(databases.indexOf(firstDatabase), 1);
+
+    const deliveredCapTypes: string[] = [];
+    const restartedDatabase = createDatabase(path, false);
+    const restartedGate = createTestGoogleMapsUsageGate({
+      database: drizzleDatabase(restartedDatabase),
+      dailyCap: 1,
+      monthlyCap: 10,
+      perPersonDailyLimit: 100,
+      now: () => new Date('2026-07-12T12:00:00.000Z'),
+      capAlertDelivery: {
+        async send(alert) {
+          deliveredCapTypes.push(alert.capType);
+        }
+      }
+    });
+
+    await expect(restartedGate.admit('map-point-selection', person)).resolves.toEqual({
+      outcome: 'suspended',
+      reason: 'global-daily-cap'
+    });
+    await flushAlertDeliveries();
+
+    expect(deliveredCapTypes).toEqual(['daily']);
+    expect(
+      restartedDatabase
+        .prepare(
+          "SELECT delivery_status FROM google_maps_cap_alerts WHERE cap_type = 'daily' AND period_start_utc = '2026-07-12'"
+        )
+        .get()
+    ).toEqual({ delivery_status: 'delivered' });
+  });
+
+  test('returns the admission result without waiting for a slow cap alert provider', async () => {
+    let beginDelivery: (() => void) | undefined;
+    let deliveryStarted = false;
+    const gate = createTestGoogleMapsUsageGate({
+      database: drizzleDatabase(createDatabase()),
+      dailyCap: 1,
+      monthlyCap: 10,
+      perPersonDailyLimit: 100,
+      now: () => new Date('2026-07-12T12:00:00.000Z'),
+      capAlertDelivery: {
+        send() {
+          deliveryStarted = true;
+          return new Promise<void>((resolve) => {
+            beginDelivery = resolve;
+          });
+        }
+      }
+    });
+
+    await expect(gate.admit('commute-estimate', person)).resolves.toEqual({ outcome: 'admitted' });
+    expect(deliveryStarted).toBe(true);
+
+    expect(beginDelivery).toBeTypeOf('function');
+    beginDelivery!();
+    await flushAlertDeliveries();
+  });
+
   test('claims both cap alerts when persisted usage already reaches reconfigured caps', async () => {
     const deliveredCapTypes: string[] = [];
     const database = createDatabase();
@@ -248,6 +322,7 @@ describe('Google Maps usage gate', () => {
       outcome: 'suspended',
       reason: 'global-daily-cap'
     });
+    await flushAlertDeliveries();
     expect(deliveredCapTypes).toEqual(['daily', 'monthly']);
   });
 
@@ -274,6 +349,7 @@ describe('Google Maps usage gate', () => {
     await expect(gate.admit('commute-estimate', person)).resolves.toEqual({ outcome: 'admitted' });
     currentTime = new Date('2026-08-01T00:00:00.000Z');
     await expect(gate.admit('map-point-selection', person)).resolves.toEqual({ outcome: 'admitted' });
+    await flushAlertDeliveries();
 
     expect(deliveredPeriods).toEqual([
       'daily:2026-07-31',
@@ -505,6 +581,7 @@ describe('Google Maps usage gate', () => {
     );
 
     expect(outcomes.map(({ outcome }) => outcome).sort()).toEqual(['admitted', 'suspended']);
+    await flushAlertDeliveries();
     expect(deliveredAlerts).toBe(1);
   });
 
