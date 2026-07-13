@@ -5,7 +5,7 @@ import type { UserSetupImportPersistenceStore } from './userSetupImportPersisten
 
 type SetupImportDatabase = typeof db;
 
-const hasExistingUserSetup = (database: Pick<SetupImportDatabase, 'select'>, userId: string) =>
+const hasExistingNonCommuteUserSetup = (database: Pick<SetupImportDatabase, 'select'>, userId: string) =>
   Boolean(
     database
       .select({ id: summaryConfigurations.id })
@@ -26,12 +26,16 @@ const hasExistingUserSetup = (database: Pick<SetupImportDatabase, 'select'>, use
         .select({ id: weatherLocations.id })
         .from(weatherLocations)
         .where(eq(weatherLocations.userId, userId))
-        .get() ||
-      database
-        .select({ id: commuteRoutes.id })
-        .from(commuteRoutes)
-        .where(eq(commuteRoutes.userId, userId))
-        .get() ||
+        .get()
+  );
+
+const hasExistingCommuteSetup = (database: Pick<SetupImportDatabase, 'select'>, userId: string) =>
+  Boolean(
+    database
+      .select({ id: commuteRoutes.id })
+      .from(commuteRoutes)
+      .where(eq(commuteRoutes.userId, userId))
+      .get() ||
       database
         .select({ userId: commuteDays.userId })
         .from(commuteDays)
@@ -43,13 +47,16 @@ export const createUserSetupImportStore = (
   database: SetupImportDatabase
 ): UserSetupImportPersistenceStore => ({
   async hasExistingUserSetup(userId) {
-    return hasExistingUserSetup(database, userId);
+    return hasExistingNonCommuteUserSetup(database, userId);
   },
   async transaction(work) {
     return database.transaction((transaction) =>
       work({
         hasExistingUserSetup(userId) {
-          return hasExistingUserSetup(transaction, userId);
+          return hasExistingNonCommuteUserSetup(transaction, userId);
+        },
+        hasExistingCommuteSetup(userId) {
+          return hasExistingCommuteSetup(transaction, userId);
         },
         saveSummaryConfiguration(summaryConfiguration) {
           transaction.insert(summaryConfigurations).values(summaryConfiguration).run();
@@ -75,13 +82,7 @@ export const createUserSetupImportStore = (
           }
         },
         saveCommuteDays(userId, days) {
-          const existingCommuteDays = transaction
-            .select({ userId: commuteDays.userId })
-            .from(commuteDays)
-            .where(eq(commuteDays.userId, userId))
-            .get();
-
-          if (days.length > 0 && !existingCommuteDays) {
+          if (days.length > 0) {
             transaction
               .insert(commuteDays)
               .values(days.map((day) => ({ userId, day })))
