@@ -35,9 +35,9 @@ describe('next Daily Summary schedule', () => {
 
   test('moves a spring-forward Summary Time forward and returns to it the following day', () => {
     expect(nextAt('2026-03-08T06:00:00Z', '02:30', 'America/New_York')).toBe(
-      '2026-03-08T07:30:00Z'
+      '2026-03-08T07:00:00Z'
     );
-    expect(nextAt('2026-03-08T07:30:00Z', '02:30', 'America/New_York')).toBe(
+    expect(nextAt('2026-03-08T07:00:00Z', '02:30', 'America/New_York')).toBe(
       '2026-03-09T06:30:00Z'
     );
   });

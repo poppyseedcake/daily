@@ -1,9 +1,9 @@
 import { eq } from 'drizzle-orm';
 import { db } from '$lib/server/db';
 import {
-  defaultSummaryConfiguration,
-  summaryConfigurationSchema
+  defaultSummaryConfiguration
 } from '$lib/summaryConfiguration';
+import { summaryConfigurationFromFlat } from '../summaryConfigurationPersistence';
 import type { SummaryScheduleBackfillStore } from '../nextSummaryScheduleBackfill';
 import { summaryConfigurations, users } from './schema';
 
@@ -17,18 +17,7 @@ export const nextSummaryScheduleBackfillStore: SummaryScheduleBackfillStore = {
     return rows.map(({ userId, configuration }) => ({
       userId,
       configuration: configuration
-        ? summaryConfigurationSchema.parse({
-            summaryTime: configuration.summaryTime,
-            userTimeZone: configuration.userTimeZone,
-            summaryTheme: configuration.summaryTheme,
-            summaryDeliveryEnabled: configuration.summaryDeliveryEnabled,
-            sections: {
-              weather: configuration.weatherSectionEnabled,
-              commute: configuration.commuteSectionEnabled,
-              calendar: configuration.calendarSectionEnabled,
-              todo: configuration.todoSectionEnabled
-            }
-          })
+        ? summaryConfigurationFromFlat(configuration)
         : defaultSummaryConfiguration
     }));
   },

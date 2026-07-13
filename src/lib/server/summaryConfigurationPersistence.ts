@@ -17,6 +17,33 @@ export type UserSummaryConfigurationStore = {
 
 export type UserSummaryConfigurationSaveOutcome = 'saved' | 'invalid-configuration' | 'save-failed';
 
+export type FlatSummaryConfiguration = {
+  summaryTime: string;
+  userTimeZone: string;
+  summaryTheme: string;
+  summaryDeliveryEnabled: boolean;
+  weatherSectionEnabled: boolean;
+  commuteSectionEnabled: boolean;
+  calendarSectionEnabled: boolean;
+  todoSectionEnabled: boolean;
+};
+
+export const summaryConfigurationFromFlat = (
+  configuration: FlatSummaryConfiguration
+): SummaryConfiguration =>
+  summaryConfigurationSchema.parse({
+    summaryTime: configuration.summaryTime,
+    userTimeZone: configuration.userTimeZone,
+    summaryTheme: configuration.summaryTheme,
+    summaryDeliveryEnabled: configuration.summaryDeliveryEnabled,
+    sections: {
+      weather: configuration.weatherSectionEnabled,
+      commute: configuration.commuteSectionEnabled,
+      calendar: configuration.calendarSectionEnabled,
+      todo: configuration.todoSectionEnabled
+    }
+  });
+
 export const loadUserSummaryConfiguration = async (
   store: UserSummaryConfigurationStore,
   userId: string

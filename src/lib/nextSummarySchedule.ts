@@ -16,11 +16,25 @@ export const calculateNextSummaryAt = (
   const localReference = referenceInstant.toZonedDateTimeISO(configuration.userTimeZone);
   let localDate = localReference.toPlainDate();
 
-  const occurrenceOn = (date: Temporal.PlainDate) =>
-    date
-      .toPlainDateTime(summaryTime)
-      .toZonedDateTime(configuration.userTimeZone, { disambiguation: 'compatible' })
-      .toInstant();
+  const occurrenceOn = (date: Temporal.PlainDate) => {
+    const requestedLocalTime = date.toPlainDateTime(summaryTime);
+    const compatibleOccurrence = requestedLocalTime.toZonedDateTime(configuration.userTimeZone, {
+      disambiguation: 'compatible'
+    });
+
+    if (!compatibleOccurrence.toPlainDateTime().equals(requestedLocalTime)) {
+      const transition = compatibleOccurrence.getTimeZoneTransition('previous');
+
+      if (
+        transition &&
+        Temporal.PlainDateTime.compare(transition.toPlainDateTime(), requestedLocalTime) > 0
+      ) {
+        return transition.toInstant();
+      }
+    }
+
+    return compatibleOccurrence.toInstant();
+  };
 
   let candidate = occurrenceOn(localDate);
 

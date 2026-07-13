@@ -19,15 +19,20 @@ const isUsersEmailUniqueConflict = (error: unknown): boolean => {
   );
 };
 
-export const dailyUserIdentityStore: DailyUserIdentityStore = {
-  async upsertGoogleUser(identity) {
+type DailyUserIdentityDatabase = typeof db;
+
+export const createDailyUserIdentityStore = (
+  database: DailyUserIdentityDatabase
+): DailyUserIdentityStore => ({
+  async upsertGoogleUser(identity, initialNextSummaryAt) {
     try {
-      await db
+      await database
         .insert(users)
         .values({
           id: identity.id,
           googleSubject: identity.googleSubject,
-          email: identity.email
+          email: identity.email,
+          nextSummaryAt: initialNextSummaryAt
         })
         .onConflictDoUpdate({
           target: users.googleSubject,
@@ -44,4 +49,6 @@ export const dailyUserIdentityStore: DailyUserIdentityStore = {
       throw error;
     }
   }
-};
+});
+
+export const dailyUserIdentityStore = createDailyUserIdentityStore(db);

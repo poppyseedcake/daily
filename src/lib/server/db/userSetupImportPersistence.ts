@@ -4,6 +4,7 @@ import { calculateNextSummaryAt } from '$lib/nextSummarySchedule';
 import type { UserSetupImportDraft } from '$lib/localSetup';
 import { summaryTimeSchema, userTimeZoneSchema } from '$lib/summaryConfiguration';
 import { commuteDaysSchema, commutePointSchema, commuteRouteNameSchema } from '$lib/commuteRoute';
+import { summaryConfigurationFromFlat } from '../summaryConfigurationPersistence';
 
 const persistedSummaryConfigurationSchema = z.object({
   id: z.string().min(1),
@@ -110,7 +111,7 @@ export const persistUserSetupImportDraftForNewUser = async (
   store: UserSetupImportPersistenceStore,
   userId: string,
   draft: UserSetupImportDraft,
-  referenceInstant: Temporal.Instant = Temporal.Now.instant()
+  referenceInstant: Temporal.Instant
 ): Promise<{ outcome: UserSetupImportPersistenceOutcome }> => {
   const result = userSetupImportDraftSchema.safeParse(draft);
 
@@ -133,18 +134,7 @@ export const persistUserSetupImportDraftForNewUser = async (
       const savedConfiguration = result.data.summaryConfiguration;
       const nextSummaryAt =
         calculateNextSummaryAt(
-          {
-            summaryTime: savedConfiguration.summaryTime,
-            userTimeZone: savedConfiguration.userTimeZone,
-            summaryTheme: savedConfiguration.summaryTheme,
-            summaryDeliveryEnabled: savedConfiguration.summaryDeliveryEnabled,
-            sections: {
-              weather: savedConfiguration.weatherSectionEnabled,
-              commute: savedConfiguration.commuteSectionEnabled,
-              calendar: savedConfiguration.calendarSectionEnabled,
-              todo: savedConfiguration.todoSectionEnabled
-            }
-          },
+          summaryConfigurationFromFlat(savedConfiguration),
           referenceInstant
         )?.toString() ?? null;
 

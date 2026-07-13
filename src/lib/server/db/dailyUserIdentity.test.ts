@@ -1,3 +1,4 @@
+import { Temporal } from '@js-temporal/polyfill';
 import { describe, expect, test } from 'vitest';
 import {
   DailyUserIdentityEmailConflictError,
@@ -12,16 +13,21 @@ const validIdentity = (): DailyUserIdentity => ({
   email: 'user@example.com'
 });
 
+const referenceInstant = Temporal.Instant.from('2026-06-22T07:00:00Z');
+
 const createStore = ({ fail = false }: { fail?: boolean } = {}): DailyUserIdentityStore & {
   saved: DailyUserIdentity[];
+  initialSchedules: string[];
 } => ({
   saved: [],
-  async upsertGoogleUser(identity) {
+  initialSchedules: [],
+  async upsertGoogleUser(identity, initialNextSummaryAt) {
     if (fail) {
       throw new Error('store failed');
     }
 
     this.saved.push(identity);
+    this.initialSchedules.push(initialNextSummaryAt);
   }
 });
 
@@ -30,17 +36,18 @@ describe('Daily User identity persistence', () => {
     const store = createStore();
     const identity = validIdentity();
 
-    const result = await persistDailyUserIdentity(store, identity);
+    const result = await persistDailyUserIdentity(store, identity, referenceInstant);
 
     expect(result.outcome).toBe('stored');
     expect(store.saved).toEqual([identity]);
+    expect(store.initialSchedules).toEqual(['2026-06-23T07:00:00Z']);
   });
 
   test('rejects incomplete Google identity data before writing', async () => {
     const store = createStore();
     const identity = { ...validIdentity(), googleSubject: '' };
 
-    const result = await persistDailyUserIdentity(store, identity);
+    const result = await persistDailyUserIdentity(store, identity, referenceInstant);
 
     expect(result.outcome).toBe('invalid-identity');
     expect(store.saved).toEqual([]);
@@ -49,7 +56,7 @@ describe('Daily User identity persistence', () => {
   test('reports persistence failures without leaking the store error', async () => {
     const store = createStore({ fail: true });
 
-    const result = await persistDailyUserIdentity(store, validIdentity());
+    const result = await persistDailyUserIdentity(store, validIdentity(), referenceInstant);
 
     expect(result.outcome).toBe('store-failed');
     expect(store.saved).toEqual([]);
@@ -63,7 +70,7 @@ describe('Daily User identity persistence', () => {
       }
     };
 
-    const result = await persistDailyUserIdentity(store, validIdentity());
+    const result = await persistDailyUserIdentity(store, validIdentity(), referenceInstant);
 
     expect(result.outcome).toBe('email-already-owned');
     expect(store.saved).toEqual([]);

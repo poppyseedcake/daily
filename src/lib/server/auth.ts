@@ -1,4 +1,5 @@
 import { betterAuth, type BetterAuthOptions } from 'better-auth';
+import { Temporal } from '@js-temporal/polyfill';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { eq } from 'drizzle-orm';
 import { building, dev } from '$app/environment';
@@ -109,11 +110,15 @@ export const authOptions = {
             throw new Error('Failed to persist Daily user identity: missing-auth-user-email');
           }
 
-          const result = await persistDailyUserIdentity(dailyUserIdentityStore, {
-            id: account.userId,
-            googleSubject: account.accountId,
-            email: user.email
-          });
+          const result = await persistDailyUserIdentity(
+            dailyUserIdentityStore,
+            {
+              id: account.userId,
+              googleSubject: account.accountId,
+              email: user.email
+            },
+            Temporal.Now.instant()
+          );
 
           requireStoredDailyUserIdentity(result.outcome);
         }

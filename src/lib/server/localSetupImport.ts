@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { Temporal } from '@js-temporal/polyfill';
 import {
   createUserSetupImportDraftFromLocalSetup,
   type LocalSetupInput,
@@ -40,5 +41,10 @@ export const importVisitorLocalSetupForUser = async (
     return { outcome: 'invalid-local-setup' };
   }
 
-  return persistUserSetupImportDraftForNewUser(userSetupImportStore, userId, draft);
+  return persistUserSetupImportDraftForNewUser(
+    userSetupImportStore,
+    userId,
+    draft,
+    Temporal.Now.instant()
+  );
 };
