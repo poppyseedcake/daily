@@ -201,9 +201,11 @@ test('Visitor Weather Location persists after page refresh', async ({ page }) =>
 });
 
 test('Visitor selects and retains a named Commute Route without changing Weather Location', async ({ page }) => {
+  const pointSelections: Array<{ latitude: number; longitude: number }> = [];
   await page.route('/commute-point-selection', async (route) => {
     const request = route.request().postDataJSON() as { latitude: number; longitude: number };
-    const origin = request.latitude === 52.2285;
+    pointSelections.push(request);
+    const origin = request.latitude === 50;
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -211,14 +213,12 @@ test('Visitor selects and retains a named Commute Route without changing Weather
         outcome: 'available',
         point: origin
           ? {
-              label: 'Warsaw Central Station, Warsaw, Poland',
-              latitude: 52.2285,
-              longitude: 21.0037
+              label: 'Origin point',
+              ...request
             }
           : {
-              label: 'Palace of Culture and Science, Warsaw, Poland',
-              latitude: 52.2318,
-              longitude: 21.0067
+              label: 'Destination point',
+              ...request
             }
       })
     });
@@ -226,21 +226,28 @@ test('Visitor selects and retains a named Commute Route without changing Weather
   await page.goto('/');
 
   await page.getByLabel('Route Name').fill('Morning commute');
+  await page.getByLabel('Origin latitude').fill('50');
+  await page.getByLabel('Origin longitude').fill('19');
+  await page.getByLabel('Destination latitude').fill('51');
+  await page.getByLabel('Destination longitude').fill('20');
   await page.getByRole('button', { name: 'Select' }).first().click();
   await page.getByRole('button', { name: 'Select' }).nth(1).click();
   await page.getByRole('button', { name: 'Save Commute Route' }).click();
 
   await expect(page.getByText('Commute Route saved in this browser only.')).toBeVisible();
   await expect(page.getByText('Saved route: Morning commute')).toBeVisible();
-  await expect(page.getByText('Warsaw Central Station, Warsaw, Poland')).toBeVisible();
-  await expect(page.getByText('Palace of Culture and Science, Warsaw, Poland')).toBeVisible();
+  await expect(page.getByText('Origin point')).toBeVisible();
+  await expect(page.getByText('Destination point')).toBeVisible();
   await expect(page.getByText('No Weather Location selected')).toBeVisible();
 
   await page.reload();
 
   await expect(page.getByText('Saved route: Morning commute')).toBeVisible();
-  await expect(page.getByText('Warsaw Central Station, Warsaw, Poland')).toBeVisible();
-  await expect(page.getByText('Palace of Culture and Science, Warsaw, Poland')).toBeVisible();
+  await expect(page.getByText('Origin point')).toBeVisible();
+  await expect(page.getByText('Destination point')).toBeVisible();
+
+  await page.getByRole('button', { name: 'Select' }).first().click();
+  expect(pointSelections.at(-1)).toEqual({ latitude: 50, longitude: 19 });
 });
 
 test('Visitor sees unavailable Weather Location search reason when geocoding fails', async ({ page }) => {
