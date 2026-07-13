@@ -165,6 +165,31 @@ describe('User Setup import persistence', () => {
     expect(store.saved.summaryConfigurations).toEqual([draft.summaryConfiguration]);
   });
 
+  test('accepts a Local Setup import draft with flat persisted commute route fields', async () => {
+    const store = createStore();
+    const draft = validDraft();
+    draft.commuteRoutes = [
+      {
+        id: 'commute-route-1',
+        userId: 'user-1',
+        name: 'Morning commute',
+        originLabel: 'Home',
+        originLatitude: 52.2297,
+        originLongitude: 21.0122,
+        destinationLabel: 'Office',
+        destinationLatitude: 52.2318,
+        destinationLongitude: 21.0067,
+        enabled: true,
+        position: 1
+      }
+    ];
+
+    const result = await persistUserSetupImportDraftForNewUser(store, 'user-1', draft);
+
+    expect(result.outcome).toBe('imported');
+    expect(store.saved.commuteRoutes).toEqual(draft.commuteRoutes);
+  });
+
   test('does not overwrite a returning User with existing saved setup', async () => {
     const store = createStore({ existingSetup: true });
 
