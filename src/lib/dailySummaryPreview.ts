@@ -19,6 +19,9 @@ import {
   openMeteoWeatherForecastProvider,
   type WeatherForecastProvider
 } from './weatherForecast';
+import { Temporal } from '@js-temporal/polyfill';
+import type { CommuteDay, CommuteRoute } from './commuteRoute';
+import type { GoogleMapsRequestGateway } from './server/googleMapsRequestGateway';
 
 export type DailySummaryGenerationSetup = {
   authMode?: CalendarReadinessAuthMode;
@@ -30,6 +33,9 @@ export type DailySummaryGenerationSetup = {
   weatherProvider?: WeatherForecastProvider;
   selectedCalendars?: SavedSelectedCalendar[];
   calendarEventProvider?: CalendarEventProvider;
+  commuteRoutes?: CommuteRoute[];
+  commuteDays?: readonly CommuteDay[];
+  commuteEstimateProvider?: Pick<GoogleMapsRequestGateway, 'estimateCommute'>;
   now?: Date;
 };
 
@@ -43,6 +49,9 @@ export const buildDailySummaryInput = async ({
   weatherProvider = openMeteoWeatherForecastProvider,
   selectedCalendars = [],
   calendarEventProvider,
+  commuteRoutes = [],
+  commuteDays = [],
+  commuteEstimateProvider,
   now = new Date()
 }: DailySummaryGenerationSetup): Promise<DailySummaryInput> => {
   const weather = await buildWeatherGenerationState({
@@ -58,16 +67,19 @@ export const buildDailySummaryInput = async ({
     calendarEventProvider,
     now
   });
+  const commuteGeneration = await buildCommuteGenerationResult({
+    configuration,
+    routes: commuteRoutes,
+    days: commuteDays,
+    provider: commuteEstimateProvider,
+    now
+  });
 
   return {
     configuration,
     sections: {
       weather,
-      commute: {
-        status: 'available',
-        label: 'Mock Commute',
-        detail: 'Mock provider data: 24 minutes by tram to the office.'
-      },
+      commute: commuteGeneration.state,
       calendar: calendarGeneration.sectionState,
       todo: {
         status: 'available',
@@ -76,8 +88,62 @@ export const buildDailySummaryInput = async ({
       }
     },
     calendarSection: calendarGeneration.calendarSection,
+    commuteSection: commuteGeneration.section,
     todoSection: buildTodoSection(todoCategories, todoTasks)
   };
+};
+
+const commuteDayByIsoDay = [
+  'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'
+] as const;
+
+const buildCommuteGenerationResult = async ({ configuration, routes, days, provider, now }: {
+  configuration: SummaryConfiguration;
+  routes: CommuteRoute[];
+  days: readonly CommuteDay[];
+  provider: Pick<GoogleMapsRequestGateway, 'estimateCommute'> | undefined;
+  now: Date;
+}): Promise<{
+  section: DailySummaryInput['commuteSection'];
+  state: DailySummaryInput['sections']['commute'];
+}> => {
+  const localDay = commuteDayByIsoDay[
+    Temporal.Instant.fromEpochMilliseconds(now.getTime())
+      .toZonedDateTimeISO(configuration.userTimeZone).dayOfWeek - 1
+  ];
+  const enabledRoutes = routes.filter((route) => route.enabled);
+
+  if (!configuration.sections.commute || !days.includes(localDay) || enabledRoutes.length === 0) {
+    return { section: null, state: { status: 'available', label: 'Commute', detail: '' } };
+  }
+
+  if (!provider) {
+    return { section: null, state: { status: 'unavailable', label: 'Commute', reason: 'Live Commute is unavailable right now.' } };
+  }
+
+  try {
+    const results = await Promise.all(enabledRoutes.map(async (route) => ({
+      route,
+      result: await provider.estimateCommute({ origin: route.origin, destination: route.destination })
+    })));
+
+    if (results.some(({ result }) => result.outcome === 'unavailable')) {
+      return { section: null, state: { status: 'unavailable', label: 'Commute', reason: 'Live Commute is unavailable right now.' } };
+    }
+
+    return {
+      section: {
+        label: 'Commute',
+        estimates: results.map(({ route, result }) => ({
+          routeName: route.name,
+          durationMinutes: result.outcome === 'available' ? Math.round(result.estimate.durationMinutes) : 0
+        }))
+      },
+      state: { status: 'available', label: 'Commute', detail: '' }
+    };
+  } catch {
+    return { section: null, state: { status: 'unavailable', label: 'Commute', reason: 'Live Commute is unavailable right now.' } };
+  }
 };
 
 const buildCalendarGenerationResult = async ({

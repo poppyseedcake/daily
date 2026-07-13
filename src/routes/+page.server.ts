@@ -39,6 +39,7 @@ import { loadUserWeatherLocation } from '$lib/server/weatherLocationPersistence'
 import { loadUserCommuteSetup } from '$lib/server/commuteSetupPersistence';
 import { summaryConfigurationSchema } from '$lib/summaryConfiguration';
 import { createDefaultTodoState, todoStateSchema } from '$lib/todo';
+import { googleMapsOperations } from '$lib/server/googleMapsOperations';
 
 const testDeliveryFailureMessage = (classification: DailySummaryDeliveryErrorClassification) => {
   switch (classification) {
@@ -275,6 +276,11 @@ export const load = async ({ request }) => {
               todoCategories: validTodoState.data.todoCategories,
               todoTasks: validTodoState.data.todoTasks,
               weatherLocation,
+              commuteRoutes: commuteSetup?.routes ?? [],
+              commuteDays: commuteSetup?.days ?? [],
+              commuteEstimateProvider: (() => {
+                try { return googleMapsOperations.requestGateway(authState); } catch { return undefined; }
+              })(),
               calendarReadiness,
               selectedCalendars,
               calendarEventProvider: calendarGenerationContext?.accessToken
@@ -339,6 +345,7 @@ export const actions = {
     );
     const todoState = await loadUserTodoState(userTodoStore, authState.userId);
     const weatherLocation = await loadUserWeatherLocation(userWeatherLocationStore, authState.userId);
+    const commuteSetup = await loadUserCommuteSetup(userCommuteSetupStore, authState.userId);
     const validConfiguration = summaryConfigurationSchema.safeParse(configuration);
     const validTodoState = todoStateSchema.safeParse(todoState);
 
@@ -361,6 +368,11 @@ export const actions = {
         todoCategories: validTodoState.data.todoCategories,
         todoTasks: validTodoState.data.todoTasks,
         weatherLocation,
+        commuteRoutes: commuteSetup.routes,
+        commuteDays: commuteSetup.days,
+        commuteEstimateProvider: (() => {
+          try { return googleMapsOperations.requestGateway(authState); } catch { return undefined; }
+        })(),
         calendarReadiness: calendarGenerationContext.readiness,
         selectedCalendars: calendarGenerationContext.selectedCalendars,
         calendarEventProvider: calendarGenerationContext.accessToken

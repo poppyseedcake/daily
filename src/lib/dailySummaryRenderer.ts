@@ -22,7 +22,13 @@ export type DailySummaryInput = {
   configuration: SummaryConfiguration;
   sections: Record<SummarySection, DailySummarySectionState>;
   calendarSection?: CalendarSection | null;
+  commuteSection?: CommuteSection | null;
   todoSection: TodoSection | null;
+};
+
+export type CommuteSection = {
+  label: 'Commute';
+  estimates: Array<{ routeName: string; durationMinutes: number }>;
 };
 
 export type RenderedDailySummary = {
@@ -74,6 +80,17 @@ const buildVisibleSection = (
   input: DailySummaryInput,
   section: SummarySection
 ): RenderedSection[] => {
+  if (section === 'commute' && input.commuteSection !== undefined) {
+    if (input.commuteSection) {
+      return [renderCommuteSection(input.commuteSection)];
+    }
+
+    const sectionState = input.sections.commute;
+    return sectionState.status === 'unavailable'
+      ? [renderUnavailableSection(sectionState.label, sectionState.reason)]
+      : [];
+  }
+
   if (section === 'todo') {
     if (input.todoSection) {
       return [renderTodoSection(input.todoSection)];
@@ -98,6 +115,14 @@ const buildVisibleSection = (
     ? [renderAvailableSection(sectionState.label, sectionState.detail)]
     : [renderUnavailableSection(sectionState.label, sectionState.reason)];
 };
+
+const renderCommuteSection = (section: CommuteSection): RenderedSection => ({
+  label: section.label,
+  html: `<ul>${section.estimates.map((estimate) => `<li>${escapeHtml(estimate.routeName)}: ${estimate.durationMinutes} minutes</li>`).join('')}</ul>`,
+  text: section.estimates
+    .map((estimate) => `${estimate.routeName}: ${estimate.durationMinutes} minutes`)
+    .join('\n')
+});
 
 const hasCalendarEvents = (calendarSection: CalendarSection) =>
   Boolean(calendarSection.today) || calendarSection.weekAhead.length > 0;

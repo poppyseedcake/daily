@@ -7,6 +7,10 @@ import {
 } from '$lib/server/db/googleMapsUsageGate';
 import { isGoogleMapsEnvironmentKillSwitchEnabled } from '$lib/server/googleMapsRequestGateway';
 import { googleMapsCapAlertDelivery } from '$lib/server/googleMapsCapAlertDelivery';
+import { createGoogleMapsRequestGateway } from './googleMapsRequestGateway';
+import { createGoogleMapsPersonAttribution } from './googleMapsPersonAttribution';
+import { createGoogleRoutesProvider } from './googleRoutesProvider';
+import type { DailyPageAuthState } from './pageAuthState';
 
 const usageGate = () =>
   createGoogleMapsUsageGate({
@@ -24,5 +28,15 @@ export const googleMapsOperations = {
     usageGate().currentOperations(
       isGoogleMapsEnvironmentKillSwitchEnabled(env.GOOGLE_MAPS_KILL_SWITCH)
     ),
-  setAdminKillSwitch: async (enabled: boolean) => setGoogleMapsAdminKillSwitch(db, enabled)
+  setAdminKillSwitch: async (enabled: boolean) => setGoogleMapsAdminKillSwitch(db, enabled),
+  requestGateway: (authState: DailyPageAuthState, visitorRequest?: { clientAddress: string; userAgent: string }) =>
+    createGoogleMapsRequestGateway({
+      provider: createGoogleRoutesProvider({ apiKey: env.GOOGLE_MAPS_API_KEY ?? '' }),
+      usageGate: usageGate(),
+      attribution: createGoogleMapsPersonAttribution({
+        authState,
+        visitorRequest,
+        secret: env.GOOGLE_MAPS_ATTRIBUTION_SECRET ?? ''
+      })
+    })
 };
