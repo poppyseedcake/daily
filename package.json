@@ -15,7 +15,8 @@
     "pretest:e2e": "svelte-kit sync",
     "test:e2e": "playwright test",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "drizzle-kit migrate"
+    "db:migrate": "drizzle-kit migrate",
+    "db:backfill-next-summary": "vite-node src/lib/server/db/backfillNextSummaryScheduleCommand.ts"
   },
   "dependencies": {
     "@js-temporal/polyfill": "^0.5.1",

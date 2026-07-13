@@ -1,4 +1,6 @@
+import { Temporal } from '@js-temporal/polyfill';
 import { z } from 'zod';
+import { calculateNextSummaryAt } from '$lib/nextSummarySchedule';
 import type { UserSetupImportDraft } from '$lib/localSetup';
 import { summaryTimeSchema, userTimeZoneSchema } from '$lib/summaryConfiguration';
 import { commuteDaysSchema, commutePointSchema, commuteRouteNameSchema } from '$lib/commuteRoute';
@@ -68,7 +70,8 @@ export type UserSetupImportPersistenceTransaction = {
   hasExistingUserSetup: (userId: string) => boolean;
   hasExistingCommuteSetup: (userId: string) => boolean;
   saveSummaryConfiguration: (
-    summaryConfiguration: UserSetupImportDraft['summaryConfiguration']
+    summaryConfiguration: UserSetupImportDraft['summaryConfiguration'],
+    nextSummaryAt: string | null
   ) => void;
   saveTodoCategories: (todoCategories: UserSetupImportDraft['todoCategories']) => void;
   saveTodoTasks: (todoTasks: UserSetupImportDraft['todoTasks']) => void;
@@ -106,7 +109,8 @@ const hasValidTaskCategoryReferences = (draft: UserSetupImportDraft) => {
 export const persistUserSetupImportDraftForNewUser = async (
   store: UserSetupImportPersistenceStore,
   userId: string,
-  draft: UserSetupImportDraft
+  draft: UserSetupImportDraft,
+  referenceInstant: Temporal.Instant = Temporal.Now.instant()
 ): Promise<{ outcome: UserSetupImportPersistenceOutcome }> => {
   const result = userSetupImportDraftSchema.safeParse(draft);
 
@@ -126,7 +130,25 @@ export const persistUserSetupImportDraftForNewUser = async (
 
       const preserveExistingCommuteSetup = transaction.hasExistingCommuteSetup(userId);
 
-      transaction.saveSummaryConfiguration(result.data.summaryConfiguration);
+      const savedConfiguration = result.data.summaryConfiguration;
+      const nextSummaryAt =
+        calculateNextSummaryAt(
+          {
+            summaryTime: savedConfiguration.summaryTime,
+            userTimeZone: savedConfiguration.userTimeZone,
+            summaryTheme: savedConfiguration.summaryTheme,
+            summaryDeliveryEnabled: savedConfiguration.summaryDeliveryEnabled,
+            sections: {
+              weather: savedConfiguration.weatherSectionEnabled,
+              commute: savedConfiguration.commuteSectionEnabled,
+              calendar: savedConfiguration.calendarSectionEnabled,
+              todo: savedConfiguration.todoSectionEnabled
+            }
+          },
+          referenceInstant
+        )?.toString() ?? null;
+
+      transaction.saveSummaryConfiguration(savedConfiguration, nextSummaryAt);
       transaction.saveTodoCategories(result.data.todoCategories);
       transaction.saveTodoTasks(result.data.todoTasks);
       transaction.saveWeatherLocation(result.data.weatherLocation);

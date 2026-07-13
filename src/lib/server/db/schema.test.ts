@@ -223,6 +223,20 @@ describe('Daily database schema', () => {
     });
   });
 
+  test('ships nullable UTC next Daily Summary schedule storage in an upgrade migration', () => {
+    const migration = readFileSync('drizzle/0011_add_next_summary_at.sql', 'utf8');
+    const journal = JSON.parse(readFileSync('drizzle/meta/_journal.json', 'utf8')) as {
+      entries: Array<{ idx: number; tag: string }>;
+    };
+
+    expect(Object.keys(getTableColumns(users))).toContain('nextSummaryAt');
+    expect(migration).toContain('ALTER TABLE `users` ADD `next_summary_at` text');
+    expect(journal.entries.find(({ idx }) => idx === 11)).toMatchObject({
+      idx: 11,
+      tag: '0011_add_next_summary_at'
+    });
+  });
+
   test('ships Weather Locations in an upgrade migration without forecast snapshots', () => {
     const migrationPath = 'drizzle/0003_add_weather_locations.sql';
 

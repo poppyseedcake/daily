@@ -1,3 +1,5 @@
+import type { Temporal } from '@js-temporal/polyfill';
+import { calculateNextSummaryAt } from '$lib/nextSummarySchedule';
 import {
   defaultSummaryConfiguration,
   summaryConfigurationSchema,
@@ -6,7 +8,11 @@ import {
 
 export type UserSummaryConfigurationStore = {
   load: (userId: string) => Promise<SummaryConfiguration | null>;
-  save: (userId: string, configuration: SummaryConfiguration) => Promise<void>;
+  save: (
+    userId: string,
+    configuration: SummaryConfiguration,
+    nextSummaryAt: string | null
+  ) => Promise<void>;
 };
 
 export type UserSummaryConfigurationSaveOutcome = 'saved' | 'invalid-configuration' | 'save-failed';
@@ -23,7 +29,8 @@ export const loadUserSummaryConfiguration = async (
 export const saveUserSummaryConfiguration = async (
   store: UserSummaryConfigurationStore,
   userId: string,
-  configuration: unknown
+  configuration: unknown,
+  referenceInstant: Temporal.Instant
 ): Promise<{ outcome: UserSummaryConfigurationSaveOutcome }> => {
   const result = summaryConfigurationSchema.safeParse(configuration);
 
@@ -32,7 +39,8 @@ export const saveUserSummaryConfiguration = async (
   }
 
   try {
-    await store.save(userId, result.data);
+    const nextSummaryAt = calculateNextSummaryAt(result.data, referenceInstant)?.toString() ?? null;
+    await store.save(userId, result.data, nextSummaryAt);
   } catch {
     return { outcome: 'save-failed' };
   }

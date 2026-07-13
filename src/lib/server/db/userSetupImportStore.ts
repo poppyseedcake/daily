@@ -1,6 +1,14 @@
 import { eq } from 'drizzle-orm';
 import { db } from '$lib/server/db';
-import { commuteDays, commuteRoutes, summaryConfigurations, todoCategories, todoTasks, weatherLocations } from './schema';
+import {
+  commuteDays,
+  commuteRoutes,
+  summaryConfigurations,
+  todoCategories,
+  todoTasks,
+  users,
+  weatherLocations
+} from './schema';
 import type { UserSetupImportPersistenceStore } from './userSetupImportPersistence';
 
 type SetupImportDatabase = typeof db;
@@ -58,8 +66,13 @@ export const createUserSetupImportStore = (
         hasExistingCommuteSetup(userId) {
           return hasExistingCommuteSetup(transaction, userId);
         },
-        saveSummaryConfiguration(summaryConfiguration) {
+        saveSummaryConfiguration(summaryConfiguration, nextSummaryAt) {
           transaction.insert(summaryConfigurations).values(summaryConfiguration).run();
+          transaction
+            .update(users)
+            .set({ nextSummaryAt: nextSummaryAt ?? null })
+            .where(eq(users.id, summaryConfiguration.userId))
+            .run();
         },
         saveTodoCategories(categories) {
           if (categories.length > 0) {

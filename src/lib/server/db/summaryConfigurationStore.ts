@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { eq } from 'drizzle-orm';
 import { db } from '$lib/server/db';
 import { summaryConfigurationSchema, type SummaryConfiguration } from '$lib/summaryConfiguration';
-import { summaryConfigurations } from './schema';
+import { summaryConfigurations, users } from './schema';
 import type { UserSummaryConfigurationStore } from '../summaryConfigurationPersistence';
 
 const toSummaryConfiguration = (
@@ -36,24 +36,35 @@ const toSummaryConfigurationRow = (
   todoSectionEnabled: configuration.sections.todo
 });
 
-export const userSummaryConfigurationStore: UserSummaryConfigurationStore = {
+type SummaryConfigurationDatabase = typeof db;
+
+export const createUserSummaryConfigurationStore = (
+  database: SummaryConfigurationDatabase
+): UserSummaryConfigurationStore => ({
   async load(userId) {
-    const row = await db.query.summaryConfigurations.findFirst({
+    const row = await database.query.summaryConfigurations.findFirst({
       where: eq(summaryConfigurations.userId, userId)
     });
 
     return row ? toSummaryConfiguration(row) : null;
   },
-  async save(userId, configuration) {
-    await db
-      .insert(summaryConfigurations)
-      .values({
-        id: randomUUID(),
-        ...toSummaryConfigurationRow(userId, configuration)
-      })
-      .onConflictDoUpdate({
-        target: summaryConfigurations.userId,
-        set: toSummaryConfigurationRow(userId, configuration)
-      });
+  async save(userId, configuration, nextSummaryAt) {
+    database.transaction((transaction) => {
+      transaction
+        .insert(summaryConfigurations)
+        .values({
+          id: randomUUID(),
+          ...toSummaryConfigurationRow(userId, configuration)
+        })
+        .onConflictDoUpdate({
+          target: summaryConfigurations.userId,
+          set: toSummaryConfigurationRow(userId, configuration)
+        })
+        .run();
+
+      transaction.update(users).set({ nextSummaryAt }).where(eq(users.id, userId)).run();
+    });
   }
-};
+});
+
+export const userSummaryConfigurationStore = createUserSummaryConfigurationStore(db);
