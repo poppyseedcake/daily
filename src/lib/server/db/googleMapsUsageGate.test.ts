@@ -38,6 +38,10 @@ const createDatabase = (path = ':memory:', initialize = true) => {
         person_usage_identity text NOT NULL,
         request_count integer NOT NULL CHECK (request_count >= 0),
         PRIMARY KEY (period_start_utc, person_usage_identity)
+      );
+      CREATE TABLE google_maps_control (
+        control_key text PRIMARY KEY NOT NULL CHECK (control_key = 'admin-kill-switch'),
+        enabled integer NOT NULL DEFAULT 0 CHECK (enabled IN (0, 1))
       )
     `);
   }
@@ -273,6 +277,94 @@ describe('Google Maps usage gate', () => {
         GOOGLE_MAPS_PER_PERSON_DAILY_LIMIT: '-1'
       })
     ).toThrow('Google Maps usage limits must be positive integers');
+  });
+
+  test('persists the Administrator kill switch and blocks protected calls without consuming usage', async () => {
+    const path = createDatabasePath();
+    const firstDatabase = createDatabase(path);
+    const options = {
+      dailyCap: 2,
+      monthlyCap: 3,
+      perPersonDailyLimit: 100,
+      now: () => new Date('2026-07-12T12:00:00.000Z')
+    };
+    const firstGate = createGoogleMapsUsageGate({
+      database: drizzleDatabase(firstDatabase),
+      ...options
+    });
+
+    await expect(firstGate.setAdminKillSwitch(true)).resolves.toBeUndefined();
+    await expect(firstGate.admit('map-point-selection', person)).resolves.toEqual({
+      outcome: 'suspended',
+      reason: 'admin-kill-switch'
+    });
+    await expect(firstGate.currentUsage()).resolves.toMatchObject({
+      day: { total: 0 },
+      month: { total: 0 }
+    });
+
+    firstDatabase.close();
+    databases.splice(databases.indexOf(firstDatabase), 1);
+    const restartedGate = createGoogleMapsUsageGate({
+      database: drizzleDatabase(createDatabase(path, false)),
+      ...options
+    });
+
+    await expect(restartedGate.currentOperations(false)).resolves.toMatchObject({
+      adminKillSwitchEnabled: true,
+      environmentKillSwitchEnabled: false,
+      effectiveState: 'suspended',
+      suspensionReason: 'admin-kill-switch'
+    });
+    await restartedGate.setAdminKillSwitch(false);
+    await expect(restartedGate.admit('commute-estimate', person)).resolves.toEqual({
+      outcome: 'admitted'
+    });
+  });
+
+  test('reports environment control precedence and cap suspension from privacy-safe aggregate data', async () => {
+    const database = createDatabase();
+    const gate = createGoogleMapsUsageGate({
+      database: drizzleDatabase(database),
+      dailyCap: 1,
+      monthlyCap: 2,
+      perPersonDailyLimit: 100,
+      now: () => new Date('2026-07-12T12:00:00.000Z')
+    });
+
+    await gate.setAdminKillSwitch(true);
+    await expect(gate.currentOperations(true)).resolves.toMatchObject({
+      environmentKillSwitchEnabled: true,
+      adminKillSwitchEnabled: true,
+      effectiveState: 'suspended',
+      suspensionReason: 'environment-kill-switch'
+    });
+
+    await gate.setAdminKillSwitch(false);
+    await gate.admit('commute-estimate', person);
+    const operations = await gate.currentOperations(false);
+    expect(operations).toEqual({
+      timeBasis: 'UTC',
+      daily: {
+        periodStart: '2026-07-12',
+        total: 1,
+        cap: 1,
+        byCategory: { 'map-point-selection': 0, 'commute-estimate': 1 }
+      },
+      monthly: {
+        periodStart: '2026-07',
+        total: 1,
+        cap: 2,
+        byCategory: { 'map-point-selection': 0, 'commute-estimate': 1 }
+      },
+      environmentKillSwitchEnabled: false,
+      adminKillSwitchEnabled: false,
+      effectiveState: 'suspended',
+      suspensionReason: 'global-daily-cap'
+    });
+    expect(JSON.stringify(operations)).not.toMatch(
+      /personUsageIdentity|origin|destination|route|provider|summary|email/i
+    );
   });
 
   test('atomically admits no more concurrent requests for one person than their limit', async () => {

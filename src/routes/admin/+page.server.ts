@@ -1,14 +1,16 @@
 import { auth } from '$lib/server/auth';
 import { isAdministratorAuthState } from '$lib/server/adminAuthorization';
 import { authStateFromSession } from '$lib/server/pageAuthState';
-import { error } from '@sveltejs/kit';
-import type { PageServerLoad } from './$types';
+import { googleMapsOperations } from '$lib/server/googleMapsOperations';
+import { error, fail } from '@sveltejs/kit';
+import { z } from 'zod';
+import type { Actions, PageServerLoad } from './$types';
 
 export type AdminPanelAccess = {
   mode: 'allowed';
 };
 
-export const load: PageServerLoad = async ({ request }) => {
+const requireAdministrator = async (request: Request) => {
   const session = await auth.api.getSession({
     headers: request.headers
   });
@@ -21,10 +23,32 @@ export const load: PageServerLoad = async ({ request }) => {
   if (!isAdministratorAuthState(authState)) {
     throw error(403, 'Your signed-in Google account is not authorized for the Admin Panel.');
   }
+};
+
+const googleMapsKillSwitchSchema = z.enum(['true', 'false']).transform((value) => value === 'true');
+
+export const load: PageServerLoad = async ({ request }) => {
+  await requireAdministrator(request);
 
   return {
     access: {
       mode: 'allowed'
-    } satisfies AdminPanelAccess
+    } satisfies AdminPanelAccess,
+    googleMaps: await googleMapsOperations.currentOperations()
   };
+};
+
+export const actions: Actions = {
+  setGoogleMapsKillSwitch: async ({ request }) => {
+    await requireAdministrator(request);
+    const form = await request.formData();
+    const enabled = googleMapsKillSwitchSchema.safeParse(form.get('enabled'));
+
+    if (!enabled.success) {
+      return fail(400, { success: false, message: 'Choose a valid Google Maps control state.' });
+    }
+
+    await googleMapsOperations.setAdminKillSwitch(enabled.data);
+    return { success: true };
+  }
 };

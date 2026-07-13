@@ -8,6 +8,7 @@ import {
   authVerification,
   calendarConnections,
   deliveryRecords,
+  googleMapsControl,
   googleMapsUsage,
   googleMapsPersonUsage,
   selectedCalendars,
@@ -29,6 +30,7 @@ describe('Daily database schema', () => {
       getTableName(calendarConnections),
       getTableName(selectedCalendars),
       getTableName(deliveryRecords),
+      getTableName(googleMapsControl),
       getTableName(googleMapsUsage),
       getTableName(googleMapsPersonUsage),
       getTableName(authUser),
@@ -44,6 +46,7 @@ describe('Daily database schema', () => {
       'calendar_connections',
       'selected_calendars',
       'delivery_records',
+      'google_maps_control',
       'google_maps_usage',
       'google_maps_person_usage',
       'auth_user',
@@ -147,9 +150,25 @@ describe('Daily database schema', () => {
     expect(migration).toContain('`period_start_utc` text NOT NULL');
     expect(migration).toContain('`person_usage_identity` text NOT NULL');
     expect(migration).not.toMatch(/user_id|email|visitor_token|attribution_secret|category/i);
-    expect(journal.entries.at(-1)).toMatchObject({
+    expect(journal.entries.find(({ idx }) => idx === 7)).toMatchObject({
       idx: 7,
       tag: '0007_add_google_maps_person_usage'
+    });
+  });
+
+  test('ships the SQLite-backed Google Maps control without private Maps data', () => {
+    const migration = readFileSync('drizzle/0008_add_google_maps_control.sql', 'utf8');
+    const journal = JSON.parse(readFileSync('drizzle/meta/_journal.json', 'utf8')) as {
+      entries: Array<{ idx: number; tag: string }>;
+    };
+
+    expect(migration).toContain('CREATE TABLE `google_maps_control`');
+    expect(migration).toContain("CHECK (`control_key` = 'admin-kill-switch')");
+    expect(migration).toContain('CHECK (`enabled` IN (0, 1))');
+    expect(migration).not.toMatch(/user_id|email|origin|destination|route|provider|summary/i);
+    expect(journal.entries.at(-1)).toMatchObject({
+      idx: 8,
+      tag: '0008_add_google_maps_control'
     });
   });
 
