@@ -31,6 +31,11 @@ const hasExistingUserSetup = (database: Pick<SetupImportDatabase, 'select'>, use
         .select({ id: commuteRoutes.id })
         .from(commuteRoutes)
         .where(eq(commuteRoutes.userId, userId))
+        .get() ||
+      database
+        .select({ userId: commuteDays.userId })
+        .from(commuteDays)
+        .where(eq(commuteDays.userId, userId))
         .get()
   );
 

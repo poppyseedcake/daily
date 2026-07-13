@@ -101,7 +101,9 @@ describe('Local Setup import route', () => {
     await expect(response.json()).resolves.toEqual({ outcome: 'imported' });
     expect(response.status).toBe(200);
     expect(importVisitorLocalSetupForUser).toHaveBeenCalledWith('user-1', validLocalSetup());
-    expect(responseBody).not.toContain('Home');
+    for (const privateValue of ['Morning commute', 'Home', 'Office', '52.2297', '21.0067']) {
+      expect(responseBody).not.toContain(privateValue);
+    }
   });
 
   test('does not import when the request is not a signed-in User', async () => {
