@@ -12,6 +12,7 @@ export type GoogleMapsSuspensionReason =
 
 export type GoogleMapsUnavailableReason =
   | GoogleMapsSuspensionReason
+  | 'route-unavailable'
   | 'provider-unavailable'
   | 'usage-gate-unavailable';
 
@@ -39,7 +40,7 @@ export type GoogleMapsProvider = {
   selectPoint: (request: GoogleMapsPointSelectionRequest) => Promise<GoogleMapsPoint>;
   estimateCommute: (
     request: GoogleMapsCommuteEstimateRequest
-  ) => Promise<GoogleMapsCommuteEstimate>;
+  ) => Promise<GoogleMapsCommuteEstimate | null>;
 };
 
 export type GoogleMapsAdmission =
@@ -205,14 +206,24 @@ export const createGoogleMapsRequestGateway = ({
       );
     },
     async estimateCommute(request) {
-      return executeProtectedGoogleMapsRequest(
+      const result = await executeProtectedGoogleMapsRequest(
         'commute-estimate',
         () => provider.estimateCommute(request),
-        (estimate) => ({
-          outcome: 'available' as const,
-          estimate: googleMapsCommuteEstimateSchema.parse(estimate)
-        })
+        (estimate) => ({ outcome: 'available' as const, estimate })
       );
+
+      if (result.outcome === 'available' && result.estimate === null) {
+        return unavailable('commute-estimate', 'route-unavailable');
+      }
+
+      if (result.outcome === 'available') {
+        return {
+          outcome: 'available',
+          estimate: googleMapsCommuteEstimateSchema.parse(result.estimate)
+        };
+      }
+
+      return result;
     }
   };
 };

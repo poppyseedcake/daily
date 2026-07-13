@@ -2,7 +2,7 @@ import { z } from 'zod';
 import type { GoogleMapsProvider } from './googleMapsRequestGateway';
 
 const responseSchema = z.object({
-  routes: z.array(z.object({ duration: z.string().regex(/^\d+(?:\.\d+)?s$/) })).min(1)
+  routes: z.array(z.object({ duration: z.string().regex(/^\d+(?:\.\d+)?s$/) }))
 });
 
 export const createGoogleRoutesProvider = ({ apiKey, fetcher = fetch }: {
@@ -29,6 +29,9 @@ export const createGoogleRoutesProvider = ({ apiKey, fetcher = fetch }: {
 
     if (!response.ok) throw new Error('Google Routes request failed.');
     const result = responseSchema.parse(await response.json());
-    return { durationMinutes: Number.parseFloat(result.routes[0].duration.slice(0, -1)) / 60 };
+    const route = result.routes[0];
+    return route
+      ? { durationMinutes: Number.parseFloat(route.duration.slice(0, -1)) / 60 }
+      : null;
   }
 });

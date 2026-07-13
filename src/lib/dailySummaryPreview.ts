@@ -136,7 +136,7 @@ const buildCommuteGenerationResult = async ({ configuration, routes, days, provi
       result: await provider.estimateCommute({ origin: route.origin, destination: route.destination })
     })));
 
-    if (results.some(({ result }) => result.outcome === 'unavailable')) {
+    if (results.some(({ result }) => result.outcome === 'unavailable' && result.reason !== 'route-unavailable')) {
       return unavailable();
     }
 
@@ -145,7 +145,9 @@ const buildCommuteGenerationResult = async ({ configuration, routes, days, provi
         label: 'Commute',
         estimates: results.map(({ route, result }) => ({
           routeName: route.name,
-          durationMinutes: result.outcome === 'available' ? Math.round(result.estimate.durationMinutes) : 0
+          ...(result.outcome === 'available'
+            ? { outcome: 'available' as const, durationMinutes: Math.round(result.estimate.durationMinutes) }
+            : { outcome: 'unavailable' as const })
         }))
       },
       sectionState: { status: 'available', label: 'Commute', detail: '' }

@@ -287,7 +287,7 @@ test('Visitor manages ordered Commute Routes and Commute Days in browser-local s
 });
 
 test('Visitor preview renders eligible Commute estimates and local unavailable behavior without live Google calls', async ({ page }) => {
-  let estimateOutcome: 'available' | 'unavailable' = 'available';
+  let estimateOutcome: 'available' | 'unavailable' | 'invalid-route' = 'available';
   let estimateRequests = 0;
   await page.route('/commute-point-selection', async (route) => {
     const point = route.request().postDataJSON() as { latitude: number; longitude: number };
@@ -295,9 +295,14 @@ test('Visitor preview renders eligible Commute estimates and local unavailable b
   });
   await page.route('/commute-estimate', async (route) => {
     estimateRequests += 1;
-    await route.fulfill({ json: estimateOutcome === 'available'
-      ? { outcome: 'available', estimate: { durationMinutes: 24 } }
-      : { outcome: 'unavailable', reason: 'global-daily-cap' } });
+    await route.fulfill({
+      status: estimateOutcome === 'invalid-route' ? 400 : 200,
+      json: estimateOutcome === 'available'
+        ? { outcome: 'available', estimate: { durationMinutes: 24 } }
+        : estimateOutcome === 'unavailable'
+          ? { outcome: 'unavailable', reason: 'global-daily-cap' }
+          : { outcome: 'invalid-route' }
+    });
   });
   await page.goto('/');
   for (const day of ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']) {
@@ -324,6 +329,12 @@ test('Visitor preview renders eligible Commute estimates and local unavailable b
   }
   await expect(page.getByText('Live Commute is unavailable right now.')).toBeVisible();
   await expect(page.getByText('Demo Calendar - sample Calendar Events for the Week Ahead.')).toBeVisible();
+
+  estimateOutcome = 'invalid-route';
+  await page.getByLabel('Sunday Commute Day').uncheck();
+  await page.getByLabel('Sunday Commute Day').check();
+  await expect(page.getByText('Live Commute is unavailable right now.')).toBeVisible();
+  await expect(page.getByText('Office route: 0 minutes')).toHaveCount(0);
 });
 
 test('Visitor sees unavailable Weather Location search reason when geocoding fails', async ({ page }) => {
