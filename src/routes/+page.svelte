@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { CalendarDays, Check, CloudSun, GripVertical, Mail, Pencil, Search, ShieldCheck, Trash2 } from '@lucide/svelte';
+  import { CalendarDays, Check, CloudSun, GripVertical, Mail, MapPin, Pencil, Search, ShieldCheck, Trash2 } from '@lucide/svelte';
   import { dragHandle, dragHandleZone, SHADOW_ITEM_MARKER_PROPERTY_NAME, TRIGGERS } from 'svelte-dnd-action';
   import { onMount } from 'svelte';
   import type { ActionData, PageData } from './$types';
@@ -45,6 +45,7 @@
     type TodoUrgency
   } from '$lib/todo';
   import { weatherLocationSchema, type WeatherLocation } from '$lib/weatherLocation';
+  import { commuteRouteSchema, type CommutePoint, type CommuteRoute } from '$lib/commuteRoute';
   import type { SelectedCalendarConfiguration, SelectedCalendarOption } from '$lib/selectedCalendars';
 
   const visitorAuthState = { mode: 'visitor' } as const;
@@ -137,6 +138,16 @@
   let weatherLocationStatusTone = $state<'success' | 'warning' | 'error' | 'neutral'>(
     initialWeatherLocation ? 'success' : 'neutral'
   );
+  let commuteRoute = $state<CommuteRoute | null>(null);
+  let commuteRouteName = $state('');
+  let commuteOriginLatitude = $state('52.2285');
+  let commuteOriginLongitude = $state('21.0037');
+  let commuteDestinationLatitude = $state('52.2318');
+  let commuteDestinationLongitude = $state('21.0067');
+  let commuteOrigin = $state<CommutePoint | null>(null);
+  let commuteDestination = $state<CommutePoint | null>(null);
+  let commuteRouteStatus = $state('Select an Origin and Destination to create a Commute Route.');
+  let commuteRouteStatusTone = $state<'success' | 'warning' | 'error' | 'neutral'>('neutral');
   let selectedCalendarConfiguration = $state<SelectedCalendarConfiguration | null>(
     initialSelectedCalendarConfiguration
   );
@@ -293,6 +304,10 @@
   const applyLocalSetup = (setup: LocalSetup) => {
     updateSummaryConfiguration(setup.summaryConfiguration);
     weatherLocation = setup.weatherLocation;
+    commuteRoute = setup.commuteRoute;
+    commuteRouteName = setup.commuteRoute?.name ?? '';
+    commuteOrigin = setup.commuteRoute?.origin ?? null;
+    commuteDestination = setup.commuteRoute?.destination ?? null;
     weatherLocationSearchQuery = setup.weatherLocation?.label ?? '';
     weatherLocationStatus = setup.weatherLocation
       ? 'Weather Location saved in this browser only.'
@@ -306,6 +321,7 @@
     ...createDefaultLocalSetup(),
     summaryConfiguration: currentSummaryConfiguration(),
     weatherLocation,
+    commuteRoute,
     todoCategories,
     todoTasks,
     nextTodoId
@@ -567,6 +583,54 @@
       weatherLocationStatus = 'Weather Location save failed. Try again.';
       weatherLocationStatusTone = 'error';
     }
+  };
+  const selectCommutePoint = async (kind: 'origin' | 'destination') => {
+    const latitude = Number(kind === 'origin' ? commuteOriginLatitude : commuteDestinationLatitude);
+    const longitude = Number(kind === 'origin' ? commuteOriginLongitude : commuteDestinationLongitude);
+
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+      commuteRouteStatus = 'Enter valid latitude and longitude values.';
+      commuteRouteStatusTone = 'warning';
+      return;
+    }
+
+    commuteRouteStatus = `Selecting Commute ${kind === 'origin' ? 'Origin' : 'Destination'}...`;
+    commuteRouteStatusTone = 'neutral';
+    try {
+      const response = await fetch('/commute-point-selection', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ latitude, longitude })
+      });
+      const result = (await response.json()) as { outcome?: string; point?: CommutePoint; reason?: string };
+      if (!response.ok || result.outcome !== 'available' || !result.point) {
+        commuteRouteStatus = `Commute point selection is unavailable${result.reason ? ` (${result.reason})` : ''}.`;
+        commuteRouteStatusTone = 'error';
+        return;
+      }
+      if (kind === 'origin') commuteOrigin = result.point;
+      else commuteDestination = result.point;
+      commuteRouteStatus = `Commute ${kind === 'origin' ? 'Origin' : 'Destination'} selected.`;
+      commuteRouteStatusTone = 'success';
+    } catch {
+      commuteRouteStatus = 'Commute point selection is unavailable right now.';
+      commuteRouteStatusTone = 'error';
+    }
+  };
+  const saveCommuteRoute = () => {
+    const result = commuteRouteSchema.safeParse({
+      name: commuteRouteName,
+      origin: commuteOrigin,
+      destination: commuteDestination
+    });
+    if (!result.success) {
+      commuteRouteStatus = 'Provide a valid route name, Origin, and Destination before saving.';
+      commuteRouteStatusTone = 'warning';
+      return;
+    }
+    commuteRoute = result.data;
+    commuteRouteStatus = 'Commute Route saved in this browser only.';
+    commuteRouteStatusTone = 'success';
   };
   const persistSelectedCalendars = async (calendars: SelectedCalendarOption[]) => {
     selectedCalendarStatus = 'Saving Selected Calendars...';
@@ -1250,6 +1314,94 @@
               class={`text-sm ${weatherLocationStatusTone === 'success' ? 'text-emerald-700' : weatherLocationStatusTone === 'warning' ? 'text-amber-700' : weatherLocationStatusTone === 'error' ? 'text-red-700' : 'text-stone-600'}`}
             >
               {weatherLocationStatus}
+            </p>
+          </div>
+        </Panel>
+      {/if}
+
+      {#if enabledSections.commute && authState.mode === 'visitor'}
+        <Panel title="Commute Route" eyebrow="Local Setup">
+          <div class="space-y-4">
+            <label class="grid gap-1">
+              <span class="font-medium text-stone-800">Route Name</span>
+              <input
+                class="h-10 rounded-md border border-stone-300 px-3"
+                aria-label="Route Name"
+                bind:value={commuteRouteName}
+                disabled={!localSetupHydrated}
+                placeholder="Morning commute"
+              />
+            </label>
+
+            {#each [
+              { kind: 'origin' as const, label: 'Commute Origin' },
+              { kind: 'destination' as const, label: 'Commute Destination' }
+            ] as selection}
+              {@const selectedPoint = selection.kind === 'origin' ? commuteOrigin : commuteDestination}
+              <div class="rounded-md border border-stone-200 p-3">
+                <p class="font-medium text-stone-900">{selection.label}</p>
+                {#if selectedPoint}
+                  <p class="mt-1 text-sm text-stone-700">{selectedPoint.label}</p>
+                  <p class="mt-1 text-sm text-stone-600">
+                    {selectedPoint.latitude.toFixed(4)}, {selectedPoint.longitude.toFixed(4)}
+                  </p>
+                {:else}
+                  <p class="mt-1 text-sm text-stone-600">No point selected.</p>
+                {/if}
+                <div class="mt-3 grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
+                  <input
+                    class="h-10 rounded-md border border-stone-300 px-3"
+                    aria-label={`${selection.label} Latitude`}
+                    value={selection.kind === 'origin' ? commuteOriginLatitude : commuteDestinationLatitude}
+                    disabled={!localSetupHydrated}
+                    inputmode="decimal"
+                    placeholder="Latitude"
+                    oninput={(event) => {
+                      if (selection.kind === 'origin') commuteOriginLatitude = readInputValue(event);
+                      else commuteDestinationLatitude = readInputValue(event);
+                    }}
+                  />
+                  <input
+                    class="h-10 rounded-md border border-stone-300 px-3"
+                    aria-label={`${selection.label} Longitude`}
+                    value={selection.kind === 'origin' ? commuteOriginLongitude : commuteDestinationLongitude}
+                    disabled={!localSetupHydrated}
+                    inputmode="decimal"
+                    placeholder="Longitude"
+                    oninput={(event) => {
+                      if (selection.kind === 'origin') commuteOriginLongitude = readInputValue(event);
+                      else commuteDestinationLongitude = readInputValue(event);
+                    }}
+                  />
+                  <button
+                    class="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-stone-300 px-4 text-sm font-semibold text-stone-800 hover:bg-stone-50"
+                    type="button"
+                    disabled={!localSetupHydrated}
+                    onclick={() => selectCommutePoint(selection.kind)}
+                  >
+                    <MapPin size={18} aria-hidden="true" />
+                    Select
+                  </button>
+                </div>
+              </div>
+            {/each}
+
+            <button
+              class="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-emerald-700 px-4 text-sm font-semibold text-white hover:bg-emerald-800 disabled:cursor-not-allowed disabled:bg-stone-400"
+              type="button"
+              disabled={!localSetupHydrated}
+              onclick={saveCommuteRoute}
+            >
+              <Check size={18} aria-hidden="true" />
+              Save Commute Route
+            </button>
+            {#if commuteRoute}
+              <p class="text-sm font-medium text-stone-900">Saved route: {commuteRoute.name}</p>
+            {/if}
+            <p
+              class={`text-sm ${commuteRouteStatusTone === 'success' ? 'text-emerald-700' : commuteRouteStatusTone === 'warning' ? 'text-amber-700' : commuteRouteStatusTone === 'error' ? 'text-red-700' : 'text-stone-600'}`}
+            >
+              {commuteRouteStatus}
             </p>
           </div>
         </Panel>

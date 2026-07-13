@@ -163,6 +163,7 @@ describe('Visitor Local Setup module', () => {
       version: setup.version,
       summaryConfiguration: setup.summaryConfiguration,
       weatherLocation: null,
+      commuteRoute: null,
       todoCategories: setup.todoCategories,
       todoTasks: [{ ...setup.todoTasks[0], completed: false }],
       nextTodoId: setup.nextTodoId
@@ -282,6 +283,52 @@ describe('Visitor Local Setup module', () => {
       latitude: 52.2297,
       longitude: 21.0122
     });
+  });
+
+  test('round-trips one valid Visitor Commute Route independently of Weather Location', () => {
+    const storage = memoryStorage();
+    const setup: LocalSetupInput = {
+      ...createDefaultLocalSetup(),
+      weatherLocation: {
+        label: 'Warsaw, Poland',
+        latitude: 52.2297,
+        longitude: 21.0122
+      },
+      commuteRoute: {
+        name: 'Morning commute',
+        origin: {
+          label: 'Warsaw Central Station, Warsaw, Poland',
+          latitude: 52.2285,
+          longitude: 21.0037
+        },
+        destination: {
+          label: 'Palace of Culture and Science, Warsaw, Poland',
+          latitude: 52.2318,
+          longitude: 21.0067
+        }
+      }
+    };
+
+    expect(saveLocalSetup(storage, setup).outcome).toBe('saved');
+    expect(loadLocalSetup(storage).setup).toMatchObject({
+      weatherLocation: setup.weatherLocation,
+      commuteRoute: setup.commuteRoute
+    });
+  });
+
+  test('rejects invalid Visitor Commute Route data instead of persisting a partial route', () => {
+    const storage = memoryStorage();
+    const unsafeSetup = {
+      ...createDefaultLocalSetup(),
+      commuteRoute: {
+        name: 'Morning commute',
+        origin: { label: 'Origin', latitude: 52.2, longitude: 21 },
+        destination: null
+      }
+    } as unknown as LocalSetupInput;
+
+    expect(saveLocalSetup(storage, unsafeSetup).outcome).toBe('write-failed');
+    expect(storage.stored).toBeNull();
   });
 
   test('returns a failed outcome when storage cannot be written', () => {

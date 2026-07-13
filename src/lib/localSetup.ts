@@ -14,6 +14,7 @@ import {
   type TodoUrgency
 } from './todo';
 import { weatherLocationSchema, type WeatherLocation } from './weatherLocation';
+import { commuteRouteSchema, type CommuteRoute } from './commuteRoute';
 
 export const localSetupVersion = 1;
 export const localSetupStorageKey = 'daily.visitorLocalSetup.v1';
@@ -22,12 +23,14 @@ export type LocalSetup = {
   version: typeof localSetupVersion;
   summaryConfiguration: typeof defaultSummaryConfiguration;
   weatherLocation: WeatherLocation | null;
+  commuteRoute: CommuteRoute | null;
 } & TodoState;
 
 export type LocalSetupInput = {
   version: typeof localSetupVersion;
   summaryConfiguration: typeof defaultSummaryConfiguration;
   weatherLocation: WeatherLocation | null;
+  commuteRoute: CommuteRoute | null;
 } & TodoStateInput;
 
 export type LocalSetupStorageAdapter = {
@@ -93,7 +96,8 @@ const localSetupBaseSchema = z
   .object({
     version: z.literal(localSetupVersion),
     summaryConfiguration: summaryConfigurationSchema,
-    weatherLocation: weatherLocationSchema.nullable().default(null)
+    weatherLocation: weatherLocationSchema.nullable().default(null),
+    commuteRoute: commuteRouteSchema.nullable().default(null)
   })
   .and(todoStateSchema);
 
@@ -101,6 +105,7 @@ const localSetupSchema = localSetupBaseSchema.transform((setup) => ({
   version: setup.version,
   summaryConfiguration: setup.summaryConfiguration,
   weatherLocation: setup.weatherLocation,
+  commuteRoute: setup.commuteRoute,
   todoCategories: setup.todoCategories,
   todoTasks: setup.todoTasks,
   nextTodoId: setup.nextTodoId
@@ -110,13 +115,15 @@ const unversionedCurrentLocalSetupSchema = z
   .object({
     version: z.never().optional(),
     summaryConfiguration: summaryConfigurationSchema,
-    weatherLocation: weatherLocationSchema.nullable().default(null)
+    weatherLocation: weatherLocationSchema.nullable().default(null),
+    commuteRoute: commuteRouteSchema.nullable().default(null)
   })
   .and(todoStateSchema)
   .transform((setup) => ({
     version: localSetupVersion,
     summaryConfiguration: setup.summaryConfiguration,
     weatherLocation: setup.weatherLocation,
+    commuteRoute: setup.commuteRoute,
     todoCategories: setup.todoCategories,
     todoTasks: setup.todoTasks,
     nextTodoId: setup.nextTodoId
