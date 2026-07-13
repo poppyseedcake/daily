@@ -49,8 +49,22 @@ const validDraft = (): UserSetupImportDraft => ({
     latitude: 52.2297,
     longitude: 21.0122
   },
-  commuteRoutes: [],
-  commuteDays: ['monday', 'tuesday', 'wednesday', 'thursday', 'friday']
+  commuteRoutes: [
+    {
+      id: 'commute-route-1',
+      userId: 'user-1',
+      name: 'Morning commute',
+      originLabel: 'Home',
+      originLatitude: 52.2297,
+      originLongitude: 21.0122,
+      destinationLabel: 'Office',
+      destinationLatitude: 52.2318,
+      destinationLongitude: 21.0067,
+      enabled: false,
+      position: 1
+    }
+  ],
+  commuteDays: ['monday', 'wednesday', 'sunday']
 });
 
 const createStore = ({
@@ -58,7 +72,7 @@ const createStore = ({
   failAfter
 }: {
   existingSetup?: boolean;
-  failAfter?: 'summaryConfiguration' | 'todoCategories' | 'todoTasks';
+  failAfter?: 'summaryConfiguration' | 'todoCategories' | 'todoTasks' | 'commuteRoutes';
 } = {}): UserSetupImportPersistenceStore & {
   saved: {
     summaryConfigurations: UserSetupImportDraft['summaryConfiguration'][];
@@ -122,6 +136,7 @@ const createStore = ({
         },
         saveCommuteRoutes(routes) {
           staged.commuteRoutes.push(...routes);
+          failIfNeeded('commuteRoutes');
         },
         saveCommuteDays(_userId, days) {
           staged.commuteDays.push(...days);
@@ -152,6 +167,8 @@ describe('User Setup import persistence', () => {
     expect(store.saved.todoCategories).toEqual(draft.todoCategories);
     expect(store.saved.todoTasks).toEqual(draft.todoTasks);
     expect(store.saved.weatherLocations).toEqual([draft.weatherLocation]);
+    expect(store.saved.commuteRoutes).toEqual(draft.commuteRoutes);
+    expect(store.saved.commuteDays).toEqual(draft.commuteDays);
   });
 
   test('accepts every Summary Configuration supported user time zone', async () => {
@@ -232,8 +249,35 @@ describe('User Setup import persistence', () => {
     expect(store.saved.todoTasks).toEqual([]);
   });
 
+  test('rejects malformed Commute data and the sixth route before writing any User setup', async () => {
+    const malformedStore = createStore();
+    const malformedDraft = validDraft();
+    malformedDraft.commuteRoutes[0]!.originLatitude = 91;
+
+    await expect(
+      persistUserSetupImportDraftForNewUser(malformedStore, 'user-1', malformedDraft)
+    ).resolves.toEqual({ outcome: 'invalid-draft' });
+    expect(malformedStore.saved.summaryConfigurations).toEqual([]);
+    expect(malformedStore.saved.commuteRoutes).toEqual([]);
+    expect(malformedStore.saved.commuteDays).toEqual([]);
+
+    const overLimitStore = createStore();
+    const overLimitDraft = validDraft();
+    overLimitDraft.commuteRoutes = Array.from({ length: 6 }, (_, index) => ({
+      ...overLimitDraft.commuteRoutes[0]!,
+      id: `commute-route-${index + 1}`,
+      position: index + 1
+    }));
+
+    await expect(
+      persistUserSetupImportDraftForNewUser(overLimitStore, 'user-1', overLimitDraft)
+    ).resolves.toEqual({ outcome: 'invalid-draft' });
+    expect(overLimitStore.saved.summaryConfigurations).toEqual([]);
+    expect(overLimitStore.saved.commuteRoutes).toEqual([]);
+  });
+
   test('does not leave partial User setup when an import write fails', async () => {
-    const store = createStore({ failAfter: 'todoCategories' });
+    const store = createStore({ failAfter: 'commuteRoutes' });
 
     const result = await persistUserSetupImportDraftForNewUser(store, 'user-1', validDraft());
 
@@ -241,5 +285,8 @@ describe('User Setup import persistence', () => {
     expect(store.saved.summaryConfigurations).toEqual([]);
     expect(store.saved.todoCategories).toEqual([]);
     expect(store.saved.todoTasks).toEqual([]);
+    expect(store.saved.weatherLocations).toEqual([]);
+    expect(store.saved.commuteRoutes).toEqual([]);
+    expect(store.saved.commuteDays).toEqual([]);
   });
 });

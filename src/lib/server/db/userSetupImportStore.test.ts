@@ -69,8 +69,22 @@ const validDraft = (): UserSetupImportDraft => ({
     latitude: 52.2297,
     longitude: 21.0122
   },
-  commuteRoutes: [],
-  commuteDays: ['monday', 'tuesday', 'wednesday', 'thursday', 'friday']
+  commuteRoutes: [
+    {
+      id: 'commute-route-1',
+      userId: 'user-1',
+      name: 'Morning commute',
+      originLabel: 'Home',
+      originLatitude: 52.2297,
+      originLongitude: 21.0122,
+      destinationLabel: 'Office',
+      destinationLatitude: 52.2318,
+      destinationLongitude: 21.0067,
+      enabled: false,
+      position: 1
+    }
+  ],
+  commuteDays: ['monday', 'wednesday', 'sunday']
 });
 
 describe('SQLite User Setup import store', () => {
@@ -116,6 +130,16 @@ describe('SQLite User Setup import store', () => {
     expect(sqlite.prepare('select label, latitude, longitude from weather_locations').all()).toEqual([
       { label: 'Warsaw, Poland', latitude: 52.2297, longitude: 21.0122 }
     ]);
+    expect(
+      sqlite.prepare('select name, origin_label, destination_label, enabled, position from commute_routes').all()
+    ).toEqual([
+      { name: 'Morning commute', origin_label: 'Home', destination_label: 'Office', enabled: 0, position: 1 }
+    ]);
+    expect(sqlite.prepare('select day from commute_days order by day').all()).toEqual([
+      { day: 'monday' },
+      { day: 'sunday' },
+      { day: 'wednesday' }
+    ]);
   });
 
   test('treats an existing Weather Location as existing User setup', async () => {
@@ -147,5 +171,29 @@ describe('SQLite User Setup import store', () => {
       { day: 'saturday' },
       { day: 'sunday' }
     ]);
+  });
+
+  test('keeps an existing User Commute Route and rejects the whole browser Local Setup import', async () => {
+    const store = createUserSetupImportStore(database);
+    const savedRoute = {
+      ...validDraft().commuteRoutes[0]!,
+      id: 'saved-route',
+      name: 'Saved user route',
+      destinationLabel: 'Saved destination'
+    };
+
+    await store.transaction((transaction) => {
+      transaction.saveCommuteRoutes([savedRoute]);
+      transaction.saveCommuteDays('user-1', ['tuesday']);
+    });
+
+    await expect(
+      persistUserSetupImportDraftForNewUser(store, 'user-1', validDraft())
+    ).resolves.toEqual({ outcome: 'skipped-existing-setup' });
+    expect(sqlite.prepare('select id, name, destination_label from commute_routes').all()).toEqual([
+      { id: 'saved-route', name: 'Saved user route', destination_label: 'Saved destination' }
+    ]);
+    expect(sqlite.prepare('select day from commute_days').all()).toEqual([{ day: 'tuesday' }]);
+    expect(sqlite.prepare('select id from summary_configurations').all()).toEqual([]);
   });
 });
