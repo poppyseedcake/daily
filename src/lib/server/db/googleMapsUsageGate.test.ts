@@ -11,7 +11,8 @@ import {
 import { createGoogleMapsPersonAttribution } from '../googleMapsPersonAttribution';
 import {
   createGoogleMapsUsageGate,
-  readGoogleMapsUsageCaps
+  readGoogleMapsUsageCaps,
+  setGoogleMapsAdminKillSwitch
 } from './googleMapsUsageGate';
 import * as schema from './schema';
 
@@ -320,6 +321,15 @@ describe('Google Maps usage gate', () => {
     await expect(restartedGate.admit('commute-estimate', person)).resolves.toEqual({
       outcome: 'admitted'
     });
+  });
+
+  test('updates the Administrator kill switch without requiring usage cap configuration', () => {
+    const database = drizzleDatabase(createDatabase());
+
+    expect(() => setGoogleMapsAdminKillSwitch(database, true)).not.toThrow();
+    expect(
+      database.select().from(schema.googleMapsControl).get()
+    ).toMatchObject({ controlKey: 'admin-kill-switch', enabled: true });
   });
 
   test('reports environment control precedence and cap suspension from privacy-safe aggregate data', async () => {
