@@ -1152,7 +1152,14 @@
             headers: { 'content-type': 'application/json' },
             body: JSON.stringify(request)
           });
-          return response.json();
+          if (!response.ok) {
+            return { outcome: 'unavailable', reason: 'provider-unavailable' };
+          }
+
+          const result = await response.json();
+          return result?.outcome === 'available' || result?.outcome === 'unavailable'
+            ? result
+            : { outcome: 'unavailable', reason: 'provider-unavailable' };
         }
       }
     }).then((previewInput) => {

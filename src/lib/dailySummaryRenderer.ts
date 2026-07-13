@@ -28,7 +28,10 @@ export type DailySummaryInput = {
 
 export type CommuteSection = {
   label: 'Commute';
-  estimates: Array<{ routeName: string; durationMinutes: number }>;
+  estimates: Array<
+    { routeName: string; outcome: 'available'; durationMinutes: number }
+    | { routeName: string; outcome: 'unavailable' }
+  >;
 };
 
 export type RenderedDailySummary = {
@@ -118,9 +121,9 @@ const buildVisibleSection = (
 
 const renderCommuteSection = (section: CommuteSection): RenderedSection => ({
   label: section.label,
-  html: `<ul>${section.estimates.map((estimate) => `<li>${escapeHtml(estimate.routeName)}: ${estimate.durationMinutes} minutes</li>`).join('')}</ul>`,
+  html: `<ul>${section.estimates.map((estimate) => `<li>${escapeHtml(estimate.routeName)}: ${estimate.outcome === 'available' ? `${estimate.durationMinutes} minutes` : 'unavailable'}</li>`).join('')}</ul>`,
   text: section.estimates
-    .map((estimate) => `${estimate.routeName}: ${estimate.durationMinutes} minutes`)
+    .map((estimate) => `${estimate.routeName}: ${estimate.outcome === 'available' ? `${estimate.durationMinutes} minutes` : 'unavailable'}`)
     .join('\n')
 });
 

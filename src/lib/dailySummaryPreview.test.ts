@@ -91,6 +91,33 @@ describe('Daily Summary preview input', () => {
     }
   });
 
+  test('keeps available route estimates when another route is unavailable', async () => {
+    const commuteEstimateProvider = {
+      estimateCommute: vi.fn()
+        .mockResolvedValueOnce({ outcome: 'unavailable', reason: 'route-unavailable' } as const)
+        .mockResolvedValueOnce({ outcome: 'available', estimate: { durationMinutes: 11 } } as const)
+    };
+    const routes: CommuteRoute[] = [
+      { id: 'office', name: 'Office', enabled: true, origin: { label: 'Home', latitude: 40.1, longitude: -73.9 }, destination: { label: 'Office', latitude: 40.7, longitude: -74 } },
+      { id: 'school', name: 'School run', enabled: true, origin: { label: 'Home', latitude: 40.1, longitude: -73.9 }, destination: { label: 'School', latitude: 40.6, longitude: -73.7 } }
+    ];
+
+    const preview = await buildDailySummaryInput({
+      configuration,
+      todoCategories,
+      todoTasks,
+      commuteRoutes: routes,
+      commuteDays: ['wednesday'],
+      commuteEstimateProvider,
+      now: new Date('2026-07-09T02:30:00.000Z')
+    });
+    const rendered = renderDailySummary(preview);
+
+    expect(rendered.text).toContain('Commute\nOffice: unavailable\nSchool run: 11 minutes');
+    expect(rendered.html).toContain('Office: unavailable');
+    expect(rendered.html).toContain('School run: 11 minutes');
+  });
+
   test.each([
     ['disabled section', { sections: { ...configuration.sections, commute: false } }, ['wednesday']],
     ['non-Commute Day', {}, ['thursday']],

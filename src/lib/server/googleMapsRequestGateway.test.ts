@@ -192,6 +192,23 @@ describe('Google Maps request gateway', () => {
     ]);
   });
 
+  test('maps a valid no-route provider result to route-specific unavailability', async () => {
+    const provider = createProvider();
+    vi.mocked(provider.estimateCommute).mockResolvedValue(null);
+    const gateway = createGoogleMapsRequestGateway({
+      provider,
+      usageGate: createAdmittingGate([]),
+      attribution: { personUsageIdentity: 'test-person' },
+      environmentKillSwitch: false,
+      diagnostics: vi.fn()
+    });
+
+    await expect(gateway.estimateCommute({ origin, destination })).resolves.toEqual({
+      outcome: 'unavailable',
+      reason: 'route-unavailable'
+    });
+  });
+
   test('keeps point-selection provider failures typed and diagnostics free of provider payloads', async () => {
     const provider = createProvider();
     vi.mocked(provider.selectPoint).mockRejectedValue(

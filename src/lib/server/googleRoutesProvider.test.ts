@@ -27,4 +27,16 @@ describe('Google Routes provider', () => {
     );
     expect(JSON.stringify(estimate)).not.toContain('privatePayload');
   });
+
+  test('returns no estimate when Google computes no route', async () => {
+    const provider = createGoogleRoutesProvider({
+      apiKey: 'test-key',
+      fetcher: vi.fn().mockResolvedValue(new Response(JSON.stringify({ routes: [] }), { status: 200 }))
+    });
+
+    await expect(provider.estimateCommute({
+      origin: { label: 'Home', latitude: 52.1, longitude: 21.1 },
+      destination: { label: 'Unreachable', latitude: 52.2, longitude: 21.2 }
+    })).resolves.toBeNull();
+  });
 });
