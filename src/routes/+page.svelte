@@ -308,6 +308,10 @@
     commuteRouteName = setup.commuteRoute?.name ?? '';
     commuteOrigin = setup.commuteRoute?.origin ?? null;
     commuteDestination = setup.commuteRoute?.destination ?? null;
+    commuteOriginLatitude = setup.commuteRoute?.origin.latitude.toString() ?? '52.2285';
+    commuteOriginLongitude = setup.commuteRoute?.origin.longitude.toString() ?? '21.0037';
+    commuteDestinationLatitude = setup.commuteRoute?.destination.latitude.toString() ?? '52.2318';
+    commuteDestinationLongitude = setup.commuteRoute?.destination.longitude.toString() ?? '21.0067';
     weatherLocationSearchQuery = setup.weatherLocation?.label ?? '';
     weatherLocationStatus = setup.weatherLocation
       ? 'Weather Location saved in this browser only.'
