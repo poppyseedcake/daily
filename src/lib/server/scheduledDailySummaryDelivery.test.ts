@@ -198,6 +198,109 @@ describe('scheduled Daily Summary delivery', () => {
     ).toEqual({ count: 1 });
   });
 
+  test('keeps a scheduled occurrence due while its retry is not yet eligible', async () => {
+    const scheduledAt = '2026-10-24T05:00:00Z';
+    saveQualifyingUser(sqlite, { userId: 'user-1', scheduledAt });
+    const recordStore = createDeliveryRecordStore(database);
+    const claim = await recordStore.claimScheduledOccurrence('user-1', {
+      scheduledAt,
+      claimedAt: '2026-10-24T05:00:00.000Z',
+      claimExpiresAt: '2026-10-24T05:05:00.000Z',
+      providerName: 'fake-delivery'
+    });
+    await recordStore.markScheduledRetrying(claim!.id, {
+      attemptCount: 1,
+      attemptedAt: '2026-10-24T05:00:01.000Z',
+      nextRetryAt: '2026-10-24T05:10:00.000Z',
+      providerStatusMetadata: 'temporarily unavailable',
+      errorClassification: 'provider-unavailable'
+    });
+    const send = vi.fn();
+    const delivery = createTestDelivery({
+      database,
+      send,
+      now: () => new Date('2026-10-24T05:05:00.000Z')
+    });
+
+    await expect(delivery.processOneDueOccurrence()).resolves.toEqual({
+      outcome: 'retry-pending',
+      occurrenceId: claim!.id
+    });
+
+    expect(send).not.toHaveBeenCalled();
+    expect(
+      sqlite.prepare('select next_summary_at from users where id = ?').get('user-1')
+    ).toEqual({ next_summary_at: scheduledAt });
+  });
+
+  test('finishes an accepted occurrence as failed when the provider omits its message id', async () => {
+    saveQualifyingUser(sqlite, {
+      userId: 'user-1',
+      scheduledAt: '2026-10-24T05:00:00Z'
+    });
+    const send = vi.fn().mockResolvedValue({
+      providerName: 'fake-delivery',
+      providerMessageId: null,
+      providerStatusMetadata: 'accepted; missing message id'
+    });
+    const delivery = createTestDelivery({
+      database,
+      send,
+      now: () => new Date('2026-10-24T05:00:00.000Z')
+    });
+
+    const firstOutcome = await delivery.processOneDueOccurrence();
+    const repeatedOutcome = await delivery.processOneDueOccurrence();
+
+    expect(firstOutcome).toEqual({
+      outcome: 'provider-missing-message-id',
+      occurrenceId: expect.any(String)
+    });
+    expect(repeatedOutcome).toEqual({ outcome: 'none-due' });
+    expect(send).toHaveBeenCalledOnce();
+    expect(
+      sqlite
+        .prepare(
+          `select delivery_status, error_classification, provider_message_id,
+                  provider_status_metadata, claim_expires_at
+             from delivery_records`
+        )
+        .get()
+    ).toEqual({
+      delivery_status: 'failed',
+      error_classification: 'provider-missing-message-id',
+      provider_message_id: null,
+      provider_status_metadata: 'accepted; missing message id',
+      claim_expires_at: null
+    });
+  });
+
+  test('advances a due occurrence that has no qualifying content', async () => {
+    saveQualifyingUser(sqlite, {
+      userId: 'user-1',
+      scheduledAt: '2026-10-24T05:00:00Z'
+    });
+    sqlite.prepare('delete from todo_tasks where user_id = ?').run('user-1');
+    const send = vi.fn();
+    const delivery = createTestDelivery({
+      database,
+      send,
+      now: () => new Date('2026-10-24T05:00:00.000Z')
+    });
+
+    await expect(delivery.processOneDueOccurrence()).resolves.toEqual({
+      outcome: 'not-qualifying'
+    });
+    await expect(delivery.processOneDueOccurrence()).resolves.toEqual({
+      outcome: 'none-due'
+    });
+
+    expect(send).not.toHaveBeenCalled();
+    expect(
+      sqlite.prepare('select next_summary_at from users where id = ?').get('user-1')
+    ).toEqual({ next_summary_at: '2026-10-25T06:00:00Z' });
+  });
+
   test('recovers an interrupted occurrence with the same record, identity, and idempotency key', async () => {
     saveQualifyingUser(sqlite, {
       userId: 'user-1',
