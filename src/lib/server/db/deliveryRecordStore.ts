@@ -1,4 +1,4 @@
-import { and, desc, eq, gt, gte, lte, or, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, lte, or, sql } from 'drizzle-orm';
 import { db } from '$lib/server/db';
 import type {
   DeliveryRecord,
@@ -130,8 +130,7 @@ export const createDeliveryRecordStore = (database: DeliveryRecordDatabase) => (
           eq(deliveryRecords.id, recordId),
           eq(deliveryRecords.attemptType, 'scheduled'),
           eq(deliveryRecords.deliveryStatus, 'processing'),
-          eq(deliveryRecords.attemptCount, retry.attemptCount),
-          gt(deliveryRecords.claimExpiresAt, retry.attemptedAt)
+          eq(deliveryRecords.attemptCount, retry.attemptCount)
         )
       )
       .returning();
@@ -157,8 +156,7 @@ export const createDeliveryRecordStore = (database: DeliveryRecordDatabase) => (
           eq(deliveryRecords.id, recordId),
           eq(deliveryRecords.attemptType, 'scheduled'),
           eq(deliveryRecords.deliveryStatus, 'processing'),
-          eq(deliveryRecords.attemptCount, sent.attemptCount),
-          gt(deliveryRecords.claimExpiresAt, sent.completedAt)
+          eq(deliveryRecords.attemptCount, sent.attemptCount)
         )
       )
       .returning();
@@ -184,8 +182,7 @@ export const createDeliveryRecordStore = (database: DeliveryRecordDatabase) => (
           eq(deliveryRecords.id, recordId),
           eq(deliveryRecords.attemptType, 'scheduled'),
           eq(deliveryRecords.deliveryStatus, 'processing'),
-          eq(deliveryRecords.attemptCount, failed.attemptCount),
-          gt(deliveryRecords.claimExpiresAt, failed.completedAt)
+          eq(deliveryRecords.attemptCount, failed.attemptCount)
         )
       )
       .returning();
