@@ -64,5 +64,6 @@ describe('CI workflow contract', () => {
     expect(isolationScript).toContain('ip link set lo up');
     expect(isolationScript).toContain('runuser');
     expect(isolationScript).toContain('sudo --non-interactive');
+    expect(isolationScript).toContain('export PATH="$3"');
   });
 });

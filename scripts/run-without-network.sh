@@ -8,9 +8,13 @@ if (( $# == 0 )); then
 fi
 
 command_user="$(id --user --name)"
+command_home="${HOME:?}"
+command_path="${PATH:?}"
 
 exec sudo --non-interactive --preserve-env unshare --net -- bash -c '
   set -euo pipefail
   ip link set lo up
-  exec runuser --user "$1" --preserve-environment -- "${@:2}"
-' bash "$command_user" "$@"
+  export HOME="$2"
+  export PATH="$3"
+  exec runuser --user "$1" --preserve-environment -- "${@:4}"
+' bash "$command_user" "$command_home" "$command_path" "$@"
