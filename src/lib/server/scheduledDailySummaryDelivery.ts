@@ -33,6 +33,16 @@ type ScheduledDailySummaryDeliveryRecordStore = {
       providerStatusMetadata: string | null;
     }
   ): Promise<DeliveryRecord | null>;
+  markScheduledFailed(
+    recordId: string,
+    failed: {
+      attemptCount: number;
+      completedAt: string;
+      providerMessageId: string | null;
+      providerStatusMetadata: string | null;
+      errorClassification: 'provider-missing-message-id';
+    }
+  ): Promise<DeliveryRecord | null>;
 };
 
 type ScheduledDailySummaryGenerator = {
@@ -79,8 +89,14 @@ export const createScheduledDailySummaryDelivery = ({
     }
 
     const generated = await generator.generate(occurrence.userId);
+    const nextSummaryAt =
+      calculateNextSummaryAt(
+        generated.input.configuration,
+        Temporal.Instant.from(processingStartedAtIso)
+      )?.toString() ?? null;
 
     if (!generated.hasQualifyingContent) {
+      await occurrenceStore.advance(occurrence.userId, occurrence.scheduledAt, nextSummaryAt);
       return { outcome: 'not-qualifying' as const };
     }
 
@@ -92,21 +108,22 @@ export const createScheduledDailySummaryDelivery = ({
       ).toISOString(),
       providerName
     });
-    const nextSummaryAt =
-      calculateNextSummaryAt(
-        generated.input.configuration,
-        Temporal.Instant.from(processingStartedAtIso)
-      )?.toString() ?? null;
-
     if (!claim) {
       const existing = await deliveryRecordStore.loadScheduledOccurrence(
         occurrence.userId,
         occurrence.scheduledAt
       );
 
-      if (existing && existing.deliveryStatus !== 'processing') {
+      if (
+        existing &&
+        (existing.deliveryStatus === 'sent' || existing.deliveryStatus === 'failed')
+      ) {
         await occurrenceStore.advance(occurrence.userId, occurrence.scheduledAt, nextSummaryAt);
         return { outcome: 'already-processed' as const, occurrenceId: existing.id };
+      }
+
+      if (existing?.deliveryStatus === 'retrying') {
+        return { outcome: 'retry-pending' as const, occurrenceId: existing.id };
       }
 
       return { outcome: 'already-claimed' as const };
@@ -124,7 +141,19 @@ export const createScheduledDailySummaryDelivery = ({
     });
 
     if (!accepted.providerMessageId) {
-      return { outcome: 'provider-missing-message-id' as const, occurrenceId: claim.id };
+      const failed = await deliveryRecordStore.markScheduledFailed(claim.id, {
+        attemptCount: claim.attemptCount ?? 1,
+        completedAt: processingStartedAtIso,
+        providerMessageId: null,
+        providerStatusMetadata: accepted.providerStatusMetadata,
+        errorClassification: 'provider-missing-message-id'
+      });
+
+      if (!failed) {
+        return { outcome: 'claim-lost' as const, occurrenceId: claim.id };
+      }
+
+      return { outcome: 'provider-missing-message-id' as const, occurrenceId: failed.id };
     }
 
     const sent = await deliveryRecordStore.markScheduledSent(claim.id, {
