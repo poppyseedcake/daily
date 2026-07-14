@@ -6,12 +6,18 @@ import {
   type DailySummaryDeliveryProvider
 } from './dailySummaryDelivery';
 import type { ScheduledDailySummaryGenerationResult } from './scheduledDailySummaryGeneration';
-import type { DeliveryErrorClassification, DeliveryRecord } from '$lib/deliveryRecords';
+import type {
+  DeliveryErrorClassification,
+  DeliveryRecord,
+  ScheduledDeliveryRetry,
+  ScheduledDeliveryUnclaimedFailure
+} from '$lib/deliveryRecords';
 import type { DueScheduledDailySummaryOccurrence } from './db/scheduledDailySummaryOccurrenceStore';
 
 const processingClaimDurationMilliseconds = 5 * 60 * 1000;
 const retryDelayMilliseconds = 5 * 60 * 1000;
 const retryDeadlineMilliseconds = 15 * 60 * 1000;
+const maximumDeliveryAttempts = 3;
 
 type ScheduledDailySummaryOccurrenceStore = {
   loadNextProcessable(now: string): Promise<DueScheduledDailySummaryOccurrence | null>;
@@ -29,16 +35,13 @@ type ScheduledDailySummaryDeliveryRecordStore = {
     }
   ): Promise<DeliveryRecord | null>;
   loadScheduledOccurrence(userId: string, scheduledAt: string): Promise<DeliveryRecord | null>;
-  markScheduledStale(recordId: string, completedAt: string): Promise<DeliveryRecord | null>;
+  markScheduledUnclaimedFailed(
+    recordId: string,
+    failure: ScheduledDeliveryUnclaimedFailure
+  ): Promise<DeliveryRecord | null>;
   markScheduledRetrying(
     recordId: string,
-    retry: {
-      attemptCount: number;
-      attemptedAt: string;
-      nextRetryAt: string;
-      providerStatusMetadata: string | null;
-      errorClassification: DeliveryErrorClassification;
-    }
+    retry: ScheduledDeliveryRetry
   ): Promise<DeliveryRecord | null>;
   markScheduledSent(
     recordId: string,
@@ -104,27 +107,33 @@ export const createScheduledDailySummaryDelivery = ({
       return { outcome: 'none-due' as const };
     }
 
-    const retryDeadline = new Date(occurrence.scheduledAt).getTime() + retryDeadlineMilliseconds;
-    if (processingStartedAt.getTime() > retryDeadline) {
-      const existing = await deliveryRecordStore.loadScheduledOccurrence(
-        occurrence.userId,
-        occurrence.scheduledAt
-      );
+    const existing = await deliveryRecordStore.loadScheduledOccurrence(
+      occurrence.userId,
+      occurrence.scheduledAt
+    );
+    if (
+      existing &&
+      (existing.deliveryStatus === 'processing' || existing.deliveryStatus === 'retrying')
+    ) {
+      const retryDeadline = new Date(occurrence.scheduledAt).getTime() + retryDeadlineMilliseconds;
+      const terminalClassification =
+        (existing.attemptCount ?? 0) >= maximumDeliveryAttempts
+          ? 'retry-exhausted'
+          : processingStartedAt.getTime() > retryDeadline
+            ? 'stale-occurrence'
+            : null;
 
-      if (
-        existing &&
-        (existing.deliveryStatus === 'processing' || existing.deliveryStatus === 'retrying')
-      ) {
-        const failed = await deliveryRecordStore.markScheduledStale(
-          existing.id,
-          processingStartedAtIso
-        );
+      if (terminalClassification) {
+        const failed = await deliveryRecordStore.markScheduledUnclaimedFailed(existing.id, {
+          completedAt: processingStartedAtIso,
+          errorClassification: terminalClassification
+        });
 
         if (!failed) {
           return { outcome: 'claim-lost' as const, occurrenceId: existing.id };
         }
 
-        return { outcome: 'stale-occurrence' as const, occurrenceId: failed.id };
+        return { outcome: terminalClassification, occurrenceId: failed.id };
       }
     }
 
@@ -149,21 +158,23 @@ export const createScheduledDailySummaryDelivery = ({
       providerName
     });
     if (!claim) {
-      const existing = await deliveryRecordStore.loadScheduledOccurrence(
-        occurrence.userId,
-        occurrence.scheduledAt
-      );
+      const claimedElsewhere =
+        existing ??
+        (await deliveryRecordStore.loadScheduledOccurrence(
+          occurrence.userId,
+          occurrence.scheduledAt
+        ));
 
       if (
-        existing &&
-        (existing.deliveryStatus === 'sent' || existing.deliveryStatus === 'failed')
+        claimedElsewhere &&
+        (claimedElsewhere.deliveryStatus === 'sent' || claimedElsewhere.deliveryStatus === 'failed')
       ) {
         await occurrenceStore.advance(occurrence.userId, occurrence.scheduledAt, nextSummaryAt);
-        return { outcome: 'already-processed' as const, occurrenceId: existing.id };
+        return { outcome: 'already-processed' as const, occurrenceId: claimedElsewhere.id };
       }
 
-      if (existing?.deliveryStatus === 'retrying') {
-        return { outcome: 'retry-pending' as const, occurrenceId: existing.id };
+      if (claimedElsewhere?.deliveryStatus === 'retrying') {
+        return { outcome: 'retry-pending' as const, occurrenceId: claimedElsewhere.id };
       }
 
       return { outcome: 'already-claimed' as const };
@@ -207,7 +218,7 @@ export const createScheduledDailySummaryDelivery = ({
         };
       }
 
-      if (attemptCount >= 3) {
+      if (attemptCount >= maximumDeliveryAttempts) {
         const failed = await deliveryRecordStore.markScheduledFailed(claim.id, {
           attemptCount,
           completedAt: processingStartedAtIso,

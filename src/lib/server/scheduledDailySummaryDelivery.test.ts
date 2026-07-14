@@ -447,6 +447,38 @@ describe('scheduled Daily Summary delivery', () => {
     expect(idempotencyKeys[0]).not.toContain('Prepare launch notes');
   });
 
+  test('does not make a fourth provider submission while recovering three interrupted claims', async () => {
+    const scheduledAt = '2026-10-24T05:00:00.000Z';
+    saveQualifyingUser(sqlite, { userId: 'user-1', scheduledAt });
+    let currentTime = new Date(scheduledAt);
+    const send = vi
+      .fn<DailySummaryDeliveryProvider['send']>()
+      .mockRejectedValue(new Error('simulated interruption after submission'));
+    const delivery = createTestDelivery({ database, send, now: () => currentTime });
+
+    await expect(delivery.processOneDueOccurrence()).rejects.toThrow('simulated interruption');
+    currentTime = new Date('2026-10-24T05:05:00.000Z');
+    await expect(delivery.processOneDueOccurrence()).rejects.toThrow('simulated interruption');
+    currentTime = new Date('2026-10-24T05:10:00.000Z');
+    await expect(delivery.processOneDueOccurrence()).rejects.toThrow('simulated interruption');
+    currentTime = new Date('2026-10-24T05:15:00.000Z');
+
+    await expect(delivery.processOneDueOccurrence()).resolves.toMatchObject({
+      outcome: 'retry-exhausted'
+    });
+
+    expect(send).toHaveBeenCalledTimes(3);
+    expect(
+      sqlite
+        .prepare('select delivery_status, attempt_count, error_classification from delivery_records')
+        .get()
+    ).toEqual({
+      delivery_status: 'failed',
+      attempt_count: 3,
+      error_classification: 'retry-exhausted'
+    });
+  });
+
   test('retries transient provider unavailability with current content on the same occurrence', async () => {
     const scheduledAt = '2026-10-24T05:00:00.000Z';
     saveQualifyingUser(sqlite, { userId: 'user-1', scheduledAt });
