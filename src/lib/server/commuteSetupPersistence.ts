@@ -15,7 +15,10 @@ export type UserCommuteSetupStore = {
   saveDays: (userId: string, days: CommuteDay[]) => Promise<void>;
 };
 
-export const loadUserCommuteSetup = async (store: UserCommuteSetupStore, userId: string) =>
+export const loadUserCommuteSetup = async (
+  store: Pick<UserCommuteSetupStore, 'load'>,
+  userId: string
+) =>
   (await store.load(userId)) ?? { routes: [], days: [...defaultCommuteDays] };
 
 export const createUserCommuteRoute = async (

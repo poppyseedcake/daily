@@ -45,7 +45,7 @@ export const summaryConfigurationFromFlat = (
   });
 
 export const loadUserSummaryConfiguration = async (
-  store: UserSummaryConfigurationStore,
+  store: Pick<UserSummaryConfigurationStore, 'load'>,
   userId: string
 ): Promise<SummaryConfiguration> => {
   const savedConfiguration = await store.load(userId);
