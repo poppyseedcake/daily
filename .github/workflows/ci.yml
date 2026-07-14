@@ -35,16 +35,16 @@ jobs:
         run: npm ci
 
       - name: Check Svelte and TypeScript
-        run: npm run check
+        run: bash scripts/run-without-network.sh npm run check
 
       - name: Run Vitest
-        run: npm run test:unit
+        run: bash scripts/run-without-network.sh npm run test:unit
 
       - name: Install Playwright Chromium
         run: npm exec -- playwright install --with-deps chromium
 
       - name: Run Playwright
-        run: npm run test:e2e
+        run: bash scripts/run-without-network.sh npm run test:e2e
 
       - name: Build production adapter
-        run: npm run build
+        run: bash scripts/run-without-network.sh npm run build

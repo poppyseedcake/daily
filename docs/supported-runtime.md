@@ -6,3 +6,8 @@ The exact Node.js version is recorded in `.nvmrc`. The npm version and compatibl
 also declared in `package.json`. CI installs those versions before running `npm ci`, and production
 deployments must use the same versions so the validated lockfile and adapter build match the VPS
 runtime.
+
+After dependencies and the Playwright browser are installed, CI runs checks, tests, and the build
+in a separate network namespace with only loopback enabled. This lets Playwright reach its local
+SvelteKit server while preventing validation code from contacting live providers, production hosts,
+or remote databases.

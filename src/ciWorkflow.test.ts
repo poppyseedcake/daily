@@ -38,7 +38,7 @@ describe('CI workflow contract', () => {
 
     for (const script of requiredScripts) {
       expect(packageManifest.scripts[script]).toBeTypeOf('string');
-      expect(source).toContain(`npm run ${script}`);
+      expect(source).toContain(`bash scripts/run-without-network.sh npm run ${script}`);
     }
 
     expect(source).toContain('npm exec -- playwright install --with-deps chromium');
@@ -55,5 +55,14 @@ describe('CI workflow contract', () => {
     expect(source).not.toMatch(
       /GOOGLE_CLIENT_SECRET|GOOGLE_MAPS_API_KEY|RESEND_API_KEY|RESEND_FROM_EMAIL/
     );
+  });
+
+  test('runs validation in a network namespace that only exposes loopback', () => {
+    const isolationScript = readFileSync('scripts/run-without-network.sh', 'utf8');
+
+    expect(isolationScript).toContain('unshare --net');
+    expect(isolationScript).toContain('ip link set lo up');
+    expect(isolationScript).toContain('runuser');
+    expect(isolationScript).toContain('sudo --non-interactive');
   });
 });
