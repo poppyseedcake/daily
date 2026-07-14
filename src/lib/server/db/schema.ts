@@ -1,6 +1,6 @@
 import { relations, sql } from 'drizzle-orm';
 import { check, index, integer, primaryKey, real, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
-import { deliveryErrorClassifications } from '$lib/deliveryRecords';
+import { deliveryErrorClassifications } from '../../deliveryRecords';
 
 export const users = sqliteTable(
   'users',

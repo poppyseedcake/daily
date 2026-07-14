@@ -315,6 +315,84 @@ describe('SQLite Delivery Record store', () => {
     ).toEqual({ count: 1 });
   });
 
+  test('accepts final provider results after lease expiry when no recovery claim took over', async () => {
+    const store = createDeliveryRecordStore(database);
+    const sentClaim = await store.claimScheduledOccurrence('user-1', {
+      scheduledAt: '2026-07-06T07:00:00.000Z',
+      claimedAt: '2026-07-06T07:00:01.000Z',
+      claimExpiresAt: '2026-07-06T07:05:01.000Z',
+      providerName: 'resend'
+    });
+
+    const sent = await store.markScheduledSent(sentClaim!.id, {
+      attemptCount: sentClaim!.attemptCount!,
+      completedAt: '2026-07-06T07:05:02.000Z',
+      providerMessageId: 'late-provider-response',
+      providerStatusMetadata: 'accepted'
+    });
+    const failedClaim = await store.claimScheduledOccurrence('user-1', {
+      scheduledAt: '2026-07-07T07:00:00.000Z',
+      claimedAt: '2026-07-07T07:00:01.000Z',
+      claimExpiresAt: '2026-07-07T07:05:01.000Z',
+      providerName: 'resend'
+    });
+    const failed = await store.markScheduledFailed(failedClaim!.id, {
+      attemptCount: failedClaim!.attemptCount!,
+      completedAt: '2026-07-07T07:05:02.000Z',
+      providerMessageId: null,
+      providerStatusMetadata: 'status=400',
+      errorClassification: 'provider-rejected'
+    });
+
+    expect(sent).toMatchObject({
+      deliveryStatus: 'sent',
+      attemptCount: 1,
+      completedAt: '2026-07-06T07:05:02.000Z',
+      claimExpiresAt: null,
+      providerMessageId: 'late-provider-response'
+    });
+    expect(failed).toMatchObject({
+      deliveryStatus: 'failed',
+      attemptCount: 1,
+      completedAt: '2026-07-07T07:05:02.000Z',
+      claimExpiresAt: null,
+      errorClassification: 'provider-rejected'
+    });
+  });
+
+  test('honors a retry delay reported after lease expiry when no recovery claim took over', async () => {
+    const store = createDeliveryRecordStore(database);
+    const scheduledAt = '2026-07-06T07:00:00.000Z';
+    const claim = await store.claimScheduledOccurrence('user-1', {
+      scheduledAt,
+      claimedAt: '2026-07-06T07:00:01.000Z',
+      claimExpiresAt: '2026-07-06T07:05:01.000Z',
+      providerName: 'resend'
+    });
+
+    const retrying = await store.markScheduledRetrying(claim!.id, {
+      attemptCount: claim!.attemptCount!,
+      attemptedAt: '2026-07-06T07:05:02.000Z',
+      nextRetryAt: '2026-07-06T07:10:02.000Z',
+      providerStatusMetadata: 'temporarily unavailable',
+      errorClassification: 'provider-unavailable'
+    });
+    const earlyClaim = await store.claimScheduledOccurrence('user-1', {
+      scheduledAt,
+      claimedAt: '2026-07-06T07:06:00.000Z',
+      claimExpiresAt: '2026-07-06T07:11:00.000Z',
+      providerName: 'resend'
+    });
+
+    expect(retrying).toMatchObject({
+      deliveryStatus: 'retrying',
+      attemptCount: 1,
+      nextRetryAt: '2026-07-06T07:10:02.000Z',
+      claimExpiresAt: null
+    });
+    expect(earlyClaim).toBeNull();
+  });
+
   test('updates one Scheduled Delivery Record through retrying and sent states', async () => {
     const store = createDeliveryRecordStore(database);
     const scheduledAt = '2026-07-06T07:00:00.000Z';
