@@ -29,7 +29,7 @@ const hasOnlySubmittedCategoryReferences = (todoState: TodoStateInput) => {
 };
 
 export const loadUserTodoState = async (
-  store: UserTodoPersistenceStore,
+  store: Pick<UserTodoPersistenceStore, 'load'>,
   userId: string
 ): Promise<TodoStateInput> => {
   const savedState = await store.load(userId);
