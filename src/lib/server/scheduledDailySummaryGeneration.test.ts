@@ -185,9 +185,13 @@ describe('scheduled Daily Summary generation', () => {
     expect(calendarEventProvider).not.toHaveBeenCalled();
   });
 
-  test('contains provider failures while preserving qualifying unrelated content', async () => {
+  test('contains a Weather provider failure while preserving qualifying unrelated content', async () => {
+    const weatherAndTodoConfiguration: SummaryConfiguration = {
+      ...configuration,
+      sections: { weather: true, commute: false, calendar: false, todo: true }
+    };
     const generator = createScheduledDailySummaryGenerator({
-      configurationStore: { load: vi.fn().mockResolvedValue(configuration) },
+      configurationStore: { load: vi.fn().mockResolvedValue(weatherAndTodoConfiguration) },
       todoStore: {
         load: vi.fn().mockResolvedValue({
           todoCategories: [],
@@ -200,6 +204,53 @@ describe('scheduled Daily Summary generation', () => {
       weatherLocationStore: {
         load: vi.fn().mockResolvedValue({ label: 'Warsaw', latitude: 52.2297, longitude: 21.0122 })
       },
+      commuteSetupStore: { load: vi.fn().mockResolvedValue({ routes: [], days: [] }) },
+      calendarConnectionStore: {
+        load: vi.fn(),
+        loadSelectedCalendars: vi.fn()
+      },
+      loadCalendarAccessToken: vi.fn(),
+      calendarEventProvider: vi.fn(),
+      weatherProvider: {
+        fetchDailyForecast: vi.fn().mockRejectedValue(new Error('private provider payload'))
+      },
+      commuteEstimateProvider: vi.fn(),
+      now: () => new Date('2026-07-14T06:00:00.000Z')
+    });
+
+    const result = await generator.generate('user-1');
+
+    expect(result.hasQualifyingContent).toBe(true);
+    expect(result.sectionContent).toEqual({
+      weather: 'unavailable',
+      commute: 'inapplicable',
+      calendar: 'inapplicable',
+      todo: 'qualifying'
+    });
+    for (const output of [result.rendered.html, result.rendered.text]) {
+      expect(output).toContain('Live weather is unavailable right now.');
+      expect(output).toContain('Useful Todo');
+      expect(output).not.toContain('private provider payload');
+    }
+  });
+
+  test('contains a protective Maps suspension while preserving qualifying unrelated content', async () => {
+    const commuteAndTodoConfiguration: SummaryConfiguration = {
+      ...configuration,
+      sections: { weather: false, commute: true, calendar: false, todo: true }
+    };
+    const generator = createScheduledDailySummaryGenerator({
+      configurationStore: { load: vi.fn().mockResolvedValue(commuteAndTodoConfiguration) },
+      todoStore: {
+        load: vi.fn().mockResolvedValue({
+          todoCategories: [],
+          todoTasks: [{
+            id: 'todo-1', title: 'Useful Todo', categoryId: null, urgency: 'low', position: 1,
+            completed: false
+          }]
+        })
+      },
+      weatherLocationStore: { load: vi.fn().mockResolvedValue(null) },
       commuteSetupStore: {
         load: vi.fn().mockResolvedValue({
           routes: [{
@@ -210,6 +261,45 @@ describe('scheduled Daily Summary generation', () => {
           days: ['tuesday']
         })
       },
+      calendarConnectionStore: { load: vi.fn(), loadSelectedCalendars: vi.fn() },
+      loadCalendarAccessToken: vi.fn(),
+      calendarEventProvider: vi.fn(),
+      weatherProvider: { fetchDailyForecast: vi.fn() },
+      commuteEstimateProvider: vi.fn().mockReturnValue({
+        estimateCommute: vi.fn().mockResolvedValue({
+          outcome: 'unavailable', reason: 'global-daily-cap'
+        })
+      }),
+      now: () => new Date('2026-07-14T06:00:00.000Z')
+    });
+
+    const result = await generator.generate('user-1');
+
+    expect(result.hasQualifyingContent).toBe(true);
+    expect(result.sectionContent.commute).toBe('unavailable');
+    expect(result.sectionContent.todo).toBe('qualifying');
+    expect(result.rendered.text).toContain('Live Commute is unavailable right now.');
+    expect(result.rendered.text).toContain('Useful Todo');
+  });
+
+  test('contains a Calendar provider failure while preserving qualifying unrelated content', async () => {
+    const calendarAndTodoConfiguration: SummaryConfiguration = {
+      ...configuration,
+      sections: { weather: false, commute: false, calendar: true, todo: true }
+    };
+    const generator = createScheduledDailySummaryGenerator({
+      configurationStore: { load: vi.fn().mockResolvedValue(calendarAndTodoConfiguration) },
+      todoStore: {
+        load: vi.fn().mockResolvedValue({
+          todoCategories: [],
+          todoTasks: [{
+            id: 'todo-1', title: 'Useful Todo', categoryId: null, urgency: 'low', position: 1,
+            completed: false
+          }]
+        })
+      },
+      weatherLocationStore: { load: vi.fn().mockResolvedValue(null) },
+      commuteSetupStore: { load: vi.fn().mockResolvedValue({ routes: [], days: [] }) },
       calendarConnectionStore: {
         load: vi.fn().mockResolvedValue({ status: 'connected' }),
         loadSelectedCalendars: vi.fn().mockResolvedValue([
@@ -218,35 +308,56 @@ describe('scheduled Daily Summary generation', () => {
       },
       loadCalendarAccessToken: vi.fn().mockResolvedValue('calendar-token'),
       calendarEventProvider: vi.fn().mockReturnValue({
-        fetchEvents: vi.fn().mockResolvedValue({
-          outcome: 'unavailable', reason: 'Live Calendar is unavailable right now.'
-        })
+        fetchEvents: vi.fn().mockRejectedValue(new Error('private Calendar provider failure'))
       }),
-      weatherProvider: {
-        fetchDailyForecast: vi.fn().mockRejectedValue(new Error('private provider payload'))
-      },
-      commuteEstimateProvider: vi.fn().mockImplementation(() => {
-        throw new Error('private Maps setup failure');
-      }),
+      weatherProvider: { fetchDailyForecast: vi.fn() },
+      commuteEstimateProvider: vi.fn(),
       now: () => new Date('2026-07-14T06:00:00.000Z')
     });
 
     const result = await generator.generate('user-1');
 
     expect(result.hasQualifyingContent).toBe(true);
-    expect(result.sectionContent).toEqual({
-      weather: 'unavailable',
-      commute: 'unavailable',
-      calendar: 'unavailable',
-      todo: 'qualifying'
+    expect(result.sectionContent.calendar).toBe('unavailable');
+    expect(result.sectionContent.todo).toBe('qualifying');
+    expect(result.rendered.text).toContain('Live Calendar is unavailable right now.');
+    expect(result.rendered.text).toContain('Useful Todo');
+    expect(result.rendered.text).not.toContain('private Calendar provider failure');
+  });
+
+  test('contains a Calendar connection failure while preserving qualifying unrelated content', async () => {
+    const generator = createScheduledDailySummaryGenerator({
+      configurationStore: { load: vi.fn().mockResolvedValue(configuration) },
+      todoStore: {
+        load: vi.fn().mockResolvedValue({
+          todoCategories: [],
+          todoTasks: [{
+            id: 'todo-1', title: 'Useful Todo', categoryId: null, urgency: 'low', position: 1,
+            completed: false
+          }]
+        })
+      },
+      weatherLocationStore: { load: vi.fn().mockResolvedValue(null) },
+      commuteSetupStore: { load: vi.fn().mockResolvedValue({ routes: [], days: [] }) },
+      calendarConnectionStore: {
+        load: vi.fn().mockRejectedValue(new Error('private Calendar connection failure')),
+        loadSelectedCalendars: vi.fn()
+      },
+      loadCalendarAccessToken: vi.fn(),
+      calendarEventProvider: vi.fn(),
+      weatherProvider: { fetchDailyForecast: vi.fn() },
+      commuteEstimateProvider: vi.fn(),
+      now: () => new Date('2026-07-14T06:00:00.000Z')
     });
-    for (const output of [result.rendered.html, result.rendered.text]) {
-      expect(output).toContain('Live weather is unavailable right now.');
-      expect(output).toContain('Live Commute is unavailable right now.');
-      expect(output).toContain('Live Calendar is unavailable right now.');
-      expect(output).toContain('Useful Todo');
-      expect(output).not.toContain('private provider payload');
-    }
+
+    const result = await generator.generate('user-1');
+
+    expect(result.hasQualifyingContent).toBe(true);
+    expect(result.sectionContent.calendar).toBe('unavailable');
+    expect(result.sectionContent.todo).toBe('qualifying');
+    expect(result.rendered.text).toContain('Live Calendar is unavailable right now.');
+    expect(result.rendered.text).toContain('Useful Todo');
+    expect(result.rendered.text).not.toContain('private Calendar connection failure');
   });
 
   test('reports empty, inapplicable, and unavailable-only output as not qualifying', async () => {

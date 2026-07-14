@@ -28,6 +28,13 @@ export type CalendarReadiness =
       unavailableReason: 'Reconnect Google Calendar to include Calendar Events.';
     }
   | {
+      status: 'unavailable';
+      label: 'Calendar';
+      statusLabel: 'Calendar unavailable';
+      detail: 'Calendar data cannot be loaded right now.';
+      unavailableReason: 'Live Calendar is unavailable right now.';
+    }
+  | {
       status: 'connected';
       label: 'Calendar';
       statusLabel: 'Calendar connected';
@@ -86,4 +93,12 @@ export const calendarReadinessForUnavailableCredentials = (): CalendarReadiness 
   statusLabel: 'Calendar needs to be reconnected',
   detail: 'Stored Google Calendar credentials are no longer usable.',
   unavailableReason: 'Reconnect Google Calendar to include Calendar Events.'
+});
+
+export const calendarReadinessForUnavailableProvider = (): CalendarReadiness => ({
+  status: 'unavailable',
+  label: 'Calendar',
+  statusLabel: 'Calendar unavailable',
+  detail: 'Calendar data cannot be loaded right now.',
+  unavailableReason: 'Live Calendar is unavailable right now.'
 });

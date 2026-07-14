@@ -2,6 +2,7 @@ import type { CalendarEventProvider } from '$lib/calendar';
 import {
   calendarReadinessForAuthMode,
   calendarReadinessForUnavailableCredentials,
+  calendarReadinessForUnavailableProvider,
   calendarReadinessForUserConnection,
   type UserCalendarReadinessConnection
 } from '$lib/calendarReadiness';
@@ -143,7 +144,13 @@ const loadScheduledCalendarContext = async ({
     };
   }
 
-  const connection = await connectionStore.load(userId);
+  let connection: UserCalendarReadinessConnection;
+
+  try {
+    connection = await connectionStore.load(userId);
+  } catch {
+    return unavailableCalendarContext();
+  }
 
   if (connection.status !== 'connected') {
     return {
@@ -153,7 +160,13 @@ const loadScheduledCalendarContext = async ({
     };
   }
 
-  const selectedCalendars = await connectionStore.loadSelectedCalendars(userId);
+  let selectedCalendars: SavedSelectedCalendar[];
+
+  try {
+    selectedCalendars = await connectionStore.loadSelectedCalendars(userId);
+  } catch {
+    return unavailableCalendarContext();
+  }
 
   try {
     const accessToken = await loadAccessToken(userId);
@@ -177,6 +190,12 @@ const loadScheduledCalendarContext = async ({
     };
   }
 };
+
+const unavailableCalendarContext = () => ({
+  readiness: calendarReadinessForUnavailableProvider(),
+  selectedCalendars: [],
+  provider: undefined
+});
 
 const classifySectionContent = (
   input: DailySummaryInput
