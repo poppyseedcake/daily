@@ -9,7 +9,7 @@ import type { DueScheduledDailySummaryOccurrence } from './db/scheduledDailySumm
 const processingClaimDurationMilliseconds = 5 * 60 * 1000;
 
 type ScheduledDailySummaryOccurrenceStore = {
-  loadNextDue(now: string): Promise<DueScheduledDailySummaryOccurrence | null>;
+  loadNextProcessable(now: string): Promise<DueScheduledDailySummaryOccurrence | null>;
   advance(userId: string, scheduledAt: string, nextSummaryAt: string | null): Promise<boolean>;
 };
 
@@ -72,7 +72,7 @@ export const createScheduledDailySummaryDelivery = ({
   async processOneDueOccurrence() {
     const processingStartedAt = now();
     const processingStartedAtIso = processingStartedAt.toISOString();
-    const occurrence = await occurrenceStore.loadNextDue(processingStartedAtIso);
+    const occurrence = await occurrenceStore.loadNextProcessable(processingStartedAtIso);
 
     if (!occurrence) {
       return { outcome: 'none-due' as const };
@@ -112,6 +112,8 @@ export const createScheduledDailySummaryDelivery = ({
       return { outcome: 'already-claimed' as const };
     }
 
+    await occurrenceStore.advance(occurrence.userId, occurrence.scheduledAt, nextSummaryAt);
+
     const accepted = await deliveryProvider.send({
       to: occurrence.summaryRecipient,
       from: senderAddress(),
@@ -135,8 +137,6 @@ export const createScheduledDailySummaryDelivery = ({
     if (!sent) {
       return { outcome: 'claim-lost' as const, occurrenceId: claim.id };
     }
-
-    await occurrenceStore.advance(occurrence.userId, occurrence.scheduledAt, nextSummaryAt);
 
     return { outcome: 'sent' as const, occurrenceId: sent.id };
   }
