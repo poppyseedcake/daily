@@ -16,11 +16,12 @@ jobs:
   quality-gate:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
-    env:
-      DATABASE_URL: ${{ runner.temp }}/daily-ci.db
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+
+      - name: Configure temporary SQLite storage
+        run: echo "DATABASE_URL=$RUNNER_TEMP/daily-ci.db" >> "$GITHUB_ENV"
 
       - name: Set up Node
         uses: actions/setup-node@v4

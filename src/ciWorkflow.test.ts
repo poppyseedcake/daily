@@ -47,7 +47,8 @@ describe('CI workflow contract', () => {
   test('uses temporary SQLite storage without production providers or secrets', () => {
     const source = workflow();
 
-    expect(source).toContain('DATABASE_URL: ${{ runner.temp }}/daily-ci.db');
+    expect(source).toContain('echo "DATABASE_URL=$RUNNER_TEMP/daily-ci.db" >> "$GITHUB_ENV"');
+    expect(source).not.toContain('${{ runner.temp }}');
     expect(source).not.toContain('secrets.');
     expect(source).not.toMatch(
       /accounts\.google\.com|googleapis\.com|maps\.googleapis\.com|open-meteo\.com|api\.resend\.com|ssh|scp/
