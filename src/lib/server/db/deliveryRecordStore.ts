@@ -112,6 +112,17 @@ export const createDeliveryRecordStore = (database: DeliveryRecordDatabase) => (
 
     return firstDeliveryRecord(rows);
   },
+  async loadScheduledOccurrence(userId: string, scheduledAt: string) {
+    const row = await database.query.deliveryRecords.findFirst({
+      where: and(
+        eq(deliveryRecords.userId, userId),
+        eq(deliveryRecords.attemptType, 'scheduled'),
+        eq(deliveryRecords.scheduledAt, scheduledAt)
+      )
+    });
+
+    return row ? withoutUserId(row) : null;
+  },
   async markScheduledRetrying(recordId: string, retry: ScheduledDeliveryRetry) {
     const rows = await database
       .update(deliveryRecords)

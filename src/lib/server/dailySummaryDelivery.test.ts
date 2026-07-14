@@ -35,7 +35,8 @@ describe('Daily Summary delivery provider', () => {
       from: dailySummarySenderAddress(),
       subject: 'Test Daily Summary',
       html: '<article>Rendered Daily Summary</article>',
-      text: 'Rendered Daily Summary'
+      text: 'Rendered Daily Summary',
+      idempotencyKey: 'daily-summary/opaque-occurrence'
     });
 
     expect(fetch).toHaveBeenCalledWith(
@@ -44,7 +45,8 @@ describe('Daily Summary delivery provider', () => {
         method: 'POST',
         headers: expect.objectContaining({
           authorization: 'Bearer test-resend-key',
-          'content-type': 'application/json'
+          'content-type': 'application/json',
+          'Idempotency-Key': 'daily-summary/opaque-occurrence'
         }),
         body: JSON.stringify({
           from: 'Daily <daily@example.com>',
