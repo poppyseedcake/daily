@@ -1,4 +1,5 @@
 import {
+  emptyScheduledDailySummaryWorkerCounts,
   runScheduledDailySummaryWorker,
   type ScheduledDailySummaryWorkerDependencies,
   type ScheduledDailySummaryWorkerEvent
@@ -12,6 +13,10 @@ type WorkerDependencies = Pick<
 type ScheduledDailySummaryWorkerCommandOptions = {
   loadDependencies?: () => Promise<WorkerDependencies>;
   emit?: (event: ScheduledDailySummaryWorkerEvent) => void;
+  workerOptions?: Pick<
+    ScheduledDailySummaryWorkerDependencies,
+    'batchSize' | 'now' | 'monotonicNow'
+  >;
 };
 
 const loadProductionDependencies = async () => {
@@ -24,21 +29,15 @@ const loadProductionDependencies = async () => {
 
 export const executeScheduledDailySummaryWorkerCommand = async ({
   loadDependencies = loadProductionDependencies,
-  emit = (event) => console.log(JSON.stringify(event))
+  emit = (event) => console.log(JSON.stringify(event)),
+  workerOptions
 }: ScheduledDailySummaryWorkerCommandOptions = {}) => {
   let dependencies: WorkerDependencies;
 
   try {
     dependencies = await loadDependencies();
   } catch {
-    const counts = {
-      due: 0,
-      sent: 0,
-      skipped: 0,
-      retrying: 0,
-      failed: 0,
-      isolatedError: 0
-    };
+    const counts = emptyScheduledDailySummaryWorkerCounts();
     emit({
       event: 'scheduled-daily-summary-worker-failed',
       classification: 'worker-initialization-failed',
@@ -48,5 +47,19 @@ export const executeScheduledDailySummaryWorkerCommand = async ({
     return { exitCode: 1 as const, counts };
   }
 
-  return runScheduledDailySummaryWorker({ ...dependencies, emit });
+  return runScheduledDailySummaryWorker({ ...dependencies, ...workerOptions, emit });
+};
+
+export const runScheduledDailySummaryWorkerCommand = async ({
+  execute = executeScheduledDailySummaryWorkerCommand,
+  setExitCode = (exitCode: number) => {
+    process.exitCode = exitCode;
+  }
+}: {
+  execute?: typeof executeScheduledDailySummaryWorkerCommand;
+  setExitCode?: (exitCode: number) => void;
+} = {}) => {
+  const result = await execute();
+  setExitCode(result.exitCode);
+  return result;
 };

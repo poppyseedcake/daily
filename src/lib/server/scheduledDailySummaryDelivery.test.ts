@@ -292,7 +292,8 @@ describe('scheduled Daily Summary delivery', () => {
 
     expect(firstOutcome).toEqual({
       outcome: 'provider-missing-message-id',
-      occurrenceId: expect.any(String)
+      occurrenceId: expect.any(String),
+      errorClassification: 'provider-missing-message-id'
     });
     expect(repeatedOutcome).toEqual({ outcome: 'none-due' });
     expect(send).toHaveBeenCalledOnce();
@@ -410,14 +411,17 @@ describe('scheduled Daily Summary delivery', () => {
     ).toEqual({ next_summary_at: '2026-10-25T06:00:00Z' });
     const interruptedRecord = sqlite
       .prepare(
-        'select id, scheduled_at, delivery_status, attempt_count from delivery_records'
+        `select id, scheduled_at, delivery_status, attempt_count, error_classification
+           from delivery_records`
       )
       .get() as {
       id: string;
       scheduled_at: string;
       delivery_status: string;
       attempt_count: number;
+      error_classification: string | null;
     };
+    expect(interruptedRecord.error_classification).toBe('unexpected');
 
     const recoveredDelivery = createTestDelivery({
       database,
@@ -507,7 +511,8 @@ describe('scheduled Daily Summary delivery', () => {
     await expect(delivery.processOneDueOccurrence()).resolves.toEqual({
       outcome: 'retry-scheduled',
       occurrenceId: expect.any(String),
-      nextRetryAt: '2026-10-24T05:05:00.000Z'
+      nextRetryAt: '2026-10-24T05:05:00.000Z',
+      errorClassification: 'provider-unavailable'
     });
     sqlite
       .prepare('update todo_tasks set title = ? where user_id = ?')

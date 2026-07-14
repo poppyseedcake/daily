@@ -8,7 +8,10 @@ import {
 import { isGoogleMapsEnvironmentKillSwitchEnabled } from '$lib/server/googleMapsRequestGateway';
 import { googleMapsCapAlertDelivery } from '$lib/server/googleMapsCapAlertDelivery';
 import { createGoogleMapsRequestGateway } from './googleMapsRequestGateway';
-import { createGoogleMapsPersonAttribution } from './googleMapsPersonAttribution';
+import {
+  createGoogleMapsPersonAttribution,
+  type GoogleMapsAttributionAuthState
+} from './googleMapsPersonAttribution';
 import { createGoogleRoutesProvider } from './googleRoutesProvider';
 import { selectLocalPoint } from './localPointSelection';
 
@@ -30,9 +33,7 @@ export const googleMapsOperations = {
     ),
   setAdminKillSwitch: async (enabled: boolean) => setGoogleMapsAdminKillSwitch(db, enabled),
   requestGateway: (
-    authState:
-      | { mode: 'visitor' }
-      | { mode: 'user'; userId: string; summaryRecipient?: string },
+    authState: GoogleMapsAttributionAuthState,
     visitorRequest?: { clientAddress: string; userAgent: string }
   ) =>
     createGoogleMapsRequestGateway({

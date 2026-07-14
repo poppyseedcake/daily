@@ -4,7 +4,10 @@ import {
   type ScheduledDailySummaryWorkerEvent
 } from './scheduledDailySummaryWorker';
 import type { DueScheduledDailySummaryOccurrence } from './db/scheduledDailySummaryOccurrenceStore';
-import { executeScheduledDailySummaryWorkerCommand } from './scheduledDailySummaryWorkerCommand';
+import {
+  executeScheduledDailySummaryWorkerCommand,
+  runScheduledDailySummaryWorkerCommand
+} from './scheduledDailySummaryWorkerCommand';
 
 const occurrence = (
   userId: string,
@@ -36,12 +39,16 @@ describe('scheduled Daily Summary worker command', () => {
       .mockResolvedValueOnce({ outcome: 'retry-scheduled', occurrenceId: 'record-3' });
     const events: ScheduledDailySummaryWorkerEvent[] = [];
 
-    const result = await runScheduledDailySummaryWorker({
-      occurrenceStore: { loadProcessableBatch },
-      delivery: { processOccurrence },
-      batchSize: 2,
-      now: () => new Date('2026-07-14T07:00:00.000Z'),
-      monotonicNow: vi.fn().mockReturnValueOnce(10).mockReturnValueOnce(14),
+    const result = await executeScheduledDailySummaryWorkerCommand({
+      loadDependencies: async () => ({
+        occurrenceStore: { loadProcessableBatch },
+        delivery: { processOccurrence }
+      }),
+      workerOptions: {
+        batchSize: 2,
+        now: () => new Date('2026-07-14T07:00:00.000Z'),
+        monotonicNow: vi.fn().mockReturnValueOnce(10).mockReturnValueOnce(14)
+      },
       emit: (event) => events.push(event)
     });
 
@@ -95,12 +102,14 @@ describe('scheduled Daily Summary worker command', () => {
       });
     const lines: string[] = [];
 
-    const result = await runScheduledDailySummaryWorker({
-      occurrenceStore: {
-        loadProcessableBatch: vi.fn().mockResolvedValueOnce(due).mockResolvedValueOnce([])
-      },
-      delivery: { processOccurrence },
-      now: () => new Date('2026-07-14T07:00:00.000Z'),
+    const result = await executeScheduledDailySummaryWorkerCommand({
+      loadDependencies: async () => ({
+        occurrenceStore: {
+          loadProcessableBatch: vi.fn().mockResolvedValueOnce(due).mockResolvedValueOnce([])
+        },
+        delivery: { processOccurrence }
+      }),
+      workerOptions: { now: () => new Date('2026-07-14T07:00:00.000Z') },
       emit: (event) => lines.push(JSON.stringify(event))
     });
 
@@ -116,6 +125,7 @@ describe('scheduled Daily Summary worker command', () => {
     expect(output).not.toContain('user-1');
     expect(output).not.toContain('user-2');
     expect(output).toMatch(/"occurrenceId":"[a-f0-9]{16}"/);
+    expect(output).toContain('"classification":"provider-rejected"');
   });
 
   test('returns a failing process status when querying due work fails', async () => {
@@ -164,5 +174,25 @@ describe('scheduled Daily Summary worker command', () => {
       }
     ]);
     expect(JSON.stringify(events)).not.toContain('private database path');
+  });
+
+  test('applies the command result to the real process-exit boundary', async () => {
+    const setExitCode = vi.fn();
+    const counts = {
+      due: 0,
+      sent: 0,
+      skipped: 0,
+      retrying: 0,
+      failed: 0,
+      isolatedError: 0
+    };
+
+    const result = await runScheduledDailySummaryWorkerCommand({
+      execute: vi.fn().mockResolvedValue({ exitCode: 1, counts }),
+      setExitCode
+    });
+
+    expect(result).toEqual({ exitCode: 1, counts });
+    expect(setExitCode).toHaveBeenCalledWith(1);
   });
 });

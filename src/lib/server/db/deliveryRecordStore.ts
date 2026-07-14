@@ -149,6 +149,25 @@ export const createDeliveryRecordStore = (database: DeliveryRecordDatabase) => (
 
     return firstDeliveryRecord(rows);
   },
+  async markScheduledUnexpected(recordId: string, attemptCount: number) {
+    const rows = await database
+      .update(deliveryRecords)
+      .set({
+        providerStatusMetadata: null,
+        errorClassification: 'unexpected'
+      })
+      .where(
+        and(
+          eq(deliveryRecords.id, recordId),
+          eq(deliveryRecords.attemptType, 'scheduled'),
+          eq(deliveryRecords.deliveryStatus, 'processing'),
+          eq(deliveryRecords.attemptCount, attemptCount)
+        )
+      )
+      .returning();
+
+    return firstDeliveryRecord(rows);
+  },
   async markScheduledUnclaimedFailed(
     recordId: string,
     failure: ScheduledDeliveryUnclaimedFailure

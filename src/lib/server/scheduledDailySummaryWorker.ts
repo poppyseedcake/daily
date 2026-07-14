@@ -3,6 +3,8 @@ import type {
   DueScheduledDailySummaryOccurrence,
   ScheduledDailySummaryOccurrenceCursor
 } from './db/scheduledDailySummaryOccurrenceStore';
+import type { DeliveryErrorClassification } from '$lib/deliveryRecords';
+import type { ScheduledDailySummaryDeliveryOutcomeName } from './scheduledDailySummaryDelivery';
 
 export type ScheduledDailySummaryWorkerCounts = {
   due: number;
@@ -18,6 +20,7 @@ export type ScheduledDailySummaryWorkerEvent =
       event: 'scheduled-daily-summary-occurrence-completed';
       occurrenceId: string;
       outcome: 'sent' | 'skipped' | 'retrying' | 'failed';
+      classification?: DeliveryErrorClassification;
     }
   | {
       event: 'scheduled-daily-summary-occurrence-isolated-error';
@@ -37,7 +40,8 @@ export type ScheduledDailySummaryWorkerEvent =
     };
 
 type WorkerOutcome = {
-  outcome: string;
+  outcome: ScheduledDailySummaryDeliveryOutcomeName;
+  errorClassification?: DeliveryErrorClassification;
 };
 
 export type ScheduledDailySummaryWorkerDependencies = {
@@ -57,7 +61,7 @@ export type ScheduledDailySummaryWorkerDependencies = {
   emit?: (event: ScheduledDailySummaryWorkerEvent) => void;
 };
 
-const emptyCounts = (): ScheduledDailySummaryWorkerCounts => ({
+export const emptyScheduledDailySummaryWorkerCounts = (): ScheduledDailySummaryWorkerCounts => ({
   due: 0,
   sent: 0,
   skipped: 0,
@@ -75,29 +79,41 @@ const opaqueOccurrenceId = (occurrence: DueScheduledDailySummaryOccurrence) =>
     .digest('hex')
     .slice(0, 16);
 
-const countOutcome = (counts: ScheduledDailySummaryWorkerCounts, outcome: string) => {
-  if (outcome === 'sent') {
-    counts.sent += 1;
-    return 'sent' as const;
+const countOutcome = (counts: ScheduledDailySummaryWorkerCounts, result: WorkerOutcome) => {
+  switch (result.outcome) {
+    case 'sent':
+      counts.sent += 1;
+      return { outcome: 'sent' as const };
+    case 'retry-scheduled':
+    case 'retry-pending':
+      counts.retrying += 1;
+      return {
+        outcome: 'retrying' as const,
+        ...(result.errorClassification
+          ? { classification: result.errorClassification }
+          : {})
+      };
+    case 'delivery-failed':
+    case 'retry-exhausted':
+    case 'stale-occurrence':
+    case 'provider-missing-message-id': {
+      counts.failed += 1;
+      const classification =
+        result.errorClassification ??
+        (result.outcome === 'delivery-failed' ? 'unexpected' : result.outcome);
+      return { outcome: 'failed' as const, classification };
+    }
+    case 'claim-lost':
+    case 'not-qualifying':
+    case 'already-processed':
+    case 'already-claimed':
+      counts.skipped += 1;
+      return { outcome: 'skipped' as const };
+    default: {
+      const exhaustiveOutcome: never = result.outcome;
+      return exhaustiveOutcome;
+    }
   }
-
-  if (outcome === 'retry-scheduled' || outcome === 'retry-pending') {
-    counts.retrying += 1;
-    return 'retrying' as const;
-  }
-
-  if (
-    outcome === 'delivery-failed' ||
-    outcome === 'retry-exhausted' ||
-    outcome === 'stale-occurrence' ||
-    outcome === 'provider-missing-message-id'
-  ) {
-    counts.failed += 1;
-    return 'failed' as const;
-  }
-
-  counts.skipped += 1;
-  return 'skipped' as const;
 };
 
 export const runScheduledDailySummaryWorker = async ({
@@ -114,7 +130,7 @@ export const runScheduledDailySummaryWorker = async ({
 
   const startedAt = monotonicNow();
   const processingTime = now().toISOString();
-  const counts = emptyCounts();
+  const counts = emptyScheduledDailySummaryWorkerCounts();
   let after: ScheduledDailySummaryOccurrenceCursor | null = null;
 
   while (true) {
@@ -149,7 +165,7 @@ export const runScheduledDailySummaryWorker = async ({
         emit({
           event: 'scheduled-daily-summary-occurrence-completed',
           occurrenceId,
-          outcome: countOutcome(counts, result.outcome)
+          ...countOutcome(counts, result)
         });
       } catch {
         counts.isolatedError += 1;

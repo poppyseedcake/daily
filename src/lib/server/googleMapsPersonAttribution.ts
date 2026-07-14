@@ -6,14 +6,16 @@ type VisitorRequestAttribution = {
   userAgent: string;
 };
 
+export type GoogleMapsAttributionAuthState =
+  | { mode: 'visitor' }
+  | {
+      mode: 'user';
+      userId: string;
+      summaryRecipient?: string;
+    };
+
 export type GoogleMapsPersonAttributionOptions = {
-  authState:
-    | { mode: 'visitor' }
-    | {
-        mode: 'user';
-        userId: string;
-        summaryRecipient?: string;
-      };
+  authState: GoogleMapsAttributionAuthState;
   visitorRequest?: VisitorRequestAttribution;
   secret: string;
 };

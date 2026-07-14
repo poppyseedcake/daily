@@ -1,4 +1,4 @@
-import { and, asc, eq, isNotNull, or, sql } from 'drizzle-orm';
+import { and, asc, eq, isNotNull, or, sql, type SQLWrapper } from 'drizzle-orm';
 import { db } from '$lib/server/db';
 import { deliveryRecords, users } from './schema';
 
@@ -15,6 +15,21 @@ export type ScheduledDailySummaryOccurrenceCursor = Pick<
 >;
 
 type ScheduledDailySummaryOccurrenceDatabase = typeof db;
+
+const afterCursorCondition = (
+  scheduledAt: SQLWrapper,
+  workId: SQLWrapper,
+  after: ScheduledDailySummaryOccurrenceCursor | null
+) =>
+  after
+    ? sql`(
+        julianday(${scheduledAt}) > julianday(${after.scheduledAt})
+        or (
+          julianday(${scheduledAt}) = julianday(${after.scheduledAt})
+          and ${workId} > ${after.workId}
+        )
+      )`
+    : undefined;
 
 export const createScheduledDailySummaryOccurrenceStore = (
   database: ScheduledDailySummaryOccurrenceDatabase
@@ -55,15 +70,7 @@ export const createScheduledDailySummaryOccurrenceStore = (
               sql`julianday(${deliveryRecords.nextRetryAt}) <= julianday(${now})`
             )
           ),
-          after
-            ? sql`(
-                julianday(${recoverableScheduledAt}) > julianday(${after.scheduledAt})
-                or (
-                  julianday(${recoverableScheduledAt}) = julianday(${after.scheduledAt})
-                  and ${recoverableWorkId} > ${after.workId}
-                )
-              )`
-            : undefined
+          afterCursorCondition(recoverableScheduledAt, recoverableWorkId, after)
         )
       )
       .orderBy(asc(sql`julianday(${recoverableScheduledAt})`), asc(recoverableWorkId))
@@ -83,15 +90,7 @@ export const createScheduledDailySummaryOccurrenceStore = (
         and(
           isNotNull(newScheduledAt),
           sql`julianday(${newScheduledAt}) <= julianday(${now})`,
-          after
-            ? sql`(
-                julianday(${newScheduledAt}) > julianday(${after.scheduledAt})
-                or (
-                  julianday(${newScheduledAt}) = julianday(${after.scheduledAt})
-                  and ${newWorkId} > ${after.workId}
-                )
-              )`
-            : undefined
+          afterCursorCondition(newScheduledAt, newWorkId, after)
         )
       )
       .orderBy(asc(sql`julianday(${newScheduledAt})`), asc(newWorkId))

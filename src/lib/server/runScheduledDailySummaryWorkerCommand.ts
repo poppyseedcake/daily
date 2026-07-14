@@ -1,5 +1,3 @@
-import { executeScheduledDailySummaryWorkerCommand } from './scheduledDailySummaryWorkerCommand';
+import { runScheduledDailySummaryWorkerCommand } from './scheduledDailySummaryWorkerCommand';
 
-const result = await executeScheduledDailySummaryWorkerCommand();
-
-process.exitCode = result.exitCode;
+await runScheduledDailySummaryWorkerCommand();
