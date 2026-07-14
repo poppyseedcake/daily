@@ -86,7 +86,7 @@ describe('Daily Summary delivery provider', () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
-  test('reports provider rejection with non-private status metadata', async () => {
+  test('reports provider authentication failure with non-private status metadata', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn().mockResolvedValue(
@@ -106,9 +106,42 @@ describe('Daily Summary delivery provider', () => {
         text: 'Rendered Daily Summary'
       })
     ).rejects.toMatchObject({
-      classification: 'provider-rejected',
+      classification: 'authentication-failed',
       providerName: 'resend',
       providerStatusMetadata: 'status=401'
+    });
+  });
+
+  test.each([
+    [400, 'validation-failed'],
+    [422, 'validation-failed'],
+    [403, 'authentication-failed'],
+    [429, 'provider-unavailable'],
+    [503, 'provider-unavailable'],
+    [409, 'provider-rejected']
+  ] as const)('classifies Resend status %i as %s', async (status, classification) => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ message: 'provider response' }), {
+          status,
+          headers: { 'content-type': 'application/json' }
+        })
+      )
+    );
+
+    await expect(
+      resendDailySummaryDeliveryProvider.send({
+        to: 'user@example.com',
+        from: dailySummarySenderAddress(),
+        subject: 'Test Daily Summary',
+        html: '<article>Rendered Daily Summary</article>',
+        text: 'Rendered Daily Summary'
+      })
+    ).rejects.toMatchObject({
+      classification,
+      providerName: 'resend',
+      providerStatusMetadata: `status=${status}`
     });
   });
 

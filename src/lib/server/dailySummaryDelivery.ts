@@ -21,6 +21,8 @@ export type DailySummaryDeliveryProvider = {
 
 export type DailySummaryDeliveryErrorClassification =
   | 'configuration-missing'
+  | 'validation-failed'
+  | 'authentication-failed'
   | 'provider-rejected'
   | 'provider-unavailable';
 
@@ -47,6 +49,24 @@ export class DailySummaryDeliveryError extends Error {
 }
 
 const resendApiUrl = 'https://api.resend.com/emails';
+
+const deliveryClassificationForStatus = (
+  status: number
+): DailySummaryDeliveryErrorClassification => {
+  if (status === 400 || status === 422) {
+    return 'validation-failed';
+  }
+
+  if (status === 401 || status === 403) {
+    return 'authentication-failed';
+  }
+
+  if (status === 408 || status === 425 || status === 429 || status >= 500) {
+    return 'provider-unavailable';
+  }
+
+  return 'provider-rejected';
+};
 
 export const resendDailySummaryDeliveryProvider: DailySummaryDeliveryProvider = {
   async send(message) {
@@ -91,7 +111,7 @@ export const resendDailySummaryDeliveryProvider: DailySummaryDeliveryProvider = 
     if (!response.ok) {
       throw new DailySummaryDeliveryError(
         `Resend rejected Daily Summary delivery with status ${response.status}.`,
-        'provider-rejected',
+        deliveryClassificationForStatus(response.status),
         {
           providerStatusMetadata: `status=${response.status}`
         }

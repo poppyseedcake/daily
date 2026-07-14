@@ -148,6 +148,31 @@ export const createDeliveryRecordStore = (database: DeliveryRecordDatabase) => (
 
     return firstDeliveryRecord(rows);
   },
+  async markScheduledStale(recordId: string, completedAt: string) {
+    const rows = await database
+      .update(deliveryRecords)
+      .set({
+        deliveryStatus: 'failed',
+        completedAt,
+        nextRetryAt: null,
+        claimExpiresAt: null,
+        providerMessageId: null,
+        errorClassification: 'stale-occurrence'
+      })
+      .where(
+        and(
+          eq(deliveryRecords.id, recordId),
+          eq(deliveryRecords.attemptType, 'scheduled'),
+          or(
+            eq(deliveryRecords.deliveryStatus, 'processing'),
+            eq(deliveryRecords.deliveryStatus, 'retrying')
+          )
+        )
+      )
+      .returning();
+
+    return firstDeliveryRecord(rows);
+  },
   async markScheduledSent(recordId: string, sent: ScheduledDeliverySent) {
     const rows = await database
       .update(deliveryRecords)
