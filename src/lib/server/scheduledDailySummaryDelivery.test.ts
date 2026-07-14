@@ -10,7 +10,10 @@ import * as schema from './db/schema';
 import { createUserSummaryConfigurationStore } from './db/summaryConfigurationStore';
 import { createUserTodoStore } from './db/todoStore';
 import { createUserWeatherLocationStore } from './db/weatherLocationStore';
-import type { DailySummaryDeliveryProvider } from './dailySummaryDelivery';
+import {
+  DailySummaryDeliveryError,
+  type DailySummaryDeliveryProvider
+} from './dailySummaryDelivery';
 import { createScheduledDailySummaryDelivery } from './scheduledDailySummaryDelivery';
 import { createScheduledDailySummaryGenerator } from './scheduledDailySummaryGeneration';
 
@@ -442,5 +445,224 @@ describe('scheduled Daily Summary delivery', () => {
     expect(idempotencyKeys[0]).toMatch(/^daily-summary\/[a-f0-9]{64}$/);
     expect(idempotencyKeys[0]).not.toContain('user-1@example.com');
     expect(idempotencyKeys[0]).not.toContain('Prepare launch notes');
+  });
+
+  test('retries transient provider unavailability with current content on the same occurrence', async () => {
+    const scheduledAt = '2026-10-24T05:00:00.000Z';
+    saveQualifyingUser(sqlite, { userId: 'user-1', scheduledAt });
+    let currentTime = new Date(scheduledAt);
+    const submittedMessages: Array<Parameters<DailySummaryDeliveryProvider['send']>[0]> = [];
+    const send = vi
+      .fn<DailySummaryDeliveryProvider['send']>()
+      .mockImplementationOnce(async (message) => {
+        submittedMessages.push(message);
+        throw new DailySummaryDeliveryError(
+          'Delivery provider is temporarily unavailable.',
+          'provider-unavailable',
+          { providerName: 'fake-delivery', providerStatusMetadata: 'temporarily unavailable' }
+        );
+      })
+      .mockImplementationOnce(async (message) => {
+        submittedMessages.push(message);
+        return {
+          providerName: 'fake-delivery',
+          providerMessageId: 'message-after-retry',
+          providerStatusMetadata: 'accepted'
+        };
+      });
+    const delivery = createTestDelivery({ database, send, now: () => currentTime });
+
+    await expect(delivery.processOneDueOccurrence()).resolves.toEqual({
+      outcome: 'retry-scheduled',
+      occurrenceId: expect.any(String),
+      nextRetryAt: '2026-10-24T05:05:00.000Z'
+    });
+    sqlite
+      .prepare('update todo_tasks set title = ? where user_id = ?')
+      .run('Review current launch notes', 'user-1');
+    currentTime = new Date('2026-10-24T05:05:00.000Z');
+
+    await expect(delivery.processOneDueOccurrence()).resolves.toEqual({
+      outcome: 'sent',
+      occurrenceId: expect.any(String)
+    });
+
+    expect(send).toHaveBeenCalledTimes(2);
+    expect(submittedMessages[0].idempotencyKey).toBe(submittedMessages[1].idempotencyKey);
+    expect(submittedMessages[0].text).toContain('Prepare launch notes');
+    expect(submittedMessages[1].text).toContain('Review current launch notes');
+    expect(
+      sqlite
+        .prepare(
+          `select count(*) as record_count, min(attempt_count) as attempt_count,
+                  min(delivery_status) as delivery_status, min(provider_message_id) as provider_message_id
+             from delivery_records where attempt_type = 'scheduled'`
+        )
+        .get()
+    ).toEqual({
+      record_count: 1,
+      attempt_count: 2,
+      delivery_status: 'sent',
+      provider_message_id: 'message-after-retry'
+    });
+    expect(
+      sqlite.prepare('select next_summary_at from users where id = ?').get('user-1')
+    ).toEqual({ next_summary_at: '2026-10-25T06:00:00Z' });
+  });
+
+  test('stops after three transient provider submissions without a fourth attempt', async () => {
+    const scheduledAt = '2026-10-24T05:00:00.000Z';
+    saveQualifyingUser(sqlite, { userId: 'user-1', scheduledAt });
+    let currentTime = new Date(scheduledAt);
+    const send = vi.fn<DailySummaryDeliveryProvider['send']>().mockRejectedValue(
+      new DailySummaryDeliveryError(
+        'Delivery provider is temporarily unavailable.',
+        'provider-unavailable',
+        { providerName: 'fake-delivery', providerStatusMetadata: 'temporarily unavailable' }
+      )
+    );
+    const delivery = createTestDelivery({ database, send, now: () => currentTime });
+
+    await expect(delivery.processOneDueOccurrence()).resolves.toMatchObject({
+      outcome: 'retry-scheduled'
+    });
+    currentTime = new Date('2026-10-24T05:05:00.000Z');
+    await expect(delivery.processOneDueOccurrence()).resolves.toMatchObject({
+      outcome: 'retry-scheduled'
+    });
+    currentTime = new Date('2026-10-24T05:10:00.000Z');
+    await expect(delivery.processOneDueOccurrence()).resolves.toMatchObject({
+      outcome: 'retry-exhausted'
+    });
+    currentTime = new Date('2026-10-24T05:15:00.000Z');
+    await expect(delivery.processOneDueOccurrence()).resolves.toEqual({ outcome: 'none-due' });
+
+    expect(send).toHaveBeenCalledTimes(3);
+    expect(
+      sqlite
+        .prepare(
+          `select delivery_status, attempt_count, error_classification,
+                  next_retry_at, claim_expires_at from delivery_records`
+        )
+        .get()
+    ).toEqual({
+      delivery_status: 'failed',
+      attempt_count: 3,
+      error_classification: 'retry-exhausted',
+      next_retry_at: null,
+      claim_expires_at: null
+    });
+  });
+
+  test('fails a retry that starts after the fifteen-minute occurrence deadline without submitting it', async () => {
+    const scheduledAt = '2026-10-24T05:00:00.000Z';
+    saveQualifyingUser(sqlite, { userId: 'user-1', scheduledAt });
+    let currentTime = new Date(scheduledAt);
+    const send = vi.fn<DailySummaryDeliveryProvider['send']>().mockRejectedValue(
+      new DailySummaryDeliveryError(
+        'Delivery provider is temporarily unavailable.',
+        'provider-unavailable',
+        { providerName: 'fake-delivery', providerStatusMetadata: 'temporarily unavailable' }
+      )
+    );
+    const delivery = createTestDelivery({ database, send, now: () => currentTime });
+
+    await expect(delivery.processOneDueOccurrence()).resolves.toMatchObject({
+      outcome: 'retry-scheduled'
+    });
+    currentTime = new Date('2026-10-24T05:15:00.001Z');
+
+    await expect(delivery.processOneDueOccurrence()).resolves.toMatchObject({
+      outcome: 'stale-occurrence'
+    });
+
+    expect(send).toHaveBeenCalledOnce();
+    expect(
+      sqlite
+        .prepare(
+          `select delivery_status, attempt_count, error_classification,
+                  next_retry_at, claim_expires_at from delivery_records`
+        )
+        .get()
+    ).toEqual({
+      delivery_status: 'failed',
+      attempt_count: 1,
+      error_classification: 'stale-occurrence',
+      next_retry_at: null,
+      claim_expires_at: null
+    });
+  });
+
+  test.each([
+    'configuration-missing',
+    'validation-failed',
+    'authentication-failed',
+    'provider-rejected'
+  ] as const)('does not retry terminal delivery failure %s', async (classification) => {
+    const scheduledAt = '2026-10-24T05:00:00.000Z';
+    saveQualifyingUser(sqlite, { userId: 'user-1', scheduledAt });
+    const send = vi.fn<DailySummaryDeliveryProvider['send']>().mockRejectedValue(
+      new DailySummaryDeliveryError('Delivery cannot be retried.', classification, {
+        providerName: 'fake-delivery',
+        providerStatusMetadata: classification === 'provider-rejected' ? 'status=400' : null
+      })
+    );
+    const delivery = createTestDelivery({
+      database,
+      send,
+      now: () => new Date(scheduledAt)
+    });
+
+    await expect(delivery.processOneDueOccurrence()).resolves.toMatchObject({
+      outcome: 'delivery-failed'
+    });
+    await expect(delivery.processOneDueOccurrence()).resolves.toEqual({ outcome: 'none-due' });
+
+    expect(send).toHaveBeenCalledOnce();
+    expect(
+      sqlite
+        .prepare('select delivery_status, attempt_count, error_classification from delivery_records')
+        .get()
+    ).toEqual({
+      delivery_status: 'failed',
+      attempt_count: 1,
+      error_classification: classification
+    });
+  });
+
+  test('never selects a Test Delivery Record for retry processing', async () => {
+    saveQualifyingUser(sqlite, {
+      userId: 'user-1',
+      scheduledAt: '2026-10-25T06:00:00.000Z'
+    });
+    sqlite
+      .prepare(
+        `insert into delivery_records (
+          id, user_id, attempt_type, requested_at, delivery_status, provider_name,
+          scheduled_at, attempt_count, next_retry_at, error_classification
+        ) values (?, ?, 'test', ?, 'retrying', ?, ?, ?, ?, ?)`
+      )
+      .run(
+        'test-delivery',
+        'user-1',
+        '2026-10-24T05:00:00.000Z',
+        'fake-delivery',
+        '2026-10-24T05:00:00.000Z',
+        1,
+        '2026-10-24T05:05:00.000Z',
+        'provider-unavailable'
+      );
+    const send = vi.fn<DailySummaryDeliveryProvider['send']>();
+    const delivery = createTestDelivery({
+      database,
+      send,
+      now: () => new Date('2026-10-24T05:05:00.000Z')
+    });
+
+    await expect(delivery.processOneDueOccurrence()).resolves.toEqual({ outcome: 'none-due' });
+    expect(send).not.toHaveBeenCalled();
+    expect(
+      sqlite.prepare('select delivery_status, attempt_count from delivery_records').get()
+    ).toEqual({ delivery_status: 'retrying', attempt_count: 1 });
   });
 });

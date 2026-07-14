@@ -45,6 +45,10 @@ const testDeliveryFailureMessage = (classification: DailySummaryDeliveryErrorCla
   switch (classification) {
     case 'configuration-missing':
       return 'Test Daily Summary delivery is not configured.';
+    case 'validation-failed':
+      return 'The delivery provider could not validate the test Daily Summary.';
+    case 'authentication-failed':
+      return 'The delivery provider could not authenticate the test Daily Summary request.';
     case 'provider-rejected':
       return 'The delivery provider rejected the test Daily Summary.';
     case 'provider-unavailable':

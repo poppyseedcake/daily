@@ -1,12 +1,17 @@
 import { createHash } from 'node:crypto';
 import { Temporal } from '@js-temporal/polyfill';
 import { calculateNextSummaryAt } from '$lib/nextSummarySchedule';
-import type { DailySummaryDeliveryProvider } from './dailySummaryDelivery';
+import {
+  DailySummaryDeliveryError,
+  type DailySummaryDeliveryProvider
+} from './dailySummaryDelivery';
 import type { ScheduledDailySummaryGenerationResult } from './scheduledDailySummaryGeneration';
-import type { DeliveryRecord } from '$lib/deliveryRecords';
+import type { DeliveryErrorClassification, DeliveryRecord } from '$lib/deliveryRecords';
 import type { DueScheduledDailySummaryOccurrence } from './db/scheduledDailySummaryOccurrenceStore';
 
 const processingClaimDurationMilliseconds = 5 * 60 * 1000;
+const retryDelayMilliseconds = 5 * 60 * 1000;
+const retryDeadlineMilliseconds = 15 * 60 * 1000;
 
 type ScheduledDailySummaryOccurrenceStore = {
   loadNextProcessable(now: string): Promise<DueScheduledDailySummaryOccurrence | null>;
@@ -24,6 +29,17 @@ type ScheduledDailySummaryDeliveryRecordStore = {
     }
   ): Promise<DeliveryRecord | null>;
   loadScheduledOccurrence(userId: string, scheduledAt: string): Promise<DeliveryRecord | null>;
+  markScheduledStale(recordId: string, completedAt: string): Promise<DeliveryRecord | null>;
+  markScheduledRetrying(
+    recordId: string,
+    retry: {
+      attemptCount: number;
+      attemptedAt: string;
+      nextRetryAt: string;
+      providerStatusMetadata: string | null;
+      errorClassification: DeliveryErrorClassification;
+    }
+  ): Promise<DeliveryRecord | null>;
   markScheduledSent(
     recordId: string,
     sent: {
@@ -40,7 +56,7 @@ type ScheduledDailySummaryDeliveryRecordStore = {
       completedAt: string;
       providerMessageId: string | null;
       providerStatusMetadata: string | null;
-      errorClassification: 'provider-missing-message-id';
+      errorClassification: DeliveryErrorClassification;
     }
   ): Promise<DeliveryRecord | null>;
 };
@@ -88,6 +104,30 @@ export const createScheduledDailySummaryDelivery = ({
       return { outcome: 'none-due' as const };
     }
 
+    const retryDeadline = new Date(occurrence.scheduledAt).getTime() + retryDeadlineMilliseconds;
+    if (processingStartedAt.getTime() > retryDeadline) {
+      const existing = await deliveryRecordStore.loadScheduledOccurrence(
+        occurrence.userId,
+        occurrence.scheduledAt
+      );
+
+      if (
+        existing &&
+        (existing.deliveryStatus === 'processing' || existing.deliveryStatus === 'retrying')
+      ) {
+        const failed = await deliveryRecordStore.markScheduledStale(
+          existing.id,
+          processingStartedAtIso
+        );
+
+        if (!failed) {
+          return { outcome: 'claim-lost' as const, occurrenceId: existing.id };
+        }
+
+        return { outcome: 'stale-occurrence' as const, occurrenceId: failed.id };
+      }
+    }
+
     const generated = await generator.generate(occurrence.userId);
     const nextSummaryAt =
       calculateNextSummaryAt(
@@ -131,14 +171,75 @@ export const createScheduledDailySummaryDelivery = ({
 
     await occurrenceStore.advance(occurrence.userId, occurrence.scheduledAt, nextSummaryAt);
 
-    const accepted = await deliveryProvider.send({
-      to: occurrence.summaryRecipient,
-      from: senderAddress(),
-      subject: 'Daily Summary',
-      html: generated.rendered.html,
-      text: generated.rendered.text,
-      idempotencyKey: occurrenceIdempotencyKey(occurrence)
-    });
+    let accepted;
+    try {
+      accepted = await deliveryProvider.send({
+        to: occurrence.summaryRecipient,
+        from: senderAddress(),
+        subject: 'Daily Summary',
+        html: generated.rendered.html,
+        text: generated.rendered.text,
+        idempotencyKey: occurrenceIdempotencyKey(occurrence)
+      });
+    } catch (error) {
+      if (!(error instanceof DailySummaryDeliveryError)) {
+        throw error;
+      }
+
+      const attemptCount = claim.attemptCount ?? 1;
+      if (error.classification !== 'provider-unavailable') {
+        const failed = await deliveryRecordStore.markScheduledFailed(claim.id, {
+          attemptCount,
+          completedAt: processingStartedAtIso,
+          providerMessageId: null,
+          providerStatusMetadata: error.providerStatusMetadata,
+          errorClassification: error.classification
+        });
+
+        if (!failed) {
+          return { outcome: 'claim-lost' as const, occurrenceId: claim.id };
+        }
+
+        return {
+          outcome: 'delivery-failed' as const,
+          occurrenceId: failed.id,
+          errorClassification: error.classification
+        };
+      }
+
+      if (attemptCount >= 3) {
+        const failed = await deliveryRecordStore.markScheduledFailed(claim.id, {
+          attemptCount,
+          completedAt: processingStartedAtIso,
+          providerMessageId: null,
+          providerStatusMetadata: error.providerStatusMetadata,
+          errorClassification: 'retry-exhausted'
+        });
+
+        if (!failed) {
+          return { outcome: 'claim-lost' as const, occurrenceId: claim.id };
+        }
+
+        return { outcome: 'retry-exhausted' as const, occurrenceId: failed.id };
+      }
+
+      const nextRetryAt = new Date(
+        processingStartedAt.getTime() + retryDelayMilliseconds
+      ).toISOString();
+      const retrying = await deliveryRecordStore.markScheduledRetrying(claim.id, {
+        attemptCount,
+        attemptedAt: processingStartedAtIso,
+        nextRetryAt,
+        providerStatusMetadata: error.providerStatusMetadata,
+        errorClassification: error.classification
+      });
+
+      if (!retrying) {
+        return { outcome: 'claim-lost' as const, occurrenceId: claim.id };
+      }
+
+      return { outcome: 'retry-scheduled' as const, occurrenceId: retrying.id, nextRetryAt };
+    }
 
     if (!accepted.providerMessageId) {
       const failed = await deliveryRecordStore.markScheduledFailed(claim.id, {

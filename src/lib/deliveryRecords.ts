@@ -2,6 +2,8 @@ export type DeliveryAttemptType = 'test' | 'scheduled';
 export type DeliveryStatus = 'processing' | 'retrying' | 'sent' | 'failed';
 export const deliveryErrorClassifications = [
   'configuration-missing',
+  'validation-failed',
+  'authentication-failed',
   'provider-missing-message-id',
   'provider-rejected',
   'provider-unavailable',

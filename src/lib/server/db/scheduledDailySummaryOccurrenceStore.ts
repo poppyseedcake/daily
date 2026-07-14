@@ -1,4 +1,4 @@
-import { and, asc, eq, isNotNull, sql } from 'drizzle-orm';
+import { and, asc, eq, isNotNull, or, sql } from 'drizzle-orm';
 import { db } from '$lib/server/db';
 import { deliveryRecords, users } from './schema';
 
@@ -25,10 +25,19 @@ export const createScheduledDailySummaryOccurrenceStore = (
       .where(
         and(
           eq(deliveryRecords.attemptType, 'scheduled'),
-          eq(deliveryRecords.deliveryStatus, 'processing'),
           isNotNull(deliveryRecords.scheduledAt),
-          isNotNull(deliveryRecords.claimExpiresAt),
-          sql`julianday(${deliveryRecords.claimExpiresAt}) <= julianday(${now})`
+          or(
+            and(
+              eq(deliveryRecords.deliveryStatus, 'processing'),
+              isNotNull(deliveryRecords.claimExpiresAt),
+              sql`julianday(${deliveryRecords.claimExpiresAt}) <= julianday(${now})`
+            ),
+            and(
+              eq(deliveryRecords.deliveryStatus, 'retrying'),
+              isNotNull(deliveryRecords.nextRetryAt),
+              sql`julianday(${deliveryRecords.nextRetryAt}) <= julianday(${now})`
+            )
+          )
         )
       )
       .orderBy(asc(sql`julianday(${deliveryRecords.scheduledAt})`), asc(deliveryRecords.id))
