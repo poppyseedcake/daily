@@ -43,6 +43,10 @@ type ScheduledDailySummaryDeliveryRecordStore = {
     recordId: string,
     retry: ScheduledDeliveryRetry
   ): Promise<DeliveryRecord | null>;
+  markScheduledUnexpected(
+    recordId: string,
+    attemptCount: number
+  ): Promise<DeliveryRecord | null>;
   markScheduledSent(
     recordId: string,
     sent: {
@@ -63,6 +67,23 @@ type ScheduledDailySummaryDeliveryRecordStore = {
     }
   ): Promise<DeliveryRecord | null>;
 };
+
+export const scheduledDailySummaryDeliveryOutcomeNames = [
+  'claim-lost',
+  'retry-exhausted',
+  'stale-occurrence',
+  'retry-pending',
+  'not-qualifying',
+  'already-processed',
+  'already-claimed',
+  'delivery-failed',
+  'retry-scheduled',
+  'provider-missing-message-id',
+  'sent'
+] as const;
+
+export type ScheduledDailySummaryDeliveryOutcomeName =
+  (typeof scheduledDailySummaryDeliveryOutcomeNames)[number];
 
 type ScheduledDailySummaryGenerator = {
   generate(userId: string): Promise<ScheduledDailySummaryGenerationResult>;
@@ -97,15 +118,12 @@ export const createScheduledDailySummaryDelivery = ({
   providerName,
   senderAddress,
   now = () => new Date()
-}: ScheduledDailySummaryDeliveryDependencies) => ({
-  async processOneDueOccurrence() {
-    const processingStartedAt = now();
+}: ScheduledDailySummaryDeliveryDependencies) => {
+  const processOccurrence = async (
+    occurrence: DueScheduledDailySummaryOccurrence,
+    processingStartedAt = now()
+  ) => {
     const processingStartedAtIso = processingStartedAt.toISOString();
-    const occurrence = await occurrenceStore.loadNextProcessable(processingStartedAtIso);
-
-    if (!occurrence) {
-      return { outcome: 'none-due' as const };
-    }
 
     const existing = await deliveryRecordStore.loadScheduledOccurrence(
       occurrence.userId,
@@ -116,7 +134,7 @@ export const createScheduledDailySummaryDelivery = ({
       (existing.deliveryStatus === 'processing' || existing.deliveryStatus === 'retrying')
     ) {
       const retryDeadline = new Date(occurrence.scheduledAt).getTime() + retryDeadlineMilliseconds;
-      const terminalClassification =
+      const terminalClassification: 'retry-exhausted' | 'stale-occurrence' | null =
         (existing.attemptCount ?? 0) >= maximumDeliveryAttempts
           ? 'retry-exhausted'
           : processingStartedAt.getTime() > retryDeadline
@@ -133,7 +151,11 @@ export const createScheduledDailySummaryDelivery = ({
           return { outcome: 'claim-lost' as const, occurrenceId: existing.id };
         }
 
-        return { outcome: terminalClassification, occurrenceId: failed.id };
+        return {
+          outcome: terminalClassification,
+          occurrenceId: failed.id,
+          errorClassification: terminalClassification
+        };
       }
     }
 
@@ -180,31 +202,95 @@ export const createScheduledDailySummaryDelivery = ({
       return { outcome: 'already-claimed' as const };
     }
 
-    await occurrenceStore.advance(occurrence.userId, occurrence.scheduledAt, nextSummaryAt);
-
-    let accepted;
     try {
-      accepted = await deliveryProvider.send({
-        to: occurrence.summaryRecipient,
-        from: senderAddress(),
-        subject: 'Daily Summary',
-        html: generated.rendered.html,
-        text: generated.rendered.text,
-        idempotencyKey: occurrenceIdempotencyKey(occurrence)
-      });
-    } catch (error) {
-      if (!(error instanceof DailySummaryDeliveryError)) {
-        throw error;
-      }
+      await occurrenceStore.advance(occurrence.userId, occurrence.scheduledAt, nextSummaryAt);
 
-      const attemptCount = claim.attemptCount ?? 1;
-      if (error.classification !== 'provider-unavailable') {
-        const failed = await deliveryRecordStore.markScheduledFailed(claim.id, {
+      let accepted;
+      try {
+        accepted = await deliveryProvider.send({
+          to: occurrence.summaryRecipient,
+          from: senderAddress(),
+          subject: 'Daily Summary',
+          html: generated.rendered.html,
+          text: generated.rendered.text,
+          idempotencyKey: occurrenceIdempotencyKey(occurrence)
+        });
+      } catch (error) {
+        if (!(error instanceof DailySummaryDeliveryError)) {
+          throw error;
+        }
+
+        const attemptCount = claim.attemptCount ?? 1;
+        if (error.classification !== 'provider-unavailable') {
+          const failed = await deliveryRecordStore.markScheduledFailed(claim.id, {
+            attemptCount,
+            completedAt: processingStartedAtIso,
+            providerMessageId: null,
+            providerStatusMetadata: error.providerStatusMetadata,
+            errorClassification: error.classification
+          });
+
+          if (!failed) {
+            return { outcome: 'claim-lost' as const, occurrenceId: claim.id };
+          }
+
+          return {
+            outcome: 'delivery-failed' as const,
+            occurrenceId: failed.id,
+            errorClassification: error.classification
+          };
+        }
+
+        if (attemptCount >= maximumDeliveryAttempts) {
+          const failed = await deliveryRecordStore.markScheduledFailed(claim.id, {
+            attemptCount,
+            completedAt: processingStartedAtIso,
+            providerMessageId: null,
+            providerStatusMetadata: error.providerStatusMetadata,
+            errorClassification: 'retry-exhausted'
+          });
+
+          if (!failed) {
+            return { outcome: 'claim-lost' as const, occurrenceId: claim.id };
+          }
+
+          return {
+            outcome: 'retry-exhausted' as const,
+            occurrenceId: failed.id,
+            errorClassification: 'retry-exhausted' as const
+          };
+        }
+
+        const nextRetryAt = new Date(
+          processingStartedAt.getTime() + retryDelayMilliseconds
+        ).toISOString();
+        const retrying = await deliveryRecordStore.markScheduledRetrying(claim.id, {
           attemptCount,
-          completedAt: processingStartedAtIso,
-          providerMessageId: null,
+          attemptedAt: processingStartedAtIso,
+          nextRetryAt,
           providerStatusMetadata: error.providerStatusMetadata,
           errorClassification: error.classification
+        });
+
+        if (!retrying) {
+          return { outcome: 'claim-lost' as const, occurrenceId: claim.id };
+        }
+
+        return {
+          outcome: 'retry-scheduled' as const,
+          occurrenceId: retrying.id,
+          nextRetryAt,
+          errorClassification: error.classification
+        };
+      }
+
+      if (!accepted.providerMessageId) {
+        const failed = await deliveryRecordStore.markScheduledFailed(claim.id, {
+          attemptCount: claim.attemptCount ?? 1,
+          completedAt: processingStartedAtIso,
+          providerMessageId: null,
+          providerStatusMetadata: accepted.providerStatusMetadata,
+          errorClassification: 'provider-missing-message-id'
         });
 
         if (!failed) {
@@ -212,73 +298,44 @@ export const createScheduledDailySummaryDelivery = ({
         }
 
         return {
-          outcome: 'delivery-failed' as const,
+          outcome: 'provider-missing-message-id' as const,
           occurrenceId: failed.id,
-          errorClassification: error.classification
+          errorClassification: 'provider-missing-message-id' as const
         };
       }
 
-      if (attemptCount >= maximumDeliveryAttempts) {
-        const failed = await deliveryRecordStore.markScheduledFailed(claim.id, {
-          attemptCount,
-          completedAt: processingStartedAtIso,
-          providerMessageId: null,
-          providerStatusMetadata: error.providerStatusMetadata,
-          errorClassification: 'retry-exhausted'
-        });
-
-        if (!failed) {
-          return { outcome: 'claim-lost' as const, occurrenceId: claim.id };
-        }
-
-        return { outcome: 'retry-exhausted' as const, occurrenceId: failed.id };
-      }
-
-      const nextRetryAt = new Date(
-        processingStartedAt.getTime() + retryDelayMilliseconds
-      ).toISOString();
-      const retrying = await deliveryRecordStore.markScheduledRetrying(claim.id, {
-        attemptCount,
-        attemptedAt: processingStartedAtIso,
-        nextRetryAt,
-        providerStatusMetadata: error.providerStatusMetadata,
-        errorClassification: error.classification
-      });
-
-      if (!retrying) {
-        return { outcome: 'claim-lost' as const, occurrenceId: claim.id };
-      }
-
-      return { outcome: 'retry-scheduled' as const, occurrenceId: retrying.id, nextRetryAt };
-    }
-
-    if (!accepted.providerMessageId) {
-      const failed = await deliveryRecordStore.markScheduledFailed(claim.id, {
+      const sent = await deliveryRecordStore.markScheduledSent(claim.id, {
         attemptCount: claim.attemptCount ?? 1,
         completedAt: processingStartedAtIso,
-        providerMessageId: null,
-        providerStatusMetadata: accepted.providerStatusMetadata,
-        errorClassification: 'provider-missing-message-id'
+        providerMessageId: accepted.providerMessageId,
+        providerStatusMetadata: accepted.providerStatusMetadata
       });
 
-      if (!failed) {
+      if (!sent) {
         return { outcome: 'claim-lost' as const, occurrenceId: claim.id };
       }
 
-      return { outcome: 'provider-missing-message-id' as const, occurrenceId: failed.id };
+      return { outcome: 'sent' as const, occurrenceId: sent.id };
+    } catch (error) {
+      await deliveryRecordStore
+        .markScheduledUnexpected(claim.id, claim.attemptCount ?? 1)
+        .catch(() => null);
+      throw error;
     }
+  };
 
-    const sent = await deliveryRecordStore.markScheduledSent(claim.id, {
-      attemptCount: claim.attemptCount ?? 1,
-      completedAt: processingStartedAtIso,
-      providerMessageId: accepted.providerMessageId,
-      providerStatusMetadata: accepted.providerStatusMetadata
-    });
+  return {
+    processOccurrence,
 
-    if (!sent) {
-      return { outcome: 'claim-lost' as const, occurrenceId: claim.id };
+    async processOneDueOccurrence() {
+      const processingStartedAt = now();
+      const occurrence = await occurrenceStore.loadNextProcessable(
+        processingStartedAt.toISOString()
+      );
+
+      return occurrence
+        ? processOccurrence(occurrence, processingStartedAt)
+        : { outcome: 'none-due' as const };
     }
-
-    return { outcome: 'sent' as const, occurrenceId: sent.id };
-  }
-});
+  };
+};

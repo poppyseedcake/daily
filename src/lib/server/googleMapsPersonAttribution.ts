@@ -1,5 +1,4 @@
 import { createHmac } from 'node:crypto';
-import type { DailyPageAuthState } from './pageAuthState';
 import type { GoogleMapsPersonAttribution } from './googleMapsRequestGateway';
 
 type VisitorRequestAttribution = {
@@ -7,8 +6,16 @@ type VisitorRequestAttribution = {
   userAgent: string;
 };
 
+export type GoogleMapsAttributionAuthState =
+  | { mode: 'visitor' }
+  | {
+      mode: 'user';
+      userId: string;
+      summaryRecipient?: string;
+    };
+
 export type GoogleMapsPersonAttributionOptions = {
-  authState: DailyPageAuthState;
+  authState: GoogleMapsAttributionAuthState;
   visitorRequest?: VisitorRequestAttribution;
   secret: string;
 };
