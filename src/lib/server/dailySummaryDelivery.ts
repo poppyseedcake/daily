@@ -6,6 +6,7 @@ export type DailySummaryDeliveryMessage = {
   subject: string;
   html: string;
   text: string;
+  idempotencyKey?: string;
 };
 
 export type DailySummaryDeliveryAccepted = {
@@ -65,7 +66,8 @@ export const resendDailySummaryDeliveryProvider: DailySummaryDeliveryProvider = 
       method: 'POST',
       headers: {
         authorization: `Bearer ${env.RESEND_API_KEY}`,
-        'content-type': 'application/json'
+        'content-type': 'application/json',
+        ...(message.idempotencyKey ? { 'Idempotency-Key': message.idempotencyKey } : {})
       },
       body: JSON.stringify({
         from: message.from,
