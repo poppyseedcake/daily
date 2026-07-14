@@ -6,7 +6,7 @@
   import Panel from '$lib/components/Panel.svelte';
   import { calendarReadinessForAuthMode } from '$lib/calendarReadiness';
   import { buildDailySummaryInput } from '$lib/dailySummaryPreview';
-  import type { DeliveryRecord } from '$lib/deliveryRecords';
+  import type { DeliveryHistoryRecord, DeliveryStatus } from '$lib/deliveryRecords';
   import { buildDemoCalendarSection } from '$lib/demoCalendar';
   import { renderDailySummary } from '$lib/dailySummaryRenderer';
   import {
@@ -81,7 +81,7 @@
     routes: [] as CommuteRoute[],
     days: [...defaultCommuteDays] as CommuteDay[]
   };
-  const deliveryRecords = $derived<DeliveryRecord[]>(data?.deliveryRecords ?? []);
+  const deliveryRecords = $derived<DeliveryHistoryRecord[]>(data?.deliveryRecords ?? []);
   const initialSelectedCalendarConfiguration = data?.selectedCalendarConfiguration ?? null;
   const testDeliveryStatus = $derived(
     form?.outcome === 'sent'
@@ -900,40 +900,14 @@
     urgency === 'high' ? 'High urgency' : urgency === 'medium' ? 'Medium urgency' : 'Low urgency';
   const urgencyMark = (urgency: TodoUrgency) =>
     urgency === 'high' ? '!' : urgency === 'medium' ? '!' : '';
-  const deliveryAttemptLabel = (attemptType: DeliveryRecord['attemptType']) =>
+  const deliveryAttemptLabel = (attemptType: DeliveryHistoryRecord['attemptType']) =>
     attemptType === 'scheduled' ? 'Scheduled' : 'Test';
-  const deliveryStatusLabel = (status: DeliveryRecord['deliveryStatus']) => {
-    switch (status) {
-      case 'processing':
-        return 'Processing';
-      case 'retrying':
-        return 'Retrying';
-      case 'sent':
-        return 'Sent';
-      case 'failed':
-        return 'Failed';
-      default: {
-        const exhaustiveStatus: never = status;
-        return exhaustiveStatus;
-      }
-    }
-  };
-  const deliveryStatusClasses = (status: DeliveryRecord['deliveryStatus']) => {
-    switch (status) {
-      case 'processing':
-        return 'bg-sky-100 text-sky-800';
-      case 'retrying':
-        return 'bg-amber-100 text-amber-800';
-      case 'sent':
-        return 'bg-emerald-100 text-emerald-800';
-      case 'failed':
-        return 'bg-red-100 text-red-700';
-      default: {
-        const exhaustiveStatus: never = status;
-        return exhaustiveStatus;
-      }
-    }
-  };
+  const deliveryStatusPresentation = {
+    processing: { label: 'Processing', classes: 'bg-sky-100 text-sky-800' },
+    retrying: { label: 'Retrying', classes: 'bg-amber-100 text-amber-800' },
+    sent: { label: 'Sent', classes: 'bg-emerald-100 text-emerald-800' },
+    failed: { label: 'Failed', classes: 'bg-red-100 text-red-700' }
+  } satisfies Record<DeliveryStatus, { label: string; classes: string }>;
   const deliveryTimeLabel = (timestamp: string | null) =>
     timestamp
       ? new Intl.DateTimeFormat(undefined, {
@@ -2289,9 +2263,9 @@
                       {deliveryAttemptLabel(record.attemptType)} Daily Summary
                     </p>
                     <span
-                      class={`rounded-md px-2 py-1 text-xs font-semibold ${deliveryStatusClasses(record.deliveryStatus)}`}
+                      class={`rounded-md px-2 py-1 text-xs font-semibold ${deliveryStatusPresentation[record.deliveryStatus].classes}`}
                     >
-                      {deliveryStatusLabel(record.deliveryStatus)}
+                      {deliveryStatusPresentation[record.deliveryStatus].label}
                     </span>
                   </div>
                   <dl class="grid gap-1 text-sm text-stone-700">

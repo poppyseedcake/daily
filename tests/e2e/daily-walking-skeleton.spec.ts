@@ -100,13 +100,46 @@ test('signed-in User sees recent Scheduled and Test Delivery Records without pri
   const sessionToken = crypto.randomUUID();
   const atDaysAgo = (days: number) =>
     new Date(now.getTime() - days * 24 * 60 * 60 * 1000).toISOString();
-  const insertDeliveryRecord = database.prepare(`
+  const insertDeliveryRecordStatement = database.prepare(`
     insert into delivery_records (
       id, user_id, attempt_type, requested_at, completed_at, delivery_status,
       provider_name, provider_message_id, provider_status_metadata, error_classification,
       scheduled_at, attempt_count, last_attempt_at, next_retry_at, claim_expires_at
     ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
+  const insertDeliveryRecord = (record: {
+    userId: string;
+    attemptType: 'test' | 'scheduled';
+    requestedAt: string;
+    completedAt?: string | null;
+    deliveryStatus: 'processing' | 'retrying' | 'sent' | 'failed';
+    providerName?: string;
+    providerMessageId?: string | null;
+    providerStatusMetadata?: string | null;
+    errorClassification?: string | null;
+    scheduledAt?: string | null;
+    attemptCount?: number | null;
+    lastAttemptAt?: string | null;
+    nextRetryAt?: string | null;
+    claimExpiresAt?: string | null;
+  }) =>
+    insertDeliveryRecordStatement.run(
+      crypto.randomUUID(),
+      record.userId,
+      record.attemptType,
+      record.requestedAt,
+      record.completedAt ?? null,
+      record.deliveryStatus,
+      record.providerName ?? 'resend',
+      record.providerMessageId ?? null,
+      record.providerStatusMetadata ?? null,
+      record.errorClassification ?? null,
+      record.scheduledAt ?? null,
+      record.attemptCount ?? null,
+      record.lastAttemptAt ?? null,
+      record.nextRetryAt ?? null,
+      record.claimExpiresAt ?? null
+    );
 
   try {
     database
@@ -133,125 +166,85 @@ test('signed-in User sees recent Scheduled and Test Delivery Records without pri
       .prepare('insert into users (id, google_subject, email) values (?, ?, ?)')
       .run(otherUserId, otherUserId, 'other-history@example.com');
 
-    insertDeliveryRecord.run(
-      crypto.randomUUID(),
+    insertDeliveryRecord({
       userId,
-      'scheduled',
-      atDaysAgo(1),
-      atDaysAgo(0.99),
-      'sent',
-      'resend',
-      'scheduled-message-id',
-      'accepted',
-      null,
-      atDaysAgo(1),
-      2,
-      atDaysAgo(0.99),
-      null,
-      null
-    );
-    insertDeliveryRecord.run(
-      crypto.randomUUID(),
+      attemptType: 'scheduled',
+      requestedAt: atDaysAgo(1),
+      completedAt: atDaysAgo(0.99),
+      deliveryStatus: 'sent',
+      providerMessageId: 'scheduled-message-id',
+      providerStatusMetadata: 'accepted',
+      scheduledAt: atDaysAgo(1),
+      attemptCount: 2,
+      lastAttemptAt: atDaysAgo(0.99)
+    });
+    insertDeliveryRecord({
       userId,
-      'scheduled',
-      atDaysAgo(2),
-      null,
-      'retrying',
-      'resend',
-      null,
-      'temporarily unavailable',
-      'provider-unavailable',
-      atDaysAgo(2),
-      2,
-      atDaysAgo(1.99),
-      atDaysAgo(1.9),
-      null
-    );
-    insertDeliveryRecord.run(
-      crypto.randomUUID(),
+      attemptType: 'scheduled',
+      requestedAt: atDaysAgo(2),
+      deliveryStatus: 'retrying',
+      providerStatusMetadata: 'temporarily unavailable',
+      errorClassification: 'provider-unavailable',
+      scheduledAt: atDaysAgo(2),
+      attemptCount: 2,
+      lastAttemptAt: atDaysAgo(1.99),
+      nextRetryAt: atDaysAgo(1.9)
+    });
+    insertDeliveryRecord({
       userId,
-      'scheduled',
-      atDaysAgo(3),
-      null,
-      'processing',
-      'resend',
-      null,
-      null,
-      null,
-      atDaysAgo(3),
-      1,
-      atDaysAgo(3),
-      null,
-      atDaysAgo(2.99)
-    );
-    insertDeliveryRecord.run(
-      crypto.randomUUID(),
+      attemptType: 'scheduled',
+      requestedAt: atDaysAgo(3),
+      deliveryStatus: 'processing',
+      scheduledAt: atDaysAgo(3),
+      attemptCount: 1,
+      lastAttemptAt: atDaysAgo(3),
+      claimExpiresAt: atDaysAgo(2.99)
+    });
+    insertDeliveryRecord({
       userId,
-      'scheduled',
-      atDaysAgo(4),
-      atDaysAgo(3.99),
-      'failed',
-      'private-provider-name',
-      'private-provider-message-id',
-      'raw payload for history@example.com with secret-token',
-      'unexpected',
-      atDaysAgo(4),
-      3,
-      atDaysAgo(3.99),
-      null,
-      null
-    );
-    insertDeliveryRecord.run(
-      crypto.randomUUID(),
+      attemptType: 'scheduled',
+      requestedAt: atDaysAgo(4),
+      completedAt: atDaysAgo(3.99),
+      deliveryStatus: 'failed',
+      providerName: 'private-provider-name',
+      providerMessageId: 'private-provider-message-id',
+      providerStatusMetadata: 'raw payload for history@example.com with secret-token',
+      errorClassification: 'unexpected',
+      scheduledAt: atDaysAgo(4),
+      attemptCount: 3,
+      lastAttemptAt: atDaysAgo(3.99)
+    });
+    insertDeliveryRecord({
       userId,
-      'test',
-      atDaysAgo(5),
-      atDaysAgo(4.99),
-      'sent',
-      'resend',
-      'test-message-id',
-      'accepted',
-      null,
-      null,
-      null,
-      null,
-      null,
-      null
-    );
-    insertDeliveryRecord.run(
-      crypto.randomUUID(),
+      attemptType: 'test',
+      requestedAt: atDaysAgo(5),
+      completedAt: atDaysAgo(4.99),
+      deliveryStatus: 'sent',
+      providerMessageId: 'test-message-id',
+      providerStatusMetadata: 'accepted'
+    });
+    insertDeliveryRecord({
       userId,
-      'scheduled',
-      atDaysAgo(31),
-      atDaysAgo(30.99),
-      'sent',
-      'outside-history-provider',
-      null,
-      null,
-      null,
-      atDaysAgo(31),
-      99,
-      atDaysAgo(30.99),
-      null,
-      null
-    );
-    insertDeliveryRecord.run(
-      crypto.randomUUID(),
-      otherUserId,
-      'scheduled',
-      atDaysAgo(1),
-      atDaysAgo(0.99),
-      'sent',
-      'other-user-provider',
-      null,
-      null,
-      null,
-      atDaysAgo(1),
-      88,
-      atDaysAgo(0.99),
-      null,
-      null
-    );
+      attemptType: 'scheduled',
+      requestedAt: atDaysAgo(31),
+      completedAt: atDaysAgo(30.99),
+      deliveryStatus: 'sent',
+      providerName: 'outside-history-provider',
+      scheduledAt: atDaysAgo(31),
+      attemptCount: 99,
+      lastAttemptAt: atDaysAgo(30.99)
+    });
+    insertDeliveryRecord({
+      userId: otherUserId,
+      attemptType: 'scheduled',
+      requestedAt: atDaysAgo(1),
+      completedAt: atDaysAgo(0.99),
+      deliveryStatus: 'sent',
+      providerName: 'other-user-provider',
+      scheduledAt: atDaysAgo(1),
+      attemptCount: 88,
+      lastAttemptAt: atDaysAgo(0.99)
+    });
 
     await page.context().addCookies([
       {
@@ -264,7 +257,12 @@ test('signed-in User sees recent Scheduled and Test Delivery Records without pri
         path: '/'
       }
     ]);
-    await page.goto('/');
+    const pageResponse = await page.goto('/');
+    const pageResponseBody = await pageResponse?.text();
+
+    expect(pageResponseBody).not.toContain('private-provider-name');
+    expect(pageResponseBody).not.toContain('private-provider-message-id');
+    expect(pageResponseBody).not.toMatch(/history@example\.com.*secret-token|raw payload/);
 
     const deliveryHistory = page.locator('section').filter({
       has: page.getByRole('heading', { name: 'Delivery History' })

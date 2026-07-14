@@ -40,6 +40,7 @@ import { loadUserCommuteSetup } from '$lib/server/commuteSetupPersistence';
 import { summaryConfigurationSchema } from '$lib/summaryConfiguration';
 import { createDefaultTodoState, todoStateSchema } from '$lib/todo';
 import { googleMapsOperations } from '$lib/server/googleMapsOperations';
+import { toDeliveryHistoryRecord } from '$lib/deliveryRecords';
 
 const testDeliveryFailureMessage = (classification: DailySummaryDeliveryErrorClassification) => {
   switch (classification) {
@@ -163,14 +164,17 @@ export const load = async ({ request }) => {
       : createDefaultTodoState();
   const deliveryRecords =
     authState.mode === 'user'
-      ? await deliveryRecordStore.loadRecentForUser(authState.userId, new Date().toISOString()).catch((error: unknown) => {
-          console.warn('Failed to load User Delivery Records.', {
-            userId: authState.userId,
-            error
-          });
+      ? await deliveryRecordStore
+          .loadRecentForUser(authState.userId, new Date().toISOString())
+          .then((records) => records.map(toDeliveryHistoryRecord))
+          .catch((error: unknown) => {
+            console.warn('Failed to load User Delivery Records.', {
+              userId: authState.userId,
+              error
+            });
 
-          return [];
-        })
+            return [];
+          })
       : [];
   const weatherLocation =
     authState.mode === 'user'
