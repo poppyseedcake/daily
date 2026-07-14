@@ -69,24 +69,20 @@ export const createScheduledDailySummaryGenerator = ({
   now = () => new Date()
 }: ScheduledDailySummaryGenerationDependencies) => ({
   async generate(userId: string): Promise<ScheduledDailySummaryGenerationResult> {
-    const [configuration, todoState, weatherLocation, commuteSetup, calendarConnection, selectedCalendars] =
-      await Promise.all([
-        loadUserSummaryConfiguration(configurationStore, userId),
-        loadUserTodoState(todoStore, userId),
-        loadUserWeatherLocation(weatherLocationStore, userId),
-        loadUserCommuteSetup(commuteSetupStore, userId),
-        calendarConnectionStore.load(userId),
-        calendarConnectionStore.loadSelectedCalendars(userId)
-      ]);
+    const configuration = await loadUserSummaryConfiguration(configurationStore, userId);
+    const [todoState, weatherLocation, commuteSetup, calendarContext] = await Promise.all([
+      loadUserTodoState(todoStore, userId),
+      loadUserWeatherLocation(weatherLocationStore, userId),
+      loadUserCommuteSetup(commuteSetupStore, userId),
+      loadScheduledCalendarContext({
+        userId,
+        calendarEnabled: configuration.sections.calendar,
+        connectionStore: calendarConnectionStore,
+        loadAccessToken: loadCalendarAccessToken,
+        providerForAccessToken: calendarEventProvider
+      })
+    ]);
     const generatedAt = now();
-    const calendarContext = await loadScheduledCalendarContext({
-      userId,
-      calendarEnabled: configuration.sections.calendar,
-      connection: calendarConnection,
-      selectedCalendars,
-      loadAccessToken: loadCalendarAccessToken,
-      providerForAccessToken: calendarEventProvider
-    });
     const input = await buildDailySummaryInput({
       authMode: 'user',
       configuration,
@@ -129,15 +125,13 @@ const safelyLoadCommuteEstimateProvider = (
 const loadScheduledCalendarContext = async ({
   userId,
   calendarEnabled,
-  connection,
-  selectedCalendars,
+  connectionStore,
   loadAccessToken,
   providerForAccessToken
 }: {
   userId: string;
   calendarEnabled: boolean;
-  connection: UserCalendarReadinessConnection;
-  selectedCalendars: SavedSelectedCalendar[];
+  connectionStore: ScheduledCalendarConnectionStore;
   loadAccessToken: (userId: string) => Promise<string | null>;
   providerForAccessToken: (accessToken: string) => CalendarEventProvider;
 }) => {
@@ -149,6 +143,8 @@ const loadScheduledCalendarContext = async ({
     };
   }
 
+  const connection = await connectionStore.load(userId);
+
   if (connection.status !== 'connected') {
     return {
       readiness: calendarReadinessForUserConnection(connection),
@@ -156,6 +152,8 @@ const loadScheduledCalendarContext = async ({
       provider: undefined
     };
   }
+
+  const selectedCalendars = await connectionStore.loadSelectedCalendars(userId);
 
   try {
     const accessToken = await loadAccessToken(userId);
