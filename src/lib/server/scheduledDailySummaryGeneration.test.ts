@@ -142,6 +142,8 @@ describe('scheduled Daily Summary generation', () => {
     const calendarEventProvider = vi.fn();
     const weatherProvider = { fetchDailyForecast: vi.fn() };
     const commuteEstimateProvider = vi.fn();
+    const loadCalendarConnection = vi.fn().mockRejectedValue(new Error('broken connection data'));
+    const loadSelectedCalendars = vi.fn().mockRejectedValue(new Error('broken calendar data'));
     const disabledConfiguration: SummaryConfiguration = {
       ...configuration,
       sections: { weather: false, commute: false, calendar: false, todo: false }
@@ -152,8 +154,8 @@ describe('scheduled Daily Summary generation', () => {
       weatherLocationStore: { load: vi.fn().mockResolvedValue(null) },
       commuteSetupStore: { load: vi.fn().mockResolvedValue(null) },
       calendarConnectionStore: {
-        load: vi.fn().mockResolvedValue({ status: 'connected' }),
-        loadSelectedCalendars: vi.fn().mockResolvedValue([])
+        load: loadCalendarConnection,
+        loadSelectedCalendars
       },
       loadCalendarAccessToken,
       calendarEventProvider,
@@ -177,6 +179,8 @@ describe('scheduled Daily Summary generation', () => {
     });
     expect(weatherProvider.fetchDailyForecast).not.toHaveBeenCalled();
     expect(commuteEstimateProvider).not.toHaveBeenCalled();
+    expect(loadCalendarConnection).not.toHaveBeenCalled();
+    expect(loadSelectedCalendars).not.toHaveBeenCalled();
     expect(loadCalendarAccessToken).not.toHaveBeenCalled();
     expect(calendarEventProvider).not.toHaveBeenCalled();
   });
