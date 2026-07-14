@@ -902,8 +902,38 @@
     urgency === 'high' ? '!' : urgency === 'medium' ? '!' : '';
   const deliveryAttemptLabel = (attemptType: DeliveryRecord['attemptType']) =>
     attemptType === 'scheduled' ? 'Scheduled' : 'Test';
-  const deliveryStatusLabel = (status: DeliveryRecord['deliveryStatus']) =>
-    status === 'sent' ? 'Sent' : 'Failed';
+  const deliveryStatusLabel = (status: DeliveryRecord['deliveryStatus']) => {
+    switch (status) {
+      case 'processing':
+        return 'Processing';
+      case 'retrying':
+        return 'Retrying';
+      case 'sent':
+        return 'Sent';
+      case 'failed':
+        return 'Failed';
+      default: {
+        const exhaustiveStatus: never = status;
+        return exhaustiveStatus;
+      }
+    }
+  };
+  const deliveryStatusClasses = (status: DeliveryRecord['deliveryStatus']) => {
+    switch (status) {
+      case 'processing':
+        return 'bg-sky-100 text-sky-800';
+      case 'retrying':
+        return 'bg-amber-100 text-amber-800';
+      case 'sent':
+        return 'bg-emerald-100 text-emerald-800';
+      case 'failed':
+        return 'bg-red-100 text-red-700';
+      default: {
+        const exhaustiveStatus: never = status;
+        return exhaustiveStatus;
+      }
+    }
+  };
   const deliveryTimeLabel = (timestamp: string | null) =>
     timestamp
       ? new Intl.DateTimeFormat(undefined, {
@@ -2259,45 +2289,52 @@
                       {deliveryAttemptLabel(record.attemptType)} Daily Summary
                     </p>
                     <span
-                      class={`rounded-md px-2 py-1 text-xs font-semibold ${
-                        record.deliveryStatus === 'sent'
-                          ? 'bg-emerald-100 text-emerald-800'
-                          : 'bg-red-100 text-red-700'
-                      }`}
+                      class={`rounded-md px-2 py-1 text-xs font-semibold ${deliveryStatusClasses(record.deliveryStatus)}`}
                     >
                       {deliveryStatusLabel(record.deliveryStatus)}
                     </span>
                   </div>
                   <dl class="grid gap-1 text-sm text-stone-700">
                     <div class="flex flex-wrap justify-between gap-2">
-                      <dt>Requested</dt>
-                      <dd>{deliveryTimeLabel(record.requestedAt)}</dd>
+                      <dt>{record.attemptType === 'scheduled' ? 'Scheduled for' : 'Requested'}</dt>
+                      <dd>
+                        {deliveryTimeLabel(
+                          record.attemptType === 'scheduled' ? record.scheduledAt : record.requestedAt
+                        )}
+                      </dd>
                     </div>
                     <div class="flex flex-wrap justify-between gap-2">
                       <dt>Completed</dt>
                       <dd>{deliveryTimeLabel(record.completedAt)}</dd>
                     </div>
-                    <div class="flex flex-wrap justify-between gap-2">
-                      <dt>Provider</dt>
-                      <dd>{record.providerName}</dd>
-                    </div>
-                    {#if record.providerMessageId}
+                    {#if record.attemptType === 'scheduled'}
                       <div class="flex flex-wrap justify-between gap-2">
-                        <dt>Message id</dt>
-                        <dd class="break-all">{record.providerMessageId}</dd>
+                        <dt>Attempts</dt>
+                        <dd>{record.attemptCount ?? 'Not available'}</dd>
                       </div>
-                    {/if}
-                    {#if record.providerStatusMetadata}
+                    {:else}
                       <div class="flex flex-wrap justify-between gap-2">
-                        <dt>Status metadata</dt>
-                        <dd>{record.providerStatusMetadata}</dd>
+                        <dt>Provider</dt>
+                        <dd>{record.providerName}</dd>
                       </div>
-                    {/if}
-                    {#if record.errorClassification}
-                      <div class="flex flex-wrap justify-between gap-2">
-                        <dt>Error classification</dt>
-                        <dd>{record.errorClassification}</dd>
-                      </div>
+                      {#if record.providerMessageId}
+                        <div class="flex flex-wrap justify-between gap-2">
+                          <dt>Message id</dt>
+                          <dd class="break-all">{record.providerMessageId}</dd>
+                        </div>
+                      {/if}
+                      {#if record.providerStatusMetadata}
+                        <div class="flex flex-wrap justify-between gap-2">
+                          <dt>Status metadata</dt>
+                          <dd>{record.providerStatusMetadata}</dd>
+                        </div>
+                      {/if}
+                      {#if record.errorClassification}
+                        <div class="flex flex-wrap justify-between gap-2">
+                          <dt>Error classification</dt>
+                          <dd>{record.errorClassification}</dd>
+                        </div>
+                      {/if}
                     {/if}
                   </dl>
                 </li>

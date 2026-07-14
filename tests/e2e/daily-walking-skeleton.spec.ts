@@ -1,4 +1,8 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
+import Database from 'better-sqlite3';
+import { makeSignature } from 'better-auth/crypto';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 const tabUntilDropTargetActive = async (
   page: Page,
@@ -82,6 +86,213 @@ const stubOpenMeteoForecast = async (page: Page) => {
     });
   });
 };
+
+test('signed-in User sees recent Scheduled and Test Delivery Records without private operational data', async ({
+  page
+}) => {
+  const port = process.env.PLAYWRIGHT_PORT ?? '5173';
+  const database = new Database(join(tmpdir(), `daily-playwright-${port}.db`));
+
+  const now = new Date();
+  const secondsSinceEpoch = Math.floor(now.getTime() / 1000);
+  const userId = `delivery-history-user-${crypto.randomUUID()}`;
+  const otherUserId = `delivery-history-other-${crypto.randomUUID()}`;
+  const sessionToken = crypto.randomUUID();
+  const atDaysAgo = (days: number) =>
+    new Date(now.getTime() - days * 24 * 60 * 60 * 1000).toISOString();
+  const insertDeliveryRecord = database.prepare(`
+    insert into delivery_records (
+      id, user_id, attempt_type, requested_at, completed_at, delivery_status,
+      provider_name, provider_message_id, provider_status_metadata, error_classification,
+      scheduled_at, attempt_count, last_attempt_at, next_retry_at, claim_expires_at
+    ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+
+  try {
+    database
+      .prepare(
+        'insert into auth_user (id, name, email, email_verified, created_at, updated_at) values (?, ?, ?, ?, ?, ?)'
+      )
+      .run(userId, 'Delivery History User', 'history@example.com', 1, secondsSinceEpoch, secondsSinceEpoch);
+    database
+      .prepare(
+        'insert into auth_session (id, expires_at, token, created_at, updated_at, user_id) values (?, ?, ?, ?, ?, ?)'
+      )
+      .run(
+        crypto.randomUUID(),
+        secondsSinceEpoch + 60 * 60,
+        sessionToken,
+        secondsSinceEpoch,
+        secondsSinceEpoch,
+        userId
+      );
+    database
+      .prepare('insert into users (id, google_subject, email) values (?, ?, ?)')
+      .run(userId, userId, 'history@example.com');
+    database
+      .prepare('insert into users (id, google_subject, email) values (?, ?, ?)')
+      .run(otherUserId, otherUserId, 'other-history@example.com');
+
+    insertDeliveryRecord.run(
+      crypto.randomUUID(),
+      userId,
+      'scheduled',
+      atDaysAgo(1),
+      atDaysAgo(0.99),
+      'sent',
+      'resend',
+      'scheduled-message-id',
+      'accepted',
+      null,
+      atDaysAgo(1),
+      2,
+      atDaysAgo(0.99),
+      null,
+      null
+    );
+    insertDeliveryRecord.run(
+      crypto.randomUUID(),
+      userId,
+      'scheduled',
+      atDaysAgo(2),
+      null,
+      'retrying',
+      'resend',
+      null,
+      'temporarily unavailable',
+      'provider-unavailable',
+      atDaysAgo(2),
+      2,
+      atDaysAgo(1.99),
+      atDaysAgo(1.9),
+      null
+    );
+    insertDeliveryRecord.run(
+      crypto.randomUUID(),
+      userId,
+      'scheduled',
+      atDaysAgo(3),
+      null,
+      'processing',
+      'resend',
+      null,
+      null,
+      null,
+      atDaysAgo(3),
+      1,
+      atDaysAgo(3),
+      null,
+      atDaysAgo(2.99)
+    );
+    insertDeliveryRecord.run(
+      crypto.randomUUID(),
+      userId,
+      'scheduled',
+      atDaysAgo(4),
+      atDaysAgo(3.99),
+      'failed',
+      'private-provider-name',
+      'private-provider-message-id',
+      'raw payload for history@example.com with secret-token',
+      'unexpected',
+      atDaysAgo(4),
+      3,
+      atDaysAgo(3.99),
+      null,
+      null
+    );
+    insertDeliveryRecord.run(
+      crypto.randomUUID(),
+      userId,
+      'test',
+      atDaysAgo(5),
+      atDaysAgo(4.99),
+      'sent',
+      'resend',
+      'test-message-id',
+      'accepted',
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+    );
+    insertDeliveryRecord.run(
+      crypto.randomUUID(),
+      userId,
+      'scheduled',
+      atDaysAgo(31),
+      atDaysAgo(30.99),
+      'sent',
+      'outside-history-provider',
+      null,
+      null,
+      null,
+      atDaysAgo(31),
+      99,
+      atDaysAgo(30.99),
+      null,
+      null
+    );
+    insertDeliveryRecord.run(
+      crypto.randomUUID(),
+      otherUserId,
+      'scheduled',
+      atDaysAgo(1),
+      atDaysAgo(0.99),
+      'sent',
+      'other-user-provider',
+      null,
+      null,
+      null,
+      atDaysAgo(1),
+      88,
+      atDaysAgo(0.99),
+      null,
+      null
+    );
+
+    await page.context().addCookies([
+      {
+        name: 'better-auth.session_token',
+        value: `${sessionToken}.${await makeSignature(
+          sessionToken,
+          'daily-playwright-auth-secret-at-least-32-characters'
+        )}`,
+        domain: '127.0.0.1',
+        path: '/'
+      }
+    ]);
+    await page.goto('/');
+
+    const deliveryHistory = page.locator('section').filter({
+      has: page.getByRole('heading', { name: 'Delivery History' })
+    });
+
+    await expect(deliveryHistory).toBeVisible();
+    await expect(deliveryHistory.getByText('Scheduled Daily Summary', { exact: true })).toHaveCount(4);
+    await expect(deliveryHistory.getByText('Test Daily Summary', { exact: true })).toHaveCount(1);
+    await expect(deliveryHistory.getByText('Sent', { exact: true })).toHaveCount(2);
+    await expect(deliveryHistory.getByText('Retrying', { exact: true })).toBeVisible();
+    await expect(deliveryHistory.getByText('Processing', { exact: true })).toBeVisible();
+    await expect(deliveryHistory.getByText('Failed', { exact: true })).toBeVisible();
+    await expect(deliveryHistory.getByText('Attempts', { exact: true })).toHaveCount(4);
+    await expect(deliveryHistory.getByText('2', { exact: true })).toHaveCount(2);
+    await expect(deliveryHistory.getByText('Scheduled for', { exact: true })).toHaveCount(4);
+    await expect(deliveryHistory.getByText('Completed', { exact: true })).toHaveCount(5);
+    await expect(deliveryHistory.getByText('test-message-id', { exact: true })).toBeVisible();
+    await expect(deliveryHistory.getByText('99', { exact: true })).toHaveCount(0);
+    await expect(deliveryHistory.getByText('88', { exact: true })).toHaveCount(0);
+    await expect(deliveryHistory.getByText('private-provider-name', { exact: true })).toHaveCount(0);
+    await expect(deliveryHistory.getByText('private-provider-message-id', { exact: true })).toHaveCount(0);
+    await expect(deliveryHistory.getByText(/history@example\.com|secret-token|raw payload/)).toHaveCount(0);
+  } finally {
+    database.prepare('delete from auth_user where id = ?').run(userId);
+    database.prepare('delete from users where id in (?, ?)').run(userId, otherUserId);
+    database.close();
+  }
+});
 
 test('Visitor opens Daily into the usable main panel', async ({ page }) => {
   await page.goto('/');
@@ -289,6 +500,7 @@ test('Visitor manages ordered Commute Routes and Commute Days in browser-local s
 test('Visitor preview renders eligible Commute estimates and local unavailable behavior without live Google calls', async ({ page }) => {
   let estimateOutcome: 'available' | 'unavailable' | 'invalid-route' = 'available';
   let estimateRequests = 0;
+  const commuteDays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
   await page.route('/commute-point-selection', async (route) => {
     const point = route.request().postDataJSON() as { latitude: number; longitude: number };
     await route.fulfill({ json: { outcome: 'available', point: { label: 'Selected point', ...point } } });
@@ -305,7 +517,7 @@ test('Visitor preview renders eligible Commute estimates and local unavailable b
     });
   });
   await page.goto('/');
-  for (const day of ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']) {
+  for (const day of commuteDays) {
     await page.getByLabel(`${day} Commute Day`).check();
   }
   expect(estimateRequests).toBe(0);
@@ -317,14 +529,20 @@ test('Visitor preview renders eligible Commute estimates and local unavailable b
   await expect(page.getByText('Office route: 24 minutes')).toBeVisible();
   expect(estimateRequests).toBe(1);
 
-  for (const day of ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']) {
+  const currentUtcDay = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'UTC',
+    weekday: 'long'
+  }).format(new Date());
+  const daysWithCurrentFirst = [currentUtcDay, ...commuteDays.filter((day) => day !== currentUtcDay)];
+
+  for (const day of daysWithCurrentFirst) {
     await page.getByLabel(`${day} Commute Day`).uncheck();
   }
   await expect(page.getByText('Office route: 24 minutes')).toHaveCount(0);
   expect(estimateRequests).toBe(1);
 
   estimateOutcome = 'unavailable';
-  for (const day of ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']) {
+  for (const day of commuteDays) {
     await page.getByLabel(`${day} Commute Day`).check();
   }
   await expect(page.getByText('Live Commute is unavailable right now.')).toBeVisible();
