@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, lte, or, sql } from 'drizzle-orm';
+import { and, desc, eq, gt, gte, lte, or, sql } from 'drizzle-orm';
 import { db } from '$lib/server/db';
 import type {
   DeliveryRecord,
@@ -19,21 +19,20 @@ const recentDeliveryRecordCutoff = (now: string) => {
   return cutoff.toISOString();
 };
 
-const safeProviderStatusMetadataPattern = /^[a-zA-Z0-9][a-zA-Z0-9 ._=-]{0,119}$/;
-
-const privateProviderStatusMetadataPattern =
-  /[{}<>@]|\b(html|text|token|secret|payload|calendar|todo|route|origin|destination)\b/i;
+const safeProviderStatusMetadataPatterns = [
+  /^accepted(?: by provider)?(?:; missing message id)?$/,
+  /^missing (?:message id|RESEND_API_KEY|RESEND_FROM_EMAIL)$/,
+  /^status=[1-5][0-9]{2}$/,
+  /^rate limited$/,
+  /^temporarily unavailable$/
+];
 
 const privacyPreservingProviderStatusMetadata = (metadata: string | null) => {
   if (!metadata) {
     return null;
   }
 
-  if (
-    metadata.length > 120 ||
-    privateProviderStatusMetadataPattern.test(metadata) ||
-    !safeProviderStatusMetadataPattern.test(metadata)
-  ) {
+  if (!safeProviderStatusMetadataPatterns.some((pattern) => pattern.test(metadata))) {
     return 'redacted';
   }
 
@@ -87,6 +86,7 @@ export const createDeliveryRecordStore = (database: DeliveryRecordDatabase) => (
       })
       .onConflictDoUpdate({
         target: [deliveryRecords.userId, deliveryRecords.scheduledAt],
+        targetWhere: sql.raw("attempt_type = 'scheduled'"),
         set: {
           deliveryStatus: 'processing',
           providerName: claim.providerName,
@@ -129,7 +129,9 @@ export const createDeliveryRecordStore = (database: DeliveryRecordDatabase) => (
         and(
           eq(deliveryRecords.id, recordId),
           eq(deliveryRecords.attemptType, 'scheduled'),
-          eq(deliveryRecords.deliveryStatus, 'processing')
+          eq(deliveryRecords.deliveryStatus, 'processing'),
+          eq(deliveryRecords.attemptCount, retry.attemptCount),
+          gt(deliveryRecords.claimExpiresAt, retry.attemptedAt)
         )
       )
       .returning();
@@ -154,7 +156,9 @@ export const createDeliveryRecordStore = (database: DeliveryRecordDatabase) => (
         and(
           eq(deliveryRecords.id, recordId),
           eq(deliveryRecords.attemptType, 'scheduled'),
-          eq(deliveryRecords.deliveryStatus, 'processing')
+          eq(deliveryRecords.deliveryStatus, 'processing'),
+          eq(deliveryRecords.attemptCount, sent.attemptCount),
+          gt(deliveryRecords.claimExpiresAt, sent.completedAt)
         )
       )
       .returning();
@@ -179,10 +183,9 @@ export const createDeliveryRecordStore = (database: DeliveryRecordDatabase) => (
         and(
           eq(deliveryRecords.id, recordId),
           eq(deliveryRecords.attemptType, 'scheduled'),
-          or(
-            eq(deliveryRecords.deliveryStatus, 'processing'),
-            eq(deliveryRecords.deliveryStatus, 'retrying')
-          )
+          eq(deliveryRecords.deliveryStatus, 'processing'),
+          eq(deliveryRecords.attemptCount, failed.attemptCount),
+          gt(deliveryRecords.claimExpiresAt, failed.completedAt)
         )
       )
       .returning();

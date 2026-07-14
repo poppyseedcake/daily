@@ -30,7 +30,12 @@ export type DeliveryRecord = {
 
 export type DeliveryRecordInput = Omit<
   DeliveryRecord,
-  'id' | 'scheduledAt' | 'attemptCount' | 'lastAttemptAt' | 'nextRetryAt' | 'claimExpiresAt'
+  | 'id'
+  | 'scheduledAt'
+  | 'attemptCount'
+  | 'lastAttemptAt'
+  | 'nextRetryAt'
+  | 'claimExpiresAt'
 > & {
   id?: DeliveryRecord['id'];
   attemptType: 'test';
@@ -45,6 +50,7 @@ export type ScheduledDeliveryClaim = {
 };
 
 export type ScheduledDeliveryRetry = {
+  attemptCount: number;
   attemptedAt: string;
   nextRetryAt: string;
   providerStatusMetadata: string | null;
@@ -52,12 +58,14 @@ export type ScheduledDeliveryRetry = {
 };
 
 export type ScheduledDeliverySent = {
+  attemptCount: number;
   completedAt: string;
   providerMessageId: string;
   providerStatusMetadata: string | null;
 };
 
 export type ScheduledDeliveryFailed = {
+  attemptCount: number;
   completedAt: string;
   providerMessageId: string | null;
   providerStatusMetadata: string | null;
