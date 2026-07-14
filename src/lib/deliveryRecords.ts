@@ -36,6 +36,56 @@ export type DeliveryRecord = {
   claimExpiresAt: string | null;
 };
 
+export type TestDeliveryHistoryRecord = Pick<
+  DeliveryRecord,
+  | 'id'
+  | 'requestedAt'
+  | 'completedAt'
+  | 'deliveryStatus'
+  | 'providerName'
+  | 'providerMessageId'
+  | 'providerStatusMetadata'
+  | 'errorClassification'
+> & {
+  attemptType: 'test';
+};
+
+export type ScheduledDeliveryHistoryRecord = Pick<
+  DeliveryRecord,
+  'id' | 'completedAt' | 'deliveryStatus' | 'scheduledAt' | 'attemptCount'
+> & {
+  attemptType: 'scheduled';
+};
+
+export type DeliveryHistoryRecord =
+  | TestDeliveryHistoryRecord
+  | ScheduledDeliveryHistoryRecord;
+
+export const toDeliveryHistoryRecord = (record: DeliveryRecord): DeliveryHistoryRecord => {
+  if (record.attemptType === 'scheduled') {
+    return {
+      id: record.id,
+      attemptType: record.attemptType,
+      completedAt: record.completedAt,
+      deliveryStatus: record.deliveryStatus,
+      scheduledAt: record.scheduledAt,
+      attemptCount: record.attemptCount
+    };
+  }
+
+  return {
+    id: record.id,
+    attemptType: record.attemptType,
+    requestedAt: record.requestedAt,
+    completedAt: record.completedAt,
+    deliveryStatus: record.deliveryStatus,
+    providerName: record.providerName,
+    providerMessageId: record.providerMessageId,
+    providerStatusMetadata: record.providerStatusMetadata,
+    errorClassification: record.errorClassification
+  };
+};
+
 export type DeliveryRecordInput = Omit<
   DeliveryRecord,
   | 'id'

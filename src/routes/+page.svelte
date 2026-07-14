@@ -6,7 +6,7 @@
   import Panel from '$lib/components/Panel.svelte';
   import { calendarReadinessForAuthMode } from '$lib/calendarReadiness';
   import { buildDailySummaryInput } from '$lib/dailySummaryPreview';
-  import type { DeliveryRecord } from '$lib/deliveryRecords';
+  import type { DeliveryHistoryRecord, DeliveryStatus } from '$lib/deliveryRecords';
   import { buildDemoCalendarSection } from '$lib/demoCalendar';
   import { renderDailySummary } from '$lib/dailySummaryRenderer';
   import {
@@ -81,7 +81,7 @@
     routes: [] as CommuteRoute[],
     days: [...defaultCommuteDays] as CommuteDay[]
   };
-  const deliveryRecords = $derived<DeliveryRecord[]>(data?.deliveryRecords ?? []);
+  const deliveryRecords = $derived<DeliveryHistoryRecord[]>(data?.deliveryRecords ?? []);
   const initialSelectedCalendarConfiguration = data?.selectedCalendarConfiguration ?? null;
   const testDeliveryStatus = $derived(
     form?.outcome === 'sent'
@@ -900,10 +900,21 @@
     urgency === 'high' ? 'High urgency' : urgency === 'medium' ? 'Medium urgency' : 'Low urgency';
   const urgencyMark = (urgency: TodoUrgency) =>
     urgency === 'high' ? '!' : urgency === 'medium' ? '!' : '';
-  const deliveryAttemptLabel = (attemptType: DeliveryRecord['attemptType']) =>
+  const deliveryAttemptLabel = (attemptType: DeliveryHistoryRecord['attemptType']) =>
     attemptType === 'scheduled' ? 'Scheduled' : 'Test';
-  const deliveryStatusLabel = (status: DeliveryRecord['deliveryStatus']) =>
-    status === 'sent' ? 'Sent' : 'Failed';
+  const deliveryStatusPresentation = {
+    processing: { label: 'Processing', classes: 'bg-sky-100 text-sky-800' },
+    retrying: { label: 'Retrying', classes: 'bg-amber-100 text-amber-800' },
+    sent: { label: 'Sent', classes: 'bg-emerald-100 text-emerald-800' },
+    failed: { label: 'Failed', classes: 'bg-red-100 text-red-700' }
+  } satisfies Record<DeliveryStatus, { label: string; classes: string }>;
+  const unknownDeliveryStatusPresentation = {
+    label: 'Unknown',
+    classes: 'bg-stone-100 text-stone-700'
+  };
+  const deliveryStatusPresentationFor = (deliveryStatus: string) =>
+    deliveryStatusPresentation[deliveryStatus as DeliveryStatus] ??
+    unknownDeliveryStatusPresentation;
   const deliveryTimeLabel = (timestamp: string | null) =>
     timestamp
       ? new Intl.DateTimeFormat(undefined, {
@@ -2253,51 +2264,59 @@
           {#if deliveryRecords.length > 0}
             <ul class="grid gap-3" aria-label="Delivery Record History">
               {#each deliveryRecords as record}
+                {@const statusPresentation = deliveryStatusPresentationFor(record.deliveryStatus)}
                 <li class="grid gap-2 rounded-md border border-stone-200 p-3">
                   <div class="flex flex-wrap items-center justify-between gap-2">
                     <p class="font-semibold text-stone-950">
                       {deliveryAttemptLabel(record.attemptType)} Daily Summary
                     </p>
                     <span
-                      class={`rounded-md px-2 py-1 text-xs font-semibold ${
-                        record.deliveryStatus === 'sent'
-                          ? 'bg-emerald-100 text-emerald-800'
-                          : 'bg-red-100 text-red-700'
-                      }`}
+                      class={`rounded-md px-2 py-1 text-xs font-semibold ${statusPresentation.classes}`}
                     >
-                      {deliveryStatusLabel(record.deliveryStatus)}
+                      {statusPresentation.label}
                     </span>
                   </div>
                   <dl class="grid gap-1 text-sm text-stone-700">
                     <div class="flex flex-wrap justify-between gap-2">
-                      <dt>Requested</dt>
-                      <dd>{deliveryTimeLabel(record.requestedAt)}</dd>
+                      <dt>{record.attemptType === 'scheduled' ? 'Scheduled for' : 'Requested'}</dt>
+                      <dd>
+                        {deliveryTimeLabel(
+                          record.attemptType === 'scheduled' ? record.scheduledAt : record.requestedAt
+                        )}
+                      </dd>
                     </div>
                     <div class="flex flex-wrap justify-between gap-2">
                       <dt>Completed</dt>
                       <dd>{deliveryTimeLabel(record.completedAt)}</dd>
                     </div>
-                    <div class="flex flex-wrap justify-between gap-2">
-                      <dt>Provider</dt>
-                      <dd>{record.providerName}</dd>
-                    </div>
-                    {#if record.providerMessageId}
+                    {#if record.attemptType === 'scheduled'}
                       <div class="flex flex-wrap justify-between gap-2">
-                        <dt>Message id</dt>
-                        <dd class="break-all">{record.providerMessageId}</dd>
+                        <dt>Attempts</dt>
+                        <dd>{record.attemptCount ?? 'Not available'}</dd>
                       </div>
-                    {/if}
-                    {#if record.providerStatusMetadata}
+                    {:else}
                       <div class="flex flex-wrap justify-between gap-2">
-                        <dt>Status metadata</dt>
-                        <dd>{record.providerStatusMetadata}</dd>
+                        <dt>Provider</dt>
+                        <dd>{record.providerName}</dd>
                       </div>
-                    {/if}
-                    {#if record.errorClassification}
-                      <div class="flex flex-wrap justify-between gap-2">
-                        <dt>Error classification</dt>
-                        <dd>{record.errorClassification}</dd>
-                      </div>
+                      {#if record.providerMessageId}
+                        <div class="flex flex-wrap justify-between gap-2">
+                          <dt>Message id</dt>
+                          <dd class="break-all">{record.providerMessageId}</dd>
+                        </div>
+                      {/if}
+                      {#if record.providerStatusMetadata}
+                        <div class="flex flex-wrap justify-between gap-2">
+                          <dt>Status metadata</dt>
+                          <dd>{record.providerStatusMetadata}</dd>
+                        </div>
+                      {/if}
+                      {#if record.errorClassification}
+                        <div class="flex flex-wrap justify-between gap-2">
+                          <dt>Error classification</dt>
+                          <dd>{record.errorClassification}</dd>
+                        </div>
+                      {/if}
                     {/if}
                   </dl>
                 </li>

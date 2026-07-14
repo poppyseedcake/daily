@@ -1,12 +1,17 @@
 import { defineConfig, devices } from '@playwright/test';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 const port = process.env.PLAYWRIGHT_PORT ?? '5173';
 const baseURL = `http://127.0.0.1:${port}`;
+const databaseURL = join(tmpdir(), `daily-playwright-${port}.db`);
+const authSecret = 'daily-playwright-auth-secret-at-least-32-characters';
 
 export default defineConfig({
   testDir: 'tests/e2e',
   webServer: {
-    command: `npm run dev -- --host 127.0.0.1 --port ${port}`,
+    command: `node tests/e2e/setupDatabase.mjs && npm run dev -- --host 127.0.0.1 --port ${port}`,
+    env: { BETTER_AUTH_SECRET: authSecret, DATABASE_URL: databaseURL },
     url: baseURL,
     reuseExistingServer: !process.env.CI
   },
