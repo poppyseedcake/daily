@@ -116,7 +116,6 @@ describe('Daily Summary delivery provider', () => {
     [400, 'validation-failed'],
     [422, 'validation-failed'],
     [403, 'authentication-failed'],
-    [429, 'provider-unavailable'],
     [503, 'provider-unavailable'],
     [409, 'provider-rejected']
   ] as const)('classifies Resend status %i as %s', async (status, classification) => {
@@ -142,6 +141,64 @@ describe('Daily Summary delivery provider', () => {
       classification,
       providerName: 'resend',
       providerStatusMetadata: `status=${status}`
+    });
+  });
+
+  test.each(['daily_quota_exceeded', 'monthly_quota_exceeded'])(
+    'treats an exhausted Resend email quota (%s) as a terminal provider rejection',
+    async (providerErrorName) => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue(
+          new Response(JSON.stringify({ name: providerErrorName }), {
+            status: 429,
+            headers: { 'content-type': 'application/json' }
+          })
+        )
+      );
+
+      await expect(
+        resendDailySummaryDeliveryProvider.send({
+          to: 'user@example.com',
+          from: dailySummarySenderAddress(),
+          subject: 'Test Daily Summary',
+          html: '<article>Rendered Daily Summary</article>',
+          text: 'Rendered Daily Summary'
+        })
+      ).rejects.toMatchObject({
+        classification: 'provider-rejected',
+        providerName: 'resend',
+        providerStatusMetadata: 'status=429'
+      });
+    }
+  );
+
+  test.each([
+    ['rate_limit_exceeded', 'provider-unavailable'],
+    ['unrecognized_limit', 'provider-rejected']
+  ] as const)('classifies Resend 429 error %s as %s', async (providerErrorName, classification) => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ name: providerErrorName }), {
+          status: 429,
+          headers: { 'content-type': 'application/json' }
+        })
+      )
+    );
+
+    await expect(
+      resendDailySummaryDeliveryProvider.send({
+        to: 'user@example.com',
+        from: dailySummarySenderAddress(),
+        subject: 'Test Daily Summary',
+        html: '<article>Rendered Daily Summary</article>',
+        text: 'Rendered Daily Summary'
+      })
+    ).rejects.toMatchObject({
+      classification,
+      providerName: 'resend',
+      providerStatusMetadata: 'status=429'
     });
   });
 
