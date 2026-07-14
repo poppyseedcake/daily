@@ -1,9 +1,9 @@
 import { json } from '@sveltejs/kit';
 import { sql } from 'drizzle-orm';
-import { db } from '$lib/server/db';
 
-export const GET = () => {
+export const GET = async () => {
   try {
+    const { db } = await import('$lib/server/db');
     db.get(sql`select 1 as ready`);
     return json({ status: 'ok' });
   } catch {

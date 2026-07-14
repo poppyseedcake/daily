@@ -33,4 +33,18 @@ describe.sequential('Health endpoint', () => {
     expect(response.headers.get('content-type')).toBe('application/json');
     expect(responseText).toBe('{"status":"unhealthy"}');
   });
+
+  test('reports unhealthy when the database module cannot open SQLite', async () => {
+    vi.resetModules();
+    vi.doMock('$lib/server/db', () => {
+      throw new Error('database open failed');
+    });
+    const { GET: getHealth } = await import('./health/+server');
+
+    const response = await getHealth();
+
+    expect(response.status).toBe(503);
+    expect(response.headers.get('content-type')).toBe('application/json');
+    await expect(response.json()).resolves.toEqual({ status: 'unhealthy' });
+  });
 });
