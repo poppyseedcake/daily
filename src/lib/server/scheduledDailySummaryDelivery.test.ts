@@ -157,6 +157,41 @@ describe('scheduled Daily Summary delivery', () => {
     ).toEqual({ next_summary_at: '2026-10-25T06:00:00Z' });
   });
 
+  test('delivers qualifying Todo content when Weather is unavailable', async () => {
+    saveQualifyingUser(sqlite, {
+      userId: 'user-1',
+      scheduledAt: '2026-10-24T05:00:00Z'
+    });
+    sqlite
+      .prepare('update summary_configurations set weather_section_enabled = 1 where user_id = ?')
+      .run('user-1');
+    const send = vi.fn().mockResolvedValue({
+      providerName: 'fake-delivery',
+      providerMessageId: 'message-1',
+      providerStatusMetadata: 'accepted'
+    });
+    const delivery = createTestDelivery({
+      database,
+      send,
+      now: () => new Date('2026-10-24T05:00:00.000Z')
+    });
+
+    await expect(delivery.processOneDueOccurrence()).resolves.toEqual({
+      outcome: 'sent',
+      occurrenceId: expect.any(String)
+    });
+
+    expect(send).toHaveBeenCalledWith(expect.objectContaining({
+      html: expect.stringContaining('Choose a Weather Location'),
+      text: expect.stringContaining('Choose a Weather Location')
+    }));
+    expect(send.mock.calls[0][0].html).toContain('Prepare launch notes');
+    expect(send.mock.calls[0][0].text).toContain('Prepare launch notes');
+    expect(
+      sqlite.prepare('select count(*) as count from delivery_records').get()
+    ).toEqual({ count: 1 });
+  });
+
   test('overlapping and repeated processing submits one provider request for an occurrence', async () => {
     saveQualifyingUser(sqlite, {
       userId: 'user-1',
@@ -275,7 +310,7 @@ describe('scheduled Daily Summary delivery', () => {
     });
   });
 
-  test('advances a due occurrence that has no qualifying content', async () => {
+  test('skips an occurrence with empty enabled content without a Delivery Record', async () => {
     saveQualifyingUser(sqlite, {
       userId: 'user-1',
       scheduledAt: '2026-10-24T05:00:00Z'
@@ -296,6 +331,43 @@ describe('scheduled Daily Summary delivery', () => {
     });
 
     expect(send).not.toHaveBeenCalled();
+    expect(
+      sqlite.prepare('select count(*) as count from delivery_records').get()
+    ).toEqual({ count: 0 });
+    expect(
+      sqlite.prepare('select next_summary_at from users where id = ?').get('user-1')
+    ).toEqual({ next_summary_at: '2026-10-25T06:00:00Z' });
+  });
+
+  test('skips unavailable-only output without a provider call or Delivery Record', async () => {
+    saveQualifyingUser(sqlite, {
+      userId: 'user-1',
+      scheduledAt: '2026-10-24T05:00:00Z'
+    });
+    sqlite.prepare('delete from todo_tasks where user_id = ?').run('user-1');
+    sqlite
+      .prepare(
+        `update summary_configurations
+            set weather_section_enabled = 1,
+                todo_section_enabled = 0
+          where user_id = ?`
+      )
+      .run('user-1');
+    const send = vi.fn();
+    const delivery = createTestDelivery({
+      database,
+      send,
+      now: () => new Date('2026-10-24T05:00:00.000Z')
+    });
+
+    await expect(delivery.processOneDueOccurrence()).resolves.toEqual({
+      outcome: 'not-qualifying'
+    });
+
+    expect(send).not.toHaveBeenCalled();
+    expect(
+      sqlite.prepare('select count(*) as count from delivery_records').get()
+    ).toEqual({ count: 0 });
     expect(
       sqlite.prepare('select next_summary_at from users where id = ?').get('user-1')
     ).toEqual({ next_summary_at: '2026-10-25T06:00:00Z' });
