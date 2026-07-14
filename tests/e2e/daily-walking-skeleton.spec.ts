@@ -112,7 +112,7 @@ test('signed-in User sees recent Scheduled and Test Delivery Records without pri
     attemptType: 'test' | 'scheduled';
     requestedAt: string;
     completedAt?: string | null;
-    deliveryStatus: 'processing' | 'retrying' | 'sent' | 'failed';
+    deliveryStatus: string;
     providerName?: string;
     providerMessageId?: string | null;
     providerStatusMetadata?: string | null;
@@ -166,6 +166,14 @@ test('signed-in User sees recent Scheduled and Test Delivery Records without pri
       .prepare('insert into users (id, google_subject, email) values (?, ?, ?)')
       .run(otherUserId, otherUserId, 'other-history@example.com');
 
+    insertDeliveryRecord({
+      userId,
+      attemptType: 'scheduled',
+      requestedAt: atDaysAgo(0.5),
+      deliveryStatus: 'queued',
+      scheduledAt: atDaysAgo(0.5),
+      attemptCount: 1
+    });
     insertDeliveryRecord({
       userId,
       attemptType: 'scheduled',
@@ -269,16 +277,17 @@ test('signed-in User sees recent Scheduled and Test Delivery Records without pri
     });
 
     await expect(deliveryHistory).toBeVisible();
-    await expect(deliveryHistory.getByText('Scheduled Daily Summary', { exact: true })).toHaveCount(4);
+    await expect(deliveryHistory.getByText('Scheduled Daily Summary', { exact: true })).toHaveCount(5);
     await expect(deliveryHistory.getByText('Test Daily Summary', { exact: true })).toHaveCount(1);
+    await expect(deliveryHistory.getByText('Unknown', { exact: true })).toBeVisible();
     await expect(deliveryHistory.getByText('Sent', { exact: true })).toHaveCount(2);
     await expect(deliveryHistory.getByText('Retrying', { exact: true })).toBeVisible();
     await expect(deliveryHistory.getByText('Processing', { exact: true })).toBeVisible();
     await expect(deliveryHistory.getByText('Failed', { exact: true })).toBeVisible();
-    await expect(deliveryHistory.getByText('Attempts', { exact: true })).toHaveCount(4);
+    await expect(deliveryHistory.getByText('Attempts', { exact: true })).toHaveCount(5);
     await expect(deliveryHistory.getByText('2', { exact: true })).toHaveCount(2);
-    await expect(deliveryHistory.getByText('Scheduled for', { exact: true })).toHaveCount(4);
-    await expect(deliveryHistory.getByText('Completed', { exact: true })).toHaveCount(5);
+    await expect(deliveryHistory.getByText('Scheduled for', { exact: true })).toHaveCount(5);
+    await expect(deliveryHistory.getByText('Completed', { exact: true })).toHaveCount(6);
     await expect(deliveryHistory.getByText('test-message-id', { exact: true })).toBeVisible();
     await expect(deliveryHistory.getByText('99', { exact: true })).toHaveCount(0);
     await expect(deliveryHistory.getByText('88', { exact: true })).toHaveCount(0);

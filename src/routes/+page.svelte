@@ -908,6 +908,13 @@
     sent: { label: 'Sent', classes: 'bg-emerald-100 text-emerald-800' },
     failed: { label: 'Failed', classes: 'bg-red-100 text-red-700' }
   } satisfies Record<DeliveryStatus, { label: string; classes: string }>;
+  const unknownDeliveryStatusPresentation = {
+    label: 'Unknown',
+    classes: 'bg-stone-100 text-stone-700'
+  };
+  const deliveryStatusPresentationFor = (deliveryStatus: string) =>
+    deliveryStatusPresentation[deliveryStatus as DeliveryStatus] ??
+    unknownDeliveryStatusPresentation;
   const deliveryTimeLabel = (timestamp: string | null) =>
     timestamp
       ? new Intl.DateTimeFormat(undefined, {
@@ -2257,15 +2264,16 @@
           {#if deliveryRecords.length > 0}
             <ul class="grid gap-3" aria-label="Delivery Record History">
               {#each deliveryRecords as record}
+                {@const statusPresentation = deliveryStatusPresentationFor(record.deliveryStatus)}
                 <li class="grid gap-2 rounded-md border border-stone-200 p-3">
                   <div class="flex flex-wrap items-center justify-between gap-2">
                     <p class="font-semibold text-stone-950">
                       {deliveryAttemptLabel(record.attemptType)} Daily Summary
                     </p>
                     <span
-                      class={`rounded-md px-2 py-1 text-xs font-semibold ${deliveryStatusPresentation[record.deliveryStatus].classes}`}
+                      class={`rounded-md px-2 py-1 text-xs font-semibold ${statusPresentation.classes}`}
                     >
-                      {deliveryStatusPresentation[record.deliveryStatus].label}
+                      {statusPresentation.label}
                     </span>
                   </div>
                   <dl class="grid gap-1 text-sm text-stone-700">
