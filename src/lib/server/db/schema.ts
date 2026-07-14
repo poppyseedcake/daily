@@ -1,5 +1,6 @@
 import { relations, sql } from 'drizzle-orm';
 import { check, index, integer, primaryKey, real, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
+import { deliveryErrorClassifications } from '$lib/deliveryRecords';
 
 export const users = sqliteTable(
   'users',
@@ -166,16 +167,27 @@ export const deliveryRecords = sqliteTable(
     attemptType: text('attempt_type', { enum: ['test', 'scheduled'] }).notNull(),
     requestedAt: text('requested_at').notNull(),
     completedAt: text('completed_at'),
-    deliveryStatus: text('delivery_status', { enum: ['sent', 'failed'] }).notNull(),
+    deliveryStatus: text('delivery_status', {
+      enum: ['processing', 'retrying', 'sent', 'failed']
+    }).notNull(),
     providerName: text('provider_name').notNull(),
     providerMessageId: text('provider_message_id'),
     providerStatusMetadata: text('provider_status_metadata'),
-    errorClassification: text('error_classification')
+    errorClassification: text('error_classification', { enum: deliveryErrorClassifications }),
+    scheduledAt: text('scheduled_at'),
+    attemptCount: integer('attempt_count'),
+    lastAttemptAt: text('last_attempt_at'),
+    nextRetryAt: text('next_retry_at'),
+    claimExpiresAt: text('claim_expires_at')
   },
   (table) => ({
     userRequestedAtIdx: index('delivery_records_user_requested_at_idx').on(
       table.userId,
       table.requestedAt
+    ),
+    scheduledOccurrenceIdx: uniqueIndex('delivery_records_scheduled_occurrence_idx').on(
+      table.userId,
+      table.scheduledAt
     )
   })
 );
