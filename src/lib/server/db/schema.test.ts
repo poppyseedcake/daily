@@ -258,7 +258,7 @@ describe('Daily database schema', () => {
     expect(migration).toContain('ALTER TABLE \`delivery_records\` ADD \`next_retry_at\` text');
     expect(migration).toContain('ALTER TABLE \`delivery_records\` ADD \`claim_expires_at\` text');
     expect(migration).toContain(
-      "CREATE UNIQUE INDEX \`delivery_records_scheduled_occurrence_idx\` ON \`delivery_records\` (\`user_id\`,\`scheduled_at\`)"
+      "CREATE UNIQUE INDEX \`delivery_records_scheduled_occurrence_idx\` ON \`delivery_records\` (\`user_id\`,\`scheduled_at\`) WHERE \`attempt_type\` = 'scheduled'"
     );
     expect(migration).not.toMatch(/html|plain_text|section_content|provider_response|credential|token/i);
     expect(journal.entries.find(({ idx }) => idx === 12)).toMatchObject({

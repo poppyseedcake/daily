@@ -188,7 +188,7 @@ export const deliveryRecords = sqliteTable(
     scheduledOccurrenceIdx: uniqueIndex('delivery_records_scheduled_occurrence_idx').on(
       table.userId,
       table.scheduledAt
-    )
+    ).where(sql.raw("attempt_type = 'scheduled'"))
   })
 );
 

@@ -1,4 +1,6 @@
-import { readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import Database from 'better-sqlite3';
 import { drizzle } from 'drizzle-orm/better-sqlite3';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
@@ -87,6 +89,7 @@ describe('SQLite Delivery Record store', () => {
       providerName: 'resend'
     });
     await store.markScheduledFailed(scheduledClaim!.id, {
+      attemptCount: scheduledClaim!.attemptCount!,
       completedAt: '2026-06-20T07:00:05.000Z',
       providerMessageId: null,
       providerStatusMetadata: 'rate limited',
@@ -193,9 +196,43 @@ describe('SQLite Delivery Record store', () => {
     expect(JSON.stringify(record)).not.toContain('Call bank');
   });
 
-  test('claims one Scheduled Delivery Record per User occurrence', async () => {
-    const firstStore = createDeliveryRecordStore(database);
-    const competingStore = createDeliveryRecordStore(database);
+  test('stores only allowlisted provider status metadata', async () => {
+    const store = createDeliveryRecordStore(database);
+
+    await store.recordAttempt('user-1', {
+      id: 'private-provider-prose',
+      attemptType: 'test',
+      requestedAt: '2026-07-05T06:45:00.000Z',
+      completedAt: '2026-07-05T06:45:03.000Z',
+      deliveryStatus: 'failed',
+      providerName: 'resend',
+      providerMessageId: null,
+      providerStatusMetadata: 'Meet Alice at Hospital password=abc123 Bearer abc123',
+      errorClassification: 'provider-rejected'
+    });
+
+    const [record] = await store.loadRecentForUser('user-1', '2026-07-05T12:00:00.000Z');
+
+    expect(record.providerStatusMetadata).toBe('redacted');
+    expect(JSON.stringify(record)).not.toContain('Alice');
+    expect(JSON.stringify(record)).not.toContain('abc123');
+  });
+
+  test('claims one Scheduled Delivery Record across independent SQLite connections', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'daily-delivery-claims-'));
+    const databasePath = join(directory, 'claims.db');
+    const firstSqlite = new Database(databasePath);
+    firstSqlite.pragma('foreign_keys = ON');
+    firstSqlite.exec(readFileSync('drizzle/0000_bootstrap_daily.sql', 'utf8'));
+    firstSqlite.exec(readFileSync('drizzle/0002_add_delivery_records.sql', 'utf8'));
+    firstSqlite.exec(readFileSync('drizzle/0012_add_scheduled_delivery_claims.sql', 'utf8'));
+    saveUser(firstSqlite, 'competing-user');
+    const competingSqlite = new Database(databasePath);
+    competingSqlite.pragma('foreign_keys = ON');
+    firstSqlite.pragma('busy_timeout = 1000');
+    competingSqlite.pragma('busy_timeout = 1000');
+    const firstStore = createDeliveryRecordStore(drizzle(firstSqlite, { schema }));
+    const competingStore = createDeliveryRecordStore(drizzle(competingSqlite, { schema }));
     const occurrence = {
       scheduledAt: '2026-07-06T07:00:00.000Z',
       claimedAt: '2026-07-06T07:00:01.000Z',
@@ -203,28 +240,34 @@ describe('SQLite Delivery Record store', () => {
       providerName: 'resend'
     };
 
-    const [firstClaim, competingClaim] = await Promise.all([
-      firstStore.claimScheduledOccurrence('user-1', occurrence),
-      competingStore.claimScheduledOccurrence('user-1', occurrence)
-    ]);
+    try {
+      const [firstClaim, competingClaim] = await Promise.all([
+        firstStore.claimScheduledOccurrence('competing-user', occurrence),
+        competingStore.claimScheduledOccurrence('competing-user', occurrence)
+      ]);
 
-    expect([firstClaim, competingClaim].filter(Boolean)).toHaveLength(1);
-    expect(firstClaim ?? competingClaim).toMatchObject({
-      attemptType: 'scheduled',
-      scheduledAt: occurrence.scheduledAt,
-      deliveryStatus: 'processing',
-      attemptCount: 1,
-      lastAttemptAt: occurrence.claimedAt,
-      claimExpiresAt: occurrence.claimExpiresAt,
-      providerName: 'resend'
-    });
-    expect(
-      sqlite
-        .prepare(
-          "select count(*) as count from delivery_records where user_id = ? and scheduled_at = ? and attempt_type = 'scheduled'"
-        )
-        .get('user-1', occurrence.scheduledAt)
-    ).toEqual({ count: 1 });
+      expect([firstClaim, competingClaim].filter(Boolean)).toHaveLength(1);
+      expect(firstClaim ?? competingClaim).toMatchObject({
+        attemptType: 'scheduled',
+        scheduledAt: occurrence.scheduledAt,
+        deliveryStatus: 'processing',
+        attemptCount: 1,
+        lastAttemptAt: occurrence.claimedAt,
+        claimExpiresAt: occurrence.claimExpiresAt,
+        providerName: 'resend'
+      });
+      expect(
+        firstSqlite
+          .prepare(
+            "select count(*) as count from delivery_records where user_id = ? and scheduled_at = ? and attempt_type = 'scheduled'"
+          )
+          .get('competing-user', occurrence.scheduledAt)
+      ).toEqual({ count: 1 });
+    } finally {
+      competingSqlite.close();
+      firstSqlite.close();
+      rmSync(directory, { recursive: true, force: true });
+    }
   });
 
   test('recovers an expired processing claim without creating another occurrence', async () => {
@@ -259,6 +302,14 @@ describe('SQLite Delivery Record store', () => {
       lastAttemptAt: '2026-07-06T07:05:02.000Z',
       claimExpiresAt: '2026-07-06T07:10:02.000Z'
     });
+    await expect(
+      store.markScheduledSent(firstClaim!.id, {
+        attemptCount: firstClaim!.attemptCount!,
+        completedAt: '2026-07-06T07:05:03.000Z',
+        providerMessageId: 'stale-handler-message',
+        providerStatusMetadata: 'accepted'
+      })
+    ).resolves.toBeNull();
     expect(
       sqlite.prepare('select count(*) as count from delivery_records where scheduled_at = ?').get(scheduledAt)
     ).toEqual({ count: 1 });
@@ -275,6 +326,7 @@ describe('SQLite Delivery Record store', () => {
     });
 
     const retrying = await store.markScheduledRetrying(claim!.id, {
+      attemptCount: claim!.attemptCount!,
       attemptedAt: '2026-07-06T07:00:03.000Z',
       nextRetryAt: '2026-07-06T07:05:00.000Z',
       providerStatusMetadata: 'temporarily unavailable',
@@ -287,6 +339,7 @@ describe('SQLite Delivery Record store', () => {
       providerName: 'resend'
     });
     const sent = await store.markScheduledSent(claim!.id, {
+      attemptCount: retryClaim!.attemptCount!,
       completedAt: '2026-07-06T07:05:04.000Z',
       providerMessageId: 'message-456',
       providerStatusMetadata: 'accepted by provider'
@@ -319,6 +372,7 @@ describe('SQLite Delivery Record store', () => {
     ).resolves.toBeNull();
     await expect(
       store.markScheduledRetrying(claim!.id, {
+        attemptCount: retryClaim!.attemptCount!,
         attemptedAt: '2026-07-06T07:11:01.000Z',
         nextRetryAt: '2026-07-06T07:12:00.000Z',
         providerStatusMetadata: 'temporarily unavailable',
@@ -327,12 +381,47 @@ describe('SQLite Delivery Record store', () => {
     ).resolves.toBeNull();
     await expect(
       store.markScheduledFailed(claim!.id, {
+        attemptCount: retryClaim!.attemptCount!,
         completedAt: '2026-07-06T07:11:02.000Z',
         providerMessageId: null,
         providerStatusMetadata: 'late failure',
         errorClassification: 'unexpected'
       })
     ).resolves.toBeNull();
+  });
+
+  test('scopes SQLite occurrence uniqueness to Scheduled Delivery Records', async () => {
+    const scheduledAt = '2026-07-06T07:00:00.000Z';
+    const insertTestRecord = sqlite.prepare(
+      "insert into delivery_records (id, user_id, attempt_type, requested_at, completed_at, delivery_status, provider_name, scheduled_at) values (?, 'user-1', 'test', ?, ?, 'sent', 'resend', ?)"
+    );
+    insertTestRecord.run('test-one', scheduledAt, scheduledAt, scheduledAt);
+    insertTestRecord.run('test-two', scheduledAt, scheduledAt, scheduledAt);
+    const store = createDeliveryRecordStore(database);
+
+    const scheduledClaim = await store.claimScheduledOccurrence('user-1', {
+      scheduledAt,
+      claimedAt: '2026-07-06T07:00:01.000Z',
+      claimExpiresAt: '2026-07-06T07:05:01.000Z',
+      providerName: 'resend'
+    });
+    const competingClaim = await store.claimScheduledOccurrence('user-1', {
+      scheduledAt,
+      claimedAt: '2026-07-06T07:00:02.000Z',
+      claimExpiresAt: '2026-07-06T07:05:02.000Z',
+      providerName: 'resend'
+    });
+
+    expect(scheduledClaim).not.toBeNull();
+    expect(competingClaim).toBeNull();
+    expect(
+      sqlite
+        .prepare('select attempt_type, count(*) as count from delivery_records group by attempt_type order by attempt_type')
+        .all()
+    ).toEqual([
+      { attempt_type: 'scheduled', count: 1 },
+      { attempt_type: 'test', count: 2 }
+    ]);
   });
 
   test('keeps Test Delivery Records immediate, final, and outside scheduled claiming', async () => {
