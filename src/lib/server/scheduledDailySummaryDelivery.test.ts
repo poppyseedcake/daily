@@ -227,6 +227,9 @@ describe('scheduled Daily Summary delivery', () => {
     await expect(interruptedDelivery.processOneDueOccurrence()).rejects.toThrow(
       'simulated process interruption'
     );
+    expect(
+      sqlite.prepare('select next_summary_at from users where id = ?').get('user-1')
+    ).toEqual({ next_summary_at: '2026-10-25T06:00:00Z' });
     const interruptedRecord = sqlite
       .prepare(
         'select id, scheduled_at, delivery_status, attempt_count from delivery_records'

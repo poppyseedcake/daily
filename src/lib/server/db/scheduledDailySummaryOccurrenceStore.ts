@@ -1,6 +1,6 @@
 import { and, asc, eq, isNotNull, sql } from 'drizzle-orm';
 import { db } from '$lib/server/db';
-import { users } from './schema';
+import { deliveryRecords, users } from './schema';
 
 export type DueScheduledDailySummaryOccurrence = {
   userId: string;
@@ -13,7 +13,31 @@ type ScheduledDailySummaryOccurrenceDatabase = typeof db;
 export const createScheduledDailySummaryOccurrenceStore = (
   database: ScheduledDailySummaryOccurrenceDatabase
 ) => ({
-  async loadNextDue(now: string): Promise<DueScheduledDailySummaryOccurrence | null> {
+  async loadNextProcessable(now: string): Promise<DueScheduledDailySummaryOccurrence | null> {
+    const [recoverable] = await database
+      .select({
+        userId: users.id,
+        summaryRecipient: users.email,
+        scheduledAt: deliveryRecords.scheduledAt
+      })
+      .from(deliveryRecords)
+      .innerJoin(users, eq(users.id, deliveryRecords.userId))
+      .where(
+        and(
+          eq(deliveryRecords.attemptType, 'scheduled'),
+          eq(deliveryRecords.deliveryStatus, 'processing'),
+          isNotNull(deliveryRecords.scheduledAt),
+          isNotNull(deliveryRecords.claimExpiresAt),
+          sql`julianday(${deliveryRecords.claimExpiresAt}) <= julianday(${now})`
+        )
+      )
+      .orderBy(asc(sql`julianday(${deliveryRecords.scheduledAt})`), asc(deliveryRecords.id))
+      .limit(1);
+
+    if (recoverable?.scheduledAt) {
+      return { ...recoverable, scheduledAt: recoverable.scheduledAt };
+    }
+
     const [row] = await database
       .select({
         userId: users.id,
