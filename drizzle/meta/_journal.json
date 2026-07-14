@@ -85,6 +85,13 @@
       "when": 1784023200001,
       "tag": "0011_add_next_summary_at",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "6",
+      "when": 1784023200002,
+      "tag": "0012_add_scheduled_delivery_claims",
+      "breakpoints": true
     }
   ]
 }

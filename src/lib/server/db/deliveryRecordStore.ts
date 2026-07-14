@@ -1,6 +1,13 @@
-import { and, desc, eq, gte } from 'drizzle-orm';
+import { and, desc, eq, gte, lte, or, sql } from 'drizzle-orm';
 import { db } from '$lib/server/db';
-import type { DeliveryRecord, DeliveryRecordInput } from '$lib/deliveryRecords';
+import type {
+  DeliveryRecord,
+  DeliveryRecordInput,
+  ScheduledDeliveryClaim,
+  ScheduledDeliveryFailed,
+  ScheduledDeliveryRetry,
+  ScheduledDeliverySent
+} from '$lib/deliveryRecords';
 import { deliveryRecords } from './schema';
 
 type DeliveryRecordDatabase = typeof db;
@@ -33,6 +40,12 @@ const privacyPreservingProviderStatusMetadata = (metadata: string | null) => {
   return metadata;
 };
 
+const withoutUserId = ({ userId: _userId, ...record }: typeof deliveryRecords.$inferSelect) =>
+  record;
+
+const firstDeliveryRecord = (rows: Array<typeof deliveryRecords.$inferSelect>) =>
+  rows[0] ? withoutUserId(rows[0]) : null;
+
 export const createDeliveryRecordStore = (database: DeliveryRecordDatabase) => ({
   async recordAttempt(userId: string, record: DeliveryRecordInput) {
     await database
@@ -42,10 +55,139 @@ export const createDeliveryRecordStore = (database: DeliveryRecordDatabase) => (
         providerStatusMetadata: privacyPreservingProviderStatusMetadata(
           record.providerStatusMetadata
         ),
+        scheduledAt: null,
+        attemptCount: null,
+        lastAttemptAt: null,
+        nextRetryAt: null,
+        claimExpiresAt: null,
         id: record.id ?? crypto.randomUUID(),
         userId
       })
       .run();
+  },
+  async claimScheduledOccurrence(userId: string, claim: ScheduledDeliveryClaim) {
+    const rows = await database
+      .insert(deliveryRecords)
+      .values({
+        id: crypto.randomUUID(),
+        userId,
+        attemptType: 'scheduled',
+        requestedAt: claim.scheduledAt,
+        completedAt: null,
+        deliveryStatus: 'processing',
+        providerName: claim.providerName,
+        providerMessageId: null,
+        providerStatusMetadata: null,
+        errorClassification: null,
+        scheduledAt: claim.scheduledAt,
+        attemptCount: 1,
+        lastAttemptAt: claim.claimedAt,
+        nextRetryAt: null,
+        claimExpiresAt: claim.claimExpiresAt
+      })
+      .onConflictDoUpdate({
+        target: [deliveryRecords.userId, deliveryRecords.scheduledAt],
+        set: {
+          deliveryStatus: 'processing',
+          providerName: claim.providerName,
+          providerStatusMetadata: null,
+          errorClassification: null,
+          attemptCount: sql.raw('coalesce(attempt_count, 0) + 1'),
+          lastAttemptAt: claim.claimedAt,
+          nextRetryAt: null,
+          claimExpiresAt: claim.claimExpiresAt
+        },
+        setWhere: or(
+          and(
+            eq(deliveryRecords.deliveryStatus, 'processing'),
+            lte(deliveryRecords.claimExpiresAt, claim.claimedAt)
+          ),
+          and(
+            eq(deliveryRecords.deliveryStatus, 'retrying'),
+            lte(deliveryRecords.nextRetryAt, claim.claimedAt)
+          )
+        )
+      })
+      .returning();
+
+    return firstDeliveryRecord(rows);
+  },
+  async markScheduledRetrying(recordId: string, retry: ScheduledDeliveryRetry) {
+    const rows = await database
+      .update(deliveryRecords)
+      .set({
+        deliveryStatus: 'retrying',
+        lastAttemptAt: retry.attemptedAt,
+        nextRetryAt: retry.nextRetryAt,
+        claimExpiresAt: null,
+        providerStatusMetadata: privacyPreservingProviderStatusMetadata(
+          retry.providerStatusMetadata
+        ),
+        errorClassification: retry.errorClassification
+      })
+      .where(
+        and(
+          eq(deliveryRecords.id, recordId),
+          eq(deliveryRecords.attemptType, 'scheduled'),
+          eq(deliveryRecords.deliveryStatus, 'processing')
+        )
+      )
+      .returning();
+
+    return firstDeliveryRecord(rows);
+  },
+  async markScheduledSent(recordId: string, sent: ScheduledDeliverySent) {
+    const rows = await database
+      .update(deliveryRecords)
+      .set({
+        deliveryStatus: 'sent',
+        completedAt: sent.completedAt,
+        nextRetryAt: null,
+        claimExpiresAt: null,
+        providerMessageId: sent.providerMessageId,
+        providerStatusMetadata: privacyPreservingProviderStatusMetadata(
+          sent.providerStatusMetadata
+        ),
+        errorClassification: null
+      })
+      .where(
+        and(
+          eq(deliveryRecords.id, recordId),
+          eq(deliveryRecords.attemptType, 'scheduled'),
+          eq(deliveryRecords.deliveryStatus, 'processing')
+        )
+      )
+      .returning();
+
+    return firstDeliveryRecord(rows);
+  },
+  async markScheduledFailed(recordId: string, failed: ScheduledDeliveryFailed) {
+    const rows = await database
+      .update(deliveryRecords)
+      .set({
+        deliveryStatus: 'failed',
+        completedAt: failed.completedAt,
+        nextRetryAt: null,
+        claimExpiresAt: null,
+        providerMessageId: failed.providerMessageId,
+        providerStatusMetadata: privacyPreservingProviderStatusMetadata(
+          failed.providerStatusMetadata
+        ),
+        errorClassification: failed.errorClassification
+      })
+      .where(
+        and(
+          eq(deliveryRecords.id, recordId),
+          eq(deliveryRecords.attemptType, 'scheduled'),
+          or(
+            eq(deliveryRecords.deliveryStatus, 'processing'),
+            eq(deliveryRecords.deliveryStatus, 'retrying')
+          )
+        )
+      )
+      .returning();
+
+    return firstDeliveryRecord(rows);
   },
   async loadRecentForUser(userId: string, now: string): Promise<DeliveryRecord[]> {
     return database.query.deliveryRecords.findMany({

@@ -237,6 +237,36 @@ describe('Daily database schema', () => {
     });
   });
 
+  test('ships unique Scheduled Delivery occurrence claims in an upgrade migration', () => {
+    const migration = readFileSync('drizzle/0012_add_scheduled_delivery_claims.sql', 'utf8');
+    const journal = JSON.parse(readFileSync('drizzle/meta/_journal.json', 'utf8')) as {
+      entries: Array<{ idx: number; tag: string }>;
+    };
+
+    expect(Object.keys(getTableColumns(deliveryRecords))).toEqual(
+      expect.arrayContaining([
+        'scheduledAt',
+        'attemptCount',
+        'lastAttemptAt',
+        'nextRetryAt',
+        'claimExpiresAt'
+      ])
+    );
+    expect(migration).toContain('ALTER TABLE \`delivery_records\` ADD \`scheduled_at\` text');
+    expect(migration).toContain('ALTER TABLE \`delivery_records\` ADD \`attempt_count\` integer');
+    expect(migration).toContain('ALTER TABLE \`delivery_records\` ADD \`last_attempt_at\` text');
+    expect(migration).toContain('ALTER TABLE \`delivery_records\` ADD \`next_retry_at\` text');
+    expect(migration).toContain('ALTER TABLE \`delivery_records\` ADD \`claim_expires_at\` text');
+    expect(migration).toContain(
+      "CREATE UNIQUE INDEX \`delivery_records_scheduled_occurrence_idx\` ON \`delivery_records\` (\`user_id\`,\`scheduled_at\`)"
+    );
+    expect(migration).not.toMatch(/html|plain_text|section_content|provider_response|credential|token/i);
+    expect(journal.entries.find(({ idx }) => idx === 12)).toMatchObject({
+      idx: 12,
+      tag: '0012_add_scheduled_delivery_claims'
+    });
+  });
+
   test('ships Weather Locations in an upgrade migration without forecast snapshots', () => {
     const migrationPath = 'drizzle/0003_add_weather_locations.sql';
 
@@ -303,7 +333,12 @@ describe('Daily database schema', () => {
       'providerName',
       'providerMessageId',
       'providerStatusMetadata',
-      'errorClassification'
+      'errorClassification',
+      'scheduledAt',
+      'attemptCount',
+      'lastAttemptAt',
+      'nextRetryAt',
+      'claimExpiresAt'
     ]);
 
     const migrations = readdirSync('drizzle')
