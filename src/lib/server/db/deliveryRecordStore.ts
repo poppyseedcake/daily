@@ -6,7 +6,8 @@ import type {
   ScheduledDeliveryClaim,
   ScheduledDeliveryFailed,
   ScheduledDeliveryRetry,
-  ScheduledDeliverySent
+  ScheduledDeliverySent,
+  ScheduledDeliveryUnclaimedFailure
 } from '$lib/deliveryRecords';
 import { deliveryRecords } from './schema';
 
@@ -148,16 +149,19 @@ export const createDeliveryRecordStore = (database: DeliveryRecordDatabase) => (
 
     return firstDeliveryRecord(rows);
   },
-  async markScheduledStale(recordId: string, completedAt: string) {
+  async markScheduledUnclaimedFailed(
+    recordId: string,
+    failure: ScheduledDeliveryUnclaimedFailure
+  ) {
     const rows = await database
       .update(deliveryRecords)
       .set({
         deliveryStatus: 'failed',
-        completedAt,
+        completedAt: failure.completedAt,
         nextRetryAt: null,
         claimExpiresAt: null,
         providerMessageId: null,
-        errorClassification: 'stale-occurrence'
+        errorClassification: failure.errorClassification
       })
       .where(
         and(

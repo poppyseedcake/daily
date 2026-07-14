@@ -1,4 +1,5 @@
 import { env } from '$env/dynamic/private';
+import type { DeliveryProviderErrorClassification } from '$lib/deliveryRecords';
 
 export type DailySummaryDeliveryMessage = {
   to: string;
@@ -19,12 +20,7 @@ export type DailySummaryDeliveryProvider = {
   send(message: DailySummaryDeliveryMessage): Promise<DailySummaryDeliveryAccepted>;
 };
 
-export type DailySummaryDeliveryErrorClassification =
-  | 'configuration-missing'
-  | 'validation-failed'
-  | 'authentication-failed'
-  | 'provider-rejected'
-  | 'provider-unavailable';
+export type DailySummaryDeliveryErrorClassification = DeliveryProviderErrorClassification;
 
 export class DailySummaryDeliveryError extends Error {
   providerName: string;
