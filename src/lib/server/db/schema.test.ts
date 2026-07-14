@@ -362,7 +362,7 @@ describe('Daily database schema', () => {
     }
   });
 
-  test('does not expose Calendar sync, webhook, or scheduled-worker entry points', () => {
+  test('exposes scheduled delivery only as a non-interactive command, not a public route', () => {
     const productionRoutePaths = readdirSync('src/routes', {
       recursive: true,
       encoding: 'utf8'
@@ -372,6 +372,11 @@ describe('Daily database schema', () => {
     };
 
     expect(productionRoutePaths.filter((path) => /webhook|sync|worker|calendar-events?/i.test(path))).toEqual([]);
-    expect(Object.keys(packageJson.scripts).filter((script) => /webhook|sync|worker|cron/i.test(script))).toEqual([]);
+    expect(Object.keys(packageJson.scripts).filter((script) => /webhook|sync|worker|cron/i.test(script))).toEqual([
+      'worker:scheduled-delivery'
+    ]);
+    expect(packageJson.scripts['worker:scheduled-delivery']).toBe(
+      'vite-node --config vite.worker.config.ts src/lib/server/runScheduledDailySummaryWorkerCommand.ts'
+    );
   });
 });

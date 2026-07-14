@@ -10,7 +10,6 @@ import { googleMapsCapAlertDelivery } from '$lib/server/googleMapsCapAlertDelive
 import { createGoogleMapsRequestGateway } from './googleMapsRequestGateway';
 import { createGoogleMapsPersonAttribution } from './googleMapsPersonAttribution';
 import { createGoogleRoutesProvider } from './googleRoutesProvider';
-import type { DailyPageAuthState } from './pageAuthState';
 import { selectLocalPoint } from './localPointSelection';
 
 const usageGate = () =>
@@ -30,7 +29,12 @@ export const googleMapsOperations = {
       isGoogleMapsEnvironmentKillSwitchEnabled(env.GOOGLE_MAPS_KILL_SWITCH)
     ),
   setAdminKillSwitch: async (enabled: boolean) => setGoogleMapsAdminKillSwitch(db, enabled),
-  requestGateway: (authState: DailyPageAuthState, visitorRequest?: { clientAddress: string; userAgent: string }) =>
+  requestGateway: (
+    authState:
+      | { mode: 'visitor' }
+      | { mode: 'user'; userId: string; summaryRecipient?: string },
+    visitorRequest?: { clientAddress: string; userAgent: string }
+  ) =>
     createGoogleMapsRequestGateway({
       provider: {
         selectPoint: async (request) => selectLocalPoint(request),

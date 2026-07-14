@@ -97,15 +97,12 @@ export const createScheduledDailySummaryDelivery = ({
   providerName,
   senderAddress,
   now = () => new Date()
-}: ScheduledDailySummaryDeliveryDependencies) => ({
-  async processOneDueOccurrence() {
-    const processingStartedAt = now();
+}: ScheduledDailySummaryDeliveryDependencies) => {
+  const processOccurrence = async (
+    occurrence: DueScheduledDailySummaryOccurrence,
+    processingStartedAt = now()
+  ) => {
     const processingStartedAtIso = processingStartedAt.toISOString();
-    const occurrence = await occurrenceStore.loadNextProcessable(processingStartedAtIso);
-
-    if (!occurrence) {
-      return { outcome: 'none-due' as const };
-    }
 
     const existing = await deliveryRecordStore.loadScheduledOccurrence(
       occurrence.userId,
@@ -280,5 +277,20 @@ export const createScheduledDailySummaryDelivery = ({
     }
 
     return { outcome: 'sent' as const, occurrenceId: sent.id };
-  }
-});
+  };
+
+  return {
+    processOccurrence,
+
+    async processOneDueOccurrence() {
+      const processingStartedAt = now();
+      const occurrence = await occurrenceStore.loadNextProcessable(
+        processingStartedAt.toISOString()
+      );
+
+      return occurrence
+        ? processOccurrence(occurrence, processingStartedAt)
+        : { outcome: 'none-due' as const };
+    }
+  };
+};

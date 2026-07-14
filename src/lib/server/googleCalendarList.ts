@@ -2,7 +2,6 @@ import { and, desc, eq } from 'drizzle-orm';
 import { googleCalendarReadScope, parseGoogleProviderScopes } from '$lib/googleCalendarScopes';
 import { db } from '$lib/server/db';
 import { authAccount } from '$lib/server/db/schema';
-import { auth } from '$lib/server/auth';
 import type { CalendarEventProvider, CalendarProviderEvent } from '$lib/calendar';
 import type { ProviderCalendarListEntry } from '$lib/selectedCalendars';
 
@@ -193,6 +192,7 @@ export const loadGoogleCalendarAccessToken = async (authUserId: string) => {
   }
 
   try {
+    const { auth } = await import('$lib/server/auth');
     const refreshedTokens = await auth.api.refreshToken({
       body: {
         providerId: 'google',
