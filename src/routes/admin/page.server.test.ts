@@ -96,6 +96,20 @@ describe('Admin Panel server load', () => {
         cap: 500,
         byCategory: { 'map-point-selection': 60, 'commute-estimate': 50 }
       },
+      capAlerts: {
+        daily: {
+          periodStart: '2026-07-13',
+          status: 'delivered',
+          completedAt: '2026-07-13T10:00:00.000Z',
+          failureCode: null
+        },
+        monthly: {
+          periodStart: '2026-07',
+          status: 'failed',
+          completedAt: '2026-07-13T10:00:01.000Z',
+          failureCode: 'delivery-failed'
+        }
+      },
       environmentKillSwitchEnabled: false,
       adminKillSwitchEnabled: false,
       effectiveState: 'active',
@@ -186,7 +200,14 @@ describe('Admin Panel server load', () => {
       googleMaps: expect.objectContaining({
         effectiveState: 'active',
         daily: expect.objectContaining({ total: 12, cap: 25 }),
-        monthly: expect.objectContaining({ total: 110, cap: 500 })
+        monthly: expect.objectContaining({ total: 110, cap: 500 }),
+        capAlerts: {
+          daily: expect.objectContaining({ status: 'delivered' }),
+          monthly: expect.objectContaining({
+            status: 'failed',
+            failureCode: 'delivery-failed'
+          })
+        }
       }),
       deliveryHealth: expect.objectContaining({
         timeBasis: 'UTC',

@@ -46,7 +46,7 @@ export const createGoogleMapsCapAlertEmailDelivery = ({
   operatorRecipient,
   senderAddress
 }: GoogleMapsCapAlertEmailDeliveryOptions): GoogleMapsCapAlertDelivery => ({
-  async send(alert) {
+  async send(alert, { idempotencyKey }) {
     const recipient = operatorRecipient().trim();
     if (!recipient) {
       throw new Error('Google Maps operator alert recipient is not configured');
@@ -57,7 +57,8 @@ export const createGoogleMapsCapAlertEmailDelivery = ({
       from: senderAddress(),
       subject: `[Daily] Google Maps ${alert.capType} cap reached`,
       html: htmlContent(alert),
-      text: textContent(alert)
+      text: textContent(alert),
+      idempotencyKey
     });
   }
 });

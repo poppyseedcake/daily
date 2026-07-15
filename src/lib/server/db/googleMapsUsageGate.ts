@@ -10,7 +10,6 @@ import * as schema from './schema';
 
 type GoogleMapsDatabase = BetterSQLite3Database<typeof schema>;
 const { googleMapsCapAlerts, googleMapsControl, googleMapsPersonUsage, googleMapsUsage } = schema;
-const capAlertLeaseDurationMs = 5 * 60 * 1000;
 
 export type GoogleMapsCapAlert = {
   capType: 'daily' | 'monthly';
@@ -21,7 +20,10 @@ export type GoogleMapsCapAlert = {
 };
 
 export type GoogleMapsCapAlertDelivery = {
-  send: (alert: GoogleMapsCapAlert) => Promise<void>;
+  send: (
+    alert: GoogleMapsCapAlert,
+    options: { idempotencyKey: string }
+  ) => Promise<void>;
 };
 
 export type GoogleMapsCapAlertDiagnosticsEvent = {
@@ -67,6 +69,10 @@ export type GoogleMapsOperationsSnapshot = {
   timeBasis: 'UTC';
   daily: GoogleMapsUsageSnapshot['day'] & { cap: number };
   monthly: GoogleMapsUsageSnapshot['month'] & { cap: number };
+  capAlerts: {
+    daily: GoogleMapsCapAlertOutcome | null;
+    monthly: GoogleMapsCapAlertOutcome | null;
+  };
   environmentKillSwitchEnabled: boolean;
   adminKillSwitchEnabled: boolean;
   effectiveState: 'active' | 'suspended';
@@ -78,10 +84,22 @@ export type GoogleMapsOperationsSnapshot = {
     | null;
 };
 
+export type GoogleMapsCapAlertOutcome = {
+  periodStart: string;
+  status: 'pending' | 'delivered' | 'failed';
+  completedAt: string | null;
+  failureCode: 'delivery-failed' | null;
+};
+
 type UsagePeriod = {
   kind: 'day' | 'month';
   start: string;
 };
+
+const capAlertClaimLeaseMs = 5 * 60 * 1000;
+
+const capAlertIdempotencyKey = (capType: 'daily' | 'monthly', periodStart: string) =>
+  `google-maps-cap-alert/${capType}/${periodStart}`;
 
 const utcPeriodsFor = (date: Date): [UsagePeriod, UsagePeriod] => {
   const iso = date.toISOString();
@@ -243,10 +261,6 @@ export const createGoogleMapsUsageGate = ({
     periodStartUtc: string,
     claimedAt: string
   ) => {
-    const alertRecord = and(
-      eq(googleMapsCapAlerts.capType, capType),
-      eq(googleMapsCapAlerts.periodStartUtc, periodStartUtc)
-    );
     const inserted = source
       .insert(googleMapsCapAlerts)
       .values({
@@ -256,12 +270,12 @@ export const createGoogleMapsUsageGate = ({
         claimedAt
       })
       .onConflictDoNothing()
-      .run().changes === 1;
+      .run().changes;
 
-    if (inserted) return true;
+    if (inserted === 1) return true;
 
-    const leaseExpiredAt = new Date(
-      new Date(claimedAt).getTime() - capAlertLeaseDurationMs
+    const leaseExpiredBefore = new Date(
+      new Date(claimedAt).getTime() - capAlertClaimLeaseMs
     ).toISOString();
     return (
       source
@@ -269,9 +283,10 @@ export const createGoogleMapsUsageGate = ({
         .set({ claimedAt })
         .where(
           and(
-            alertRecord,
+            eq(googleMapsCapAlerts.capType, capType),
+            eq(googleMapsCapAlerts.periodStartUtc, periodStartUtc),
             eq(googleMapsCapAlerts.deliveryStatus, 'pending'),
-            lt(googleMapsCapAlerts.claimedAt, leaseExpiredAt)
+            lt(googleMapsCapAlerts.claimedAt, leaseExpiredBefore)
           )
         )
         .run().changes === 1
@@ -393,12 +408,45 @@ export const createGoogleMapsUsageGate = ({
       { behavior: 'immediate' }
     );
 
-  const currentUsage = (): GoogleMapsUsageSnapshot => {
-    const [day, month] = utcPeriodsFor(now());
+  const usageSnapshotFor = (
+    source: GoogleMapsDatabase,
+    at: Date
+  ): GoogleMapsUsageSnapshot => {
+    const [day, month] = utcPeriodsFor(at);
     return {
       timeBasis: 'UTC',
-      day: snapshotFor(database, day),
-      month: snapshotFor(database, month)
+      day: snapshotFor(source, day),
+      month: snapshotFor(source, month)
+    };
+  };
+
+  const capAlertOutcomeFor = (
+    source: GoogleMapsDatabase,
+    capType: 'daily' | 'monthly',
+    periodStart: string
+  ): GoogleMapsCapAlertOutcome | null => {
+    const record = source
+      .select({
+        status: googleMapsCapAlerts.deliveryStatus,
+        completedAt: googleMapsCapAlerts.completedAt,
+        failureCode: googleMapsCapAlerts.failureCode
+      })
+      .from(googleMapsCapAlerts)
+      .where(
+        and(
+          eq(googleMapsCapAlerts.capType, capType),
+          eq(googleMapsCapAlerts.periodStartUtc, periodStart)
+        )
+      )
+      .get();
+
+    if (!record) return null;
+
+    return {
+      periodStart,
+      status: record.status,
+      completedAt: record.completedAt,
+      failureCode: record.failureCode === 'delivery-failed' ? 'delivery-failed' : null
     };
   };
 
@@ -412,7 +460,9 @@ export const createGoogleMapsUsageGate = ({
       );
 
       try {
-        await capAlertDelivery.send(alert);
+        await capAlertDelivery.send(alert, {
+          idempotencyKey: capAlertIdempotencyKey(alert.capType, periodStart)
+        });
         database
           .update(googleMapsCapAlerts)
           .set({ deliveryStatus: 'delivered', completedAt: attemptedAt.toISOString() })
@@ -455,30 +505,39 @@ export const createGoogleMapsUsageGate = ({
       return result.admission;
     },
     async currentUsage() {
-      return currentUsage();
+      const at = now();
+      return database.transaction((transaction) => usageSnapshotFor(transaction, at));
     },
     async currentOperations(environmentKillSwitchEnabled) {
-      const usage = currentUsage();
-      const adminEnabled = readGoogleMapsAdminKillSwitch(database);
-      const suspensionReason = environmentKillSwitchEnabled
-        ? 'environment-kill-switch'
-        : adminEnabled
-          ? 'admin-kill-switch'
-          : usage.day.total >= dailyCap
-            ? 'global-daily-cap'
-            : usage.month.total >= monthlyCap
-              ? 'global-monthly-cap'
-              : null;
+      const at = now();
+      const [day, month] = utcPeriodsFor(at);
+      return database.transaction((transaction) => {
+        const usage = usageSnapshotFor(transaction, at);
+        const adminEnabled = readGoogleMapsAdminKillSwitch(transaction);
+        const suspensionReason = environmentKillSwitchEnabled
+          ? 'environment-kill-switch'
+          : adminEnabled
+            ? 'admin-kill-switch'
+            : usage.day.total >= dailyCap
+              ? 'global-daily-cap'
+              : usage.month.total >= monthlyCap
+                ? 'global-monthly-cap'
+                : null;
 
-      return {
-        timeBasis: usage.timeBasis,
-        daily: { ...usage.day, cap: dailyCap },
-        monthly: { ...usage.month, cap: monthlyCap },
-        environmentKillSwitchEnabled,
-        adminKillSwitchEnabled: adminEnabled,
-        effectiveState: suspensionReason === null ? 'active' : 'suspended',
-        suspensionReason
-      };
+        return {
+          timeBasis: usage.timeBasis,
+          daily: { ...usage.day, cap: dailyCap },
+          monthly: { ...usage.month, cap: monthlyCap },
+          capAlerts: {
+            daily: capAlertOutcomeFor(transaction, 'daily', day.start),
+            monthly: capAlertOutcomeFor(transaction, 'monthly', month.start)
+          },
+          environmentKillSwitchEnabled,
+          adminKillSwitchEnabled: adminEnabled,
+          effectiveState: suspensionReason === null ? 'active' : 'suspended',
+          suspensionReason
+        };
+      });
     },
     async setAdminKillSwitch(enabled) {
       setGoogleMapsAdminKillSwitch(database, enabled);

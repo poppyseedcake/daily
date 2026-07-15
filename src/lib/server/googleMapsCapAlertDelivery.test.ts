@@ -33,14 +33,19 @@ describe('Google Maps cap alert delivery', () => {
       senderAddress: () => 'Daily <daily@example.com>'
     });
 
-    await expect(delivery.send(dailyAlert)).resolves.toBeUndefined();
+    await expect(
+      delivery.send(dailyAlert, {
+        idempotencyKey: 'google-maps-cap-alert/daily/2026-07-12'
+      })
+    ).resolves.toBeUndefined();
 
     expect(send).toHaveBeenCalledWith({
       to: 'operator@example.com',
       from: 'Daily <daily@example.com>',
       subject: '[Daily] Google Maps daily cap reached',
       html: expect.stringContaining('Google Maps access is suspended'),
-      text: expect.stringContaining('Daily period: 2026-07-12 · 25 / 25')
+      text: expect.stringContaining('Daily period: 2026-07-12 · 25 / 25'),
+      idempotencyKey: 'google-maps-cap-alert/daily/2026-07-12'
     });
     const message = JSON.stringify(send.mock.calls);
     expect(message).toContain('Monthly period: 2026-07 · 325 / 500');
@@ -60,7 +65,11 @@ describe('Google Maps cap alert delivery', () => {
       senderAddress: () => 'Daily <daily@example.com>'
     });
 
-    await expect(delivery.send(dailyAlert)).rejects.toThrow(
+    await expect(
+      delivery.send(dailyAlert, {
+        idempotencyKey: 'google-maps-cap-alert/daily/2026-07-12'
+      })
+    ).rejects.toThrow(
       'Google Maps operator alert recipient is not configured'
     );
     expect(send).not.toHaveBeenCalled();

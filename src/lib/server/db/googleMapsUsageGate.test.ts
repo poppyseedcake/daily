@@ -3,7 +3,7 @@ import { drizzle } from 'drizzle-orm/better-sqlite3';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
   createGoogleMapsRequestGateway,
   type GoogleMapsProvider
@@ -223,7 +223,7 @@ describe('Google Maps usage gate', () => {
     expect(JSON.stringify(diagnostics)).not.toContain('private alert provider failure');
   });
 
-  test('reclaims an expired pending alert after a restart', async () => {
+  test('recovers an expired pending alert with a stable provider idempotency key', async () => {
     const path = createDatabasePath();
     const firstDatabase = createDatabase(path);
     firstDatabase.exec(`
@@ -236,7 +236,7 @@ describe('Google Maps usage gate', () => {
     firstDatabase.close();
     databases.splice(databases.indexOf(firstDatabase), 1);
 
-    const deliveredCapTypes: string[] = [];
+    const deliveryAttempts: Array<{ capType: string; idempotencyKey: string }> = [];
     const restartedDatabase = createDatabase(path, false);
     const restartedGate = createTestGoogleMapsUsageGate({
       database: drizzleDatabase(restartedDatabase),
@@ -245,8 +245,11 @@ describe('Google Maps usage gate', () => {
       perPersonDailyLimit: 100,
       now: () => new Date('2026-07-12T12:00:00.000Z'),
       capAlertDelivery: {
-        async send(alert) {
-          deliveredCapTypes.push(alert.capType);
+        async send(alert, options) {
+          deliveryAttempts.push({
+            capType: alert.capType,
+            idempotencyKey: options.idempotencyKey
+          });
         }
       }
     });
@@ -257,7 +260,12 @@ describe('Google Maps usage gate', () => {
     });
     await flushAlertDeliveries();
 
-    expect(deliveredCapTypes).toEqual(['daily']);
+    expect(deliveryAttempts).toEqual([
+      {
+        capType: 'daily',
+        idempotencyKey: 'google-maps-cap-alert/daily/2026-07-12'
+      }
+    ]);
     expect(
       restartedDatabase
         .prepare(
@@ -676,6 +684,24 @@ describe('Google Maps usage gate', () => {
     });
   });
 
+  test('reads usage and operations snapshots within one transaction each', async () => {
+    const database = drizzleDatabase(createDatabase());
+    const transaction = vi.spyOn(database, 'transaction');
+    const gate = createTestGoogleMapsUsageGate({
+      database,
+      dailyCap: 10,
+      monthlyCap: 100,
+      perPersonDailyLimit: 100,
+      now: () => new Date('2026-07-12T12:00:00.000Z')
+    });
+
+    await gate.currentUsage();
+    expect(transaction).toHaveBeenCalledTimes(1);
+
+    await gate.currentOperations(false);
+    expect(transaction).toHaveBeenCalledTimes(2);
+  });
+
   test('reports environment control precedence and cap suspension from privacy-safe aggregate data', async () => {
     const database = createDatabase();
     const gate = createTestGoogleMapsUsageGate({
@@ -714,10 +740,67 @@ describe('Google Maps usage gate', () => {
       environmentKillSwitchEnabled: false,
       adminKillSwitchEnabled: false,
       effectiveState: 'suspended',
-      suspensionReason: 'global-daily-cap'
+      suspensionReason: 'global-daily-cap',
+      capAlerts: {
+        daily: {
+          periodStart: '2026-07-12',
+          status: 'pending',
+          completedAt: null,
+          failureCode: null
+        },
+        monthly: null
+      }
     });
     expect(JSON.stringify(operations)).not.toMatch(
       /personUsageIdentity|origin|destination|route|provider|summary|email/i
+    );
+  });
+
+  test('reports stable current-period daily and monthly cap alert outcomes without retrying failed delivery', async () => {
+    const database = createDatabase();
+    const deliveryAttempts: string[] = [];
+    const gate = createTestGoogleMapsUsageGate({
+      database: drizzleDatabase(database),
+      dailyCap: 1,
+      monthlyCap: 1,
+      perPersonDailyLimit: 100,
+      now: () => new Date('2026-07-12T12:00:00.000Z'),
+      capAlertDelivery: {
+        async send(alert) {
+          deliveryAttempts.push(alert.capType);
+          if (alert.capType === 'monthly') {
+            throw new Error('private recipient and provider payload');
+          }
+        }
+      }
+    });
+
+    await expect(gate.admit('commute-estimate', person)).resolves.toEqual({ outcome: 'admitted' });
+    await flushAlertDeliveries();
+    await expect(gate.admit('map-point-selection', person)).resolves.toEqual({
+      outcome: 'suspended',
+      reason: 'global-daily-cap'
+    });
+    await flushAlertDeliveries();
+
+    const operations = await gate.currentOperations(false);
+    expect(operations.capAlerts).toEqual({
+      daily: {
+        periodStart: '2026-07-12',
+        status: 'delivered',
+        completedAt: '2026-07-12T12:00:00.000Z',
+        failureCode: null
+      },
+      monthly: {
+        periodStart: '2026-07',
+        status: 'failed',
+        completedAt: '2026-07-12T12:00:00.000Z',
+        failureCode: 'delivery-failed'
+      }
+    });
+    expect(deliveryAttempts).toEqual(['daily', 'monthly']);
+    expect(JSON.stringify(operations.capAlerts)).not.toMatch(
+      /recipient|provider|payload|message|personUsageIdentity|email/i
     );
   });
 
