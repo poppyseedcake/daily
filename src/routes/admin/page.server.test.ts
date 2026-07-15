@@ -57,10 +57,13 @@ vi.mock('$lib/server/adminGoogleSession', () => ({
 
 const { actions, load } = await import('./+page.server');
 
-const loadAdminPage = (query = '') =>
-  load({
-    request: new Request(`http://localhost/admin${query}`)
+const loadAdminPage = (query = '') => {
+  const url = new URL(`http://localhost/admin${query}`);
+  return load({
+    request: new Request(url),
+    url
   } as Parameters<typeof load>[0]);
+};
 
 const submitKillSwitch = (enabled: string) =>
   actions.setGoogleMapsKillSwitch({

@@ -1357,7 +1357,7 @@ test('authorized Administrator filters paged Technical Logs and audits the Maps 
       page.waitForURL((url) => url.searchParams.get('severity') === 'error'),
       page.getByRole('button', { name: 'Apply filters' }).click()
     ]);
-    await expect(page.getByRole('article')).toHaveCount(1, { timeout: 15_000 });
+    await expect(page.getByRole('article')).toHaveCount(1);
     await expect(
       page.locator('article code').filter({ hasText: 'scheduled-daily-summary-worker-failed' })
     ).toBeVisible();

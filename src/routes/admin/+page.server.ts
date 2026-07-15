@@ -59,16 +59,15 @@ const technicalLogFiltersSchema = z
     }
   });
 
-export const load: PageServerLoad = async ({ request }) => {
+export const load: PageServerLoad = async ({ request, url }) => {
   await requireAdministrator(request);
-  const requestUrl = new URL(request.url);
   const filters = technicalLogFiltersSchema.safeParse({
-    from: requestUrl.searchParams.get('from'),
-    to: requestUrl.searchParams.get('to'),
-    severity: requestUrl.searchParams.get('severity'),
-    subsystem: requestUrl.searchParams.get('subsystem'),
-    eventCode: requestUrl.searchParams.get('eventCode'),
-    cursor: requestUrl.searchParams.get('cursor')
+    from: url.searchParams.get('from'),
+    to: url.searchParams.get('to'),
+    severity: url.searchParams.get('severity'),
+    subsystem: url.searchParams.get('subsystem'),
+    eventCode: url.searchParams.get('eventCode'),
+    cursor: url.searchParams.get('cursor')
   });
 
   if (!filters.success) {
