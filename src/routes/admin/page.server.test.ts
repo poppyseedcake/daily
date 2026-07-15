@@ -223,14 +223,24 @@ describe('Admin Panel server load', () => {
         ]
       }),
       technicalLogs: { records: [], nextCursor: null },
-      technicalLogFilters: {},
+      technicalLogFilters: {
+        from: undefined,
+        to: undefined,
+        severity: undefined,
+        subsystem: undefined,
+        eventCode: undefined
+      },
       technicalLogFilterOptions: {
         severities: ['info', 'warning', 'error'],
-        subsystems: ['scheduled-delivery', 'admin-controls'],
+        subsystems: ['scheduled-delivery', 'admin-controls', 'database-backup'],
         eventCodes: [
           'scheduled-daily-summary-worker-completed',
           'scheduled-daily-summary-worker-failed',
-          'admin-google-maps-kill-switch-changed'
+          'admin-google-maps-kill-switch-changed',
+          'sqlite-backup-completed',
+          'sqlite-backup-failed',
+          'sqlite-backup-retention-failed',
+          'sqlite-backup-command-rejected'
         ]
       }
     });

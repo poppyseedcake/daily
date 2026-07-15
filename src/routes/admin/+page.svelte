@@ -44,7 +44,8 @@
 
   const technicalLogSubsystemLabels = {
     'scheduled-delivery': 'Scheduled delivery',
-    'admin-controls': 'Admin controls'
+    'admin-controls': 'Admin controls',
+    'database-backup': 'Database backup'
   } as const;
 
   const technicalLogNextPageHref = () => {

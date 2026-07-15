@@ -202,4 +202,71 @@ describe('Technical Event Recorder', () => {
     expect(result.eventCode).toBe('scheduled-daily-summary-worker-completed');
     expect(persist).toHaveBeenCalledWith(result);
   });
+
+  test('records a backup failure without exposing the source path or raw failure', async () => {
+    const lines: string[] = [];
+    const persist = vi.fn().mockResolvedValue(undefined);
+    const recorder = createTechnicalEventRecorder({
+      store: { persist },
+      writeLine: (line) => lines.push(line)
+    });
+
+    const event = await recorder.record({
+      eventCode: 'sqlite-backup-failed',
+      occurredAt: '2026-07-15T12:00:00.000Z',
+      durationMilliseconds: 12,
+      purpose: 'daily',
+      recoveryPointId: '123e4567-e89b-42d3-a456-426614174060',
+      classification: 'backup-failed',
+      failure: new Error('/private/source/daily.db recipient@example.com')
+    });
+
+    expect(event).toEqual({
+      eventCode: 'sqlite-backup-failed',
+      severity: 'error',
+      subsystem: 'database-backup',
+      occurredAt: '2026-07-15T12:00:00.000Z',
+      outcome: 'failed',
+      failureClassification: 'backup-failed',
+      durationMilliseconds: 12,
+      metadata: {
+        purpose: 'daily',
+        recoveryPointId: '123e4567-e89b-42d3-a456-426614174060'
+      }
+    });
+    expect(lines[0]).not.toMatch(/private|recipient@example\.com|stack|message/);
+    expect(persist).toHaveBeenCalledWith(event);
+  });
+
+  test('records retention failure as a privacy-safe warning without replacing backup success', async () => {
+    const lines: string[] = [];
+    const recorder = createTechnicalEventRecorder({
+      store: { persist: vi.fn().mockResolvedValue(undefined) },
+      writeLine: (line) => lines.push(line)
+    });
+
+    const event = await recorder.record({
+      eventCode: 'sqlite-backup-retention-failed',
+      occurredAt: '2026-07-15T12:00:00.000Z',
+      durationMilliseconds: 14,
+      purpose: 'pre-migration',
+      recoveryPointId: '123e4567-e89b-42d3-a456-426614174061',
+      failure: new Error('/private/old-backup could not be removed')
+    });
+
+    expect(event).toEqual({
+      eventCode: 'sqlite-backup-retention-failed',
+      severity: 'warning',
+      subsystem: 'database-backup',
+      occurredAt: '2026-07-15T12:00:00.000Z',
+      outcome: 'failed',
+      failureClassification: 'retention-failed',
+      durationMilliseconds: 14,
+      metadata: {
+        purpose: 'pre-migration',
+        recoveryPointId: '123e4567-e89b-42d3-a456-426614174061'
+      }
+    });
+    expect(lines[0]).not.toMatch(/private|could not be removed|stack|message/);
+  });
 });
