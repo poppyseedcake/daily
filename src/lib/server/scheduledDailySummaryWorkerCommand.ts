@@ -172,23 +172,21 @@ export const executeScheduledDailySummaryWorkerCommand = async ({
     let finalEvent = terminalEvent;
     let finalResult = result;
 
-    if (!emit || persistScheduledWorkerRun) {
-      try {
-        await persistWorkerRun(
-          scheduledWorkerRunFromTerminalEvent(terminalEvent, startedAt, completedAt),
-          persistScheduledWorkerRun,
-          loadScheduledWorkerRunStore
-        );
-      } catch {
-        if (result.exitCode === 0) {
-          finalEvent = {
-            event: 'scheduled-daily-summary-worker-failed',
-            classification: 'worker-run-persistence-failed',
-            counts: result.counts,
-            durationMilliseconds: terminalEvent.durationMilliseconds
-          };
-          finalResult = { exitCode: 1, counts: result.counts };
-        }
+    try {
+      await persistWorkerRun(
+        scheduledWorkerRunFromTerminalEvent(terminalEvent, startedAt, completedAt),
+        persistScheduledWorkerRun,
+        loadScheduledWorkerRunStore
+      );
+    } catch {
+      if (result.exitCode === 0) {
+        finalEvent = {
+          event: 'scheduled-daily-summary-worker-failed',
+          classification: 'worker-run-persistence-failed',
+          counts: result.counts,
+          durationMilliseconds: terminalEvent.durationMilliseconds
+        };
+        finalResult = { exitCode: 1, counts: result.counts };
       }
     }
 

@@ -61,6 +61,30 @@ describe('scheduled Daily Summary worker command', () => {
     });
   });
 
+  test('uses the default Scheduled Worker Run store when only an event callback is injected', async () => {
+    const persist = vi.fn().mockResolvedValue(undefined);
+    const loadScheduledWorkerRunStore = vi.fn().mockResolvedValue({ persist });
+
+    const result = await executeScheduledDailySummaryWorkerCommand({
+      loadDependencies: async () => ({
+        occurrenceStore: { loadProcessableBatch: vi.fn().mockResolvedValue([]) },
+        delivery: { processOccurrence: vi.fn() }
+      }),
+      loadScheduledWorkerRunStore,
+      emit: vi.fn(),
+      recordTechnicalEvent: vi.fn().mockResolvedValue(undefined)
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(loadScheduledWorkerRunStore).toHaveBeenCalledOnce();
+    expect(persist).toHaveBeenCalledWith(
+      expect.objectContaining({
+        outcome: 'succeeded',
+        counts: result.counts
+      })
+    );
+  });
+
   test('records a privacy-safe completion event through stdout and SQLite', async () => {
     const sqlite = new Database(':memory:');
     sqlite.exec(readFileSync('drizzle/0013_add_technical_log_records.sql', 'utf8'));
