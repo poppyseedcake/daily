@@ -11,6 +11,9 @@ const { currentOperations, setAdminKillSwitch } = vi.hoisted(() => ({
 const { currentDeliveryHealth } = vi.hoisted(() => ({
   currentDeliveryHealth: vi.fn()
 }));
+const { hasGoogleAuthAccount } = vi.hoisted(() => ({
+  hasGoogleAuthAccount: vi.fn()
+}));
 
 vi.mock('$lib/server/auth', () => ({
   auth: {
@@ -39,6 +42,10 @@ vi.mock('$lib/server/deliveryHealthOperations', () => ({
   }
 }));
 
+vi.mock('$lib/server/adminGoogleSession', () => ({
+  hasGoogleAuthAccount
+}));
+
 const { actions, load } = await import('./+page.server');
 
 const loadAdminPage = () =>
@@ -59,6 +66,8 @@ describe('Admin Panel server load', () => {
     getSession.mockReset();
     currentOperations.mockReset();
     currentDeliveryHealth.mockReset();
+    hasGoogleAuthAccount.mockReset();
+    hasGoogleAuthAccount.mockResolvedValue(true);
     setAdminKillSwitch.mockReset();
     currentOperations.mockResolvedValue({
       timeBasis: 'UTC',
@@ -136,6 +145,17 @@ describe('Admin Panel server load', () => {
     expect(currentDeliveryHealth).not.toHaveBeenCalled();
   });
 
+  test('denies a verified allowlisted session without a current Google account', async () => {
+    getSession.mockResolvedValue({
+      user: { id: 'admin-1', email: 'admin@example.com', emailVerified: true }
+    });
+    hasGoogleAuthAccount.mockResolvedValue(false);
+
+    await expect(loadAdminPage()).rejects.toSatisfy((thrown) => isHttpError(thrown, 403));
+    expect(hasGoogleAuthAccount).toHaveBeenCalledWith('admin-1');
+    expect(currentDeliveryHealth).not.toHaveBeenCalled();
+  });
+
   test('allows a signed-in Administrator whose verified Google email is allowlisted', async () => {
     getSession.mockResolvedValue({
       user: { id: 'admin-1', email: 'Admin@Example.com', emailVerified: true }
@@ -165,6 +185,7 @@ describe('Admin Panel server load', () => {
       })
     });
     expect(currentDeliveryHealth).toHaveBeenCalledOnce();
+    expect(hasGoogleAuthAccount).toHaveBeenCalledWith('admin-1');
   });
 
   test('allows only an authorized Administrator to mutate the SQLite kill switch', async () => {

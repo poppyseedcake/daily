@@ -69,28 +69,36 @@ export type DeliveryHealth = {
   windows: DeliveryHealthWindow[];
 };
 
+const storedClassification = <Values extends readonly string[]>(
+  value: string,
+  values: Values,
+  errorMessage: string
+): Values[number] => {
+  if (values.includes(value)) {
+    return value as Values[number];
+  }
+  throw new Error(errorMessage);
+};
+
 const workerFailureClassification = (
   value: string | null
-): ScheduledDailySummaryWorkerFailureClassification | null => {
-  if (value === null) return null;
-  if (
-    scheduledDailySummaryWorkerFailureClassifications.includes(
-      value as ScheduledDailySummaryWorkerFailureClassification
-    )
-  ) {
-    return value as ScheduledDailySummaryWorkerFailureClassification;
-  }
-  throw new Error('Scheduled Worker Run has an unknown failure classification.');
-};
+): ScheduledDailySummaryWorkerFailureClassification | null =>
+  value === null
+    ? null
+    : storedClassification(
+        value,
+        scheduledDailySummaryWorkerFailureClassifications,
+        'Scheduled Worker Run has an unknown failure classification.'
+      );
 
-const deliveryFailureClassification = (value: string): DeliveryErrorClassification => {
-  if (deliveryErrorClassifications.includes(value as DeliveryErrorClassification)) {
-    return value as DeliveryErrorClassification;
-  }
-  throw new Error('Delivery Record has an unknown failure classification.');
-};
+const deliveryFailureClassification = (value: string): DeliveryErrorClassification =>
+  storedClassification(
+    value,
+    deliveryErrorClassifications,
+    'Delivery Record has an unknown failure classification.'
+  );
 
-const healthWorkerRun = (
+const toDeliveryHealthWorkerRun = (
   row: typeof scheduledWorkerRuns.$inferSelect | undefined
 ): DeliveryHealthWorkerRun | null =>
   row
@@ -220,7 +228,7 @@ export const createDeliveryHealthStore = (database: DeliveryHealthDatabase) => {
         worker: {
           status,
           overdueThresholdMinutes,
-          latestRun: healthWorkerRun(latestRunRows[0])
+          latestRun: toDeliveryHealthWorkerRun(latestRunRows[0])
         },
         windows: await Promise.all(recentWindows.map((window) => loadWindow(window, now)))
       };

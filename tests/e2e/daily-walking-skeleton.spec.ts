@@ -1104,6 +1104,18 @@ test('authorized Administrator can inspect privacy-safe delivery health', async 
         adminId
       );
     database
+      .prepare(
+        'insert into auth_account (id, account_id, provider_id, user_id, created_at, updated_at) values (?, ?, ?, ?, ?, ?)'
+      )
+      .run(
+        crypto.randomUUID(),
+        'google-account-subject',
+        'google',
+        adminId,
+        secondsSinceEpoch,
+        secondsSinceEpoch
+      );
+    database
       .prepare('insert into users (id, google_subject, email) values (?, ?, ?)')
       .run(adminId, 'private-google-subject', 'admin@example.com');
     database
@@ -1206,7 +1218,7 @@ test('authorized Administrator can inspect privacy-safe delivery health', async 
     await expect(last24Hours.getByText('Expired claims').locator('..')).toContainText('1');
     await expect(last24Hours.getByText('provider-rejected')).toBeVisible();
     expect(responseBody).not.toMatch(
-      /private-worker-run-identity|private-(?:sent|failed|expired)-occurrence|private-google-subject|private-provider-message-id|private summary payload|admin@example\.com/
+      /private-worker-run-identity|private-(?:sent|failed|expired)-occurrence|(?:private-google|google-account)-subject|private-provider-message-id|private summary payload|admin@example\.com/
     );
   } finally {
     database.close();
