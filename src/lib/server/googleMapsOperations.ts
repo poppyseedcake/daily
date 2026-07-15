@@ -39,10 +39,13 @@ export const googleMapsOperations = {
     ),
   setAdminKillSwitch: async (enabled: boolean) => {
     const change = changeGoogleMapsAdminKillSwitch(db, enabled);
+    if (!change.changed) return;
+
     await technicalEventRecorder.record({
       eventCode: 'admin-google-maps-kill-switch-changed',
       occurredAt: new Date().toISOString(),
-      ...change
+      previousEnabled: change.previousEnabled,
+      newEnabled: change.newEnabled
     });
   },
   requestGateway: (

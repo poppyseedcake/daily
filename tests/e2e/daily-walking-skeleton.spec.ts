@@ -1353,14 +1353,30 @@ test('authorized Administrator filters paged Technical Logs and audits the Maps 
     await page.getByLabel('Event code').selectOption('scheduled-daily-summary-worker-failed');
     await page.getByLabel('From UTC').fill(new Date(now.getTime() + 30_000).toISOString());
     await page.getByLabel('To UTC').fill(new Date(now.getTime() + 90_000).toISOString());
-    await page.getByRole('button', { name: 'Apply filters' }).click();
-    await expect(page.getByRole('article')).toHaveCount(1);
+    await Promise.all([
+      page.waitForURL((url) => url.searchParams.get('severity') === 'error'),
+      page.getByRole('button', { name: 'Apply filters' }).click()
+    ]);
+    await expect(page.getByRole('article')).toHaveCount(1, { timeout: 15_000 });
     await expect(
       page.locator('article code').filter({ hasText: 'scheduled-daily-summary-worker-failed' })
     ).toBeVisible();
 
     await page.goto('/admin');
     await page.getByRole('button', { name: 'Enable Admin Panel kill switch' }).click();
+    const repeatedSubmissionStatus = await page.evaluate(async () => {
+      const form = new FormData();
+      form.set('enabled', 'true');
+      return (await fetch('/admin?/setGoogleMapsKillSwitch', { method: 'POST', body: form })).status;
+    });
+    expect(repeatedSubmissionStatus).toBe(200);
+    const auditRecordCount = database
+      .prepare(
+        "select count(*) as count from technical_log_records where event_code = 'admin-google-maps-kill-switch-changed'"
+      )
+      .get() as { count: number };
+    expect(auditRecordCount.count).toBe(1);
+
     await page.goto('/admin?subsystem=admin-controls');
     await expect(
       page.locator('article code').filter({ hasText: 'admin-google-maps-kill-switch-changed' })

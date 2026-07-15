@@ -138,8 +138,12 @@ export const changeGoogleMapsAdminKillSwitch = (
 ) =>
   database.transaction((transaction) => {
     const previousEnabled = readGoogleMapsAdminKillSwitch(transaction);
+    if (previousEnabled === enabled) {
+      return { previousEnabled, newEnabled: enabled, changed: false };
+    }
+
     setGoogleMapsAdminKillSwitch(transaction, enabled);
-    return { previousEnabled, newEnabled: enabled };
+    return { previousEnabled, newEnabled: enabled, changed: true };
   });
 
 export const createGoogleMapsUsageGate = ({

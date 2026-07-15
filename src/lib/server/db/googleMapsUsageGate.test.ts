@@ -656,16 +656,23 @@ describe('Google Maps usage gate', () => {
     ).toMatchObject({ controlKey: 'admin-kill-switch', enabled: true });
   });
 
-  test('returns the previous and new Administrator kill switch state from one mutation', () => {
+  test('reports whether the Administrator kill switch actually changed', () => {
     const database = drizzleDatabase(createDatabase());
 
     expect(changeGoogleMapsAdminKillSwitch(database, true)).toEqual({
       previousEnabled: false,
-      newEnabled: true
+      newEnabled: true,
+      changed: true
+    });
+    expect(changeGoogleMapsAdminKillSwitch(database, true)).toEqual({
+      previousEnabled: true,
+      newEnabled: true,
+      changed: false
     });
     expect(changeGoogleMapsAdminKillSwitch(database, false)).toEqual({
       previousEnabled: true,
-      newEnabled: false
+      newEnabled: false,
+      changed: true
     });
   });
 
