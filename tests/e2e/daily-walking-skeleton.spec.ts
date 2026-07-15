@@ -1082,6 +1082,8 @@ test('authorized Administrator can inspect privacy-safe delivery health', async 
   const secondsSinceEpoch = Math.floor(now.getTime() / 1000);
   const adminId = `delivery-health-admin-${crypto.randomUUID()}`;
   const sessionToken = crypto.randomUUID();
+  const currentDay = now.toISOString().slice(0, 10);
+  const currentMonth = now.toISOString().slice(0, 7);
   const atMinutesAgo = (minutes: number) =>
     new Date(now.getTime() - minutes * 60 * 1000).toISOString();
 
@@ -1191,6 +1193,20 @@ test('authorized Administrator can inspect privacy-safe delivery health', async 
       null,
       atMinutesAgo(1)
     );
+    const insertCapAlert = database.prepare(
+      `insert or replace into google_maps_cap_alerts (
+        cap_type, period_start_utc, delivery_status, claimed_at, completed_at, failure_code
+      ) values (?, ?, ?, ?, ?, ?)`
+    );
+    insertCapAlert.run('daily', currentDay, 'delivered', atMinutesAgo(3), atMinutesAgo(2), null);
+    insertCapAlert.run(
+      'monthly',
+      currentMonth,
+      'failed',
+      atMinutesAgo(3),
+      atMinutesAgo(2),
+      'delivery-failed'
+    );
 
     await page.context().addCookies([
       {
@@ -1207,6 +1223,7 @@ test('authorized Administrator can inspect privacy-safe delivery health', async 
     const response = await page.goto('/admin');
     const responseBody = await response?.text();
     const last24Hours = page.getByRole('region', { name: 'Last 24 hours' });
+    const capAlerts = page.getByRole('region', { name: 'Operator cap alerts' });
 
     expect(response?.status()).toBe(200);
     await expect(page.getByRole('heading', { name: 'Delivery Health' })).toBeVisible();
@@ -1217,6 +1234,11 @@ test('authorized Administrator can inspect privacy-safe delivery health', async 
     await expect(last24Hours.getByText('Failed', { exact: true }).locator('..')).toContainText('1');
     await expect(last24Hours.getByText('Expired claims').locator('..')).toContainText('1');
     await expect(last24Hours.getByText('provider-rejected')).toBeVisible();
+    await expect(capAlerts.getByText(`Daily · ${currentDay}`)).toBeVisible();
+    await expect(capAlerts.getByText('Delivered', { exact: true })).toBeVisible();
+    await expect(capAlerts.getByText(`Monthly · ${currentMonth}`)).toBeVisible();
+    await expect(capAlerts.getByText('Failed', { exact: true })).toBeVisible();
+    await expect(capAlerts.getByText('Failure classification: delivery-failed')).toBeVisible();
     expect(responseBody).not.toMatch(
       /private-worker-run-identity|private-(?:sent|failed|expired)-occurrence|(?:private-google|google-account)-subject|private-provider-message-id|private summary payload|admin@example\.com/
     );

@@ -67,6 +67,10 @@ export type GoogleMapsOperationsSnapshot = {
   timeBasis: 'UTC';
   daily: GoogleMapsUsageSnapshot['day'] & { cap: number };
   monthly: GoogleMapsUsageSnapshot['month'] & { cap: number };
+  capAlerts: {
+    daily: GoogleMapsCapAlertOutcome | null;
+    monthly: GoogleMapsCapAlertOutcome | null;
+  };
   environmentKillSwitchEnabled: boolean;
   adminKillSwitchEnabled: boolean;
   effectiveState: 'active' | 'suspended';
@@ -76,6 +80,13 @@ export type GoogleMapsOperationsSnapshot = {
     | 'global-daily-cap'
     | 'global-monthly-cap'
     | null;
+};
+
+export type GoogleMapsCapAlertOutcome = {
+  periodStart: string;
+  status: 'pending' | 'delivered' | 'failed';
+  completedAt: string | null;
+  failureCode: 'delivery-failed' | null;
 };
 
 type UsagePeriod = {
@@ -393,12 +404,42 @@ export const createGoogleMapsUsageGate = ({
       { behavior: 'immediate' }
     );
 
-  const currentUsage = (): GoogleMapsUsageSnapshot => {
-    const [day, month] = utcPeriodsFor(now());
+  const currentUsage = (at = now()): GoogleMapsUsageSnapshot => {
+    const [day, month] = utcPeriodsFor(at);
     return {
       timeBasis: 'UTC',
       day: snapshotFor(database, day),
       month: snapshotFor(database, month)
+    };
+  };
+
+  const capAlertOutcomeFor = (
+    source: GoogleMapsDatabase,
+    capType: 'daily' | 'monthly',
+    periodStart: string
+  ): GoogleMapsCapAlertOutcome | null => {
+    const record = source
+      .select({
+        status: googleMapsCapAlerts.deliveryStatus,
+        completedAt: googleMapsCapAlerts.completedAt,
+        failureCode: googleMapsCapAlerts.failureCode
+      })
+      .from(googleMapsCapAlerts)
+      .where(
+        and(
+          eq(googleMapsCapAlerts.capType, capType),
+          eq(googleMapsCapAlerts.periodStartUtc, periodStart)
+        )
+      )
+      .get();
+
+    if (!record) return null;
+
+    return {
+      periodStart,
+      status: record.status,
+      completedAt: record.completedAt,
+      failureCode: record.failureCode === 'delivery-failed' ? 'delivery-failed' : null
     };
   };
 
@@ -458,7 +499,9 @@ export const createGoogleMapsUsageGate = ({
       return currentUsage();
     },
     async currentOperations(environmentKillSwitchEnabled) {
-      const usage = currentUsage();
+      const at = now();
+      const usage = currentUsage(at);
+      const [day, month] = utcPeriodsFor(at);
       const adminEnabled = readGoogleMapsAdminKillSwitch(database);
       const suspensionReason = environmentKillSwitchEnabled
         ? 'environment-kill-switch'
@@ -474,6 +517,10 @@ export const createGoogleMapsUsageGate = ({
         timeBasis: usage.timeBasis,
         daily: { ...usage.day, cap: dailyCap },
         monthly: { ...usage.month, cap: monthlyCap },
+        capAlerts: {
+          daily: capAlertOutcomeFor(database, 'daily', day.start),
+          monthly: capAlertOutcomeFor(database, 'monthly', month.start)
+        },
         environmentKillSwitchEnabled,
         adminKillSwitchEnabled: adminEnabled,
         effectiveState: suspensionReason === null ? 'active' : 'suspended',

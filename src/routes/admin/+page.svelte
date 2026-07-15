@@ -11,6 +11,25 @@
     'global-monthly-cap': 'Monthly usage cap reached'
   } as const;
 
+  const capAlertStatusLabels = {
+    pending: 'Delivery pending',
+    delivered: 'Delivered',
+    failed: 'Failed'
+  } as const;
+
+  const currentCapAlerts = $derived([
+    {
+      capType: 'Daily',
+      periodStart: data.googleMaps.daily.periodStart,
+      alert: data.googleMaps.capAlerts.daily
+    },
+    {
+      capType: 'Monthly',
+      periodStart: data.googleMaps.monthly.periodStart,
+      alert: data.googleMaps.capAlerts.monthly
+    }
+  ]);
+
   const workerStatusLabels = {
     healthy: 'Healthy',
     overdue: 'Overdue',
@@ -121,6 +140,40 @@
             </div>
           </dl>
           <p class="text-xs text-zinc-500">Accounting and rollover use {data.googleMaps.timeBasis}.</p>
+
+          <section
+            class="space-y-3 border-t border-zinc-200 pt-4 text-sm"
+            aria-label="Operator cap alerts"
+          >
+            <div>
+              <p class="font-medium">Operator cap alerts</p>
+              <p class="mt-1 text-xs text-zinc-600">
+                Delivery outcomes for the current UTC daily and monthly periods.
+              </p>
+            </div>
+            {#each currentCapAlerts as capAlert}
+              <div class="rounded-md border border-zinc-200 p-3">
+                <div class="flex items-center justify-between gap-3">
+                  <span>{capAlert.capType} · {capAlert.periodStart}</span>
+                  <strong>
+                    {capAlert.alert
+                      ? capAlertStatusLabels[capAlert.alert.status]
+                      : 'Not claimed'}
+                  </strong>
+                </div>
+                {#if capAlert.alert?.completedAt}
+                  <p class="mt-1 text-xs text-zinc-600">
+                    Completed <time datetime={capAlert.alert.completedAt}>{capAlert.alert.completedAt}</time>
+                  </p>
+                {/if}
+                {#if capAlert.alert?.failureCode}
+                  <p class="mt-1 text-xs text-red-700">
+                    Failure classification: <code>{capAlert.alert.failureCode}</code>
+                  </p>
+                {/if}
+              </div>
+            {/each}
+          </section>
 
           <div class="space-y-3 border-t border-zinc-200 pt-4 text-sm">
             <div class="flex items-center justify-between gap-3">

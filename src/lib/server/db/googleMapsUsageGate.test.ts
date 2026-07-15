@@ -714,10 +714,67 @@ describe('Google Maps usage gate', () => {
       environmentKillSwitchEnabled: false,
       adminKillSwitchEnabled: false,
       effectiveState: 'suspended',
-      suspensionReason: 'global-daily-cap'
+      suspensionReason: 'global-daily-cap',
+      capAlerts: {
+        daily: {
+          periodStart: '2026-07-12',
+          status: 'pending',
+          completedAt: null,
+          failureCode: null
+        },
+        monthly: null
+      }
     });
     expect(JSON.stringify(operations)).not.toMatch(
       /personUsageIdentity|origin|destination|route|provider|summary|email/i
+    );
+  });
+
+  test('reports stable current-period daily and monthly cap alert outcomes without retrying failed delivery', async () => {
+    const database = createDatabase();
+    const deliveryAttempts: string[] = [];
+    const gate = createTestGoogleMapsUsageGate({
+      database: drizzleDatabase(database),
+      dailyCap: 1,
+      monthlyCap: 1,
+      perPersonDailyLimit: 100,
+      now: () => new Date('2026-07-12T12:00:00.000Z'),
+      capAlertDelivery: {
+        async send(alert) {
+          deliveryAttempts.push(alert.capType);
+          if (alert.capType === 'monthly') {
+            throw new Error('private recipient and provider payload');
+          }
+        }
+      }
+    });
+
+    await expect(gate.admit('commute-estimate', person)).resolves.toEqual({ outcome: 'admitted' });
+    await flushAlertDeliveries();
+    await expect(gate.admit('map-point-selection', person)).resolves.toEqual({
+      outcome: 'suspended',
+      reason: 'global-daily-cap'
+    });
+    await flushAlertDeliveries();
+
+    const operations = await gate.currentOperations(false);
+    expect(operations.capAlerts).toEqual({
+      daily: {
+        periodStart: '2026-07-12',
+        status: 'delivered',
+        completedAt: '2026-07-12T12:00:00.000Z',
+        failureCode: null
+      },
+      monthly: {
+        periodStart: '2026-07',
+        status: 'failed',
+        completedAt: '2026-07-12T12:00:00.000Z',
+        failureCode: 'delivery-failed'
+      }
+    });
+    expect(deliveryAttempts).toEqual(['daily', 'monthly']);
+    expect(JSON.stringify(operations.capAlerts)).not.toMatch(
+      /recipient|provider|payload|message|personUsageIdentity|email/i
     );
   });
 
