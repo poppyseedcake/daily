@@ -1074,3 +1074,153 @@ test('Visitor cannot access the Admin Panel and private Local Setup content is e
   await expect(page.locator('body')).not.toContainText('Private board review');
   await expect(page.locator('body')).not.toContainText('Demo Calendar');
 });
+
+test('authorized Administrator can inspect privacy-safe delivery health', async ({ page }) => {
+  const port = process.env.PLAYWRIGHT_PORT ?? '5173';
+  const database = new Database(join(tmpdir(), `daily-playwright-${port}.db`));
+  const now = new Date();
+  const secondsSinceEpoch = Math.floor(now.getTime() / 1000);
+  const adminId = `delivery-health-admin-${crypto.randomUUID()}`;
+  const sessionToken = crypto.randomUUID();
+  const atMinutesAgo = (minutes: number) =>
+    new Date(now.getTime() - minutes * 60 * 1000).toISOString();
+
+  try {
+    database
+      .prepare(
+        'insert into auth_user (id, name, email, email_verified, created_at, updated_at) values (?, ?, ?, ?, ?, ?)'
+      )
+      .run(adminId, 'Delivery Health Admin', 'admin@example.com', 1, secondsSinceEpoch, secondsSinceEpoch);
+    database
+      .prepare(
+        'insert into auth_session (id, expires_at, token, created_at, updated_at, user_id) values (?, ?, ?, ?, ?, ?)'
+      )
+      .run(
+        crypto.randomUUID(),
+        secondsSinceEpoch + 60 * 60,
+        sessionToken,
+        secondsSinceEpoch,
+        secondsSinceEpoch,
+        adminId
+      );
+    database
+      .prepare(
+        'insert into auth_account (id, account_id, provider_id, user_id, created_at, updated_at) values (?, ?, ?, ?, ?, ?)'
+      )
+      .run(
+        crypto.randomUUID(),
+        'google-account-subject',
+        'google',
+        adminId,
+        secondsSinceEpoch,
+        secondsSinceEpoch
+      );
+    database
+      .prepare('insert into users (id, google_subject, email) values (?, ?, ?)')
+      .run(adminId, 'private-google-subject', 'admin@example.com');
+    database
+      .prepare(
+        `insert into scheduled_worker_runs (
+          id, started_at, completed_at, duration_milliseconds, outcome, failure_classification,
+          due_count, sent_count, skipped_count, retrying_count, failed_count, isolated_error_count
+        ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      .run(
+        'private-worker-run-identity',
+        atMinutesAgo(1.1),
+        atMinutesAgo(1),
+        42,
+        'completed-with-isolated-errors',
+        null,
+        4,
+        1,
+        0,
+        1,
+        1,
+        1
+      );
+    const insertDelivery = database.prepare(
+      `insert into delivery_records (
+        id, user_id, attempt_type, requested_at, completed_at, delivery_status,
+        provider_name, provider_message_id, provider_status_metadata, error_classification,
+        scheduled_at, attempt_count, last_attempt_at, next_retry_at, claim_expires_at
+      ) values (?, ?, 'scheduled', ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)`
+    );
+    insertDelivery.run(
+      'private-sent-occurrence',
+      adminId,
+      atMinutesAgo(10),
+      atMinutesAgo(9),
+      'sent',
+      'private-provider',
+      'private-provider-message-id',
+      'private summary payload',
+      null,
+      atMinutesAgo(10),
+      atMinutesAgo(9),
+      null,
+      null
+    );
+    insertDelivery.run(
+      'private-failed-occurrence',
+      adminId,
+      atMinutesAgo(20),
+      atMinutesAgo(19),
+      'failed',
+      'private-provider',
+      'private-provider-message-id',
+      'recipient admin@example.com and private summary payload',
+      'provider-rejected',
+      atMinutesAgo(20),
+      atMinutesAgo(19),
+      null,
+      null
+    );
+    insertDelivery.run(
+      'private-expired-occurrence',
+      adminId,
+      atMinutesAgo(30),
+      null,
+      'processing',
+      'private-provider',
+      null,
+      null,
+      null,
+      atMinutesAgo(30),
+      atMinutesAgo(30),
+      null,
+      atMinutesAgo(1)
+    );
+
+    await page.context().addCookies([
+      {
+        name: 'better-auth.session_token',
+        value: `${sessionToken}.${await makeSignature(
+          sessionToken,
+          'daily-playwright-auth-secret-at-least-32-characters'
+        )}`,
+        domain: '127.0.0.1',
+        path: '/'
+      }
+    ]);
+
+    const response = await page.goto('/admin');
+    const responseBody = await response?.text();
+    const last24Hours = page.getByRole('region', { name: 'Last 24 hours' });
+
+    expect(response?.status()).toBe(200);
+    await expect(page.getByRole('heading', { name: 'Delivery Health' })).toBeVisible();
+    await expect(page.getByText('Healthy', { exact: true })).toBeVisible();
+    await expect(page.getByText('Overdue after 5 minutes. Times and windows use UTC.')).toBeVisible();
+    await expect(page.getByText('Latest run: Completed with isolated errors')).toBeVisible();
+    await expect(last24Hours.getByText('Sent').locator('..')).toContainText('1');
+    await expect(last24Hours.getByText('Failed', { exact: true }).locator('..')).toContainText('1');
+    await expect(last24Hours.getByText('Expired claims').locator('..')).toContainText('1');
+    await expect(last24Hours.getByText('provider-rejected')).toBeVisible();
+    expect(responseBody).not.toMatch(
+      /private-worker-run-identity|private-(?:sent|failed|expired)-occurrence|(?:private-google|google-account)-subject|private-provider-message-id|private summary payload|admin@example\.com/
+    );
+  } finally {
+    database.close();
+  }
+});

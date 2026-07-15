@@ -8,6 +8,12 @@ const { currentOperations, setAdminKillSwitch } = vi.hoisted(() => ({
   currentOperations: vi.fn(),
   setAdminKillSwitch: vi.fn()
 }));
+const { currentDeliveryHealth } = vi.hoisted(() => ({
+  currentDeliveryHealth: vi.fn()
+}));
+const { hasGoogleAuthAccount } = vi.hoisted(() => ({
+  hasGoogleAuthAccount: vi.fn()
+}));
 
 vi.mock('$lib/server/auth', () => ({
   auth: {
@@ -30,6 +36,16 @@ vi.mock('$lib/server/googleMapsOperations', () => ({
   }
 }));
 
+vi.mock('$lib/server/deliveryHealthOperations', () => ({
+  deliveryHealthOperations: {
+    current: currentDeliveryHealth
+  }
+}));
+
+vi.mock('$lib/server/adminGoogleSession', () => ({
+  hasGoogleAuthAccount
+}));
+
 const { actions, load } = await import('./+page.server');
 
 const loadAdminPage = () =>
@@ -49,6 +65,9 @@ describe('Admin Panel server load', () => {
   beforeEach(() => {
     getSession.mockReset();
     currentOperations.mockReset();
+    currentDeliveryHealth.mockReset();
+    hasGoogleAuthAccount.mockReset();
+    hasGoogleAuthAccount.mockResolvedValue(true);
     setAdminKillSwitch.mockReset();
     currentOperations.mockResolvedValue({
       timeBasis: 'UTC',
@@ -69,6 +88,28 @@ describe('Admin Panel server load', () => {
       effectiveState: 'active',
       suspensionReason: null
     });
+    currentDeliveryHealth.mockResolvedValue({
+      timeBasis: 'UTC',
+      worker: {
+        status: 'healthy',
+        overdueThresholdMinutes: 5,
+        latestRun: {
+          completedAt: '2026-07-15T11:59:00.010Z',
+          durationMilliseconds: 10,
+          outcome: 'succeeded',
+          failureClassification: null,
+          counts: { due: 2, sent: 1, skipped: 0, retrying: 1, failed: 0, isolatedError: 0 }
+        }
+      },
+      windows: [
+        {
+          key: '24-hours',
+          label: 'Last 24 hours',
+          totals: { sent: 4, retrying: 1, failed: 2, activeProcessing: 1, expiredProcessing: 1 },
+          failureClassifications: [{ classification: 'provider-rejected', count: 2 }]
+        }
+      ]
+    });
   });
 
   test('denies a Visitor before rendering operational Admin Panel output', async () => {
@@ -79,6 +120,7 @@ describe('Admin Panel server load', () => {
         isHttpError(thrown, 403) &&
         thrown.body.message === 'Sign in with an authorized Google account to access the Admin Panel.'
     );
+    expect(currentDeliveryHealth).not.toHaveBeenCalled();
   });
 
   test('denies a signed-in User whose verified Google email is not allowlisted', async () => {
@@ -91,6 +133,27 @@ describe('Admin Panel server load', () => {
         isHttpError(thrown, 403) &&
         thrown.body.message === 'Your signed-in Google account is not authorized for the Admin Panel.'
     );
+    expect(currentDeliveryHealth).not.toHaveBeenCalled();
+  });
+
+  test('denies an allowlisted Google email when the current session is not verified', async () => {
+    getSession.mockResolvedValue({
+      user: { id: 'admin-1', email: 'admin@example.com', emailVerified: false }
+    });
+
+    await expect(loadAdminPage()).rejects.toSatisfy((thrown) => isHttpError(thrown, 403));
+    expect(currentDeliveryHealth).not.toHaveBeenCalled();
+  });
+
+  test('denies a verified allowlisted session without a current Google account', async () => {
+    getSession.mockResolvedValue({
+      user: { id: 'admin-1', email: 'admin@example.com', emailVerified: true }
+    });
+    hasGoogleAuthAccount.mockResolvedValue(false);
+
+    await expect(loadAdminPage()).rejects.toSatisfy((thrown) => isHttpError(thrown, 403));
+    expect(hasGoogleAuthAccount).toHaveBeenCalledWith('admin-1');
+    expect(currentDeliveryHealth).not.toHaveBeenCalled();
   });
 
   test('allows a signed-in Administrator whose verified Google email is allowlisted', async () => {
@@ -106,8 +169,23 @@ describe('Admin Panel server load', () => {
         effectiveState: 'active',
         daily: expect.objectContaining({ total: 12, cap: 25 }),
         monthly: expect.objectContaining({ total: 110, cap: 500 })
+      }),
+      deliveryHealth: expect.objectContaining({
+        timeBasis: 'UTC',
+        worker: expect.objectContaining({
+          status: 'healthy',
+          overdueThresholdMinutes: 5
+        }),
+        windows: [
+          expect.objectContaining({
+            key: '24-hours',
+            totals: expect.objectContaining({ sent: 4, expiredProcessing: 1 })
+          })
+        ]
       })
     });
+    expect(currentDeliveryHealth).toHaveBeenCalledOnce();
+    expect(hasGoogleAuthAccount).toHaveBeenCalledWith('admin-1');
   });
 
   test('allows only an authorized Administrator to mutate the SQLite kill switch', async () => {

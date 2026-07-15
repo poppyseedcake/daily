@@ -2,6 +2,8 @@ import { auth } from '$lib/server/auth';
 import { isAdministratorAuthState } from '$lib/server/adminAuthorization';
 import { authStateFromSession } from '$lib/server/pageAuthState';
 import { googleMapsOperations } from '$lib/server/googleMapsOperations';
+import { deliveryHealthOperations } from '$lib/server/deliveryHealthOperations';
+import { hasGoogleAuthAccount } from '$lib/server/adminGoogleSession';
 import { error, fail } from '@sveltejs/kit';
 import { z } from 'zod';
 import type { Actions, PageServerLoad } from './$types';
@@ -16,12 +18,16 @@ const requireAdministrator = async (request: Request) => {
   });
   const authState = authStateFromSession(session);
 
-  if (authState.mode !== 'user') {
+  if (!session || authState.mode !== 'user') {
     throw error(403, 'Sign in with an authorized Google account to access the Admin Panel.');
   }
 
   if (!isAdministratorAuthState(authState)) {
     throw error(403, 'Your signed-in Google account is not authorized for the Admin Panel.');
+  }
+
+  if (!(await hasGoogleAuthAccount(session.user.id))) {
+    throw error(403, 'Your current session is not backed by an authorized Google account.');
   }
 };
 
@@ -29,12 +35,17 @@ const googleMapsKillSwitchSchema = z.enum(['true', 'false']).transform((value) =
 
 export const load: PageServerLoad = async ({ request }) => {
   await requireAdministrator(request);
+  const [googleMaps, deliveryHealth] = await Promise.all([
+    googleMapsOperations.currentOperations(),
+    deliveryHealthOperations.current()
+  ]);
 
   return {
     access: {
       mode: 'allowed'
     } satisfies AdminPanelAccess,
-    googleMaps: await googleMapsOperations.currentOperations()
+    googleMaps,
+    deliveryHealth
   };
 };
 
