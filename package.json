@@ -21,6 +21,7 @@
     "test:e2e": "playwright test",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
+    "db:backup": "vite-node --config vite.worker.config.ts src/lib/server/db/runSqliteBackupCommand.ts",
     "db:backfill-next-summary": "vite-node src/lib/server/db/backfillNextSummaryScheduleCommand.ts",
     "worker:scheduled-delivery": "vite-node --config vite.worker.config.ts src/lib/server/runScheduledDailySummaryWorkerCommand.ts"
   },
