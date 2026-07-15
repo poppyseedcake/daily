@@ -5,6 +5,7 @@ import {
   chownSync,
   copyFileSync,
   existsSync,
+  lstatSync,
   readFileSync,
   renameSync,
   rmSync,
@@ -36,9 +37,19 @@ type ExecuteSqliteRestoreCommandOptions = {
 const checksumFile = (path: string) =>
   createHash('sha256').update(readFileSync(path)).digest('hex');
 
+const isValidSqliteArtifact = (path: string, expectedChecksum: string) => {
+  if (!statSync(path).isFile() || checksumFile(path) !== expectedChecksum) return false;
+  const database = new Database(path, { readonly: true, fileMustExist: true });
+  try {
+    return database.pragma('integrity_check', { simple: true }) === 'ok';
+  } finally {
+    database.close();
+  }
+};
+
 const isValidRecoveryPoint = (
   recoveryPointDirectory: string
-): { backupPath: string } | undefined => {
+): { backupPath: string; checksum: string } | undefined => {
   try {
     const metadata = JSON.parse(
       readFileSync(join(recoveryPointDirectory, 'metadata.json'), 'utf8')
@@ -54,16 +65,8 @@ const isValidRecoveryPoint = (
       return undefined;
     }
     const backupPath = join(recoveryPointDirectory, 'backup.sqlite3');
-    if (!statSync(backupPath).isFile() || checksumFile(backupPath) !== metadata.checksum) {
-      return undefined;
-    }
-    const backup = new Database(backupPath, { readonly: true, fileMustExist: true });
-    try {
-      if (backup.pragma('integrity_check', { simple: true }) !== 'ok') return undefined;
-    } finally {
-      backup.close();
-    }
-    return { backupPath };
+    if (!isValidSqliteArtifact(backupPath, metadata.checksum)) return undefined;
+    return { backupPath, checksum: metadata.checksum };
   } catch {
     return undefined;
   }
@@ -98,7 +101,7 @@ export const executeSqliteRestoreCommand = async ({
   }
   let activeDatabaseStat;
   try {
-    activeDatabaseStat = statSync(activeDatabasePath);
+    activeDatabaseStat = lstatSync(activeDatabasePath);
     if (
       !activeDatabaseStat.isFile() ||
       existsSync(`${activeDatabasePath}-wal`) ||
@@ -119,6 +122,9 @@ export const executeSqliteRestoreCommand = async ({
   const installationPath = `${activeDatabasePath}.restore-${recoveryToken}.tmp`;
   try {
     copyFileSync(recoveryPoint.backupPath, installationPath);
+    if (!isValidSqliteArtifact(installationPath, recoveryPoint.checksum)) {
+      throw new Error('Installation copy failed verification');
+    }
     chmodSync(installationPath, activeDatabaseStat.mode & 0o777);
     chownSync(installationPath, activeDatabaseStat.uid, activeDatabaseStat.gid);
     let stillOffline: boolean;

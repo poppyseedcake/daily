@@ -5,6 +5,7 @@ import {
   mkdtempSync,
   readFileSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
   mkdirSync
 } from 'node:fs';
@@ -12,6 +13,19 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { executeSqliteRestoreCommand } from './sqliteRestoreCommand';
+
+const copyFileBehavior = vi.hoisted(() => ({ beforeCopy: undefined as (() => void) | undefined }));
+
+vi.mock('node:fs', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:fs')>();
+  return {
+    ...actual,
+    copyFileSync: (...args: Parameters<typeof actual.copyFileSync>) => {
+      copyFileBehavior.beforeCopy?.();
+      return actual.copyFileSync(...args);
+    }
+  };
+});
 
 const temporaryDirectories: string[] = [];
 
@@ -51,6 +65,7 @@ const createRecoveryPoint = (root: string) => {
 };
 
 afterEach(() => {
+  copyFileBehavior.beforeCopy = undefined;
   vi.restoreAllMocks();
   for (const directory of temporaryDirectories.splice(0)) {
     rmSync(directory, { recursive: true, force: true });
@@ -151,6 +166,30 @@ describe('SQLite restore command', () => {
     expect(existsSync(activeDatabasePath)).toBe(false);
   });
 
+  test('rejects a symlink active database without modifying its target', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'daily-restore-'));
+    temporaryDirectories.push(root);
+    const databaseTargetPath = join(root, 'daily-target.db');
+    const activeDatabasePath = join(root, 'daily.db');
+    createDatabase(databaseTargetPath, 'active');
+    symlinkSync(databaseTargetPath, activeDatabasePath);
+    const { recoveryPointDirectory } = createRecoveryPoint(root);
+
+    const result = await executeSqliteRestoreCommand({
+      recoveryPointDirectory,
+      activeDatabasePath,
+      isDestinationOffline: async () => true,
+      migrate: vi.fn(),
+      startService: vi.fn(),
+      verifyServiceActive: vi.fn(),
+      verifyReadiness: vi.fn()
+    });
+
+    expect(result).toEqual({ exitCode: 1, failureClassification: 'invalid-destination' });
+    expect(readMarker(databaseTargetPath)).toBe('active');
+    expect(readMarker(activeDatabasePath)).toBe('active');
+  });
+
   test('rejects a checksum-valid file that fails SQLite integrity without modifying the active database', async () => {
     const root = mkdtempSync(join(tmpdir(), 'daily-restore-'));
     temporaryDirectories.push(root);
@@ -175,6 +214,30 @@ describe('SQLite restore command', () => {
 
     expect(result).toEqual({ exitCode: 1, failureClassification: 'invalid-recovery-point' });
     expect(readMarker(activeDatabasePath)).toBe('active');
+  });
+
+  test('rejects an installation copy that differs from the verified recovery point', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'daily-restore-'));
+    temporaryDirectories.push(root);
+    const activeDatabasePath = join(root, 'daily.db');
+    createDatabase(activeDatabasePath, 'active');
+    const { recoveryPointDirectory, backupPath } = createRecoveryPoint(root);
+    copyFileBehavior.beforeCopy = () => writeFileSync(backupPath, 'changed after validation');
+    const migrate = vi.fn();
+
+    const result = await executeSqliteRestoreCommand({
+      recoveryPointDirectory,
+      activeDatabasePath,
+      isDestinationOffline: async () => true,
+      migrate,
+      startService: vi.fn(),
+      verifyServiceActive: vi.fn(),
+      verifyReadiness: vi.fn()
+    });
+
+    expect(result).toEqual({ exitCode: 1, failureClassification: 'installation-failed' });
+    expect(readMarker(activeDatabasePath)).toBe('active');
+    expect(migrate).not.toHaveBeenCalled();
   });
 
   test('installs a valid backup and verifies migrations, service state, and readiness in order', async () => {
