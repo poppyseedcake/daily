@@ -240,6 +240,32 @@ describe('scheduled Daily Summary worker command', () => {
     expect(JSON.stringify(events)).not.toContain('private database path');
   });
 
+  test('persists an initialization failure when the technical log database remains available', async () => {
+    const sqlite = new Database(':memory:');
+    sqlite.exec(readFileSync('drizzle/0013_add_technical_log_records.sql', 'utf8'));
+    const database = drizzle(sqlite, { schema });
+    const store = createTechnicalLogStore(database);
+    const recorder = createTechnicalEventRecorder({ store, writeLine: vi.fn() });
+
+    try {
+      const result = await executeScheduledDailySummaryWorkerCommand({
+        loadDependencies: vi.fn().mockRejectedValue(new Error('private database path')),
+        loadTechnicalEventRecorder: vi.fn().mockResolvedValue(recorder),
+        eventNow: () => new Date('2026-07-15T08:30:00.000Z')
+      });
+
+      expect(result.exitCode).toBe(1);
+      expect(await store.loadRecent(10)).toEqual([
+        expect.objectContaining({
+          eventCode: 'scheduled-daily-summary-worker-failed',
+          failureClassification: 'worker-initialization-failed'
+        })
+      ]);
+    } finally {
+      sqlite.close();
+    }
+  });
+
   test('applies the command result to the real process-exit boundary', async () => {
     const setExitCode = vi.fn();
     const counts = {

@@ -13,6 +13,7 @@ type WorkerDependencies = Pick<
 
 type ScheduledDailySummaryWorkerCommandOptions = {
   loadDependencies?: () => Promise<WorkerDependencies>;
+  loadTechnicalEventRecorder?: () => Promise<ReturnType<typeof createTechnicalEventRecorder>>;
   emit?: (event: ScheduledDailySummaryWorkerEvent) => void;
   eventNow?: () => Date;
   recordTechnicalEvent?: ReturnType<typeof createTechnicalEventRecorder>['record'];
@@ -51,6 +52,19 @@ const loadProductionTechnicalEventRecorder = async () => {
   return createTechnicalEventRecorder({ store: createTechnicalLogStore(db) });
 };
 
+const resolveTechnicalEventRecord = async (
+  record: ReturnType<typeof createTechnicalEventRecorder>['record'] | undefined,
+  loadRecorder: () => Promise<ReturnType<typeof createTechnicalEventRecorder>>
+) => {
+  if (record) return record;
+
+  try {
+    return (await loadRecorder()).record;
+  } catch {
+    return stdoutOnlyTechnicalEventRecorder().record;
+  }
+};
+
 const recordWorkerTerminalEvent = async (
   event: WorkerTerminalEvent,
   occurredAt: string,
@@ -78,6 +92,7 @@ const recordWorkerTerminalEvent = async (
 
 export const executeScheduledDailySummaryWorkerCommand = async ({
   loadDependencies = loadProductionDependencies,
+  loadTechnicalEventRecorder = loadProductionTechnicalEventRecorder,
   emit,
   eventNow = () => new Date(),
   recordTechnicalEvent,
@@ -97,7 +112,10 @@ export const executeScheduledDailySummaryWorkerCommand = async ({
     } satisfies WorkerTerminalEvent;
     emit?.(terminalEvent);
     if (!emit || recordTechnicalEvent) {
-      const record = recordTechnicalEvent ?? stdoutOnlyTechnicalEventRecorder().record;
+      const record = await resolveTechnicalEventRecord(
+        recordTechnicalEvent,
+        loadTechnicalEventRecorder
+      );
       await record({
         eventCode: terminalEvent.event,
         occurredAt: eventNow().toISOString(),
@@ -126,14 +144,10 @@ export const executeScheduledDailySummaryWorkerCommand = async ({
   });
 
   if ((!emit || recordTechnicalEvent) && terminalEvent) {
-    let record = recordTechnicalEvent;
-    if (!record) {
-      try {
-        record = (await loadProductionTechnicalEventRecorder()).record;
-      } catch {
-        record = stdoutOnlyTechnicalEventRecorder().record;
-      }
-    }
+    const record = await resolveTechnicalEventRecord(
+      recordTechnicalEvent,
+      loadTechnicalEventRecorder
+    );
     await recordWorkerTerminalEvent(terminalEvent, eventNow().toISOString(), record);
   }
 

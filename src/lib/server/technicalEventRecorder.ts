@@ -119,7 +119,11 @@ export const createTechnicalEventRecorder = ({
 }) => ({
   async record(input: TechnicalEventInput) {
     const event = buildTechnicalEvent(input);
-    writeLine(JSON.stringify(event));
+    try {
+      writeLine(JSON.stringify(event));
+    } catch {
+      // Output is best effort and must not replace the operation's primary result.
+    }
     try {
       await store.persist(event);
     } catch {

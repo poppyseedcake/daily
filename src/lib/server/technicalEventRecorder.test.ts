@@ -154,4 +154,24 @@ describe('Technical Event Recorder', () => {
       });
     }
   });
+
+  test('still persists and preserves the primary result when stdout fails', async () => {
+    const persist = vi.fn().mockResolvedValue(undefined);
+    const recorder = createTechnicalEventRecorder({
+      store: { persist },
+      writeLine: () => {
+        throw new Error('stdout unavailable');
+      }
+    });
+
+    const result = await recorder.record({
+      eventCode: 'scheduled-daily-summary-worker-completed',
+      occurredAt: '2026-07-15T08:30:00.000Z',
+      durationMilliseconds: 7,
+      counts: { due: 0, sent: 0, skipped: 0, retrying: 0, failed: 0, isolatedError: 0 }
+    });
+
+    expect(result.eventCode).toBe('scheduled-daily-summary-worker-completed');
+    expect(persist).toHaveBeenCalledWith(result);
+  });
 });
