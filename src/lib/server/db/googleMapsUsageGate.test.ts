@@ -10,6 +10,7 @@ import {
 } from '../googleMapsRequestGateway';
 import { createGoogleMapsPersonAttribution } from '../googleMapsPersonAttribution';
 import {
+  changeGoogleMapsAdminKillSwitch,
   createGoogleMapsUsageGate as createDurableGoogleMapsUsageGate,
   readGoogleMapsUsageCaps,
   setGoogleMapsAdminKillSwitch,
@@ -653,6 +654,26 @@ describe('Google Maps usage gate', () => {
     expect(
       database.select().from(schema.googleMapsControl).get()
     ).toMatchObject({ controlKey: 'admin-kill-switch', enabled: true });
+  });
+
+  test('reports whether the Administrator kill switch actually changed', () => {
+    const database = drizzleDatabase(createDatabase());
+
+    expect(changeGoogleMapsAdminKillSwitch(database, true)).toEqual({
+      previousEnabled: false,
+      newEnabled: true,
+      changed: true
+    });
+    expect(changeGoogleMapsAdminKillSwitch(database, true)).toEqual({
+      previousEnabled: true,
+      newEnabled: true,
+      changed: false
+    });
+    expect(changeGoogleMapsAdminKillSwitch(database, false)).toEqual({
+      previousEnabled: true,
+      newEnabled: false,
+      changed: true
+    });
   });
 
   test('reports environment control precedence and cap suspension from privacy-safe aggregate data', async () => {

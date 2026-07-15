@@ -1224,3 +1224,167 @@ test('authorized Administrator can inspect privacy-safe delivery health', async 
     database.close();
   }
 });
+
+test('authorized Administrator filters paged Technical Logs and audits the Maps control', async ({
+  page
+}) => {
+  const port = process.env.PLAYWRIGHT_PORT ?? '5173';
+  const database = new Database(join(tmpdir(), `daily-playwright-${port}.db`));
+  const now = new Date();
+  const secondsSinceEpoch = Math.floor(now.getTime() / 1000);
+  const newAdminId = `technical-log-admin-${crypto.randomUUID()}`;
+  const sessionToken = crypto.randomUUID();
+
+  try {
+    const existingAdmin = database
+      .prepare('select id from auth_user where email = ?')
+      .get('admin@example.com') as { id: string } | undefined;
+    const adminId = existingAdmin?.id ?? newAdminId;
+
+    if (!existingAdmin) {
+      database
+        .prepare(
+          'insert into auth_user (id, name, email, email_verified, created_at, updated_at) values (?, ?, ?, ?, ?, ?)'
+        )
+        .run(adminId, 'Technical Log Admin', 'admin@example.com', 1, secondsSinceEpoch, secondsSinceEpoch);
+      database
+        .prepare(
+          'insert into auth_account (id, account_id, provider_id, user_id, created_at, updated_at) values (?, ?, ?, ?, ?, ?)'
+        )
+        .run(crypto.randomUUID(), 'google-technical-log-admin', 'google', adminId, secondsSinceEpoch, secondsSinceEpoch);
+      database
+        .prepare('insert into users (id, google_subject, email) values (?, ?, ?)')
+        .run(adminId, 'private-technical-log-google-subject', 'admin@example.com');
+    }
+
+    database
+      .prepare(
+        'insert into auth_session (id, expires_at, token, created_at, updated_at, user_id) values (?, ?, ?, ?, ?, ?)'
+      )
+      .run(
+        crypto.randomUUID(),
+        secondsSinceEpoch + 60 * 60,
+        sessionToken,
+        secondsSinceEpoch,
+        secondsSinceEpoch,
+        adminId
+      );
+    database
+      .prepare("delete from google_maps_control where control_key = 'admin-kill-switch'")
+      .run();
+
+    const insertLog = database.prepare(
+      `insert into technical_log_records (
+        id, occurred_at, event_code, severity, subsystem, outcome,
+        failure_classification, correlation_id, duration_milliseconds, metadata
+      ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    );
+    for (let index = 0; index < 27; index += 1) {
+      insertLog.run(
+        `private-log-row-${index}`,
+        new Date(now.getTime() - index * 60_000).toISOString(),
+        'scheduled-daily-summary-worker-completed',
+        'info',
+        'scheduled-delivery',
+        'succeeded',
+        null,
+        null,
+        index,
+        JSON.stringify({
+          dueCount: index,
+          sentCount: index,
+          skippedCount: 0,
+          retryingCount: 0,
+          failedCount: 0,
+          isolatedErrorCount: 0,
+          recipientEmail: 'private-recipient@example.com'
+        })
+      );
+    }
+    insertLog.run(
+      'private-error-row',
+      new Date(now.getTime() + 60_000).toISOString(),
+      'scheduled-daily-summary-worker-failed',
+      'error',
+      'scheduled-delivery',
+      'failed',
+      'unexpected',
+      null,
+      5,
+      JSON.stringify({
+        dueCount: 1,
+        sentCount: 0,
+        skippedCount: 0,
+        retryingCount: 0,
+        failedCount: 1,
+        isolatedErrorCount: 1
+      })
+    );
+
+    await page.context().addCookies([
+      {
+        name: 'better-auth.session_token',
+        value: `${sessionToken}.${await makeSignature(
+          sessionToken,
+          'daily-playwright-auth-secret-at-least-32-characters'
+        )}`,
+        domain: '127.0.0.1',
+        path: '/'
+      }
+    ]);
+
+    const response = await page.goto('/admin');
+    expect(response?.status()).toBe(200);
+    await expect(page.getByRole('heading', { name: 'Technical Logs' })).toBeVisible();
+    await expect(
+      page.locator('article code').filter({ hasText: 'scheduled-daily-summary-worker-failed' })
+    ).toBeVisible();
+    await expect(page.getByRole('article')).toHaveCount(25);
+    expect(await response?.text()).not.toMatch(
+      /private-log-row|private-error-row|private-recipient@example\.com|private-technical-log-google-subject|admin@example\.com/
+    );
+
+    await page.getByRole('link', { name: 'Next page' }).click();
+    await expect(page.getByRole('article')).toHaveCount(3);
+
+    await page.goto('/admin');
+    await page.getByLabel('Severity').selectOption('error');
+    await page.getByLabel('Subsystem').selectOption('scheduled-delivery');
+    await page.getByLabel('Event code').selectOption('scheduled-daily-summary-worker-failed');
+    await page.getByLabel('From UTC').fill(new Date(now.getTime() + 30_000).toISOString());
+    await page.getByLabel('To UTC').fill(new Date(now.getTime() + 90_000).toISOString());
+    await Promise.all([
+      page.waitForURL((url) => url.searchParams.get('severity') === 'error'),
+      page.getByRole('button', { name: 'Apply filters' }).click()
+    ]);
+    await expect(page.getByRole('article')).toHaveCount(1);
+    await expect(
+      page.locator('article code').filter({ hasText: 'scheduled-daily-summary-worker-failed' })
+    ).toBeVisible();
+
+    await page.goto('/admin');
+    await page.getByRole('button', { name: 'Enable Admin Panel kill switch' }).click();
+    const repeatedSubmissionStatus = await page.evaluate(async () => {
+      const form = new FormData();
+      form.set('enabled', 'true');
+      return (await fetch('/admin?/setGoogleMapsKillSwitch', { method: 'POST', body: form })).status;
+    });
+    expect(repeatedSubmissionStatus).toBe(200);
+    const auditRecordCount = database
+      .prepare(
+        "select count(*) as count from technical_log_records where event_code = 'admin-google-maps-kill-switch-changed'"
+      )
+      .get() as { count: number };
+    expect(auditRecordCount.count).toBe(1);
+
+    await page.goto('/admin?subsystem=admin-controls');
+    await expect(
+      page.locator('article code').filter({ hasText: 'admin-google-maps-kill-switch-changed' })
+    ).toBeVisible();
+    await expect(page.getByText('Previous enabled: false')).toBeVisible();
+    await expect(page.getByText('New enabled: true')).toBeVisible();
+    await expect(page.getByText('Google Maps is suspended.')).toBeVisible();
+  } finally {
+    database.close();
+  }
+});

@@ -1,10 +1,11 @@
 import { env } from '$env/dynamic/private';
 import { db } from '$lib/server/db';
 import {
+  changeGoogleMapsAdminKillSwitch,
   createGoogleMapsUsageGate,
-  readGoogleMapsUsageCaps,
-  setGoogleMapsAdminKillSwitch
+  readGoogleMapsUsageCaps
 } from '$lib/server/db/googleMapsUsageGate';
+import { createTechnicalLogStore } from '$lib/server/db/technicalLogStore';
 import { isGoogleMapsEnvironmentKillSwitchEnabled } from '$lib/server/googleMapsRequestGateway';
 import { googleMapsCapAlertDelivery } from '$lib/server/googleMapsCapAlertDelivery';
 import { createGoogleMapsRequestGateway } from './googleMapsRequestGateway';
@@ -14,6 +15,7 @@ import {
 } from './googleMapsPersonAttribution';
 import { createGoogleRoutesProvider } from './googleRoutesProvider';
 import { selectLocalPoint } from './localPointSelection';
+import { createTechnicalEventRecorder } from './technicalEventRecorder';
 
 const usageGate = () =>
   createGoogleMapsUsageGate({
@@ -26,12 +28,26 @@ const usageGate = () =>
     })
   });
 
+const technicalEventRecorder = createTechnicalEventRecorder({
+  store: createTechnicalLogStore(db)
+});
+
 export const googleMapsOperations = {
   currentOperations: () =>
     usageGate().currentOperations(
       isGoogleMapsEnvironmentKillSwitchEnabled(env.GOOGLE_MAPS_KILL_SWITCH)
     ),
-  setAdminKillSwitch: async (enabled: boolean) => setGoogleMapsAdminKillSwitch(db, enabled),
+  setAdminKillSwitch: async (enabled: boolean) => {
+    const change = changeGoogleMapsAdminKillSwitch(db, enabled);
+    if (!change.changed) return;
+
+    await technicalEventRecorder.record({
+      eventCode: 'admin-google-maps-kill-switch-changed',
+      occurredAt: new Date().toISOString(),
+      previousEnabled: change.previousEnabled,
+      newEnabled: change.newEnabled
+    });
+  },
   requestGateway: (
     authState: GoogleMapsAttributionAuthState,
     visitorRequest?: { clientAddress: string; userAgent: string }

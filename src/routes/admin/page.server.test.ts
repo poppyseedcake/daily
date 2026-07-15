@@ -11,6 +11,9 @@ const { currentOperations, setAdminKillSwitch } = vi.hoisted(() => ({
 const { currentDeliveryHealth } = vi.hoisted(() => ({
   currentDeliveryHealth: vi.fn()
 }));
+const { listTechnicalLogs } = vi.hoisted(() => ({
+  listTechnicalLogs: vi.fn()
+}));
 const { hasGoogleAuthAccount } = vi.hoisted(() => ({
   hasGoogleAuthAccount: vi.fn()
 }));
@@ -42,16 +45,25 @@ vi.mock('$lib/server/deliveryHealthOperations', () => ({
   }
 }));
 
+vi.mock('$lib/server/technicalLogOperations', () => ({
+  technicalLogOperations: {
+    list: listTechnicalLogs
+  }
+}));
+
 vi.mock('$lib/server/adminGoogleSession', () => ({
   hasGoogleAuthAccount
 }));
 
 const { actions, load } = await import('./+page.server');
 
-const loadAdminPage = () =>
-  load({
-    request: new Request('http://localhost/admin')
+const loadAdminPage = (query = '') => {
+  const url = new URL(`http://localhost/admin${query}`);
+  return load({
+    request: new Request(url),
+    url
   } as Parameters<typeof load>[0]);
+};
 
 const submitKillSwitch = (enabled: string) =>
   actions.setGoogleMapsKillSwitch({
@@ -66,6 +78,7 @@ describe('Admin Panel server load', () => {
     getSession.mockReset();
     currentOperations.mockReset();
     currentDeliveryHealth.mockReset();
+    listTechnicalLogs.mockReset();
     hasGoogleAuthAccount.mockReset();
     hasGoogleAuthAccount.mockResolvedValue(true);
     setAdminKillSwitch.mockReset();
@@ -110,6 +123,7 @@ describe('Admin Panel server load', () => {
         }
       ]
     });
+    listTechnicalLogs.mockResolvedValue({ records: [], nextCursor: null });
   });
 
   test('denies a Visitor before rendering operational Admin Panel output', async () => {
@@ -121,6 +135,7 @@ describe('Admin Panel server load', () => {
         thrown.body.message === 'Sign in with an authorized Google account to access the Admin Panel.'
     );
     expect(currentDeliveryHealth).not.toHaveBeenCalled();
+    expect(listTechnicalLogs).not.toHaveBeenCalled();
   });
 
   test('denies a signed-in User whose verified Google email is not allowlisted', async () => {
@@ -134,6 +149,7 @@ describe('Admin Panel server load', () => {
         thrown.body.message === 'Your signed-in Google account is not authorized for the Admin Panel.'
     );
     expect(currentDeliveryHealth).not.toHaveBeenCalled();
+    expect(listTechnicalLogs).not.toHaveBeenCalled();
   });
 
   test('denies an allowlisted Google email when the current session is not verified', async () => {
@@ -143,6 +159,7 @@ describe('Admin Panel server load', () => {
 
     await expect(loadAdminPage()).rejects.toSatisfy((thrown) => isHttpError(thrown, 403));
     expect(currentDeliveryHealth).not.toHaveBeenCalled();
+    expect(listTechnicalLogs).not.toHaveBeenCalled();
   });
 
   test('denies a verified allowlisted session without a current Google account', async () => {
@@ -154,6 +171,7 @@ describe('Admin Panel server load', () => {
     await expect(loadAdminPage()).rejects.toSatisfy((thrown) => isHttpError(thrown, 403));
     expect(hasGoogleAuthAccount).toHaveBeenCalledWith('admin-1');
     expect(currentDeliveryHealth).not.toHaveBeenCalled();
+    expect(listTechnicalLogs).not.toHaveBeenCalled();
   });
 
   test('allows a signed-in Administrator whose verified Google email is allowlisted', async () => {
@@ -182,10 +200,85 @@ describe('Admin Panel server load', () => {
             totals: expect.objectContaining({ sent: 4, expiredProcessing: 1 })
           })
         ]
-      })
+      }),
+      technicalLogs: { records: [], nextCursor: null },
+      technicalLogFilters: {},
+      technicalLogFilterOptions: {
+        severities: ['info', 'warning', 'error'],
+        subsystems: ['scheduled-delivery', 'admin-controls'],
+        eventCodes: [
+          'scheduled-daily-summary-worker-completed',
+          'scheduled-daily-summary-worker-failed',
+          'admin-google-maps-kill-switch-changed'
+        ]
+      }
     });
     expect(currentDeliveryHealth).toHaveBeenCalledOnce();
     expect(hasGoogleAuthAccount).toHaveBeenCalledWith('admin-1');
+  });
+
+  test('applies bounded Technical Log filters and cursor pagination from the URL', async () => {
+    getSession.mockResolvedValue({
+      user: { id: 'admin-1', email: 'admin@example.com', emailVerified: true }
+    });
+    listTechnicalLogs.mockResolvedValue({
+      records: [
+        {
+          id: 'log-2',
+          eventCode: 'scheduled-daily-summary-worker-failed',
+          severity: 'error',
+          subsystem: 'scheduled-delivery',
+          occurredAt: '2026-07-15T11:00:00.000Z',
+          outcome: 'failed',
+          failureClassification: 'unexpected',
+          durationMilliseconds: 2,
+          metadata: {
+            dueCount: 1,
+            sentCount: 0,
+            skippedCount: 0,
+            retryingCount: 0,
+            failedCount: 1,
+            isolatedErrorCount: 1
+          }
+        }
+      ],
+      nextCursor: 'next-page'
+    });
+
+    const result = await loadAdminPage(
+      '?from=2026-07-15T08%3A30%3A00Z&to=2026-07-15T11%3A30%3A00.000Z&severity=error&subsystem=scheduled-delivery&eventCode=scheduled-daily-summary-worker-failed&cursor=current-page'
+    );
+
+    expect(listTechnicalLogs).toHaveBeenCalledWith({
+      pageSize: 25,
+      fromUtc: '2026-07-15T08:30:00.000Z',
+      toUtc: '2026-07-15T11:30:00.000Z',
+      severity: 'error',
+      subsystem: 'scheduled-delivery',
+      eventCode: 'scheduled-daily-summary-worker-failed',
+      cursor: 'current-page'
+    });
+    expect(result).toMatchObject({
+      technicalLogs: { nextCursor: 'next-page' },
+      technicalLogFilters: {
+        from: '2026-07-15T08:30:00.000Z',
+        to: '2026-07-15T11:30:00.000Z',
+        severity: 'error',
+        subsystem: 'scheduled-delivery',
+        eventCode: 'scheduled-daily-summary-worker-failed'
+      }
+    });
+  });
+
+  test('rejects invalid Technical Log filters without querying operational records', async () => {
+    getSession.mockResolvedValue({
+      user: { id: 'admin-1', email: 'admin@example.com', emailVerified: true }
+    });
+
+    await expect(loadAdminPage('?severity=debug')).rejects.toSatisfy((thrown) =>
+      isHttpError(thrown, 400)
+    );
+    expect(listTechnicalLogs).not.toHaveBeenCalled();
   });
 
   test('allows only an authorized Administrator to mutate the SQLite kill switch', async () => {

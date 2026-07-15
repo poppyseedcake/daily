@@ -11,6 +11,34 @@ import {
 } from './technicalEventRecorder';
 
 describe('Technical Event Recorder', () => {
+  test('records an Admin Panel Maps control change with only previous and new state', async () => {
+    const persist = vi.fn().mockResolvedValue(undefined);
+    const lines: string[] = [];
+    const recorder = createTechnicalEventRecorder({
+      store: { persist },
+      writeLine: (line) => lines.push(line)
+    });
+
+    const result = await recorder.record({
+      eventCode: 'admin-google-maps-kill-switch-changed',
+      occurredAt: '2026-07-15T12:00:00.000Z',
+      previousEnabled: false,
+      newEnabled: true
+    });
+
+    expect(result).toEqual({
+      eventCode: 'admin-google-maps-kill-switch-changed',
+      severity: 'info',
+      subsystem: 'admin-controls',
+      occurredAt: '2026-07-15T12:00:00.000Z',
+      outcome: 'succeeded',
+      metadata: { previousEnabled: false, newEnabled: true }
+    });
+    expect(technicalEventSchema.parse(JSON.parse(lines[0]))).toEqual(result);
+    expect(persist).toHaveBeenCalledWith(result);
+    expect(lines[0]).not.toMatch(/admin@example\.com|request|client|user-agent/i);
+  });
+
   test('emits and persists one schema-valid worker completion event', async () => {
     const sqlite = new Database(':memory:');
     sqlite.exec(readFileSync('drizzle/0013_add_technical_log_records.sql', 'utf8'));
