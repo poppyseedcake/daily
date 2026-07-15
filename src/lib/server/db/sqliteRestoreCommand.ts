@@ -1,0 +1,170 @@
+import Database from 'better-sqlite3';
+import { createHash, randomUUID as createRandomUUID } from 'node:crypto';
+import {
+  chmodSync,
+  chownSync,
+  copyFileSync,
+  existsSync,
+  lstatSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  statSync
+} from 'node:fs';
+import { join } from 'node:path';
+
+type RestoreFailureClassification =
+  | 'destination-online'
+  | 'invalid-destination'
+  | 'invalid-recovery-point'
+  | 'installation-failed'
+  | 'migration-failed'
+  | 'service-failed'
+  | 'readiness-failed';
+
+type ExecuteSqliteRestoreCommandOptions = {
+  recoveryPointDirectory: string;
+  activeDatabasePath: string;
+  isDestinationOffline: () => Promise<boolean>;
+  now?: () => Date;
+  randomUUID?: () => string;
+  migrate: () => Promise<void>;
+  startService: () => Promise<void>;
+  verifyServiceActive: () => Promise<void>;
+  verifyReadiness: () => Promise<void>;
+};
+
+const checksumFile = (path: string) =>
+  createHash('sha256').update(readFileSync(path)).digest('hex');
+
+const isValidSqliteArtifact = (path: string, expectedChecksum: string) => {
+  if (!statSync(path).isFile() || checksumFile(path) !== expectedChecksum) return false;
+  const database = new Database(path, { readonly: true, fileMustExist: true });
+  try {
+    return database.pragma('integrity_check', { simple: true }) === 'ok';
+  } finally {
+    database.close();
+  }
+};
+
+const isValidRecoveryPoint = (
+  recoveryPointDirectory: string
+): { backupPath: string; checksum: string } | undefined => {
+  try {
+    const metadata = JSON.parse(
+      readFileSync(join(recoveryPointDirectory, 'metadata.json'), 'utf8')
+    ) as Record<string, unknown>;
+    if (
+      metadata.formatVersion !== 1 ||
+      metadata.databaseFile !== 'backup.sqlite3' ||
+      metadata.checksumAlgorithm !== 'sha256' ||
+      typeof metadata.checksum !== 'string' ||
+      !/^[a-f0-9]{64}$/.test(metadata.checksum) ||
+      metadata.integrityCheck !== 'ok'
+    ) {
+      return undefined;
+    }
+    const backupPath = join(recoveryPointDirectory, 'backup.sqlite3');
+    if (!isValidSqliteArtifact(backupPath, metadata.checksum)) return undefined;
+    return { backupPath, checksum: metadata.checksum };
+  } catch {
+    return undefined;
+  }
+};
+
+export const executeSqliteRestoreCommand = async ({
+  recoveryPointDirectory,
+  activeDatabasePath,
+  isDestinationOffline,
+  now = () => new Date(),
+  randomUUID = createRandomUUID,
+  migrate,
+  startService,
+  verifyServiceActive,
+  verifyReadiness
+}: ExecuteSqliteRestoreCommandOptions): Promise<
+  | { exitCode: 0; replacedDatabasePath: string }
+  | {
+      exitCode: 1;
+      failureClassification: RestoreFailureClassification;
+      replacedDatabasePath?: string;
+    }
+> => {
+  let destinationOffline: boolean;
+  try {
+    destinationOffline = await isDestinationOffline();
+  } catch {
+    return { exitCode: 1, failureClassification: 'invalid-destination' };
+  }
+  if (!destinationOffline) {
+    return { exitCode: 1, failureClassification: 'destination-online' };
+  }
+  let activeDatabaseStat;
+  try {
+    activeDatabaseStat = lstatSync(activeDatabasePath);
+    if (
+      !activeDatabaseStat.isFile() ||
+      existsSync(`${activeDatabasePath}-wal`) ||
+      existsSync(`${activeDatabasePath}-shm`)
+    ) {
+      return { exitCode: 1, failureClassification: 'invalid-destination' };
+    }
+  } catch {
+    return { exitCode: 1, failureClassification: 'invalid-destination' };
+  }
+  const recoveryPoint = isValidRecoveryPoint(recoveryPointDirectory);
+  if (!recoveryPoint) {
+    return { exitCode: 1, failureClassification: 'invalid-recovery-point' };
+  }
+
+  const recoveryToken = `${now().toISOString().replaceAll('-', '').replaceAll(':', '').replace('.', '')}-${randomUUID()}`;
+  const replacedDatabasePath = `${activeDatabasePath}.recovery-${recoveryToken}`;
+  const installationPath = `${activeDatabasePath}.restore-${recoveryToken}.tmp`;
+  try {
+    copyFileSync(recoveryPoint.backupPath, installationPath);
+    if (!isValidSqliteArtifact(installationPath, recoveryPoint.checksum)) {
+      throw new Error('Installation copy failed verification');
+    }
+    chmodSync(installationPath, activeDatabaseStat.mode & 0o777);
+    chownSync(installationPath, activeDatabaseStat.uid, activeDatabaseStat.gid);
+    let stillOffline: boolean;
+    try {
+      stillOffline = await isDestinationOffline();
+    } catch {
+      rmSync(installationPath, { force: true });
+      return { exitCode: 1, failureClassification: 'invalid-destination' };
+    }
+    if (!stillOffline) {
+      rmSync(installationPath, { force: true });
+      return { exitCode: 1, failureClassification: 'destination-online' };
+    }
+    renameSync(activeDatabasePath, replacedDatabasePath);
+    try {
+      renameSync(installationPath, activeDatabasePath);
+    } catch (error) {
+      renameSync(replacedDatabasePath, activeDatabasePath);
+      throw error;
+    }
+  } catch {
+    rmSync(installationPath, { force: true });
+    return { exitCode: 1, failureClassification: 'installation-failed' };
+  }
+
+  try {
+    await migrate();
+  } catch {
+    return { exitCode: 1, failureClassification: 'migration-failed', replacedDatabasePath };
+  }
+  try {
+    await startService();
+    await verifyServiceActive();
+  } catch {
+    return { exitCode: 1, failureClassification: 'service-failed', replacedDatabasePath };
+  }
+  try {
+    await verifyReadiness();
+  } catch {
+    return { exitCode: 1, failureClassification: 'readiness-failed', replacedDatabasePath };
+  }
+  return { exitCode: 0, replacedDatabasePath };
+};
