@@ -32,6 +32,11 @@ const seedRecoveryPoint = (
 ) => {
   const directory = join(backupDirectory, name);
   mkdirSync(directory, { recursive: true });
+  const backupPath = join(directory, 'backup.sqlite3');
+  const backup = new Database(backupPath);
+  backup.exec('CREATE TABLE verified_recovery_point (id INTEGER PRIMARY KEY)');
+  backup.close();
+  const backupContents = readFileSync(backupPath);
   writeFileSync(
     join(directory, 'metadata.json'),
     JSON.stringify({
@@ -41,12 +46,11 @@ const seedRecoveryPoint = (
       createdAt,
       databaseFile: 'backup.sqlite3',
       checksumAlgorithm: 'sha256',
-      checksum: '0'.repeat(64),
-      sizeBytes: 1,
+      checksum: createHash('sha256').update(backupContents).digest('hex'),
+      sizeBytes: backupContents.byteLength,
       integrityCheck: 'ok'
     })
   );
-  writeFileSync(join(directory, 'backup.sqlite3'), 'verified-placeholder');
 };
 
 afterEach(() => {
@@ -245,7 +249,7 @@ describe('SQLite backup operator command', () => {
     }
   });
 
-  test('ignores finalized-looking directories whose metadata does not match their name', async () => {
+  test('ignores finalized-looking directories that are mismatched or no longer verified', async () => {
     const root = temporaryDirectory();
     const sourcePath = join(root, 'daily.db');
     const backupDirectory = join(root, 'backups');
@@ -265,6 +269,15 @@ describe('SQLite backup operator command', () => {
       'pre-migration',
       '2026-06-01T00:00:00.000Z'
     );
+    const corruptName =
+      'daily-20260502T000000000Z-123e4567-e89b-42d3-a456-426614174083';
+    seedRecoveryPoint(
+      backupDirectory,
+      corruptName,
+      'daily',
+      '2026-05-02T00:00:00.000Z'
+    );
+    writeFileSync(join(backupDirectory, corruptName, 'backup.sqlite3'), 'corrupt');
     const removeRecoveryPoint = vi.fn();
 
     try {
@@ -280,6 +293,9 @@ describe('SQLite backup operator command', () => {
       expect(result.exitCode).toBe(0);
       expect(removeRecoveryPoint).not.toHaveBeenCalledWith(
         join(backupDirectory, mismatchedName)
+      );
+      expect(removeRecoveryPoint).not.toHaveBeenCalledWith(
+        join(backupDirectory, corruptName)
       );
     } finally {
       source.close();

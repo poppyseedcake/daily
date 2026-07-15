@@ -48,11 +48,20 @@ type RecoveryPoint = {
 };
 
 const recoveryPointNamePattern =
-  /^(daily|pre-migration)-(\d{8}T\d{9}Z)-([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/i;
+  /^(?<purpose>daily|pre-migration)-(?<createdAtToken>\d{8}T\d{9}Z)-(?<backupId>[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/i;
 
-const readRecoveryPoint = (backupDirectory: string, name: string): RecoveryPoint | null => {
-  const nameParts = recoveryPointNamePattern.exec(name);
-  if (!nameParts) return null;
+const checksumFile = async (path: string) => {
+  const checksum = createHash('sha256');
+  for await (const chunk of createReadStream(path)) checksum.update(chunk);
+  return checksum.digest('hex');
+};
+
+const readRecoveryPoint = async (
+  backupDirectory: string,
+  name: string
+): Promise<RecoveryPoint | null> => {
+  const identity = recoveryPointNamePattern.exec(name)?.groups;
+  if (!identity) return null;
 
   try {
     const metadata = JSON.parse(
@@ -61,20 +70,36 @@ const readRecoveryPoint = (backupDirectory: string, name: string): RecoveryPoint
     if (
       metadata.formatVersion !== 1 ||
       (metadata.purpose !== 'daily' && metadata.purpose !== 'pre-migration') ||
-      metadata.purpose !== nameParts[1] ||
+      metadata.purpose !== identity.purpose ||
       typeof metadata.createdAt !== 'string' ||
       Number.isNaN(Date.parse(metadata.createdAt)) ||
       metadata.createdAt.replaceAll('-', '').replaceAll(':', '').replace('.', '') !==
-        nameParts[2] ||
-      metadata.backupId !== nameParts[3] ||
+        identity.createdAtToken ||
+      metadata.backupId !== identity.backupId ||
       metadata.integrityCheck !== 'ok' ||
       metadata.checksumAlgorithm !== 'sha256' ||
       typeof metadata.checksum !== 'string' ||
       !/^[a-f0-9]{64}$/.test(metadata.checksum) ||
       metadata.databaseFile !== 'backup.sqlite3' ||
-      !statSync(join(backupDirectory, name, 'backup.sqlite3')).isFile()
+      typeof metadata.sizeBytes !== 'number'
     ) {
       return null;
+    }
+
+    const backupPath = join(backupDirectory, name, 'backup.sqlite3');
+    const backupStat = statSync(backupPath);
+    if (
+      !backupStat.isFile() ||
+      backupStat.size !== metadata.sizeBytes ||
+      (await checksumFile(backupPath)) !== metadata.checksum
+    ) {
+      return null;
+    }
+    const backup = new Database(backupPath, { readonly: true, fileMustExist: true });
+    try {
+      if (backup.pragma('integrity_check', { simple: true }) !== 'ok') return null;
+    } finally {
+      backup.close();
     }
     return { name, purpose: metadata.purpose, createdAt: metadata.createdAt };
   } catch {
@@ -88,7 +113,7 @@ const validateRetentionDays = (retentionDays: number) => {
   }
 };
 
-const applyRetention = (
+const applyRetention = async (
   backupDirectory: string,
   now: Date,
   retentionDays: number,
@@ -96,9 +121,11 @@ const applyRetention = (
 ) => {
   let recoveryPoints: RecoveryPoint[];
   try {
-    recoveryPoints = readdirSync(backupDirectory)
-      .map((name) => readRecoveryPoint(backupDirectory, name))
-      .filter((recoveryPoint): recoveryPoint is RecoveryPoint => recoveryPoint !== null);
+    recoveryPoints = [];
+    for (const name of readdirSync(backupDirectory)) {
+      const recoveryPoint = await readRecoveryPoint(backupDirectory, name);
+      if (recoveryPoint) recoveryPoints.push(recoveryPoint);
+    }
   } catch {
     return false;
   }
@@ -125,12 +152,6 @@ const applyRetention = (
     }
   }
   return succeeded;
-};
-
-const checksumFile = async (path: string) => {
-  const checksum = createHash('sha256');
-  for await (const chunk of createReadStream(path)) checksum.update(chunk);
-  return checksum.digest('hex');
 };
 
 const backupQueues = new Map<string, Promise<void>>();
@@ -264,7 +285,7 @@ export const executeSqliteBackupCommand = async ({
       chmodSync(temporaryDirectory, 0o750);
       failureClassification = 'finalization-failed';
       renameSync(temporaryDirectory, recoveryPointDirectory);
-      const retentionSucceeded = applyRetention(
+      const retentionSucceeded = await applyRetention(
         backupDirectory,
         createdAt,
         retentionDays,
