@@ -99,6 +99,13 @@
       "when": 1784102400000,
       "tag": "0013_add_technical_log_records",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "6",
+      "when": 1784106000000,
+      "tag": "0014_add_scheduled_worker_runs",
+      "breakpoints": true
     }
   ]
 }

@@ -1,5 +1,9 @@
 import { z } from 'zod';
 import type { TechnicalLogStore } from './db/technicalLogStore';
+import {
+  scheduledDailySummaryWorkerFailureClassifications,
+  type ScheduledDailySummaryWorkerFailureClassification
+} from './scheduledDailySummaryWorker';
 
 declare const technicalCorrelationIdBrand: unique symbol;
 export type TechnicalCorrelationId = string & {
@@ -36,11 +40,7 @@ const workerFailedEventSchema = workerEventBaseSchema.extend({
   eventCode: z.literal('scheduled-daily-summary-worker-failed'),
   severity: z.literal('error'),
   outcome: z.literal('failed'),
-  failureClassification: z.enum([
-    'due-work-query-failed',
-    'worker-initialization-failed',
-    'unexpected'
-  ])
+  failureClassification: z.enum(scheduledDailySummaryWorkerFailureClassifications)
 });
 
 export const technicalEventSchema = z.discriminatedUnion('eventCode', [
@@ -69,7 +69,7 @@ type TechnicalEventInput = {
     | { eventCode: 'scheduled-daily-summary-worker-completed' }
     | {
         eventCode: 'scheduled-daily-summary-worker-failed';
-        classification?: 'due-work-query-failed' | 'worker-initialization-failed';
+        classification?: ScheduledDailySummaryWorkerFailureClassification;
         failure: unknown;
       }
   );

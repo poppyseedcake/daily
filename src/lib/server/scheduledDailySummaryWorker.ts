@@ -15,6 +15,16 @@ export type ScheduledDailySummaryWorkerCounts = {
   isolatedError: number;
 };
 
+export const scheduledDailySummaryWorkerFailureClassifications = [
+  'due-work-query-failed',
+  'worker-initialization-failed',
+  'worker-run-persistence-failed',
+  'unexpected'
+] as const;
+
+export type ScheduledDailySummaryWorkerFailureClassification =
+  (typeof scheduledDailySummaryWorkerFailureClassifications)[number];
+
 export type ScheduledDailySummaryWorkerEvent =
   | {
       event: 'scheduled-daily-summary-occurrence-completed';
@@ -36,7 +46,7 @@ export type ScheduledDailySummaryWorkerEvent =
       event: 'scheduled-daily-summary-worker-failed';
       counts: ScheduledDailySummaryWorkerCounts;
       durationMilliseconds: number;
-      classification: 'due-work-query-failed' | 'worker-initialization-failed';
+      classification: ScheduledDailySummaryWorkerFailureClassification;
     };
 
 type WorkerOutcome = {

@@ -211,6 +211,47 @@ export const technicalLogRecords = sqliteTable(
   })
 );
 
+export const scheduledWorkerRuns = sqliteTable(
+  'scheduled_worker_runs',
+  {
+    id: text('id').primaryKey(),
+    startedAt: text('started_at').notNull(),
+    completedAt: text('completed_at').notNull(),
+    durationMilliseconds: integer('duration_milliseconds').notNull(),
+    outcome: text('outcome', {
+      enum: ['succeeded', 'completed-with-isolated-errors', 'failed']
+    }).notNull(),
+    failureClassification: text('failure_classification'),
+    dueCount: integer('due_count').notNull(),
+    sentCount: integer('sent_count').notNull(),
+    skippedCount: integer('skipped_count').notNull(),
+    retryingCount: integer('retrying_count').notNull(),
+    failedCount: integer('failed_count').notNull(),
+    isolatedErrorCount: integer('isolated_error_count').notNull()
+  },
+  (table) => [
+    index('scheduled_worker_runs_completed_at_idx').on(table.completedAt),
+    check(
+      'scheduled_worker_runs_outcome_check',
+      sql`${table.outcome} IN ('succeeded', 'completed-with-isolated-errors', 'failed')`
+    ),
+    check(
+      'scheduled_worker_runs_failure_classification_check',
+      sql`${table.failureClassification} IS NULL OR ${table.failureClassification} IN ('due-work-query-failed', 'worker-initialization-failed', 'worker-run-persistence-failed', 'unexpected')`
+    ),
+    check('scheduled_worker_runs_duration_check', sql`${table.durationMilliseconds} >= 0`),
+    check('scheduled_worker_runs_due_count_check', sql`${table.dueCount} >= 0`),
+    check('scheduled_worker_runs_sent_count_check', sql`${table.sentCount} >= 0`),
+    check('scheduled_worker_runs_skipped_count_check', sql`${table.skippedCount} >= 0`),
+    check('scheduled_worker_runs_retrying_count_check', sql`${table.retryingCount} >= 0`),
+    check('scheduled_worker_runs_failed_count_check', sql`${table.failedCount} >= 0`),
+    check(
+      'scheduled_worker_runs_isolated_error_count_check',
+      sql`${table.isolatedErrorCount} >= 0`
+    )
+  ]
+);
+
 export const googleMapsUsage = sqliteTable(
   'google_maps_usage',
   {
