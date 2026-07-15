@@ -92,6 +92,13 @@
       "when": 1784023200002,
       "tag": "0012_add_scheduled_delivery_claims",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "6",
+      "when": 1784102400000,
+      "tag": "0013_add_technical_log_records",
+      "breakpoints": true
     }
   ]
 }

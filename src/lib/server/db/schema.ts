@@ -192,6 +192,25 @@ export const deliveryRecords = sqliteTable(
   })
 );
 
+export const technicalLogRecords = sqliteTable(
+  'technical_log_records',
+  {
+    id: text('id').primaryKey(),
+    occurredAt: text('occurred_at').notNull(),
+    eventCode: text('event_code').notNull(),
+    severity: text('severity', { enum: ['info', 'warning', 'error'] }).notNull(),
+    subsystem: text('subsystem').notNull(),
+    outcome: text('outcome').notNull(),
+    failureClassification: text('failure_classification'),
+    correlationId: text('correlation_id'),
+    durationMilliseconds: integer('duration_milliseconds'),
+    metadata: text('metadata').notNull().default('{}')
+  },
+  (table) => ({
+    occurredAtIdx: index('technical_log_records_occurred_at_idx').on(table.occurredAt)
+  })
+);
+
 export const googleMapsUsage = sqliteTable(
   'google_maps_usage',
   {

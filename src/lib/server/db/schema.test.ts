@@ -16,6 +16,7 @@ import {
   googleMapsPersonUsage,
   selectedCalendars,
   summaryConfigurations,
+  technicalLogRecords,
   todoCategories,
   todoTasks,
   users,
@@ -27,6 +28,7 @@ describe('Daily database schema', () => {
     expect([
       getTableName(users),
       getTableName(summaryConfigurations),
+      getTableName(technicalLogRecords),
       getTableName(todoCategories),
       getTableName(todoTasks),
       getTableName(weatherLocations),
@@ -46,6 +48,7 @@ describe('Daily database schema', () => {
     ]).toEqual([
       'users',
       'summary_configurations',
+      'technical_log_records',
       'todo_categories',
       'todo_tasks',
       'weather_locations',
@@ -63,6 +66,24 @@ describe('Daily database schema', () => {
       'auth_account',
       'auth_verification'
     ]);
+  });
+
+  test('ships bounded privacy-safe Technical Log Records in an upgrade migration', () => {
+    const migration = readFileSync('drizzle/0013_add_technical_log_records.sql', 'utf8');
+    const journal = JSON.parse(readFileSync('drizzle/meta/_journal.json', 'utf8')) as {
+      entries: Array<{ idx: number; tag: string }>;
+    };
+
+    expect(migration).toContain('CREATE TABLE `technical_log_records`');
+    expect(migration).toContain('`event_code` text NOT NULL');
+    expect(migration).toContain('`failure_classification` text');
+    expect(migration).toContain('`correlation_id` text');
+    expect(migration).toContain('`duration_milliseconds` integer');
+    expect(migration).not.toMatch(/user_id|email|message|stack|cause|payload|token|session|address/i);
+    expect(journal.entries.find(({ idx }) => idx === 13)).toMatchObject({
+      idx: 13,
+      tag: '0013_add_technical_log_records'
+    });
   });
 
   test('ships an initial SQLite migration for the core schema', () => {
