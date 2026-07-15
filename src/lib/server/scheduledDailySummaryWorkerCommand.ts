@@ -2,9 +2,14 @@ import {
   emptyScheduledDailySummaryWorkerCounts,
   runScheduledDailySummaryWorker,
   type ScheduledDailySummaryWorkerDependencies,
-  type ScheduledDailySummaryWorkerEvent
+  type ScheduledDailySummaryWorkerEvent,
+  type ScheduledDailySummaryWorkerCounts
 } from './scheduledDailySummaryWorker';
 import { createTechnicalEventRecorder } from './technicalEventRecorder';
+import type {
+  ScheduledWorkerRun,
+  ScheduledWorkerRunStore
+} from './db/scheduledWorkerRunStore';
 
 type WorkerDependencies = Pick<
   ScheduledDailySummaryWorkerDependencies,
@@ -14,9 +19,12 @@ type WorkerDependencies = Pick<
 type ScheduledDailySummaryWorkerCommandOptions = {
   loadDependencies?: () => Promise<WorkerDependencies>;
   loadTechnicalEventRecorder?: () => Promise<ReturnType<typeof createTechnicalEventRecorder>>;
+  loadScheduledWorkerRunStore?: () => Promise<ScheduledWorkerRunStore>;
   emit?: (event: ScheduledDailySummaryWorkerEvent) => void;
   eventNow?: () => Date;
+  invocationMonotonicNow?: () => number;
   recordTechnicalEvent?: ReturnType<typeof createTechnicalEventRecorder>['record'];
+  persistScheduledWorkerRun?: ScheduledWorkerRunStore['persist'];
   workerOptions?: Pick<
     ScheduledDailySummaryWorkerDependencies,
     'batchSize' | 'now' | 'monotonicNow'
@@ -50,6 +58,15 @@ const loadProductionTechnicalEventRecorder = async () => {
   ]);
 
   return createTechnicalEventRecorder({ store: createTechnicalLogStore(db) });
+};
+
+const loadProductionScheduledWorkerRunStore = async () => {
+  const [{ db }, { createScheduledWorkerRunStore }] = await Promise.all([
+    import('$lib/server/db'),
+    import('$lib/server/db/scheduledWorkerRunStore')
+  ]);
+
+  return createScheduledWorkerRunStore(db);
 };
 
 const resolveTechnicalEventRecord = async (
@@ -90,68 +107,155 @@ const recordWorkerTerminalEvent = async (
   });
 };
 
+const scheduledWorkerRunFromTerminalEvent = (
+  event: WorkerTerminalEvent,
+  startedAt: string,
+  completedAt: string
+): ScheduledWorkerRun => ({
+  startedAt,
+  completedAt,
+  durationMilliseconds: event.durationMilliseconds,
+  outcome:
+    event.event === 'scheduled-daily-summary-worker-failed'
+      ? 'failed'
+      : event.counts.isolatedError > 0
+        ? 'completed-with-isolated-errors'
+        : 'succeeded',
+  failureClassification:
+    event.event === 'scheduled-daily-summary-worker-failed' ? event.classification : null,
+  counts: event.counts
+});
+
+const persistWorkerRun = async (
+  run: ScheduledWorkerRun,
+  persist: ScheduledWorkerRunStore['persist'] | undefined,
+  loadStore: () => Promise<ScheduledWorkerRunStore>
+) => {
+  await (persist ?? (await loadStore()).persist)(run);
+};
+
+const observeOccurrenceEvent = (
+  counts: ScheduledDailySummaryWorkerCounts,
+  event: ScheduledDailySummaryWorkerEvent
+) => {
+  if (event.event === 'scheduled-daily-summary-occurrence-isolated-error') {
+    counts.due += 1;
+    counts.isolatedError += 1;
+    return;
+  }
+  if (event.event !== 'scheduled-daily-summary-occurrence-completed') return;
+
+  counts.due += 1;
+  counts[event.outcome] += 1;
+};
+
 export const executeScheduledDailySummaryWorkerCommand = async ({
   loadDependencies = loadProductionDependencies,
   loadTechnicalEventRecorder = loadProductionTechnicalEventRecorder,
+  loadScheduledWorkerRunStore = loadProductionScheduledWorkerRunStore,
   emit,
   eventNow = () => new Date(),
+  invocationMonotonicNow = () => performance.now(),
   recordTechnicalEvent,
+  persistScheduledWorkerRun,
   workerOptions
 }: ScheduledDailySummaryWorkerCommandOptions = {}) => {
-  let dependencies: WorkerDependencies;
+  const startedAt = eventNow().toISOString();
+  const invocationStartedAt = invocationMonotonicNow();
+  const observedCounts = emptyScheduledDailySummaryWorkerCounts();
 
-  try {
-    dependencies = await loadDependencies();
-  } catch (failure) {
-    const counts = emptyScheduledDailySummaryWorkerCounts();
-    const terminalEvent = {
-      event: 'scheduled-daily-summary-worker-failed',
-      classification: 'worker-initialization-failed',
-      counts,
-      durationMilliseconds: 0
-    } satisfies WorkerTerminalEvent;
-    emit?.(terminalEvent);
+  const finalize = async (
+    terminalEvent: WorkerTerminalEvent,
+    result: { exitCode: 0 | 1; counts: ScheduledDailySummaryWorkerCounts }
+  ) => {
+    const completedAt = eventNow().toISOString();
+    let finalEvent = terminalEvent;
+    let finalResult = result;
+
+    try {
+      await persistWorkerRun(
+        scheduledWorkerRunFromTerminalEvent(terminalEvent, startedAt, completedAt),
+        persistScheduledWorkerRun,
+        loadScheduledWorkerRunStore
+      );
+    } catch {
+      if (result.exitCode === 0) {
+        finalEvent = {
+          event: 'scheduled-daily-summary-worker-failed',
+          classification: 'worker-run-persistence-failed',
+          counts: result.counts,
+          durationMilliseconds: terminalEvent.durationMilliseconds
+        };
+        finalResult = { exitCode: 1, counts: result.counts };
+      }
+    }
+
+    emit?.(finalEvent);
     if (!emit || recordTechnicalEvent) {
       const record = await resolveTechnicalEventRecord(
         recordTechnicalEvent,
         loadTechnicalEventRecorder
       );
-      await record({
-        eventCode: terminalEvent.event,
-        occurredAt: eventNow().toISOString(),
-        durationMilliseconds: terminalEvent.durationMilliseconds,
-        counts,
-        classification: terminalEvent.classification,
-        failure
-      });
+      await recordWorkerTerminalEvent(finalEvent, completedAt, record);
     }
-    return { exitCode: 1 as const, counts };
+
+    return finalResult;
+  };
+
+  let dependencies: WorkerDependencies;
+
+  try {
+    dependencies = await loadDependencies();
+  } catch {
+    const counts = emptyScheduledDailySummaryWorkerCounts();
+    const terminalEvent = {
+      event: 'scheduled-daily-summary-worker-failed',
+      classification: 'worker-initialization-failed',
+      counts,
+      durationMilliseconds: invocationMonotonicNow() - invocationStartedAt
+    } satisfies WorkerTerminalEvent;
+    return finalize(terminalEvent, { exitCode: 1, counts });
   }
 
   let terminalEvent: WorkerTerminalEvent | null = null;
-  const result = await runScheduledDailySummaryWorker({
-    ...dependencies,
-    ...workerOptions,
-    emit: (event) => {
-      if (
-        event.event === 'scheduled-daily-summary-worker-completed' ||
-        event.event === 'scheduled-daily-summary-worker-failed'
-      ) {
-        terminalEvent = event;
-      }
-      emit?.(event);
-    }
-  });
+  let completedTerminalEvent: WorkerTerminalEvent;
+  let result: Awaited<ReturnType<typeof runScheduledDailySummaryWorker>>;
 
-  if ((!emit || recordTechnicalEvent) && terminalEvent) {
-    const record = await resolveTechnicalEventRecord(
-      recordTechnicalEvent,
-      loadTechnicalEventRecorder
-    );
-    await recordWorkerTerminalEvent(terminalEvent, eventNow().toISOString(), record);
+  try {
+    result = await runScheduledDailySummaryWorker({
+      ...dependencies,
+      ...workerOptions,
+      emit: (event) => {
+        if (
+          event.event === 'scheduled-daily-summary-worker-completed' ||
+          event.event === 'scheduled-daily-summary-worker-failed'
+        ) {
+          terminalEvent = event;
+          return;
+        }
+        observeOccurrenceEvent(observedCounts, event);
+        emit?.(event);
+      }
+    });
+    const reportedTerminalEvent = terminalEvent as WorkerTerminalEvent | null;
+    if (!reportedTerminalEvent) throw new Error('Scheduled worker did not report a terminal event.');
+    completedTerminalEvent = {
+      ...reportedTerminalEvent,
+      durationMilliseconds: invocationMonotonicNow() - invocationStartedAt
+    };
+  } catch {
+    const failedTerminalEvent = terminalEvent as WorkerTerminalEvent | null;
+    const counts = failedTerminalEvent?.counts ?? observedCounts;
+    terminalEvent = {
+      event: 'scheduled-daily-summary-worker-failed',
+      classification: 'unexpected',
+      counts,
+      durationMilliseconds: invocationMonotonicNow() - invocationStartedAt
+    };
+    return finalize(terminalEvent, { exitCode: 1, counts });
   }
 
-  return result;
+  return finalize(completedTerminalEvent, result);
 };
 
 export const runScheduledDailySummaryWorkerCommand = async ({

@@ -2,36 +2,21 @@ import { asc, desc, inArray, lt } from 'drizzle-orm';
 import type { db } from '$lib/server/db';
 import { technicalEventSchema, type TechnicalEvent } from '../technicalEventRecorder';
 import { technicalLogRecords } from './schema';
+import {
+  defaultOperationalRetentionDays,
+  operationalRetentionCutoff,
+  operationalRetentionDaysFromEnvironment,
+  positiveBoundedInteger
+} from './operationalRetention';
 
 type TechnicalLogDatabase = typeof db;
 
-export const defaultTechnicalLogRetentionDays = 30;
+export const defaultTechnicalLogRetentionDays = defaultOperationalRetentionDays;
 const defaultCleanupBatchSize = 100;
 const maximumCleanupBatchSize = 1_000;
 
-const positiveInteger = (value: number, name: string, maximum?: number) => {
-  if (!Number.isSafeInteger(value) || value < 1 || (maximum !== undefined && value > maximum)) {
-    throw new Error(`${name} must be a positive bounded integer.`);
-  }
-
-  return value;
-};
-
-export const technicalLogRetentionDaysFromEnvironment = (
-  configuredValue = process.env.TECHNICAL_LOG_RETENTION_DAYS
-) => {
-  if (configuredValue === undefined || configuredValue === '') {
-    return defaultTechnicalLogRetentionDays;
-  }
-
-  return positiveInteger(Number(configuredValue), 'TECHNICAL_LOG_RETENTION_DAYS');
-};
-
-const retentionCutoff = (now: Date, retentionDays: number) => {
-  const cutoff = new Date(now);
-  cutoff.setUTCDate(cutoff.getUTCDate() - retentionDays);
-  return cutoff.toISOString();
-};
+export const technicalLogRetentionDaysFromEnvironment =
+  operationalRetentionDaysFromEnvironment;
 
 const storedRecord = (row: typeof technicalLogRecords.$inferSelect): TechnicalEvent & { id: string } => ({
   id: row.id,
@@ -64,8 +49,8 @@ export const createTechnicalLogStore = (
     now?: () => Date;
   } = {}
 ) => {
-  const boundedRetentionDays = positiveInteger(retentionDays, 'retentionDays');
-  const boundedCleanupBatchSize = positiveInteger(
+  const boundedRetentionDays = positiveBoundedInteger(retentionDays, 'retentionDays');
+  const boundedCleanupBatchSize = positiveBoundedInteger(
     cleanupBatchSize,
     'cleanupBatchSize',
     maximumCleanupBatchSize
@@ -75,7 +60,9 @@ export const createTechnicalLogStore = (
     const expiredRecordIds = database
       .select({ id: technicalLogRecords.id })
       .from(technicalLogRecords)
-      .where(lt(technicalLogRecords.occurredAt, retentionCutoff(now(), boundedRetentionDays)))
+      .where(
+        lt(technicalLogRecords.occurredAt, operationalRetentionCutoff(now(), boundedRetentionDays))
+      )
       .orderBy(asc(technicalLogRecords.occurredAt))
       .limit(boundedCleanupBatchSize);
 

@@ -15,6 +15,7 @@ import {
   googleMapsUsage,
   googleMapsPersonUsage,
   selectedCalendars,
+  scheduledWorkerRuns,
   summaryConfigurations,
   technicalLogRecords,
   todoCategories,
@@ -29,6 +30,7 @@ describe('Daily database schema', () => {
       getTableName(users),
       getTableName(summaryConfigurations),
       getTableName(technicalLogRecords),
+      getTableName(scheduledWorkerRuns),
       getTableName(todoCategories),
       getTableName(todoTasks),
       getTableName(weatherLocations),
@@ -49,6 +51,7 @@ describe('Daily database schema', () => {
       'users',
       'summary_configurations',
       'technical_log_records',
+      'scheduled_worker_runs',
       'todo_categories',
       'todo_tasks',
       'weather_locations',
@@ -83,6 +86,41 @@ describe('Daily database schema', () => {
     expect(journal.entries.find(({ idx }) => idx === 13)).toMatchObject({
       idx: 13,
       tag: '0013_add_technical_log_records'
+    });
+  });
+
+  test('ships privacy-safe Scheduled Worker Runs in an upgrade migration', () => {
+    const migration = readFileSync('drizzle/0014_add_scheduled_worker_runs.sql', 'utf8');
+    const journal = JSON.parse(readFileSync('drizzle/meta/_journal.json', 'utf8')) as {
+      entries: Array<{ idx: number; tag: string }>;
+    };
+
+    expect(Object.keys(getTableColumns(scheduledWorkerRuns))).toEqual([
+      'id',
+      'startedAt',
+      'completedAt',
+      'durationMilliseconds',
+      'outcome',
+      'failureClassification',
+      'dueCount',
+      'sentCount',
+      'skippedCount',
+      'retryingCount',
+      'failedCount',
+      'isolatedErrorCount'
+    ]);
+    expect(migration).toContain('CREATE TABLE `scheduled_worker_runs`');
+    expect(migration).toContain('`started_at` text NOT NULL');
+    expect(migration).toContain('`completed_at` text NOT NULL');
+    expect(migration).toContain('`duration_milliseconds` integer NOT NULL');
+    expect(migration).toContain('`failure_classification` text');
+    expect(migration).toContain('`isolated_error_count` integer NOT NULL');
+    expect(migration).not.toMatch(
+      /user_id|email|recipient|content|provider_payload|provider_message|token|session/i
+    );
+    expect(journal.entries.find(({ idx }) => idx === 14)).toMatchObject({
+      idx: 14,
+      tag: '0014_add_scheduled_worker_runs'
     });
   });
 
