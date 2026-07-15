@@ -229,6 +229,50 @@ describe('SQLite backup operator command', () => {
     }
   });
 
+  test('reports retention failure without discarding a verified new recovery point', async () => {
+    const root = temporaryDirectory();
+    const sourcePath = join(root, 'daily.db');
+    const backupDirectory = join(root, 'backups');
+    const source = new Database(sourcePath);
+    source.exec('CREATE TABLE settings (value TEXT NOT NULL)');
+    seedRecoveryPoint(
+      backupDirectory,
+      'daily-20260501T000000000Z-123e4567-e89b-42d3-a456-426614174070',
+      'daily',
+      '2026-05-01T00:00:00.000Z'
+    );
+    const recordTechnicalEvent = vi.fn().mockResolvedValue(undefined);
+
+    try {
+      const result = await executeSqliteBackupCommand({
+        purpose: 'daily',
+        sourceDatabasePath: sourcePath,
+        backupDirectory,
+        now: () => new Date('2026-07-15T00:00:00.000Z'),
+        randomUUID: () => '123e4567-e89b-42d3-a456-426614174071',
+        removeRecoveryPoint: () => {
+          throw new Error('/private/backup/path is read-only');
+        },
+        recordTechnicalEvent
+      });
+
+      expect(result).toEqual({
+        exitCode: 0,
+        recoveryPointName:
+          'daily-20260715T000000000Z-123e4567-e89b-42d3-a456-426614174071'
+      });
+      expect(recordTechnicalEvent.mock.calls.map(([event]) => event.eventCode)).toEqual([
+        'sqlite-backup-retention-failed',
+        'sqlite-backup-completed'
+      ]);
+      expect(JSON.stringify(recordTechnicalEvent.mock.calls)).not.toContain(
+        '/private/backup/path'
+      );
+    } finally {
+      source.close();
+    }
+  });
+
   test('serializes concurrent daily and pre-migration attempts without output collision', async () => {
     const root = temporaryDirectory();
     const sourcePath = join(root, 'daily.db');
@@ -325,21 +369,12 @@ describe('SQLite backup operator command', () => {
         backupDirectory,
         now: () => new Date('2026-07-15T01:00:00.000Z'),
         randomUUID: () => '123e4567-e89b-42d3-a456-426614174030',
-        onlineBackup: async (sourceDatabasePath, destinationPath) => {
-          const backupSource = new Database(sourceDatabasePath, { fileMustExist: true });
-          try {
-            await backupSource.backup(destinationPath, {
-              progress: () => {
-                if (committedDuringBackup < 3) {
-                  insertBatch(41 + committedDuringBackup, 5);
-                  committedDuringBackup += 1;
-                }
-                return 1;
-              }
-            });
-          } finally {
-            backupSource.close();
+        onlineBackupProgress: () => {
+          if (committedDuringBackup < 3) {
+            insertBatch(41 + committedDuringBackup, 5);
+            committedDuringBackup += 1;
           }
+          return 1;
         }
       });
 

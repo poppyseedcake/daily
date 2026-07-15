@@ -14,6 +14,8 @@ export const createTechnicalCorrelationId = (): TechnicalCorrelationId =>
   crypto.randomUUID() as TechnicalCorrelationId;
 
 export const technicalEventSeverities = ['info', 'warning', 'error'] as const;
+export const sqliteBackupPurposes = ['daily', 'pre-migration'] as const;
+export type SqliteBackupPurpose = (typeof sqliteBackupPurposes)[number];
 export const technicalEventSubsystems = [
   'scheduled-delivery',
   'admin-controls',
@@ -25,6 +27,7 @@ export const technicalEventCodes = [
   'admin-google-maps-kill-switch-changed',
   'sqlite-backup-completed',
   'sqlite-backup-failed',
+  'sqlite-backup-retention-failed',
   'sqlite-backup-command-rejected'
 ] as const;
 
@@ -79,7 +82,7 @@ const backupEventBaseSchema = z.object({
   occurredAt: z.iso.datetime(),
   durationMilliseconds: z.number().nonnegative().finite(),
   metadata: z.object({
-    purpose: z.enum(['daily', 'pre-migration']),
+    purpose: z.enum(sqliteBackupPurposes),
     recoveryPointId: z.uuid()
   })
 });
@@ -103,6 +106,13 @@ const sqliteBackupFailedEventSchema = backupEventBaseSchema.extend({
   ])
 });
 
+const sqliteBackupRetentionFailedEventSchema = backupEventBaseSchema.extend({
+  eventCode: z.literal('sqlite-backup-retention-failed'),
+  severity: z.literal('warning'),
+  outcome: z.literal('failed'),
+  failureClassification: z.literal('retention-failed')
+});
+
 const sqliteBackupCommandRejectedEventSchema = z.object({
   eventCode: z.literal('sqlite-backup-command-rejected'),
   severity: z.literal('error'),
@@ -121,6 +131,7 @@ export const technicalEventSchema = z.discriminatedUnion('eventCode', [
   adminGoogleMapsKillSwitchChangedEventSchema,
   sqliteBackupCompletedEventSchema,
   sqliteBackupFailedEventSchema,
+  sqliteBackupRetentionFailedEventSchema,
   sqliteBackupCommandRejectedEventSchema
 ]);
 
@@ -133,6 +144,12 @@ type WorkerCountsInput = {
   retrying: number;
   failed: number;
   isolatedError: number;
+};
+
+type BackupEventContextInput = {
+  durationMilliseconds: number;
+  purpose: SqliteBackupPurpose;
+  recoveryPointId: string;
 };
 
 type TechnicalEventInput = {
@@ -160,15 +177,9 @@ type TechnicalEventInput = {
       }
     | {
         eventCode: 'sqlite-backup-completed';
-        durationMilliseconds: number;
-        purpose: 'daily' | 'pre-migration';
-        recoveryPointId: string;
-      }
+      } & BackupEventContextInput
     | {
         eventCode: 'sqlite-backup-failed';
-        durationMilliseconds: number;
-        purpose: 'daily' | 'pre-migration';
-        recoveryPointId: string;
         classification:
           | 'invalid-configuration'
           | 'backup-failed'
@@ -176,7 +187,11 @@ type TechnicalEventInput = {
           | 'finalization-failed'
           | 'unexpected';
         failure: unknown;
-      }
+      } & BackupEventContextInput
+    | ({
+        eventCode: 'sqlite-backup-retention-failed';
+        failure: unknown;
+      } & BackupEventContextInput)
     | {
         eventCode: 'sqlite-backup-command-rejected';
         reason: 'invalid-purpose' | 'missing-backup-directory' | 'invalid-retention-days';
@@ -190,6 +205,16 @@ const eventMetadata = (counts: WorkerCountsInput) => ({
   retryingCount: counts.retrying,
   failedCount: counts.failed,
   isolatedErrorCount: counts.isolatedError
+});
+
+const backupEventFields = (input: TechnicalEventInput & BackupEventContextInput) => ({
+  subsystem: 'database-backup' as const,
+  occurredAt: input.occurredAt,
+  durationMilliseconds: input.durationMilliseconds,
+  metadata: {
+    purpose: input.purpose,
+    recoveryPointId: input.recoveryPointId
+  }
 });
 
 const buildTechnicalEvent = (input: TechnicalEventInput): TechnicalEvent => {
@@ -221,32 +246,30 @@ const buildTechnicalEvent = (input: TechnicalEventInput): TechnicalEvent => {
 
   if (input.eventCode === 'sqlite-backup-failed') {
     return technicalEventSchema.parse({
+      ...backupEventFields(input),
       eventCode: input.eventCode,
       severity: 'error',
-      subsystem: 'database-backup',
-      occurredAt: input.occurredAt,
       outcome: 'failed',
-      failureClassification: input.classification,
-      durationMilliseconds: input.durationMilliseconds,
-      metadata: {
-        purpose: input.purpose,
-        recoveryPointId: input.recoveryPointId
-      }
+      failureClassification: input.classification
+    });
+  }
+
+  if (input.eventCode === 'sqlite-backup-retention-failed') {
+    return technicalEventSchema.parse({
+      ...backupEventFields(input),
+      eventCode: input.eventCode,
+      severity: 'warning',
+      outcome: 'failed',
+      failureClassification: 'retention-failed'
     });
   }
 
   if (input.eventCode === 'sqlite-backup-completed') {
     return technicalEventSchema.parse({
+      ...backupEventFields(input),
       eventCode: input.eventCode,
       severity: 'info',
-      subsystem: 'database-backup',
-      occurredAt: input.occurredAt,
-      outcome: 'succeeded',
-      durationMilliseconds: input.durationMilliseconds,
-      metadata: {
-        purpose: input.purpose,
-        recoveryPointId: input.recoveryPointId
-      }
+      outcome: 'succeeded'
     });
   }
 

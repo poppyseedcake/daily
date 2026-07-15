@@ -16,6 +16,8 @@ The command keeps the WAL-backed application database online and uses SQLite's o
 
 Daily and pre-migration commands share a SQLite-backed operation lock in the backup directory, so concurrent processes wait and publish distinct recovery points. Retention starts only after a new point is verified and finalized. Points older than the configured boundary are removed, except that the newest verified point of each purpose is always preserved.
 
+If the filesystem prevents removal of an expired point, the verified new recovery point remains successful and the command emits a `sqlite-backup-retention-failed` warning event. Operators should treat that event as a storage-growth alert and repair the backup-directory permissions or capacity.
+
 Success exits with status 0. Invalid configuration, backup, verification, or finalization failures exit non-zero, publish no new finalized recovery point, skip retention, and emit only schema-validated technical events. Temporary directories use a leading dot and are never recovery points.
 
 Backups on the same VPS protect against migration mistakes and release-directory loss, but not complete host loss. Offsite transfer remains a separate operational concern.

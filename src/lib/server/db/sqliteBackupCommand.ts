@@ -12,9 +12,12 @@ import {
   writeFileSync
 } from 'node:fs';
 import { join, resolve } from 'node:path';
-import type { createTechnicalEventRecorder } from '../technicalEventRecorder';
+import type {
+  createTechnicalEventRecorder,
+  SqliteBackupPurpose
+} from '../technicalEventRecorder';
 
-export type SqliteBackupPurpose = 'daily' | 'pre-migration';
+export type { SqliteBackupPurpose } from '../technicalEventRecorder';
 
 type ExecuteSqliteBackupCommandOptions = {
   purpose: SqliteBackupPurpose;
@@ -25,7 +28,16 @@ type ExecuteSqliteBackupCommandOptions = {
   monotonicNow?: () => number;
   randomUUID?: () => string;
   recordTechnicalEvent?: ReturnType<typeof createTechnicalEventRecorder>['record'];
-  onlineBackup?: (sourceDatabasePath: string, destinationPath: string) => Promise<void>;
+  onlineBackup?: (
+    sourceDatabasePath: string,
+    destinationPath: string,
+    progress?: (progress: { totalPages: number; remainingPages: number }) => number
+  ) => Promise<void>;
+  onlineBackupProgress?: (progress: {
+    totalPages: number;
+    remainingPages: number;
+  }) => number;
+  removeRecoveryPoint?: (path: string) => void;
 };
 
 type RecoveryPoint = {
@@ -70,14 +82,19 @@ const validateRetentionDays = (retentionDays: number) => {
   }
 };
 
-const applyRetention = (backupDirectory: string, now: Date, retentionDays: number) => {
+const applyRetention = (
+  backupDirectory: string,
+  now: Date,
+  retentionDays: number,
+  removeRecoveryPoint: (path: string) => void
+) => {
   let recoveryPoints: RecoveryPoint[];
   try {
     recoveryPoints = readdirSync(backupDirectory)
       .map((name) => readRecoveryPoint(backupDirectory, name))
       .filter((recoveryPoint): recoveryPoint is RecoveryPoint => recoveryPoint !== null);
   } catch {
-    return;
+    return false;
   }
   const newestByPurpose = new Map<SqliteBackupPurpose, RecoveryPoint>();
   for (const recoveryPoint of recoveryPoints) {
@@ -88,18 +105,20 @@ const applyRetention = (backupDirectory: string, now: Date, retentionDays: numbe
   }
 
   const cutoff = now.getTime() - retentionDays * 24 * 60 * 60 * 1_000;
+  let succeeded = true;
   for (const recoveryPoint of recoveryPoints) {
     if (
       Date.parse(recoveryPoint.createdAt) < cutoff &&
       newestByPurpose.get(recoveryPoint.purpose)?.name !== recoveryPoint.name
     ) {
       try {
-        rmSync(join(backupDirectory, recoveryPoint.name), { recursive: true });
+        removeRecoveryPoint(join(backupDirectory, recoveryPoint.name));
       } catch {
-        // A verified new recovery point remains successful even if old-point cleanup is unavailable.
+        succeeded = false;
       }
     }
   }
+  return succeeded;
 };
 
 const checksumFile = async (path: string) => {
@@ -143,10 +162,14 @@ const withBackupSerialization = async <Result>(
   }
 };
 
-const performOnlineBackup = async (sourceDatabasePath: string, destinationPath: string) => {
+const performOnlineBackup = async (
+  sourceDatabasePath: string,
+  destinationPath: string,
+  progress?: (progress: { totalPages: number; remainingPages: number }) => number
+) => {
   const source = new Database(sourceDatabasePath, { fileMustExist: true });
   try {
-    await source.backup(destinationPath);
+    await source.backup(destinationPath, progress ? { progress } : undefined);
   } finally {
     source.close();
   }
@@ -164,7 +187,9 @@ export const executeSqliteBackupCommand = async ({
   monotonicNow = () => performance.now(),
   randomUUID = createRandomUUID,
   recordTechnicalEvent,
-  onlineBackup = performOnlineBackup
+  onlineBackup = performOnlineBackup,
+  onlineBackupProgress,
+  removeRecoveryPoint = (path) => rmSync(path, { recursive: true })
 }: ExecuteSqliteBackupCommandOptions) => {
   const createdAt = now();
   const backupId = randomUUID();
@@ -189,7 +214,7 @@ export const executeSqliteBackupCommand = async ({
         throw new Error('DATABASE_URL must identify an existing SQLite file.');
       }
       failureClassification = 'backup-failed';
-      await onlineBackup(sourceDatabasePath, backupPath);
+      await onlineBackup(sourceDatabasePath, backupPath, onlineBackupProgress);
 
       failureClassification = 'verification-failed';
       const backup = new Database(backupPath, { fileMustExist: true });
@@ -223,7 +248,27 @@ export const executeSqliteBackupCommand = async ({
       chmodSync(temporaryDirectory, 0o750);
       failureClassification = 'finalization-failed';
       renameSync(temporaryDirectory, recoveryPointDirectory);
-      applyRetention(backupDirectory, createdAt, retentionDays);
+      const retentionSucceeded = applyRetention(
+        backupDirectory,
+        createdAt,
+        retentionDays,
+        removeRecoveryPoint
+      );
+
+      if (!retentionSucceeded) {
+        try {
+          await recordTechnicalEvent?.({
+            eventCode: 'sqlite-backup-retention-failed',
+            occurredAt: createdAt.toISOString(),
+            durationMilliseconds: Math.max(0, monotonicNow() - startedAt),
+            purpose,
+            recoveryPointId: backupId,
+            failure: null
+          });
+        } catch {
+          // Observability is best effort and cannot replace a completed backup result.
+        }
+      }
 
       try {
         await recordTechnicalEvent?.({

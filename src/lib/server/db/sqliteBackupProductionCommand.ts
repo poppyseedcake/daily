@@ -1,4 +1,8 @@
+import Database from 'better-sqlite3';
+import { drizzle } from 'drizzle-orm/better-sqlite3';
 import { createTechnicalEventRecorder } from '../technicalEventRecorder';
+import * as schema from './schema';
+import { createTechnicalLogStore } from './technicalLogStore';
 import {
   executeSqliteBackupCommand,
   type SqliteBackupPurpose
@@ -27,17 +31,15 @@ const stdoutOnlyTechnicalEventRecorder = () =>
     store: { persist: async () => Promise.reject() }
   });
 
-const loadProductionTechnicalEventRecorder = async () => {
-  const [{ db }, { createTechnicalLogStore }] = await Promise.all([
-    import('$lib/server/db'),
-    import('$lib/server/db/technicalLogStore')
-  ]);
-  return createTechnicalEventRecorder({ store: createTechnicalLogStore(db) });
+const loadProductionTechnicalEventRecorder = async (sourceDatabasePath: string) => {
+  const sqlite = new Database(sourceDatabasePath, { fileMustExist: true });
+  const database = drizzle(sqlite, { schema });
+  return createTechnicalEventRecorder({ store: createTechnicalLogStore(database) });
 };
 
-const loadRecorderWithStdoutFallback = async () => {
+const loadRecorderWithStdoutFallback = async (sourceDatabasePath: string) => {
   try {
-    return await loadProductionTechnicalEventRecorder();
+    return await loadProductionTechnicalEventRecorder(sourceDatabasePath);
   } catch {
     return stdoutOnlyTechnicalEventRecorder();
   }
@@ -98,7 +100,7 @@ export const runSqliteBackupProductionCommand = async ({
     return { exitCode: 1 as const };
   }
 
-  const recorder = await loadRecorder();
+  const recorder = await loadRecorder(parsed.configuration.sourceDatabasePath);
   const result = await execute({
     ...parsed.configuration,
     recordTechnicalEvent: recorder.record

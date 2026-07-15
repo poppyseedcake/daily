@@ -1,6 +1,18 @@
-import { describe, expect, test, vi } from 'vitest';
+import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { createTechnicalEventRecorder } from '../technicalEventRecorder';
 import { runSqliteBackupProductionCommand } from './sqliteBackupProductionCommand';
+
+const temporaryDirectories: string[] = [];
+
+afterEach(() => {
+  vi.restoreAllMocks();
+  for (const directory of temporaryDirectories.splice(0)) {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
 
 describe('SQLite backup production command', () => {
   test('maps the operator purpose and environment to the application backup command', async () => {
@@ -72,5 +84,32 @@ describe('SQLite backup production command', () => {
       metadata: { reason: 'missing-backup-directory' }
     });
     expect(lines[0]).not.toContain('/private/source/path.db');
+  });
+
+  test('does not create or back up a missing source database while loading observability', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'daily-backup-production-'));
+    temporaryDirectories.push(root);
+    const sourceDatabasePath = join(root, 'missing-private-source.db');
+    const lines: string[] = [];
+    vi.spyOn(console, 'log').mockImplementation((line) => lines.push(String(line)));
+
+    const result = await runSqliteBackupProductionCommand({
+      arguments_: ['daily'],
+      environment: {
+        DATABASE_URL: sourceDatabasePath,
+        BACKUP_DIRECTORY: join(root, 'backups')
+      },
+      setExitCode: vi.fn()
+    });
+
+    expect(result).toEqual({ exitCode: 1 });
+    expect(existsSync(sourceDatabasePath)).toBe(false);
+    expect(lines.map((line) => JSON.parse(line))).toEqual([
+      expect.objectContaining({
+        eventCode: 'sqlite-backup-failed',
+        failureClassification: 'invalid-configuration'
+      })
+    ]);
+    expect(lines[0]).not.toContain(sourceDatabasePath);
   });
 });

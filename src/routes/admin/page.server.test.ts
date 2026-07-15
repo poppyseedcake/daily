@@ -239,6 +239,7 @@ describe('Admin Panel server load', () => {
           'admin-google-maps-kill-switch-changed',
           'sqlite-backup-completed',
           'sqlite-backup-failed',
+          'sqlite-backup-retention-failed',
           'sqlite-backup-command-rejected'
         ]
       }
