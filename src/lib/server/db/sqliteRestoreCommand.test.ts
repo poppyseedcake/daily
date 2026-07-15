@@ -109,6 +109,48 @@ describe('SQLite restore command', () => {
     expect(readMarker(activeDatabasePath)).toBe('active');
   });
 
+  test.each(['-wal', '-shm'])('rejects an offline destination with a SQLite %s sidecar', async (suffix) => {
+    const root = mkdtempSync(join(tmpdir(), 'daily-restore-'));
+    temporaryDirectories.push(root);
+    const activeDatabasePath = join(root, 'daily.db');
+    createDatabase(activeDatabasePath, 'active');
+    writeFileSync(`${activeDatabasePath}${suffix}`, 'stale sidecar');
+    const { recoveryPointDirectory } = createRecoveryPoint(root);
+
+    const result = await executeSqliteRestoreCommand({
+      recoveryPointDirectory,
+      activeDatabasePath,
+      isDestinationOffline: async () => true,
+      migrate: vi.fn(),
+      startService: vi.fn(),
+      verifyServiceActive: vi.fn(),
+      verifyReadiness: vi.fn()
+    });
+
+    expect(result).toEqual({ exitCode: 1, failureClassification: 'invalid-destination' });
+    expect(readMarker(activeDatabasePath)).toBe('active');
+  });
+
+  test('rejects a missing active database without creating it', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'daily-restore-'));
+    temporaryDirectories.push(root);
+    const activeDatabasePath = join(root, 'missing.db');
+    const { recoveryPointDirectory } = createRecoveryPoint(root);
+
+    const result = await executeSqliteRestoreCommand({
+      recoveryPointDirectory,
+      activeDatabasePath,
+      isDestinationOffline: async () => true,
+      migrate: vi.fn(),
+      startService: vi.fn(),
+      verifyServiceActive: vi.fn(),
+      verifyReadiness: vi.fn()
+    });
+
+    expect(result).toEqual({ exitCode: 1, failureClassification: 'invalid-destination' });
+    expect(existsSync(activeDatabasePath)).toBe(false);
+  });
+
   test('rejects a checksum-valid file that fails SQLite integrity without modifying the active database', async () => {
     const root = mkdtempSync(join(tmpdir(), 'daily-restore-'));
     temporaryDirectories.push(root);
@@ -164,5 +206,55 @@ describe('SQLite restore command', () => {
     expect(readMarker(replacedDatabasePath)).toBe('active');
     expect(calls).toEqual(['migrate:backup', 'start', 'service-active', 'readiness']);
     expect(existsSync(`${activeDatabasePath}.restore.tmp`)).toBe(false);
+  });
+
+  test('rechecks the offline destination immediately before replacement', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'daily-restore-'));
+    temporaryDirectories.push(root);
+    const activeDatabasePath = join(root, 'daily.db');
+    createDatabase(activeDatabasePath, 'active');
+    const { recoveryPointDirectory } = createRecoveryPoint(root);
+    const isDestinationOffline = vi.fn().mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+
+    const result = await executeSqliteRestoreCommand({
+      recoveryPointDirectory,
+      activeDatabasePath,
+      isDestinationOffline,
+      migrate: vi.fn(),
+      startService: vi.fn(),
+      verifyServiceActive: vi.fn(),
+      verifyReadiness: vi.fn()
+    });
+
+    expect(result).toEqual({ exitCode: 1, failureClassification: 'destination-online' });
+    expect(isDestinationOffline).toHaveBeenCalledTimes(2);
+    expect(readMarker(activeDatabasePath)).toBe('active');
+  });
+
+  test.each([
+    ['migration', 'migration-failed', async () => Promise.reject(new Error('migration'))],
+    ['service state', 'service-failed', async () => Promise.reject(new Error('service'))],
+    ['readiness', 'readiness-failed', async () => Promise.reject(new Error('readiness'))]
+  ] as const)('preserves the replaced database when %s verification fails', async (step, failure, fail) => {
+    const root = mkdtempSync(join(tmpdir(), 'daily-restore-'));
+    temporaryDirectories.push(root);
+    const activeDatabasePath = join(root, 'daily.db');
+    createDatabase(activeDatabasePath, 'active');
+    const { recoveryPointDirectory } = createRecoveryPoint(root);
+
+    const result = await executeSqliteRestoreCommand({
+      recoveryPointDirectory,
+      activeDatabasePath,
+      isDestinationOffline: async () => true,
+      migrate: step === 'migration' ? fail : async () => undefined,
+      startService: async () => undefined,
+      verifyServiceActive: step === 'service state' ? fail : async () => undefined,
+      verifyReadiness: step === 'readiness' ? fail : async () => undefined
+    });
+
+    expect(result).toMatchObject({ exitCode: 1, failureClassification: failure });
+    expect(readMarker(activeDatabasePath)).toBe('backup');
+    expect(result.replacedDatabasePath).toBeDefined();
+    expect(readMarker(result.replacedDatabasePath!)).toBe('active');
   });
 });

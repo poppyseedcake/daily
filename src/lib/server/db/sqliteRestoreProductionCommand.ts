@@ -19,15 +19,24 @@ type ProductionOperations = Pick<
   | 'verifyReadiness'
 >;
 
-const createProductionOperations = ({
-  serviceName,
-  readinessUrl
-}: {
-  serviceName: string;
-  readinessUrl: string;
-}): ProductionOperations => ({
+export const createProductionRestoreOperations = (
+  {
+    serviceName,
+    readinessUrl
+  }: {
+    serviceName: string;
+    readinessUrl: string;
+  },
+  {
+    executeProcess = executeFile,
+    request = fetch
+  }: {
+    executeProcess?: typeof executeFile;
+    request?: typeof fetch;
+  } = {}
+): ProductionOperations => ({
   isDestinationOffline: async () => {
-    const { stdout } = await executeFile('systemctl', [
+    const { stdout } = await executeProcess('systemctl', [
       'show',
       '--property=ActiveState',
       '--value',
@@ -36,16 +45,16 @@ const createProductionOperations = ({
     return stdout.trim() === 'inactive';
   },
   migrate: async () => {
-    await executeFile('npm', ['run', 'db:migrate']);
+    await executeProcess('npm', ['run', 'db:migrate']);
   },
   startService: async () => {
-    await executeFile('systemctl', ['start', serviceName]);
+    await executeProcess('systemctl', ['start', serviceName]);
   },
   verifyServiceActive: async () => {
-    await executeFile('systemctl', ['is-active', '--quiet', serviceName]);
+    await executeProcess('systemctl', ['is-active', '--quiet', serviceName]);
   },
   verifyReadiness: async () => {
-    const response = await fetch(readinessUrl);
+    const response = await request(readinessUrl);
     if (!response.ok || JSON.stringify(await response.json()) !== '{"status":"ok"}') {
       throw new Error('Readiness verification failed.');
     }
@@ -55,7 +64,7 @@ const createProductionOperations = ({
 export const runSqliteRestoreProductionCommand = async ({
   arguments_ = process.argv.slice(2),
   environment = process.env,
-  createOperations = createProductionOperations,
+  createOperations = createProductionRestoreOperations,
   execute = executeSqliteRestoreCommand,
   writeLine = (line: string) => console.log(line),
   setExitCode = (exitCode: number) => {
@@ -64,7 +73,7 @@ export const runSqliteRestoreProductionCommand = async ({
 }: {
   arguments_?: string[];
   environment?: RestoreEnvironment;
-  createOperations?: typeof createProductionOperations;
+  createOperations?: typeof createProductionRestoreOperations;
   execute?: typeof executeSqliteRestoreCommand;
   writeLine?: (line: string) => void;
   setExitCode?: (exitCode: number) => void;
@@ -95,7 +104,10 @@ export const runSqliteRestoreProductionCommand = async ({
   if (result.exitCode === 0) {
     writeLine(`SQLite restore succeeded; replaced database preserved at ${result.replacedDatabasePath}`);
   } else {
-    writeLine(`SQLite restore failed: ${result.failureClassification}.`);
+    const recoveryLocation = result.replacedDatabasePath
+      ? ` Replaced database preserved at ${result.replacedDatabasePath}.`
+      : '';
+    writeLine(`SQLite restore failed: ${result.failureClassification}.${recoveryLocation}`);
   }
   setExitCode(result.exitCode);
   return result;

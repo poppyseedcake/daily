@@ -1,5 +1,8 @@
 import { describe, expect, test, vi } from 'vitest';
-import { runSqliteRestoreProductionCommand } from './sqliteRestoreProductionCommand';
+import {
+  createProductionRestoreOperations,
+  runSqliteRestoreProductionCommand
+} from './sqliteRestoreProductionCommand';
 
 describe('SQLite restore production command', () => {
   test('maps the selected recovery point and deployment environment to the restore workflow', async () => {
@@ -56,5 +59,39 @@ describe('SQLite restore production command', () => {
     expect(createOperations).not.toHaveBeenCalled();
     expect(execute).not.toHaveBeenCalled();
     expect(lines).toEqual(['SQLite restore rejected: invalid configuration.']);
+  });
+
+  test('wires systemd, explicit migrations, and the readiness contract', async () => {
+    const executeProcess = vi
+      .fn()
+      .mockResolvedValueOnce({ stdout: 'inactive\n', stderr: '' })
+      .mockResolvedValue({ stdout: '', stderr: '' });
+    const request = vi.fn().mockResolvedValue(
+      new Response('{"status":"ok"}', {
+        status: 200,
+        headers: { 'content-type': 'application/json' }
+      })
+    );
+    const operations = createProductionRestoreOperations(
+      {
+        serviceName: 'daily-web.service',
+        readinessUrl: 'http://127.0.0.1:3000/health'
+      },
+      { executeProcess, request }
+    );
+
+    await expect(operations.isDestinationOffline()).resolves.toBe(true);
+    await operations.migrate();
+    await operations.startService();
+    await operations.verifyServiceActive();
+    await operations.verifyReadiness();
+
+    expect(executeProcess.mock.calls).toEqual([
+      ['systemctl', ['show', '--property=ActiveState', '--value', 'daily-web.service']],
+      ['npm', ['run', 'db:migrate']],
+      ['systemctl', ['start', 'daily-web.service']],
+      ['systemctl', ['is-active', '--quiet', 'daily-web.service']]
+    ]);
+    expect(request).toHaveBeenCalledWith('http://127.0.0.1:3000/health');
   });
 });

@@ -2,6 +2,7 @@ import Database from 'better-sqlite3';
 import { createHash, randomUUID as createRandomUUID } from 'node:crypto';
 import {
   chmodSync,
+  chownSync,
   copyFileSync,
   existsSync,
   readFileSync,
@@ -80,7 +81,11 @@ export const executeSqliteRestoreCommand = async ({
   verifyReadiness
 }: ExecuteSqliteRestoreCommandOptions): Promise<
   | { exitCode: 0; replacedDatabasePath: string }
-  | { exitCode: 1; failureClassification: RestoreFailureClassification }
+  | {
+      exitCode: 1;
+      failureClassification: RestoreFailureClassification;
+      replacedDatabasePath?: string;
+    }
 > => {
   let destinationOffline: boolean;
   try {
@@ -91,9 +96,11 @@ export const executeSqliteRestoreCommand = async ({
   if (!destinationOffline) {
     return { exitCode: 1, failureClassification: 'destination-online' };
   }
+  let activeDatabaseStat;
   try {
+    activeDatabaseStat = statSync(activeDatabasePath);
     if (
-      !statSync(activeDatabasePath).isFile() ||
+      !activeDatabaseStat.isFile() ||
       existsSync(`${activeDatabasePath}-wal`) ||
       existsSync(`${activeDatabasePath}-shm`)
     ) {
@@ -112,7 +119,19 @@ export const executeSqliteRestoreCommand = async ({
   const installationPath = `${activeDatabasePath}.restore-${recoveryToken}.tmp`;
   try {
     copyFileSync(recoveryPoint.backupPath, installationPath);
-    chmodSync(installationPath, statSync(activeDatabasePath).mode & 0o777);
+    chmodSync(installationPath, activeDatabaseStat.mode & 0o777);
+    chownSync(installationPath, activeDatabaseStat.uid, activeDatabaseStat.gid);
+    let stillOffline: boolean;
+    try {
+      stillOffline = await isDestinationOffline();
+    } catch {
+      rmSync(installationPath, { force: true });
+      return { exitCode: 1, failureClassification: 'invalid-destination' };
+    }
+    if (!stillOffline) {
+      rmSync(installationPath, { force: true });
+      return { exitCode: 1, failureClassification: 'destination-online' };
+    }
     renameSync(activeDatabasePath, replacedDatabasePath);
     try {
       renameSync(installationPath, activeDatabasePath);
@@ -128,18 +147,18 @@ export const executeSqliteRestoreCommand = async ({
   try {
     await migrate();
   } catch {
-    return { exitCode: 1, failureClassification: 'migration-failed' };
+    return { exitCode: 1, failureClassification: 'migration-failed', replacedDatabasePath };
   }
   try {
     await startService();
     await verifyServiceActive();
   } catch {
-    return { exitCode: 1, failureClassification: 'service-failed' };
+    return { exitCode: 1, failureClassification: 'service-failed', replacedDatabasePath };
   }
   try {
     await verifyReadiness();
   } catch {
-    return { exitCode: 1, failureClassification: 'readiness-failed' };
+    return { exitCode: 1, failureClassification: 'readiness-failed', replacedDatabasePath };
   }
   return { exitCode: 0, replacedDatabasePath };
 };
