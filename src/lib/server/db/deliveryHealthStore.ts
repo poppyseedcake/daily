@@ -178,12 +178,12 @@ export const createDeliveryHealthStore = (database: DeliveryHealthDatabase) => {
     return {
       key: window.key,
       label: window.label,
-      totals: totals ?? {
-        sent: 0,
-        retrying: 0,
-        failed: 0,
-        activeProcessing: 0,
-        expiredProcessing: 0
+      totals: {
+        sent: totals?.sent ?? 0,
+        retrying: totals?.retrying ?? 0,
+        failed: totals?.failed ?? 0,
+        activeProcessing: totals?.activeProcessing ?? 0,
+        expiredProcessing: totals?.expiredProcessing ?? 0
       },
       failureClassifications: failureClassifications.map(({ classification, count }) => ({
         classification: deliveryFailureClassification(classification),

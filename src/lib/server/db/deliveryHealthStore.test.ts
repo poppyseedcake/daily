@@ -24,7 +24,31 @@ describe('Delivery Health Store', () => {
     try {
       await expect(
         store.load({ now: '2026-07-15T12:00:00.000Z', overdueThresholdMinutes: 5 })
-      ).resolves.toMatchObject({ worker: { status: 'missing', latestRun: null } });
+      ).resolves.toMatchObject({
+        worker: { status: 'missing', latestRun: null },
+        windows: [
+          {
+            key: '24-hours',
+            totals: {
+              sent: 0,
+              retrying: 0,
+              failed: 0,
+              activeProcessing: 0,
+              expiredProcessing: 0
+            }
+          },
+          {
+            key: '7-days',
+            totals: {
+              sent: 0,
+              retrying: 0,
+              failed: 0,
+              activeProcessing: 0,
+              expiredProcessing: 0
+            }
+          }
+        ]
+      });
 
       sqlite
         .prepare(
