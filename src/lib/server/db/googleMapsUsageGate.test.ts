@@ -3,7 +3,7 @@ import { drizzle } from 'drizzle-orm/better-sqlite3';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
   createGoogleMapsRequestGateway,
   type GoogleMapsProvider
@@ -223,7 +223,7 @@ describe('Google Maps usage gate', () => {
     expect(JSON.stringify(diagnostics)).not.toContain('private alert provider failure');
   });
 
-  test('does not reclaim an expired pending alert after a restart and later blocked request', async () => {
+  test('recovers an expired pending alert with a stable provider idempotency key', async () => {
     const path = createDatabasePath();
     const firstDatabase = createDatabase(path);
     firstDatabase.exec(`
@@ -236,7 +236,7 @@ describe('Google Maps usage gate', () => {
     firstDatabase.close();
     databases.splice(databases.indexOf(firstDatabase), 1);
 
-    const deliveredCapTypes: string[] = [];
+    const deliveryAttempts: Array<{ capType: string; idempotencyKey: string }> = [];
     const restartedDatabase = createDatabase(path, false);
     const restartedGate = createTestGoogleMapsUsageGate({
       database: drizzleDatabase(restartedDatabase),
@@ -245,8 +245,11 @@ describe('Google Maps usage gate', () => {
       perPersonDailyLimit: 100,
       now: () => new Date('2026-07-12T12:00:00.000Z'),
       capAlertDelivery: {
-        async send(alert) {
-          deliveredCapTypes.push(alert.capType);
+        async send(alert, options) {
+          deliveryAttempts.push({
+            capType: alert.capType,
+            idempotencyKey: options.idempotencyKey
+          });
         }
       }
     });
@@ -257,14 +260,19 @@ describe('Google Maps usage gate', () => {
     });
     await flushAlertDeliveries();
 
-    expect(deliveredCapTypes).toEqual([]);
+    expect(deliveryAttempts).toEqual([
+      {
+        capType: 'daily',
+        idempotencyKey: 'google-maps-cap-alert/daily/2026-07-12'
+      }
+    ]);
     expect(
       restartedDatabase
         .prepare(
           "SELECT delivery_status FROM google_maps_cap_alerts WHERE cap_type = 'daily' AND period_start_utc = '2026-07-12'"
         )
         .get()
-    ).toEqual({ delivery_status: 'pending' });
+    ).toEqual({ delivery_status: 'delivered' });
   });
 
   test('returns the admission result without waiting for a slow cap alert provider', async () => {
@@ -674,6 +682,24 @@ describe('Google Maps usage gate', () => {
       newEnabled: false,
       changed: true
     });
+  });
+
+  test('reads usage and operations snapshots within one transaction each', async () => {
+    const database = drizzleDatabase(createDatabase());
+    const transaction = vi.spyOn(database, 'transaction');
+    const gate = createTestGoogleMapsUsageGate({
+      database,
+      dailyCap: 10,
+      monthlyCap: 100,
+      perPersonDailyLimit: 100,
+      now: () => new Date('2026-07-12T12:00:00.000Z')
+    });
+
+    await gate.currentUsage();
+    expect(transaction).toHaveBeenCalledTimes(1);
+
+    await gate.currentOperations(false);
+    expect(transaction).toHaveBeenCalledTimes(2);
   });
 
   test('reports environment control precedence and cap suspension from privacy-safe aggregate data', async () => {
