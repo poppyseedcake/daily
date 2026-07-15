@@ -1,6 +1,12 @@
 import { and, asc, desc, eq, gte, inArray, lt, lte, or, type SQL } from 'drizzle-orm';
 import type { db } from '$lib/server/db';
-import { technicalEventSchema, type TechnicalEvent } from '../technicalEventRecorder';
+import {
+  technicalEventSchema,
+  type TechnicalEvent,
+  type TechnicalEventCode,
+  type TechnicalEventSeverity,
+  type TechnicalEventSubsystem
+} from '../technicalEventRecorder';
 import { technicalLogRecords } from './schema';
 import {
   defaultOperationalRetentionDays,
@@ -71,12 +77,9 @@ export type TechnicalLogFilters = {
   pageSize: number;
   fromUtc?: string;
   toUtc?: string;
-  severity?: 'info' | 'warning' | 'error';
-  subsystem?: 'scheduled-delivery' | 'admin-controls';
-  eventCode?:
-    | 'scheduled-daily-summary-worker-completed'
-    | 'scheduled-daily-summary-worker-failed'
-    | 'admin-google-maps-kill-switch-changed';
+  severity?: TechnicalEventSeverity;
+  subsystem?: TechnicalEventSubsystem;
+  eventCode?: TechnicalEventCode;
 };
 
 export const createTechnicalLogStore = (

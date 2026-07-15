@@ -23,6 +23,11 @@
     failed: 'Failed'
   } as const;
 
+  const technicalLogSubsystemLabels = {
+    'scheduled-delivery': 'Scheduled delivery',
+    'admin-controls': 'Admin controls'
+  } as const;
+
   const technicalLogNextPageHref = () => {
     const parameters = new URLSearchParams();
     for (const [key, value] of Object.entries(data.technicalLogFilters)) {
@@ -298,26 +303,27 @@
                 <span class="font-medium">Severity</span>
                 <select class="h-10 w-full rounded-md border border-zinc-300 px-3" name="severity">
                   <option value="">All severities</option>
-                  <option value="info" selected={data.technicalLogFilters.severity === 'info'}>Info</option>
-                  <option value="warning" selected={data.technicalLogFilters.severity === 'warning'}>Warning</option>
-                  <option value="error" selected={data.technicalLogFilters.severity === 'error'}>Error</option>
+                  {#each data.technicalLogFilterOptions.severities as severity}
+                    <option value={severity} selected={data.technicalLogFilters.severity === severity}>{metadataLabel(severity)}</option>
+                  {/each}
                 </select>
               </label>
               <label class="space-y-1 text-sm">
                 <span class="font-medium">Subsystem</span>
                 <select class="h-10 w-full rounded-md border border-zinc-300 px-3" name="subsystem">
                   <option value="">All subsystems</option>
-                  <option value="scheduled-delivery" selected={data.technicalLogFilters.subsystem === 'scheduled-delivery'}>Scheduled delivery</option>
-                  <option value="admin-controls" selected={data.technicalLogFilters.subsystem === 'admin-controls'}>Admin controls</option>
+                  {#each data.technicalLogFilterOptions.subsystems as subsystem}
+                    <option value={subsystem} selected={data.technicalLogFilters.subsystem === subsystem}>{technicalLogSubsystemLabels[subsystem]}</option>
+                  {/each}
                 </select>
               </label>
               <label class="space-y-1 text-sm lg:col-span-2">
                 <span class="font-medium">Event code</span>
                 <select class="h-10 w-full rounded-md border border-zinc-300 px-3" name="eventCode">
                   <option value="">All event codes</option>
-                  <option value="scheduled-daily-summary-worker-completed" selected={data.technicalLogFilters.eventCode === 'scheduled-daily-summary-worker-completed'}>scheduled-daily-summary-worker-completed</option>
-                  <option value="scheduled-daily-summary-worker-failed" selected={data.technicalLogFilters.eventCode === 'scheduled-daily-summary-worker-failed'}>scheduled-daily-summary-worker-failed</option>
-                  <option value="admin-google-maps-kill-switch-changed" selected={data.technicalLogFilters.eventCode === 'admin-google-maps-kill-switch-changed'}>admin-google-maps-kill-switch-changed</option>
+                  {#each data.technicalLogFilterOptions.eventCodes as eventCode}
+                    <option value={eventCode} selected={data.technicalLogFilters.eventCode === eventCode}>{eventCode}</option>
+                  {/each}
                 </select>
               </label>
               <div class="flex items-end gap-2 md:col-span-2 lg:col-span-3">

@@ -1349,6 +1349,10 @@ test('authorized Administrator filters paged Technical Logs and audits the Maps 
 
     await page.goto('/admin');
     await page.getByLabel('Severity').selectOption('error');
+    await page.getByLabel('Subsystem').selectOption('scheduled-delivery');
+    await page.getByLabel('Event code').selectOption('scheduled-daily-summary-worker-failed');
+    await page.getByLabel('From UTC').fill(new Date(now.getTime() + 30_000).toISOString());
+    await page.getByLabel('To UTC').fill(new Date(now.getTime() + 90_000).toISOString());
     await page.getByRole('button', { name: 'Apply filters' }).click();
     await expect(page.getByRole('article')).toHaveCount(1);
     await expect(

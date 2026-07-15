@@ -13,6 +13,18 @@ export type TechnicalCorrelationId = string & {
 export const createTechnicalCorrelationId = (): TechnicalCorrelationId =>
   crypto.randomUUID() as TechnicalCorrelationId;
 
+export const technicalEventSeverities = ['info', 'warning', 'error'] as const;
+export const technicalEventSubsystems = ['scheduled-delivery', 'admin-controls'] as const;
+export const technicalEventCodes = [
+  'scheduled-daily-summary-worker-completed',
+  'scheduled-daily-summary-worker-failed',
+  'admin-google-maps-kill-switch-changed'
+] as const;
+
+export type TechnicalEventSeverity = (typeof technicalEventSeverities)[number];
+export type TechnicalEventSubsystem = (typeof technicalEventSubsystems)[number];
+export type TechnicalEventCode = (typeof technicalEventCodes)[number];
+
 const workerCountsSchema = z.object({
   dueCount: z.number().int().nonnegative(),
   sentCount: z.number().int().nonnegative(),

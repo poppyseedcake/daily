@@ -4,6 +4,11 @@ import { authStateFromSession } from '$lib/server/pageAuthState';
 import { googleMapsOperations } from '$lib/server/googleMapsOperations';
 import { deliveryHealthOperations } from '$lib/server/deliveryHealthOperations';
 import { technicalLogOperations } from '$lib/server/technicalLogOperations';
+import {
+  technicalEventCodes,
+  technicalEventSeverities,
+  technicalEventSubsystems
+} from '$lib/server/technicalEventRecorder';
 import { hasGoogleAuthAccount } from '$lib/server/adminGoogleSession';
 import { error, fail } from '@sveltejs/kit';
 import { z } from 'zod';
@@ -39,25 +44,13 @@ const technicalLogFiltersSchema = z
   .object({
     from: z.preprocess(optionalQueryValue, z.iso.datetime().optional()),
     to: z.preprocess(optionalQueryValue, z.iso.datetime().optional()),
-    severity: z.preprocess(optionalQueryValue, z.enum(['info', 'warning', 'error']).optional()),
-    subsystem: z.preprocess(
-      optionalQueryValue,
-      z.enum(['scheduled-delivery', 'admin-controls']).optional()
-    ),
-    eventCode: z.preprocess(
-      optionalQueryValue,
-      z
-        .enum([
-          'scheduled-daily-summary-worker-completed',
-          'scheduled-daily-summary-worker-failed',
-          'admin-google-maps-kill-switch-changed'
-        ])
-        .optional()
-    ),
+    severity: z.preprocess(optionalQueryValue, z.enum(technicalEventSeverities).optional()),
+    subsystem: z.preprocess(optionalQueryValue, z.enum(technicalEventSubsystems).optional()),
+    eventCode: z.preprocess(optionalQueryValue, z.enum(technicalEventCodes).optional()),
     cursor: z.preprocess(optionalQueryValue, z.string().min(1).max(1_000).optional())
   })
   .superRefine((filters, context) => {
-    if (filters.from && filters.to && filters.from > filters.to) {
+    if (filters.from && filters.to && Date.parse(filters.from) > Date.parse(filters.to)) {
       context.addIssue({
         code: 'custom',
         path: ['to'],
@@ -82,17 +75,22 @@ export const load: PageServerLoad = async ({ request }) => {
     throw error(400, 'Choose valid Technical Log filters. Times must use UTC ISO 8601.');
   }
 
-  const { cursor, ...visibleFilters } = filters.data;
+  const normalizedFilters = {
+    ...filters.data,
+    ...(filters.data.from ? { from: new Date(filters.data.from).toISOString() } : {}),
+    ...(filters.data.to ? { to: new Date(filters.data.to).toISOString() } : {})
+  };
+  const { cursor, ...visibleFilters } = normalizedFilters;
   const [googleMaps, deliveryHealth, technicalLogs] = await Promise.all([
     googleMapsOperations.currentOperations(),
     deliveryHealthOperations.current(),
     technicalLogOperations.list({
       pageSize: 25,
-      ...(filters.data.from ? { fromUtc: filters.data.from } : {}),
-      ...(filters.data.to ? { toUtc: filters.data.to } : {}),
-      ...(filters.data.severity ? { severity: filters.data.severity } : {}),
-      ...(filters.data.subsystem ? { subsystem: filters.data.subsystem } : {}),
-      ...(filters.data.eventCode ? { eventCode: filters.data.eventCode } : {}),
+      ...(normalizedFilters.from ? { fromUtc: normalizedFilters.from } : {}),
+      ...(normalizedFilters.to ? { toUtc: normalizedFilters.to } : {}),
+      ...(normalizedFilters.severity ? { severity: normalizedFilters.severity } : {}),
+      ...(normalizedFilters.subsystem ? { subsystem: normalizedFilters.subsystem } : {}),
+      ...(normalizedFilters.eventCode ? { eventCode: normalizedFilters.eventCode } : {}),
       ...(cursor ? { cursor } : {})
     })
   ]);
@@ -104,7 +102,12 @@ export const load: PageServerLoad = async ({ request }) => {
     googleMaps,
     deliveryHealth,
     technicalLogs,
-    technicalLogFilters: visibleFilters
+    technicalLogFilters: visibleFilters,
+    technicalLogFilterOptions: {
+      severities: technicalEventSeverities,
+      subsystems: technicalEventSubsystems,
+      eventCodes: technicalEventCodes
+    }
   };
 };
 

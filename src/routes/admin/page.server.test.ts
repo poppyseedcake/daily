@@ -199,7 +199,16 @@ describe('Admin Panel server load', () => {
         ]
       }),
       technicalLogs: { records: [], nextCursor: null },
-      technicalLogFilters: {}
+      technicalLogFilters: {},
+      technicalLogFilterOptions: {
+        severities: ['info', 'warning', 'error'],
+        subsystems: ['scheduled-delivery', 'admin-controls'],
+        eventCodes: [
+          'scheduled-daily-summary-worker-completed',
+          'scheduled-daily-summary-worker-failed',
+          'admin-google-maps-kill-switch-changed'
+        ]
+      }
     });
     expect(currentDeliveryHealth).toHaveBeenCalledOnce();
     expect(hasGoogleAuthAccount).toHaveBeenCalledWith('admin-1');
@@ -234,7 +243,7 @@ describe('Admin Panel server load', () => {
     });
 
     const result = await loadAdminPage(
-      '?from=2026-07-15T08%3A30%3A00.000Z&to=2026-07-15T11%3A30%3A00.000Z&severity=error&subsystem=scheduled-delivery&eventCode=scheduled-daily-summary-worker-failed&cursor=current-page'
+      '?from=2026-07-15T08%3A30%3A00Z&to=2026-07-15T11%3A30%3A00.000Z&severity=error&subsystem=scheduled-delivery&eventCode=scheduled-daily-summary-worker-failed&cursor=current-page'
     );
 
     expect(listTechnicalLogs).toHaveBeenCalledWith({
