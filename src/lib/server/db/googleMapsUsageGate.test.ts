@@ -223,7 +223,7 @@ describe('Google Maps usage gate', () => {
     expect(JSON.stringify(diagnostics)).not.toContain('private alert provider failure');
   });
 
-  test('reclaims an expired pending alert after a restart', async () => {
+  test('does not reclaim an expired pending alert after a restart and later blocked request', async () => {
     const path = createDatabasePath();
     const firstDatabase = createDatabase(path);
     firstDatabase.exec(`
@@ -257,14 +257,14 @@ describe('Google Maps usage gate', () => {
     });
     await flushAlertDeliveries();
 
-    expect(deliveredCapTypes).toEqual(['daily']);
+    expect(deliveredCapTypes).toEqual([]);
     expect(
       restartedDatabase
         .prepare(
           "SELECT delivery_status FROM google_maps_cap_alerts WHERE cap_type = 'daily' AND period_start_utc = '2026-07-12'"
         )
         .get()
-    ).toEqual({ delivery_status: 'delivered' });
+    ).toEqual({ delivery_status: 'pending' });
   });
 
   test('returns the admission result without waiting for a slow cap alert provider', async () => {

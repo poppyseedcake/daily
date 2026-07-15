@@ -1,4 +1,4 @@
-import { and, eq, lt, sql, sum } from 'drizzle-orm';
+import { and, eq, sql, sum } from 'drizzle-orm';
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import type {
   GoogleMapsAdmission,
@@ -10,7 +10,6 @@ import * as schema from './schema';
 
 type GoogleMapsDatabase = BetterSQLite3Database<typeof schema>;
 const { googleMapsCapAlerts, googleMapsControl, googleMapsPersonUsage, googleMapsUsage } = schema;
-const capAlertLeaseDurationMs = 5 * 60 * 1000;
 
 export type GoogleMapsCapAlert = {
   capType: 'daily' | 'monthly';
@@ -253,12 +252,8 @@ export const createGoogleMapsUsageGate = ({
     capType: 'daily' | 'monthly',
     periodStartUtc: string,
     claimedAt: string
-  ) => {
-    const alertRecord = and(
-      eq(googleMapsCapAlerts.capType, capType),
-      eq(googleMapsCapAlerts.periodStartUtc, periodStartUtc)
-    );
-    const inserted = source
+  ) =>
+    source
       .insert(googleMapsCapAlerts)
       .values({
         capType,
@@ -268,26 +263,6 @@ export const createGoogleMapsUsageGate = ({
       })
       .onConflictDoNothing()
       .run().changes === 1;
-
-    if (inserted) return true;
-
-    const leaseExpiredAt = new Date(
-      new Date(claimedAt).getTime() - capAlertLeaseDurationMs
-    ).toISOString();
-    return (
-      source
-        .update(googleMapsCapAlerts)
-        .set({ claimedAt })
-        .where(
-          and(
-            alertRecord,
-            eq(googleMapsCapAlerts.deliveryStatus, 'pending'),
-            lt(googleMapsCapAlerts.claimedAt, leaseExpiredAt)
-          )
-        )
-        .run().changes === 1
-    );
-  };
 
   const capAlert = (
     source: GoogleMapsDatabase,
