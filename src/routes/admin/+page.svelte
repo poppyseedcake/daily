@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Activity, Database, MapPinned, ShieldCheck } from '@lucide/svelte';
+  import { Activity, Database, MapPinned, ScrollText, ShieldCheck } from '@lucide/svelte';
   import Panel from '$lib/components/Panel.svelte';
 
   let { data, form } = $props();
@@ -22,6 +22,20 @@
     'completed-with-isolated-errors': 'Completed with isolated errors',
     failed: 'Failed'
   } as const;
+
+  const technicalLogNextPageHref = () => {
+    const parameters = new URLSearchParams();
+    for (const [key, value] of Object.entries(data.technicalLogFilters)) {
+      if (value) parameters.set(key, value);
+    }
+    const nextCursor = data.technicalLogs.nextCursor;
+    if (!nextCursor) return '/admin';
+    parameters.set('cursor', nextCursor);
+    return `/admin?${parameters.toString()}`;
+  };
+
+  const metadataLabel = (key: string) =>
+    key.replaceAll(/([a-z])([A-Z])/g, '$1 $2').toLowerCase().replace(/^./, (letter) => letter.toUpperCase());
 </script>
 
 <svelte:head>
@@ -243,6 +257,112 @@
                 </section>
               {/each}
             </div>
+          </div>
+        </Panel>
+      </div>
+
+      <div class="md:col-span-3">
+        <Panel title="Technical Logs" eyebrow="Privacy-safe operations">
+          <div class="space-y-5">
+            <div class="flex items-start gap-3">
+              <ScrollText class="mt-0.5 text-cyan-700" size={20} aria-hidden="true" />
+              <div>
+                <p class="font-medium">Technical Log Records</p>
+                <p class="mt-1 text-xs text-zinc-600">
+                  Newest first · 25 records per page · timestamps and range filters use UTC.
+                  Arbitrary text search and raw journal access are intentionally unavailable.
+                </p>
+              </div>
+            </div>
+
+            <form class="grid gap-3 rounded-md border border-zinc-200 p-4 md:grid-cols-2 lg:grid-cols-3" method="GET" action="/admin">
+              <label class="space-y-1 text-sm">
+                <span class="font-medium">From UTC</span>
+                <input
+                  class="h-10 w-full rounded-md border border-zinc-300 px-3"
+                  name="from"
+                  placeholder="2026-07-15T08:00:00.000Z"
+                  value={data.technicalLogFilters.from ?? ''}
+                />
+              </label>
+              <label class="space-y-1 text-sm">
+                <span class="font-medium">To UTC</span>
+                <input
+                  class="h-10 w-full rounded-md border border-zinc-300 px-3"
+                  name="to"
+                  placeholder="2026-07-15T12:00:00.000Z"
+                  value={data.technicalLogFilters.to ?? ''}
+                />
+              </label>
+              <label class="space-y-1 text-sm">
+                <span class="font-medium">Severity</span>
+                <select class="h-10 w-full rounded-md border border-zinc-300 px-3" name="severity">
+                  <option value="">All severities</option>
+                  <option value="info" selected={data.technicalLogFilters.severity === 'info'}>Info</option>
+                  <option value="warning" selected={data.technicalLogFilters.severity === 'warning'}>Warning</option>
+                  <option value="error" selected={data.technicalLogFilters.severity === 'error'}>Error</option>
+                </select>
+              </label>
+              <label class="space-y-1 text-sm">
+                <span class="font-medium">Subsystem</span>
+                <select class="h-10 w-full rounded-md border border-zinc-300 px-3" name="subsystem">
+                  <option value="">All subsystems</option>
+                  <option value="scheduled-delivery" selected={data.technicalLogFilters.subsystem === 'scheduled-delivery'}>Scheduled delivery</option>
+                  <option value="admin-controls" selected={data.technicalLogFilters.subsystem === 'admin-controls'}>Admin controls</option>
+                </select>
+              </label>
+              <label class="space-y-1 text-sm lg:col-span-2">
+                <span class="font-medium">Event code</span>
+                <select class="h-10 w-full rounded-md border border-zinc-300 px-3" name="eventCode">
+                  <option value="">All event codes</option>
+                  <option value="scheduled-daily-summary-worker-completed" selected={data.technicalLogFilters.eventCode === 'scheduled-daily-summary-worker-completed'}>scheduled-daily-summary-worker-completed</option>
+                  <option value="scheduled-daily-summary-worker-failed" selected={data.technicalLogFilters.eventCode === 'scheduled-daily-summary-worker-failed'}>scheduled-daily-summary-worker-failed</option>
+                  <option value="admin-google-maps-kill-switch-changed" selected={data.technicalLogFilters.eventCode === 'admin-google-maps-kill-switch-changed'}>admin-google-maps-kill-switch-changed</option>
+                </select>
+              </label>
+              <div class="flex items-end gap-2 md:col-span-2 lg:col-span-3">
+                <button class="inline-flex h-10 items-center rounded-md bg-zinc-900 px-3 text-sm font-medium text-white hover:bg-zinc-700" type="submit">Apply filters</button>
+                <a class="inline-flex h-10 items-center rounded-md border border-zinc-300 px-3 text-sm font-medium hover:bg-zinc-50" href="/admin">Clear filters</a>
+              </div>
+            </form>
+
+            {#if data.technicalLogs.records.length > 0}
+              <div class="space-y-3">
+                {#each data.technicalLogs.records as record}
+                  <article class="rounded-md border border-zinc-200 p-4">
+                    <div class="flex flex-wrap items-start justify-between gap-2">
+                      <div>
+                        <code class="text-sm font-semibold">{record.eventCode}</code>
+                        <p class="mt-1 text-xs text-zinc-600">{record.subsystem} · {record.outcome}</p>
+                      </div>
+                      <div class="text-right">
+                        <span class="rounded-full bg-zinc-100 px-2 py-1 text-xs font-semibold uppercase">{record.severity}</span>
+                        <time class="mt-2 block text-xs text-zinc-600" datetime={record.occurredAt}>{record.occurredAt}</time>
+                      </div>
+                    </div>
+                    {#if 'failureClassification' in record && record.failureClassification}
+                      <p class="mt-3 text-sm">Failure classification: <code>{record.failureClassification}</code></p>
+                    {/if}
+                    {#if 'durationMilliseconds' in record}
+                      <p class="mt-2 text-sm">Duration: {record.durationMilliseconds} ms</p>
+                    {/if}
+                    <div class="mt-3 grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-3">
+                      {#each Object.entries(record.metadata) as [key, value]}
+                        <p class="rounded-md bg-zinc-100 p-2">
+                          {metadataLabel(key)}: <strong>{String(value)}</strong>
+                        </p>
+                      {/each}
+                    </div>
+                  </article>
+                {/each}
+              </div>
+            {:else}
+              <p class="rounded-md bg-zinc-100 p-4 text-zinc-700">No Technical Log Records match these filters.</p>
+            {/if}
+
+            {#if data.technicalLogs.nextCursor}
+              <a class="inline-flex h-10 items-center rounded-md border border-zinc-300 px-3 text-sm font-medium hover:bg-zinc-50" href={technicalLogNextPageHref()}>Next page</a>
+            {/if}
           </div>
         </Panel>
       </div>

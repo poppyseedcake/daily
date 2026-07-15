@@ -1,4 +1,4 @@
-import { asc, desc, inArray, lt } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, inArray, lt, lte, or, type SQL } from 'drizzle-orm';
 import type { db } from '$lib/server/db';
 import { technicalEventSchema, type TechnicalEvent } from '../technicalEventRecorder';
 import { technicalLogRecords } from './schema';
@@ -14,6 +14,7 @@ type TechnicalLogDatabase = typeof db;
 export const defaultTechnicalLogRetentionDays = defaultOperationalRetentionDays;
 const defaultCleanupBatchSize = 100;
 const maximumCleanupBatchSize = 1_000;
+const maximumPageSize = 100;
 
 export const technicalLogRetentionDaysFromEnvironment =
   operationalRetentionDaysFromEnvironment;
@@ -36,6 +37,47 @@ const storedRecord = (row: typeof technicalLogRecords.$inferSelect): TechnicalEv
     metadata: JSON.parse(row.metadata) as unknown
   })
 });
+
+type TechnicalLogCursor = {
+  occurredAt: string;
+  id: string;
+};
+
+const encodeCursor = (cursor: TechnicalLogCursor) =>
+  Buffer.from(JSON.stringify(cursor), 'utf8').toString('base64url');
+
+const decodeCursor = (cursor: string): TechnicalLogCursor => {
+  try {
+    const parsed = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8')) as unknown;
+    if (
+      typeof parsed === 'object' &&
+      parsed !== null &&
+      'occurredAt' in parsed &&
+      typeof parsed.occurredAt === 'string' &&
+      'id' in parsed &&
+      typeof parsed.id === 'string'
+    ) {
+      return { occurredAt: parsed.occurredAt, id: parsed.id };
+    }
+  } catch {
+    // The caller receives one stable validation error for every malformed cursor.
+  }
+
+  throw new Error('Invalid Technical Log cursor.');
+};
+
+export type TechnicalLogFilters = {
+  cursor?: string | null;
+  pageSize: number;
+  fromUtc?: string;
+  toUtc?: string;
+  severity?: 'info' | 'warning' | 'error';
+  subsystem?: 'scheduled-delivery' | 'admin-controls';
+  eventCode?:
+    | 'scheduled-daily-summary-worker-completed'
+    | 'scheduled-daily-summary-worker-failed'
+    | 'admin-google-maps-kill-switch-changed';
+};
 
 export const createTechnicalLogStore = (
   database: TechnicalLogDatabase,
@@ -81,8 +123,9 @@ export const createTechnicalLogStore = (
           ...event,
           failureClassification:
             'failureClassification' in event ? event.failureClassification : null,
-          correlationId: event.correlationId ?? null,
-          durationMilliseconds: event.durationMilliseconds,
+          correlationId: 'correlationId' in event ? (event.correlationId ?? null) : null,
+          durationMilliseconds:
+            'durationMilliseconds' in event ? event.durationMilliseconds : null,
           metadata: JSON.stringify(event.metadata)
         })
         .run();
@@ -96,6 +139,46 @@ export const createTechnicalLogStore = (
         .limit(limit);
 
       return rows.map(storedRecord);
+    },
+    async list(filters: TechnicalLogFilters) {
+      const pageSize = positiveBoundedInteger(filters.pageSize, 'pageSize', maximumPageSize);
+      const conditions: SQL[] = [];
+
+      if (filters.fromUtc) conditions.push(gte(technicalLogRecords.occurredAt, filters.fromUtc));
+      if (filters.toUtc) conditions.push(lte(technicalLogRecords.occurredAt, filters.toUtc));
+      if (filters.severity) conditions.push(eq(technicalLogRecords.severity, filters.severity));
+      if (filters.subsystem) conditions.push(eq(technicalLogRecords.subsystem, filters.subsystem));
+      if (filters.eventCode) conditions.push(eq(technicalLogRecords.eventCode, filters.eventCode));
+
+      if (filters.cursor) {
+        const cursor = decodeCursor(filters.cursor);
+        conditions.push(
+          or(
+            lt(technicalLogRecords.occurredAt, cursor.occurredAt),
+            and(
+              eq(technicalLogRecords.occurredAt, cursor.occurredAt),
+              lt(technicalLogRecords.id, cursor.id)
+            )
+          )!
+        );
+      }
+
+      const rows = await database
+        .select()
+        .from(technicalLogRecords)
+        .where(and(...conditions))
+        .orderBy(desc(technicalLogRecords.occurredAt), desc(technicalLogRecords.id))
+        .limit(pageSize + 1);
+      const pageRows = rows.slice(0, pageSize);
+      const lastRecord = pageRows.at(-1);
+
+      return {
+        records: pageRows.map(storedRecord),
+        nextCursor:
+          rows.length > pageSize && lastRecord
+            ? encodeCursor({ occurredAt: lastRecord.occurredAt, id: lastRecord.id })
+            : null
+      };
     }
   };
 };

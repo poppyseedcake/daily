@@ -125,6 +125,23 @@ export const setGoogleMapsAdminKillSwitch = (
     .run();
 };
 
+const readGoogleMapsAdminKillSwitch = (database: GoogleMapsDatabase) =>
+  database
+    .select({ enabled: googleMapsControl.enabled })
+    .from(googleMapsControl)
+    .where(eq(googleMapsControl.controlKey, 'admin-kill-switch'))
+    .get()?.enabled ?? false;
+
+export const changeGoogleMapsAdminKillSwitch = (
+  database: GoogleMapsDatabase,
+  enabled: boolean
+) =>
+  database.transaction((transaction) => {
+    const previousEnabled = readGoogleMapsAdminKillSwitch(transaction);
+    setGoogleMapsAdminKillSwitch(transaction, enabled);
+    return { previousEnabled, newEnabled: enabled };
+  });
+
 export const createGoogleMapsUsageGate = ({
   database,
   dailyCap,
@@ -326,13 +343,6 @@ export const createGoogleMapsUsageGate = ({
       })
       .run();
 
-  const adminKillSwitchEnabled = (source: GoogleMapsDatabase) =>
-    source
-      .select({ enabled: googleMapsControl.enabled })
-      .from(googleMapsControl)
-      .where(eq(googleMapsControl.controlKey, 'admin-kill-switch'))
-      .get()?.enabled ?? false;
-
   const admit = (
     category: GoogleMapsCallCategory,
     attribution: GoogleMapsPersonAttribution,
@@ -343,7 +353,7 @@ export const createGoogleMapsUsageGate = ({
       (transaction): { admission: GoogleMapsAdmission; alerts: GoogleMapsCapAlert[] } => {
         const [day, month] = periods;
 
-        if (adminKillSwitchEnabled(transaction)) {
+        if (readGoogleMapsAdminKillSwitch(transaction)) {
           return { admission: { outcome: 'suspended', reason: 'admin-kill-switch' }, alerts: [] };
         }
 
@@ -445,7 +455,7 @@ export const createGoogleMapsUsageGate = ({
     },
     async currentOperations(environmentKillSwitchEnabled) {
       const usage = currentUsage();
-      const adminEnabled = adminKillSwitchEnabled(database);
+      const adminEnabled = readGoogleMapsAdminKillSwitch(database);
       const suspensionReason = environmentKillSwitchEnabled
         ? 'environment-kill-switch'
         : adminEnabled

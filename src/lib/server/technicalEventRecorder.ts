@@ -43,9 +43,22 @@ const workerFailedEventSchema = workerEventBaseSchema.extend({
   failureClassification: z.enum(scheduledDailySummaryWorkerFailureClassifications)
 });
 
+const adminGoogleMapsKillSwitchChangedEventSchema = z.object({
+  eventCode: z.literal('admin-google-maps-kill-switch-changed'),
+  severity: z.literal('info'),
+  subsystem: z.literal('admin-controls'),
+  occurredAt: z.iso.datetime(),
+  outcome: z.literal('succeeded'),
+  metadata: z.object({
+    previousEnabled: z.boolean(),
+    newEnabled: z.boolean()
+  })
+});
+
 export const technicalEventSchema = z.discriminatedUnion('eventCode', [
   workerCompletedEventSchema,
-  workerFailedEventSchema
+  workerFailedEventSchema,
+  adminGoogleMapsKillSwitchChangedEventSchema
 ]);
 
 export type TechnicalEvent = z.infer<typeof technicalEventSchema>;
@@ -61,16 +74,26 @@ type WorkerCountsInput = {
 
 type TechnicalEventInput = {
   occurredAt: string;
-  correlationId?: TechnicalCorrelationId;
-  durationMilliseconds: number;
-  counts: WorkerCountsInput;
 } &
   (
-    | { eventCode: 'scheduled-daily-summary-worker-completed' }
+    | {
+        eventCode: 'scheduled-daily-summary-worker-completed';
+        correlationId?: TechnicalCorrelationId;
+        durationMilliseconds: number;
+        counts: WorkerCountsInput;
+      }
     | {
         eventCode: 'scheduled-daily-summary-worker-failed';
+        correlationId?: TechnicalCorrelationId;
+        durationMilliseconds: number;
+        counts: WorkerCountsInput;
         classification?: ScheduledDailySummaryWorkerFailureClassification;
         failure: unknown;
+      }
+    | {
+        eventCode: 'admin-google-maps-kill-switch-changed';
+        previousEnabled: boolean;
+        newEnabled: boolean;
       }
   );
 
@@ -84,6 +107,20 @@ const eventMetadata = (counts: WorkerCountsInput) => ({
 });
 
 const buildTechnicalEvent = (input: TechnicalEventInput): TechnicalEvent => {
+  if (input.eventCode === 'admin-google-maps-kill-switch-changed') {
+    return technicalEventSchema.parse({
+      eventCode: input.eventCode,
+      severity: 'info',
+      subsystem: 'admin-controls',
+      occurredAt: input.occurredAt,
+      outcome: 'succeeded',
+      metadata: {
+        previousEnabled: input.previousEnabled,
+        newEnabled: input.newEnabled
+      }
+    });
+  }
+
   if (input.eventCode === 'scheduled-daily-summary-worker-failed') {
     return technicalEventSchema.parse({
       eventCode: input.eventCode,
