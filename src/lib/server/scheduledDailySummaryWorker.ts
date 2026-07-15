@@ -122,7 +122,7 @@ export const runScheduledDailySummaryWorker = async ({
   batchSize = 50,
   now = () => new Date(),
   monotonicNow = () => performance.now(),
-  emit = (event) => console.log(JSON.stringify(event))
+  emit = () => {}
 }: ScheduledDailySummaryWorkerDependencies) => {
   if (!Number.isSafeInteger(batchSize) || batchSize < 1) {
     throw new Error('Scheduled Daily Summary worker batch size must be a positive integer.');

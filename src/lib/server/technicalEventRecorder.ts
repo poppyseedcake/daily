@@ -18,31 +18,29 @@ const workerCountsSchema = z.object({
   isolatedErrorCount: z.number().int().nonnegative()
 });
 
-const workerCompletedEventSchema = z.object({
-  eventCode: z.literal('scheduled-daily-summary-worker-completed'),
-  severity: z.literal('info'),
+const workerEventBaseSchema = z.object({
   subsystem: z.literal('scheduled-delivery'),
   occurredAt: z.iso.datetime(),
   correlationId: z.uuid().optional(),
-  outcome: z.literal('succeeded'),
   durationMilliseconds: z.number().nonnegative().finite(),
   metadata: workerCountsSchema
 });
 
-const workerFailedEventSchema = z.object({
+const workerCompletedEventSchema = workerEventBaseSchema.extend({
+  eventCode: z.literal('scheduled-daily-summary-worker-completed'),
+  severity: z.literal('info'),
+  outcome: z.literal('succeeded')
+});
+
+const workerFailedEventSchema = workerEventBaseSchema.extend({
   eventCode: z.literal('scheduled-daily-summary-worker-failed'),
   severity: z.literal('error'),
-  subsystem: z.literal('scheduled-delivery'),
-  occurredAt: z.iso.datetime(),
-  correlationId: z.uuid().optional(),
   outcome: z.literal('failed'),
   failureClassification: z.enum([
     'due-work-query-failed',
     'worker-initialization-failed',
     'unexpected'
-  ]),
-  durationMilliseconds: z.number().nonnegative().finite(),
-  metadata: workerCountsSchema
+  ])
 });
 
 export const technicalEventSchema = z.discriminatedUnion('eventCode', [

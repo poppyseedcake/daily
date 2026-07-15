@@ -1,4 +1,10 @@
 import { describe, expect, test, vi } from 'vitest';
+import Database from 'better-sqlite3';
+import { readFileSync } from 'node:fs';
+import { drizzle } from 'drizzle-orm/better-sqlite3';
+import * as schema from './db/schema';
+import { createTechnicalLogStore } from './db/technicalLogStore';
+import { createTechnicalEventRecorder } from './technicalEventRecorder';
 import {
   runScheduledDailySummaryWorker,
   type ScheduledDailySummaryWorkerEvent
@@ -21,6 +27,64 @@ const occurrence = (
 });
 
 describe('scheduled Daily Summary worker command', () => {
+  test('records a privacy-safe completion event through stdout and SQLite', async () => {
+    const sqlite = new Database(':memory:');
+    sqlite.exec(readFileSync('drizzle/0013_add_technical_log_records.sql', 'utf8'));
+    const database = drizzle(sqlite, { schema });
+    const store = createTechnicalLogStore(database);
+    const lines: string[] = [];
+    const recorder = createTechnicalEventRecorder({
+      store,
+      writeLine: (line) => lines.push(line)
+    });
+    const privateCanaries = [
+      'recipient@example.com',
+      'unhashed-user-id',
+      'Private Todo Task',
+      'Private Calendar Event',
+      'Weather at 52.2297,21.0122',
+      'Home to Hospital Commute',
+      '<html>Rendered Daily Summary</html>',
+      '{"provider":"payload"}',
+      'oauth-token-canary',
+      'session-canary',
+      'request-ip-and-user-agent-canary'
+    ];
+
+    try {
+      const result = await executeScheduledDailySummaryWorkerCommand({
+        loadDependencies: async () => ({
+          occurrenceStore: {
+            loadProcessableBatch: vi
+              .fn()
+              .mockResolvedValueOnce([
+                occurrence(privateCanaries[1], '2026-07-15T08:30:00.000Z')
+              ])
+              .mockResolvedValueOnce([])
+          },
+          delivery: {
+            processOccurrence: vi.fn().mockRejectedValue(new Error(privateCanaries.join(' | ')))
+          }
+        }),
+        eventNow: () => new Date('2026-07-15T08:30:01.000Z'),
+        recordTechnicalEvent: recorder.record
+      });
+
+      expect(result).toEqual({
+        exitCode: 0,
+        counts: { due: 1, sent: 0, skipped: 0, retrying: 0, failed: 0, isolatedError: 1 }
+      });
+      const serialized = [...lines, JSON.stringify(await store.loadRecent(10))].join('\n');
+      expect(lines).toHaveLength(1);
+      expect(serialized).toContain('scheduled-daily-summary-worker-completed');
+      for (const canary of privateCanaries) {
+        expect(serialized).not.toContain(canary);
+      }
+    } finally {
+      sqlite.close();
+    }
+  });
+
   test('processes exact-boundary work across stable bounded batches and reports counts', async () => {
     const due = [
       occurrence('user-1', '2026-07-14T07:00:00.000Z'),
