@@ -11,7 +11,15 @@ export default defineConfig({
   testDir: 'tests/e2e',
   webServer: {
     command: `node tests/e2e/setupDatabase.mjs && npm run dev -- --host 127.0.0.1 --port ${port}`,
-    env: { BETTER_AUTH_SECRET: authSecret, DATABASE_URL: databaseURL },
+    env: {
+      BETTER_AUTH_SECRET: authSecret,
+      DATABASE_URL: databaseURL,
+      ADMINISTRATOR_EMAIL_ALLOWLIST: 'admin@example.com',
+      SCHEDULED_WORKER_OVERDUE_MINUTES: '5',
+      GOOGLE_MAPS_GLOBAL_DAILY_CAP: '100',
+      GOOGLE_MAPS_GLOBAL_MONTHLY_CAP: '1000',
+      GOOGLE_MAPS_PER_PERSON_DAILY_LIMIT: '50'
+    },
     url: baseURL,
     reuseExistingServer: !process.env.CI
   },

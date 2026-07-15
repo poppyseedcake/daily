@@ -10,6 +10,18 @@
     'global-daily-cap': 'Daily usage cap reached',
     'global-monthly-cap': 'Monthly usage cap reached'
   } as const;
+
+  const workerStatusLabels = {
+    healthy: 'Healthy',
+    overdue: 'Overdue',
+    missing: 'No successful run'
+  } as const;
+
+  const workerOutcomeLabels = {
+    succeeded: 'Succeeded',
+    'completed-with-isolated-errors': 'Completed with isolated errors',
+    failed: 'Failed'
+  } as const;
 </script>
 
 <svelte:head>
@@ -125,12 +137,115 @@
         </div>
       </Panel>
 
-      <Panel title="Delivery Health" eyebrow="Records">
-        <div class="flex items-start gap-3">
-          <Database class="mt-0.5 text-cyan-700" size={20} aria-hidden="true" />
-          <p>Placeholder for technical delivery records without email content.</p>
-        </div>
-      </Panel>
+      <div class="md:col-span-3">
+        <Panel title="Delivery Health" eyebrow="Scheduled delivery">
+          <div class="space-y-6">
+            <div class="flex flex-wrap items-start justify-between gap-4">
+              <div class="flex items-start gap-3">
+                <Database class="mt-0.5 text-cyan-700" size={20} aria-hidden="true" />
+                <div>
+                  <p class="font-medium">Scheduled Worker</p>
+                  <p class="mt-1 text-xs text-zinc-600">
+                    Overdue after {data.deliveryHealth.worker.overdueThresholdMinutes} minutes. Times and
+                    windows use {data.deliveryHealth.timeBasis}.
+                  </p>
+                </div>
+              </div>
+              <span
+                class={`rounded-full px-2.5 py-1 text-xs font-semibold ${
+                  data.deliveryHealth.worker.status === 'healthy'
+                    ? 'bg-emerald-100 text-emerald-800'
+                    : 'bg-amber-100 text-amber-900'
+                }`}
+              >
+                {workerStatusLabels[data.deliveryHealth.worker.status]}
+              </span>
+            </div>
+
+            {#if data.deliveryHealth.worker.latestRun}
+              <div class="rounded-md border border-zinc-200 p-4">
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                  <p class="font-medium">
+                    Latest run: {workerOutcomeLabels[data.deliveryHealth.worker.latestRun.outcome]}
+                  </p>
+                  <time
+                    class="text-xs text-zinc-600"
+                    datetime={data.deliveryHealth.worker.latestRun.completedAt}
+                  >
+                    Completed {data.deliveryHealth.worker.latestRun.completedAt}
+                  </time>
+                </div>
+                <p class="mt-2 text-xs text-zinc-600">
+                  Duration {data.deliveryHealth.worker.latestRun.durationMilliseconds} ms
+                  {#if data.deliveryHealth.worker.latestRun.failureClassification}
+                    · Classification {data.deliveryHealth.worker.latestRun.failureClassification}
+                  {/if}
+                </p>
+                <dl class="mt-4 grid grid-cols-2 gap-2 text-center sm:grid-cols-3 lg:grid-cols-6">
+                  {#each Object.entries(data.deliveryHealth.worker.latestRun.counts) as [label, count]}
+                    <div class="rounded-md bg-zinc-100 p-2">
+                      <dt class="text-xs capitalize text-zinc-600">{label}</dt>
+                      <dd class="mt-1 text-lg font-semibold">{count}</dd>
+                    </div>
+                  {/each}
+                </dl>
+              </div>
+            {:else}
+              <p class="rounded-md bg-amber-50 p-3 text-amber-950">
+                No successful Scheduled Worker Run has been recorded.
+              </p>
+            {/if}
+
+            <div class="grid gap-4 lg:grid-cols-2">
+              {#each data.deliveryHealth.windows as window}
+                <section class="rounded-md border border-zinc-200 p-4" aria-label={window.label}>
+                  <h3 class="font-semibold">{window.label}</h3>
+                  <dl class="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-5">
+                    <div class="rounded-md bg-emerald-50 p-2">
+                      <dt class="text-xs text-emerald-800">Sent</dt>
+                      <dd class="mt-1 text-lg font-semibold">{window.totals.sent}</dd>
+                    </div>
+                    <div class="rounded-md bg-cyan-50 p-2">
+                      <dt class="text-xs text-cyan-800">Retrying</dt>
+                      <dd class="mt-1 text-lg font-semibold">{window.totals.retrying}</dd>
+                    </div>
+                    <div class="rounded-md bg-red-50 p-2">
+                      <dt class="text-xs text-red-800">Failed</dt>
+                      <dd class="mt-1 text-lg font-semibold">{window.totals.failed}</dd>
+                    </div>
+                    <div class="rounded-md bg-zinc-100 p-2">
+                      <dt class="text-xs text-zinc-600">Processing</dt>
+                      <dd class="mt-1 text-lg font-semibold">{window.totals.activeProcessing}</dd>
+                    </div>
+                    <div class="rounded-md bg-amber-100 p-2">
+                      <dt class="text-xs text-amber-900">Expired claims</dt>
+                      <dd class="mt-1 text-lg font-semibold">{window.totals.expiredProcessing}</dd>
+                    </div>
+                  </dl>
+
+                  <div class="mt-4 border-t border-zinc-200 pt-3">
+                    <p class="text-xs font-semibold uppercase tracking-wide text-zinc-600">
+                      Failures by classification
+                    </p>
+                    {#if window.failureClassifications.length > 0}
+                      <ul class="mt-2 space-y-1">
+                        {#each window.failureClassifications as failure}
+                          <li class="flex justify-between gap-3">
+                            <code>{failure.classification}</code>
+                            <strong>{failure.count}</strong>
+                          </li>
+                        {/each}
+                      </ul>
+                    {:else}
+                      <p class="mt-2 text-zinc-600">No retrying or failed deliveries.</p>
+                    {/if}
+                  </div>
+                </section>
+              {/each}
+            </div>
+          </div>
+        </Panel>
+      </div>
     </div>
   </div>
 </main>
