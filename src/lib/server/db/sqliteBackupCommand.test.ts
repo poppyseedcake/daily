@@ -12,6 +12,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { Worker } from 'node:worker_threads';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { executeSqliteBackupCommand } from './sqliteBackupCommand';
 
@@ -329,6 +330,55 @@ describe('SQLite backup operator command', () => {
         }
       ]);
     } finally {
+      source.close();
+    }
+  });
+
+  test('waits for another process beyond one lock-attempt timeout', async () => {
+    const root = temporaryDirectory();
+    const sourcePath = join(root, 'daily.db');
+    const backupDirectory = join(root, 'backups');
+    const lockPath = join(backupDirectory, '.backup-operation-lock.sqlite3');
+    const source = new Database(sourcePath);
+    source.exec('CREATE TABLE values_to_keep (value TEXT NOT NULL)');
+    mkdirSync(backupDirectory, { recursive: true });
+
+    const lockHolder = new Worker(
+      `
+        const Database = require('better-sqlite3');
+        const { parentPort, workerData } = require('node:worker_threads');
+        const lock = new Database(workerData.lockPath);
+        lock.exec('BEGIN EXCLUSIVE');
+        parentPort.postMessage('locked');
+        setTimeout(() => {
+          lock.close();
+          parentPort.postMessage('released');
+        }, 50);
+      `,
+      { eval: true, workerData: { lockPath } }
+    );
+    await new Promise<void>((resolve, reject) => {
+      lockHolder.once('message', () => resolve());
+      lockHolder.once('error', reject);
+    });
+
+    try {
+      const result = await executeSqliteBackupCommand({
+        purpose: 'pre-migration',
+        sourceDatabasePath: sourcePath,
+        backupDirectory,
+        lockAttemptTimeoutMilliseconds: 5,
+        now: () => new Date('2026-07-15T00:00:00.000Z'),
+        randomUUID: () => '123e4567-e89b-42d3-a456-426614174022'
+      });
+
+      expect(result).toEqual({
+        exitCode: 0,
+        recoveryPointName:
+          'pre-migration-20260715T000000000Z-123e4567-e89b-42d3-a456-426614174022'
+      });
+    } finally {
+      await lockHolder.terminate();
       source.close();
     }
   });

@@ -37,6 +37,7 @@ type ExecuteSqliteBackupCommandOptions = {
     totalPages: number;
     remainingPages: number;
   }) => number;
+  lockAttemptTimeoutMilliseconds?: number;
   removeRecoveryPoint?: (path: string) => void;
 };
 
@@ -129,8 +130,20 @@ const checksumFile = async (path: string) => {
 
 const backupQueues = new Map<string, Promise<void>>();
 
+const beginExclusiveWhenAvailable = (lockDatabase: Database.Database) => {
+  while (true) {
+    try {
+      lockDatabase.exec('BEGIN EXCLUSIVE');
+      return;
+    } catch (error) {
+      if (!(error instanceof Database.SqliteError) || error.code !== 'SQLITE_BUSY') throw error;
+    }
+  }
+};
+
 const withBackupSerialization = async <Result>(
   backupDirectory: string,
+  lockAttemptTimeoutMilliseconds: number,
   operation: () => Promise<Result>
 ) => {
   const queueKey = resolve(backupDirectory);
@@ -149,11 +162,8 @@ const withBackupSerialization = async <Result>(
     const lockPath = join(backupDirectory, '.backup-operation-lock.sqlite3');
     lockDatabase = new Database(lockPath);
     chmodSync(lockPath, 0o640);
-    lockDatabase.pragma('busy_timeout = 300000');
-    lockDatabase.exec(
-      'CREATE TABLE IF NOT EXISTS backup_operation_lock (singleton INTEGER PRIMARY KEY CHECK (singleton = 1))'
-    );
-    lockDatabase.exec('BEGIN EXCLUSIVE');
+    lockDatabase.pragma(`busy_timeout = ${lockAttemptTimeoutMilliseconds}`);
+    beginExclusiveWhenAvailable(lockDatabase);
     return await operation();
   } finally {
     lockDatabase?.close();
@@ -189,6 +199,7 @@ export const executeSqliteBackupCommand = async ({
   recordTechnicalEvent,
   onlineBackup = performOnlineBackup,
   onlineBackupProgress,
+  lockAttemptTimeoutMilliseconds = 300_000,
   removeRecoveryPoint = (path) => rmSync(path, { recursive: true })
 }: ExecuteSqliteBackupCommandOptions) => {
   const createdAt = now();
@@ -207,7 +218,7 @@ export const executeSqliteBackupCommand = async ({
 
   try {
     validateRetentionDays(retentionDays);
-    return await withBackupSerialization(backupDirectory, async () => {
+    return await withBackupSerialization(backupDirectory, lockAttemptTimeoutMilliseconds, async () => {
       mkdirSync(temporaryDirectory, { mode: 0o700 });
 
       if (!statSync(sourceDatabasePath).isFile()) {
