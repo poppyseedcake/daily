@@ -48,10 +48,11 @@ type RecoveryPoint = {
 };
 
 const recoveryPointNamePattern =
-  /^(daily|pre-migration)-\d{8}T\d{9}Z-[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  /^(daily|pre-migration)-(\d{8}T\d{9}Z)-([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/i;
 
 const readRecoveryPoint = (backupDirectory: string, name: string): RecoveryPoint | null => {
-  if (!recoveryPointNamePattern.test(name)) return null;
+  const nameParts = recoveryPointNamePattern.exec(name);
+  if (!nameParts) return null;
 
   try {
     const metadata = JSON.parse(
@@ -60,8 +61,12 @@ const readRecoveryPoint = (backupDirectory: string, name: string): RecoveryPoint
     if (
       metadata.formatVersion !== 1 ||
       (metadata.purpose !== 'daily' && metadata.purpose !== 'pre-migration') ||
+      metadata.purpose !== nameParts[1] ||
       typeof metadata.createdAt !== 'string' ||
       Number.isNaN(Date.parse(metadata.createdAt)) ||
+      metadata.createdAt.replaceAll('-', '').replaceAll(':', '').replace('.', '') !==
+        nameParts[2] ||
+      metadata.backupId !== nameParts[3] ||
       metadata.integrityCheck !== 'ok' ||
       metadata.checksumAlgorithm !== 'sha256' ||
       typeof metadata.checksum !== 'string' ||
