@@ -32,21 +32,25 @@ const seedRecoveryPoint = (
 ) => {
   const directory = join(backupDirectory, name);
   mkdirSync(directory, { recursive: true });
+  const backupPath = join(directory, 'backup.sqlite3');
+  const backup = new Database(backupPath);
+  backup.exec('CREATE TABLE verified_recovery_point (id INTEGER PRIMARY KEY)');
+  backup.close();
+  const backupContents = readFileSync(backupPath);
   writeFileSync(
     join(directory, 'metadata.json'),
     JSON.stringify({
       formatVersion: 1,
-      backupId: '123e4567-e89b-42d3-a456-426614174099',
+      backupId: name.slice(-36),
       purpose,
       createdAt,
       databaseFile: 'backup.sqlite3',
       checksumAlgorithm: 'sha256',
-      checksum: '0'.repeat(64),
-      sizeBytes: 1,
+      checksum: createHash('sha256').update(backupContents).digest('hex'),
+      sizeBytes: backupContents.byteLength,
       integrityCheck: 'ok'
     })
   );
-  writeFileSync(join(directory, 'backup.sqlite3'), 'verified-placeholder');
 };
 
 afterEach(() => {
@@ -135,25 +139,32 @@ describe('SQLite backup operator command', () => {
     }
   });
 
-  test('publishes no recovery point and exits unsuccessfully when backup creation fails', async () => {
+  test('publishes no recovery point and cannot run retention when verification fails', async () => {
     const root = temporaryDirectory();
     const backupDirectory = join(root, 'backups');
     const recordTechnicalEvent = vi.fn().mockResolvedValue(undefined);
+    const sourcePath = join(root, 'source.db');
+    new Database(sourcePath).close();
     seedRecoveryPoint(
       backupDirectory,
       'daily-20260501T000000000Z-123e4567-e89b-42d3-a456-426614174050',
       'daily',
       '2026-05-01T00:00:00.000Z'
     );
+    const removeRecoveryPoint = vi.fn();
 
     const result = await executeSqliteBackupCommand({
       purpose: 'pre-migration',
-      sourceDatabasePath: join(root, 'missing-private-database.db'),
+      sourceDatabasePath: sourcePath,
       backupDirectory,
       now: () => new Date('2026-07-15T12:34:56.789Z'),
       monotonicNow: vi.fn().mockReturnValueOnce(10).mockReturnValueOnce(15),
       randomUUID: () => '123e4567-e89b-42d3-a456-426614174001',
-      recordTechnicalEvent
+      recordTechnicalEvent,
+      onlineBackup: async (_sourceDatabasePath, destinationPath) => {
+        writeFileSync(destinationPath, 'not a sqlite database');
+      },
+      removeRecoveryPoint
     });
 
     expect(result).toEqual({ exitCode: 1 });
@@ -166,15 +177,16 @@ describe('SQLite backup operator command', () => {
       durationMilliseconds: 5,
       purpose: 'pre-migration',
       recoveryPointId: '123e4567-e89b-42d3-a456-426614174001',
-      classification: 'invalid-configuration',
+      classification: 'verification-failed',
       failure: null
     });
+    expect(removeRecoveryPoint).not.toHaveBeenCalled();
     expect(JSON.stringify(recordTechnicalEvent.mock.calls)).not.toContain(
-      'missing-private-database.db'
+      'not a sqlite database'
     );
   });
 
-  test('removes expired recovery points only after success and preserves each purpose newest', async () => {
+  test('removes only items above the retention boundary and preserves each purpose newest', async () => {
     const root = temporaryDirectory();
     const sourcePath = join(root, 'daily.db');
     const backupDirectory = join(root, 'backups');
@@ -182,15 +194,21 @@ describe('SQLite backup operator command', () => {
     source.exec('CREATE TABLE settings (value TEXT NOT NULL)');
     seedRecoveryPoint(
       backupDirectory,
-      'daily-20260601T000000000Z-123e4567-e89b-42d3-a456-426614174010',
+      'daily-20260614T235959999Z-123e4567-e89b-42d3-a456-426614174010',
       'daily',
-      '2026-06-01T00:00:00.000Z'
+      '2026-06-14T23:59:59.999Z'
     );
     seedRecoveryPoint(
       backupDirectory,
       'daily-20260615T000000000Z-123e4567-e89b-42d3-a456-426614174011',
       'daily',
       '2026-06-15T00:00:00.000Z'
+    );
+    seedRecoveryPoint(
+      backupDirectory,
+      'daily-20260615T000000001Z-123e4567-e89b-42d3-a456-426614174014',
+      'daily',
+      '2026-06-15T00:00:00.001Z'
     );
     seedRecoveryPoint(
       backupDirectory,
@@ -222,9 +240,59 @@ describe('SQLite backup operator command', () => {
           .sort()
       ).toEqual([
         'daily-20260615T000000000Z-123e4567-e89b-42d3-a456-426614174011',
+        'daily-20260615T000000001Z-123e4567-e89b-42d3-a456-426614174014',
         'daily-20260715T000000000Z-123e4567-e89b-42d3-a456-426614174002',
         'pre-migration-20260601T000000000Z-123e4567-e89b-42d3-a456-426614174013'
       ]);
+    } finally {
+      source.close();
+    }
+  });
+
+  test('removes expired finalized artifacts that are mismatched or no longer verified', async () => {
+    const root = temporaryDirectory();
+    const sourcePath = join(root, 'daily.db');
+    const backupDirectory = join(root, 'backups');
+    const source = new Database(sourcePath);
+    source.exec('CREATE TABLE settings (value TEXT NOT NULL)');
+    const mismatchedName =
+      'daily-20260501T000000000Z-123e4567-e89b-42d3-a456-426614174080';
+    seedRecoveryPoint(
+      backupDirectory,
+      mismatchedName,
+      'pre-migration',
+      '2026-05-01T00:00:00.000Z'
+    );
+    seedRecoveryPoint(
+      backupDirectory,
+      'pre-migration-20260601T000000000Z-123e4567-e89b-42d3-a456-426614174082',
+      'pre-migration',
+      '2026-06-01T00:00:00.000Z'
+    );
+    const corruptName =
+      'daily-20260502T000000000Z-123e4567-e89b-42d3-a456-426614174083';
+    seedRecoveryPoint(
+      backupDirectory,
+      corruptName,
+      'daily',
+      '2026-05-02T00:00:00.000Z'
+    );
+    writeFileSync(join(backupDirectory, corruptName, 'backup.sqlite3'), 'corrupt');
+    const removeRecoveryPoint = vi.fn();
+
+    try {
+      const result = await executeSqliteBackupCommand({
+        purpose: 'daily',
+        sourceDatabasePath: sourcePath,
+        backupDirectory,
+        now: () => new Date('2026-07-15T00:00:00.000Z'),
+        randomUUID: () => '123e4567-e89b-42d3-a456-426614174081',
+        removeRecoveryPoint
+      });
+
+      expect(result.exitCode).toBe(0);
+      expect(removeRecoveryPoint).toHaveBeenCalledWith(join(backupDirectory, mismatchedName));
+      expect(removeRecoveryPoint).toHaveBeenCalledWith(join(backupDirectory, corruptName));
     } finally {
       source.close();
     }
