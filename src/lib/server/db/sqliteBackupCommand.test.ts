@@ -249,7 +249,7 @@ describe('SQLite backup operator command', () => {
     }
   });
 
-  test('ignores finalized-looking directories that are mismatched or no longer verified', async () => {
+  test('removes expired finalized artifacts that are mismatched or no longer verified', async () => {
     const root = temporaryDirectory();
     const sourcePath = join(root, 'daily.db');
     const backupDirectory = join(root, 'backups');
@@ -291,12 +291,8 @@ describe('SQLite backup operator command', () => {
       });
 
       expect(result.exitCode).toBe(0);
-      expect(removeRecoveryPoint).not.toHaveBeenCalledWith(
-        join(backupDirectory, mismatchedName)
-      );
-      expect(removeRecoveryPoint).not.toHaveBeenCalledWith(
-        join(backupDirectory, corruptName)
-      );
+      expect(removeRecoveryPoint).toHaveBeenCalledWith(join(backupDirectory, mismatchedName));
+      expect(removeRecoveryPoint).toHaveBeenCalledWith(join(backupDirectory, corruptName));
     } finally {
       source.close();
     }

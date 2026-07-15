@@ -43,8 +43,9 @@ type ExecuteSqliteBackupCommandOptions = {
 
 type RecoveryPoint = {
   name: string;
-  purpose: SqliteBackupPurpose;
   createdAt: string;
+  purpose?: SqliteBackupPurpose;
+  verified: boolean;
 };
 
 const recoveryPointNamePattern =
@@ -56,12 +57,20 @@ const checksumFile = async (path: string) => {
   return checksum.digest('hex');
 };
 
+const createdAtFromNameToken = (token: string) =>
+  `${token.slice(0, 4)}-${token.slice(4, 6)}-${token.slice(6, 8)}T${token.slice(9, 11)}:${token.slice(11, 13)}:${token.slice(13, 15)}.${token.slice(15, 18)}Z`;
+
 const readRecoveryPoint = async (
   backupDirectory: string,
   name: string
 ): Promise<RecoveryPoint | null> => {
   const identity = recoveryPointNamePattern.exec(name)?.groups;
   if (!identity) return null;
+  const unverifiedRecoveryPoint: RecoveryPoint = {
+    name,
+    createdAt: createdAtFromNameToken(identity.createdAtToken),
+    verified: false
+  };
 
   try {
     const metadata = JSON.parse(
@@ -83,7 +92,7 @@ const readRecoveryPoint = async (
       metadata.databaseFile !== 'backup.sqlite3' ||
       typeof metadata.sizeBytes !== 'number'
     ) {
-      return null;
+      return unverifiedRecoveryPoint;
     }
 
     const backupPath = join(backupDirectory, name, 'backup.sqlite3');
@@ -93,17 +102,24 @@ const readRecoveryPoint = async (
       backupStat.size !== metadata.sizeBytes ||
       (await checksumFile(backupPath)) !== metadata.checksum
     ) {
-      return null;
+      return unverifiedRecoveryPoint;
     }
     const backup = new Database(backupPath, { readonly: true, fileMustExist: true });
     try {
-      if (backup.pragma('integrity_check', { simple: true }) !== 'ok') return null;
+      if (backup.pragma('integrity_check', { simple: true }) !== 'ok') {
+        return unverifiedRecoveryPoint;
+      }
     } finally {
       backup.close();
     }
-    return { name, purpose: metadata.purpose, createdAt: metadata.createdAt };
+    return {
+      name,
+      purpose: metadata.purpose,
+      createdAt: metadata.createdAt,
+      verified: true
+    };
   } catch {
-    return null;
+    return unverifiedRecoveryPoint;
   }
 };
 
@@ -131,6 +147,7 @@ const applyRetention = async (
   }
   const newestByPurpose = new Map<SqliteBackupPurpose, RecoveryPoint>();
   for (const recoveryPoint of recoveryPoints) {
+    if (!recoveryPoint.verified || !recoveryPoint.purpose) continue;
     const newest = newestByPurpose.get(recoveryPoint.purpose);
     if (!newest || recoveryPoint.createdAt > newest.createdAt) {
       newestByPurpose.set(recoveryPoint.purpose, recoveryPoint);
@@ -142,7 +159,9 @@ const applyRetention = async (
   for (const recoveryPoint of recoveryPoints) {
     if (
       Date.parse(recoveryPoint.createdAt) < cutoff &&
-      newestByPurpose.get(recoveryPoint.purpose)?.name !== recoveryPoint.name
+      (!recoveryPoint.verified ||
+        !recoveryPoint.purpose ||
+        newestByPurpose.get(recoveryPoint.purpose)?.name !== recoveryPoint.name)
     ) {
       try {
         removeRecoveryPoint(join(backupDirectory, recoveryPoint.name));
