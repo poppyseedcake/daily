@@ -1509,6 +1509,29 @@ describe('Daily page server load', () => {
     expect(sentForecastRequests).toEqual([]);
     expect(sentCommuteEstimateRequests).toEqual([]);
     expect(sentCalendarEventRequests).toEqual([]);
+    expect(deletionStart).toHaveBeenCalledWith('user-1');
+    expect(deletionFinish).toHaveBeenCalledOnce();
+  });
+
+  test('retries interrupted deletion cleanup on the next page load', async () => {
+    getSession.mockResolvedValue({
+      user: { id: 'user-1', email: 'user@example.com', emailVerified: true }
+    });
+    lifecycleActive.value = false;
+    deletionStart.mockResolvedValue('resuming');
+    deletionFinish.mockRejectedValueOnce(new Error('database temporarily unavailable'));
+
+    await expect(loadPage()).resolves.toEqual(expect.objectContaining({
+      authState: { mode: 'visitor' },
+      renderedSummaryHtml: null
+    }));
+    await expect(loadPage()).resolves.toEqual(expect.objectContaining({
+      authState: { mode: 'visitor' },
+      renderedSummaryHtml: null
+    }));
+
+    expect(deletionStart).toHaveBeenCalledTimes(2);
+    expect(deletionFinish).toHaveBeenCalledTimes(2);
   });
 
   test('does not submit a test Daily Summary for a deleting User', async () => {

@@ -144,6 +144,19 @@ export const load = async ({ request }) => {
     authState.mode === 'user' &&
     !(await userLifecycleStore.isActive(authState.userId))
   ) {
+    try {
+      const attributionSecret = env.GOOGLE_MAPS_ATTRIBUTION_SECRET;
+      if (attributionSecret) {
+        await deleteDailyAccount({
+          userId: authState.userId,
+          attributionSecret,
+          store: accountDeletionStore
+        });
+      }
+    } catch {
+      // The committed deleting state is resumable; a later page load will retry cleanup.
+      console.warn('Account deletion cleanup remains pending.');
+    }
     authState = { mode: 'visitor' };
   }
   const calendarConnectionResult = new URL(request.url).searchParams.get('calendarConnection');
