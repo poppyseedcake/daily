@@ -28,7 +28,7 @@ if (process.env.DAILY_SYSTEMD_BACKUP_UNIT === 'true') {
     BACKUP_DIRECTORY: '/var/backups/daily'
   };
   const pathsOutsideUnitSandbox = Object.entries(systemdBackupPaths)
-    .filter(([name, expected]) => process.env[name]?.trim() !== expected)
+    .filter(([name, expected]) => process.env[name] !== expected)
     .map(([name]) => name);
 
   if (pathsOutsideUnitSandbox.length > 0) {

@@ -63,7 +63,9 @@ describe('production environment validation', () => {
 
   test.each([
     ['DATABASE_URL', '/srv/daily/shared/daily.db'],
-    ['BACKUP_DIRECTORY', '/srv/daily/backups']
+    ['BACKUP_DIRECTORY', '/srv/daily/backups'],
+    ['DATABASE_URL', '/var/lib/daily/daily.db '],
+    ['BACKUP_DIRECTORY', '/var/backups/daily ']
   ])('rejects %s outside the systemd backup unit write paths', (name, value) => {
     const result = validate({
       ...validEnvironment,
