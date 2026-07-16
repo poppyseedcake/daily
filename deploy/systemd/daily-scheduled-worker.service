@@ -12,7 +12,7 @@ WorkingDirectory=/srv/daily/current
 Environment=NODE_ENV=production
 EnvironmentFile=/etc/daily/daily.env
 ExecStartPre=/usr/bin/node scripts/validate-production-environment.mjs
-ExecStart=/usr/bin/npm run worker:scheduled-delivery
+ExecStart=/usr/bin/node build/worker/runScheduledDailySummaryWorkerCommand.js
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=daily-scheduled-worker
@@ -39,4 +39,3 @@ CapabilityBoundingSet=
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
 SystemCallArchitectures=native
 ReadWritePaths=/var/lib/daily
-

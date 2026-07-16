@@ -4,7 +4,8 @@ import { describe, expect, test } from 'vitest';
 const validationScript = 'scripts/validate-production-environment.mjs';
 const validEnvironment = {
   BETTER_AUTH_SECRET: 'a'.repeat(32),
-  GOOGLE_MAPS_ATTRIBUTION_SECRET: 'b'.repeat(32)
+  GOOGLE_MAPS_ATTRIBUTION_SECRET: 'b'.repeat(32),
+  DATABASE_URL: '/var/lib/daily/daily.db'
 };
 
 const validate = (environment: NodeJS.ProcessEnv) =>
@@ -36,6 +37,14 @@ describe('production environment validation', () => {
 
     expect(result.status).toBe(0);
     expect(result.stderr).toBe('');
+  });
+
+  test.each([undefined, '', '   '])('rejects a missing production database URL: %s', (databaseUrl) => {
+    const result = validate({ ...validEnvironment, DATABASE_URL: databaseUrl });
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain('DATABASE_URL');
+    expect(result.stderr).not.toContain('/var/lib/daily/daily.db');
   });
 
   test.each([undefined, '', 'replace-me', 'short-secret'])(

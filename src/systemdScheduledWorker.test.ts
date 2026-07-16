@@ -19,7 +19,10 @@ describe('systemd scheduled worker contract', () => {
     expect(service).toContain('Environment=NODE_ENV=production');
     expect(service).toContain('EnvironmentFile=/etc/daily/daily.env');
     expect(service).toContain('ExecStartPre=/usr/bin/node scripts/validate-production-environment.mjs');
-    expect(service).toContain('ExecStart=/usr/bin/npm run worker:scheduled-delivery');
+    expect(service).toContain(
+      'ExecStart=/usr/bin/node build/worker/runScheduledDailySummaryWorkerCommand.js'
+    );
+    expect(service).not.toContain('vite-node');
     expect(service).not.toContain('daily-web.service');
   });
 
@@ -81,6 +84,7 @@ describe('systemd scheduled worker contract', () => {
       );
 
       expect(verification.error).toBeUndefined();
+      expect(verification.status).toBe(0);
       expect(unexpectedDiagnostics).toEqual([]);
     }
   );

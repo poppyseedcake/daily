@@ -10,7 +10,7 @@
   },
   "scripts": {
     "dev": "vite dev --port 5174",
-    "build": "vite build",
+    "build": "vite build && vite build --config vite.worker.build.config.ts",
     "preview": "vite preview --port 5174",
     "start": "node --env-file=.env build",
     "prepare": "svelte-kit sync || true",
