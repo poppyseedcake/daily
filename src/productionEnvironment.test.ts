@@ -60,4 +60,22 @@ describe('production environment validation', () => {
       expect(result.stderr).not.toContain(secret || 'value-not-present');
     }
   );
+
+  test.each([
+    ['DATABASE_URL', '/srv/daily/shared/daily.db'],
+    ['BACKUP_DIRECTORY', '/srv/daily/backups'],
+    ['DATABASE_URL', '/var/lib/daily/daily.db '],
+    ['BACKUP_DIRECTORY', '/var/backups/daily ']
+  ])('rejects %s outside the systemd backup unit write paths', (name, value) => {
+    const result = validate({
+      ...validEnvironment,
+      BACKUP_DIRECTORY: '/var/backups/daily',
+      DAILY_SYSTEMD_BACKUP_UNIT: 'true',
+      [name]: value
+    });
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain(name);
+    expect(result.stderr).not.toContain(value);
+  });
 });

@@ -23,6 +23,8 @@ sudo install --owner=root --group=daily --mode=0640 deploy/systemd/daily.env.exa
 sudo install --owner=root --group=root --mode=0644 deploy/systemd/daily-web.service /etc/systemd/system/daily-web.service
 sudo install --owner=root --group=root --mode=0644 deploy/systemd/daily-scheduled-worker.service /etc/systemd/system/daily-scheduled-worker.service
 sudo install --owner=root --group=root --mode=0644 deploy/systemd/daily-scheduled-worker.timer /etc/systemd/system/daily-scheduled-worker.timer
+sudo install --owner=root --group=root --mode=0644 deploy/systemd/daily-backup.service /etc/systemd/system/daily-backup.service
+sudo install --owner=root --group=root --mode=0644 deploy/systemd/daily-backup.timer /etc/systemd/system/daily-backup.timer
 ```
 
 Install a successfully built release in a versioned, root-owned directory under
@@ -33,6 +35,9 @@ Edit `/etc/daily/daily.env`, fill every blank or placeholder, and keep its
 least 32 bytes for `BETTER_AUTH_SECRET` and `GOOGLE_MAPS_ATTRIBUTION_SECRET`; never
 reuse a value from an example or another deployment. The service refuses to start
 when either secret is missing, known to be a template value, or too short.
+Keep `DATABASE_URL=/var/lib/daily/daily.db` and
+`BACKUP_DIRECTORY=/var/backups/daily`: the backup unit validates both paths before
+starting because its systemd sandbox grants write access only to those locations.
 
 The application does not migrate its database on normal startup; apply every
 migration explicitly as part of deployment. Readiness verifies a table introduced
@@ -42,10 +47,11 @@ unhealthy.
 Ask systemd to validate the installed unit, reload it, and enable automatic startup:
 
 ```sh
-sudo systemd-analyze verify /etc/systemd/system/daily-web.service /etc/systemd/system/daily-scheduled-worker.service /etc/systemd/system/daily-scheduled-worker.timer
+sudo systemd-analyze verify /etc/systemd/system/daily-web.service /etc/systemd/system/daily-scheduled-worker.service /etc/systemd/system/daily-scheduled-worker.timer /etc/systemd/system/daily-backup.service /etc/systemd/system/daily-backup.timer
 sudo systemctl daemon-reload
 sudo systemctl enable --now daily-web.service
 sudo systemctl enable --now daily-scheduled-worker.timer
+sudo systemctl enable --now daily-backup.timer
 ```
 
 The restart policy retries unexpected failures after five seconds, but permits no
@@ -65,6 +71,18 @@ an independent unit: a non-zero worker exit leaves a failing worker result in sy
 without terminating the web service. The command's privacy-safe aggregate completion
 output and exit status are available in the worker service journal.
 
+The backup timer starts `daily-backup.service` once per day and catches up a missed
+activation after downtime. Its oneshot invokes the production backup command with
+the `daily` purpose and `BACKUP_DIRECTORY` from `/etc/daily/daily.env`. The command's
+shared backup-directory lock serializes timer and operator invocations, and its
+verified-finalization and retention rules remain authoritative. The service can
+write the live database directory and `/var/backups/daily`, but the root-owned
+release below `/srv/daily/current` stays read-only.
+
+A command failure exits non-zero, leaves `daily-backup.service` failed, and emits a
+privacy-safe `sqlite-backup-failed` technical event. The event and command output
+are available in the unit journal; neither includes private paths or raw errors.
+
 ## Inspect status and logs
 
 ```sh
@@ -72,6 +90,8 @@ sudo systemctl status daily-web.service
 sudo journalctl -u daily-web.service --since today
 sudo systemctl status daily-scheduled-worker.timer daily-scheduled-worker.service
 sudo journalctl -u daily-scheduled-worker.service --since today
+sudo systemctl status daily-backup.timer daily-backup.service
+sudo journalctl -u daily-backup.service --since today
 ```
 
 After changing `/etc/daily/daily.env` or switching `/srv/daily/current`, restart the
@@ -91,6 +111,14 @@ aggregate log output:
 sudo systemctl start daily-scheduled-worker.service
 sudo systemctl status daily-scheduled-worker.service
 sudo journalctl -u daily-scheduled-worker.service -n 20
+```
+
+Test a routine recovery point without waiting for the daily activation:
+
+```sh
+sudo systemctl start daily-backup.service
+sudo systemctl status daily-backup.service
+sudo journalctl -u daily-backup.service -n 20
 ```
 
 ## Verify readiness
