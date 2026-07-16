@@ -51,9 +51,11 @@ The command performs one ordered workflow and exits non-zero on any failed step:
 Build, backup, migration, unit installation, service-state, or readiness failure makes the
 deployment unsuccessful. Inspect `systemctl status` and `journalctl` as described in
 `docs/systemd-web-service.md`; do not report or promote a failed deployment. If a failure occurs
-after activation, the command restores the previous application symlink and unit files and attempts
-to restart them. A completed migration is not reversed by this application rollback, so verify the
-old release remains schema-compatible or use the database restore procedure below.
+after services stop, the command attempts to restart the previous release. If the candidate was
+already activated, it first restores the previous application symlink and unit files; a rejected
+first release is removed so the immutable release identifier can be retried. A completed migration
+is not reversed by this application rollback, so verify the old release remains schema-compatible
+or use the database restore procedure below.
 
 ## Rollback and restoration
 

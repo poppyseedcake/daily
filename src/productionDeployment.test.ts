@@ -170,6 +170,37 @@ describe('production deployment operator boundary', () => {
     if ('DAILY_TEST_SERVICE_FAIL' in environment || 'DAILY_TEST_READINESS_FAIL' in environment) {
       expect(readlinkSync(join(fixture.root, 'current'))).toBe(join(fixture.releases, 'previous'));
     }
+    if ('DAILY_TEST_MIGRATION_FAIL' in environment) {
+      expect(readFileSync(fixture.log, 'utf8')).toContain(
+        'systemctl restart daily-web.service daily-scheduled-worker.timer daily-backup.timer'
+      );
+    }
+  });
+
+  test('removes a rejected candidate so a failed first deployment can be retried', () => {
+    const fixture = createFixture();
+    rmSync(join(fixture.root, 'current'));
+
+    const result = deploy(fixture, { DAILY_TEST_READINESS_FAIL: 'true' });
+
+    expect(result.status).not.toBe(0);
+    expect(existsSync(join(fixture.root, 'current'))).toBe(false);
+    expect(existsSync(join(fixture.releases, 'release-148'))).toBe(false);
+    expect(existsSync(join(fixture.root, 'systemd', 'daily-web.service'))).toBe(false);
+  });
+
+  test('restores units from a previous release addressed by a relative current link', () => {
+    const fixture = createFixture();
+    rmSync(join(fixture.root, 'current'));
+    symlinkSync('releases/previous', join(fixture.root, 'current'));
+
+    const result = deploy(fixture, { DAILY_TEST_READINESS_FAIL: 'true' });
+
+    expect(result.status).not.toBe(0);
+    expect(readlinkSync(join(fixture.root, 'current'))).toBe('releases/previous');
+    expect(readFileSync(join(fixture.root, 'systemd', 'daily-web.service'), 'utf8')).toBe(
+      'previous daily-web.service'
+    );
   });
 
   test('documents prerequisites, failure semantics, rollback, and restoration', () => {

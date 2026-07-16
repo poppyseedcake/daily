@@ -29,31 +29,53 @@ SOURCE_DIRECTORY=$(cd "$SOURCE_DIRECTORY" && pwd -P)
 RELEASE_DIRECTORY=$RELEASES_DIRECTORY/$RELEASE_ID
 STAGING_DIRECTORY=$RELEASES_DIRECTORY/.${RELEASE_ID}.staging-$$
 NEXT_LINK=${CURRENT_LINK}.next-$$
-PREVIOUS_RELEASE=$(readlink "$CURRENT_LINK" 2>/dev/null || true)
+PREVIOUS_LINK_TARGET=$(readlink "$CURRENT_LINK" 2>/dev/null || true)
+PREVIOUS_RELEASE_DIRECTORY=
+if [ -n "$PREVIOUS_LINK_TARGET" ]; then
+  case "$PREVIOUS_LINK_TARGET" in
+    /*) PREVIOUS_RELEASE_DIRECTORY=$PREVIOUS_LINK_TARGET ;;
+    *) PREVIOUS_RELEASE_DIRECTORY=$(cd "$(dirname "$CURRENT_LINK")/$PREVIOUS_LINK_TARGET" && pwd -P) ;;
+  esac
+fi
 RELEASE_ACTIVATED=false
+SERVICES_STOPPED=false
 
 [ ! -e "$RELEASE_DIRECTORY" ] || fail 'release identifier already exists.'
 mkdir -p "$RELEASES_DIRECTORY" "$SYSTEMD_DIRECTORY"
 
 finish() {
   status=$?
-  if [ "$status" -ne 0 ] && [ "$RELEASE_ACTIVATED" = true ] && [ -n "$PREVIOUS_RELEASE" ]; then
-    rollback_link=${CURRENT_LINK}.rollback-$$
-    ln -s "$PREVIOUS_RELEASE" "$rollback_link"
-    mv -Tf "$rollback_link" "$CURRENT_LINK"
-    for unit in \
-      daily-web.service \
-      daily-scheduled-worker.service \
-      daily-scheduled-worker.timer \
-      daily-backup.service \
-      daily-backup.timer
-    do
-      if [ -f "$PREVIOUS_RELEASE/deploy/systemd/$unit" ]; then
-        install -m 0644 "$PREVIOUS_RELEASE/deploy/systemd/$unit" "$SYSTEMD_DIRECTORY/$unit"
-      fi
-    done
-    systemctl daemon-reload || true
-    systemctl restart daily-web.service daily-scheduled-worker.timer daily-backup.timer || true
+  set +e
+  if [ "$status" -ne 0 ] && [ "$RELEASE_ACTIVATED" = true ]; then
+    if [ -n "$PREVIOUS_LINK_TARGET" ]; then
+      rollback_link=${CURRENT_LINK}.rollback-$$
+      ln -s "$PREVIOUS_LINK_TARGET" "$rollback_link"
+      mv -Tf "$rollback_link" "$CURRENT_LINK"
+      for unit in \
+        daily-web.service \
+        daily-scheduled-worker.service \
+        daily-scheduled-worker.timer \
+        daily-backup.service \
+        daily-backup.timer
+      do
+        if [ -f "$PREVIOUS_RELEASE_DIRECTORY/deploy/systemd/$unit" ]; then
+          install -m 0644 "$PREVIOUS_RELEASE_DIRECTORY/deploy/systemd/$unit" "$SYSTEMD_DIRECTORY/$unit"
+        fi
+      done
+    else
+      rm -f "$CURRENT_LINK"
+      rm -f \
+        "$SYSTEMD_DIRECTORY/daily-web.service" \
+        "$SYSTEMD_DIRECTORY/daily-scheduled-worker.service" \
+        "$SYSTEMD_DIRECTORY/daily-scheduled-worker.timer" \
+        "$SYSTEMD_DIRECTORY/daily-backup.service" \
+        "$SYSTEMD_DIRECTORY/daily-backup.timer"
+    fi
+    rm -rf "$RELEASE_DIRECTORY"
+    systemctl daemon-reload
+  fi
+  if [ "$status" -ne 0 ] && [ "$SERVICES_STOPPED" = true ] && [ -n "$PREVIOUS_LINK_TARGET" ]; then
+    systemctl restart daily-web.service daily-scheduled-worker.timer daily-backup.timer
   fi
   rm -rf "$STAGING_DIRECTORY"
   rm -f "$NEXT_LINK"
@@ -81,6 +103,7 @@ rm -rf "$STAGING_DIRECTORY/.git" "$STAGING_DIRECTORY/node_modules" "$STAGING_DIR
   npm run db:backup -- pre-migration
 )
 
+SERVICES_STOPPED=true
 systemctl stop \
   daily-scheduled-worker.timer \
   daily-backup.timer \
