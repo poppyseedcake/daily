@@ -1241,6 +1241,11 @@
 <main class="min-h-screen bg-stone-100 text-stone-950">
   <div class="mx-auto grid w-full max-w-6xl gap-6 px-4 py-5 sm:px-6 lg:grid-cols-[1fr_20rem] lg:px-8">
     <section class="space-y-6">
+      {#if data?.accountDeletionSucceeded}
+        <div class="rounded-lg border border-emerald-300 bg-emerald-50 p-4 text-emerald-900" role="status">
+          Your Daily account and locally held User data were deleted. You are now in Visitor mode.
+        </div>
+      {/if}
       <div class="rounded-lg border border-stone-200 bg-white p-6 shadow-sm">
         <div class="flex flex-wrap items-center justify-between gap-4">
           <div>
@@ -1297,6 +1302,40 @@
           </div>
         </div>
       </div>
+
+      {#if authState.mode === 'user'}
+        <div class="rounded-lg border border-red-200 bg-white p-6 shadow-sm">
+          <h2 class="text-xl font-semibold text-red-900">Delete Daily account</h2>
+          <p class="mt-2 text-sm text-stone-700">
+            This is irreversible. Daily will remove your locally held account data and attempt to
+            revoke Google access. Email already accepted for delivery and historical backups cannot
+            be recalled or rewritten.
+          </p>
+          <form class="mt-4 space-y-3" method="POST" action="?/deleteAccount">
+            <label class="block text-sm font-medium text-stone-800" for="account-deletion-confirmation">
+              Enter DELETE MY ACCOUNT exactly to confirm
+            </label>
+            <input
+              class="h-10 w-full max-w-sm rounded-md border border-stone-300 px-3"
+              id="account-deletion-confirmation"
+              name="confirmation"
+              autocomplete="off"
+              required
+            />
+            {#if form?.accountDeletionError}
+              <p class="text-sm font-medium text-red-700" role="alert">{form.accountDeletionError}</p>
+            {/if}
+            <div>
+              <button
+                class="inline-flex h-10 items-center rounded-md bg-red-700 px-4 text-sm font-semibold text-white hover:bg-red-800"
+                type="submit"
+              >
+                Permanently delete my account
+              </button>
+            </div>
+          </form>
+        </div>
+      {/if}
 
       <div class="grid gap-4 md:grid-cols-2">
         <Panel

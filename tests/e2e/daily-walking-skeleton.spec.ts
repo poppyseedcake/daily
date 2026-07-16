@@ -87,6 +87,48 @@ const stubOpenMeteoForecast = async (page: Page) => {
   });
 };
 
+test('signed-in User irreversibly deletes the account and returns to Visitor mode', async ({ page }) => {
+  const port = process.env.PLAYWRIGHT_PORT ?? '5173';
+  const database = new Database(join(tmpdir(), `daily-playwright-${port}.db`));
+  const now = Math.floor(Date.now() / 1000);
+  const userId = `deletion-user-${crypto.randomUUID()}`;
+  const sessionToken = crypto.randomUUID();
+
+  try {
+    database.prepare('insert into auth_user values (?, ?, ?, true, null, ?, ?)')
+      .run(userId, 'Deletion User', 'deletion@example.com', now, now);
+    database.prepare('insert into auth_session values (?, ?, ?, ?, ?, null, null, ?)')
+      .run(crypto.randomUUID(), now + 3600, sessionToken, now, now, userId);
+    database.prepare('insert into auth_account (id, account_id, provider_id, user_id, created_at, updated_at) values (?, ?, ?, ?, ?, ?)')
+      .run(crypto.randomUUID(), `google-${userId}`, 'google', userId, now, now);
+    database.prepare('insert into users (id, google_subject, email) values (?, ?, ?)')
+      .run(userId, `google-${userId}`, 'deletion@example.com');
+    database.prepare('insert into summary_configurations (id, user_id) values (?, ?)')
+      .run(crypto.randomUUID(), userId);
+
+    await page.context().addCookies([{
+      name: 'better-auth.session_token',
+      value: `${sessionToken}.${await makeSignature(sessionToken, 'daily-playwright-auth-secret-at-least-32-characters')}`,
+      domain: '127.0.0.1', path: '/'
+    }]);
+    await page.goto('/');
+    await expect(page.getByRole('heading', { name: 'Delete Daily account' })).toBeVisible();
+    await page.getByLabel('Enter DELETE MY ACCOUNT exactly to confirm').fill('DELETE MY ACCOUNT');
+    await page.getByRole('button', { name: 'Permanently delete my account' }).click();
+
+    await expect(page.getByText('Your Daily account and locally held User data were deleted.')).toBeVisible();
+    await expect(page.getByText('Visitor mode', { exact: true })).toBeVisible();
+    await page.reload();
+    await expect(page.getByText('Visitor mode', { exact: true })).toBeVisible();
+    expect(database.prepare('select count(*) as count from users where id = ?').get(userId)).toEqual({ count: 0 });
+    expect(database.prepare('select count(*) as count from auth_user where id = ?').get(userId)).toEqual({ count: 0 });
+  } finally {
+    database.prepare('delete from auth_user where id = ?').run(userId);
+    database.prepare('delete from users where id = ?').run(userId);
+    database.close();
+  }
+});
+
 test('signed-in User sees recent Scheduled and Test Delivery Records without private operational data', async ({
   page
 }) => {
