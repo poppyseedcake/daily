@@ -15,12 +15,17 @@ export default defineConfig({
   },
   build: {
     target: 'node22',
-    ssr: 'src/lib/server/runScheduledDailySummaryWorkerCommand.ts',
+    ssr: true,
     outDir: 'build/worker',
     emptyOutDir: false,
     rollupOptions: {
+      input: {
+        runScheduledDailySummaryWorkerCommand:
+          'src/lib/server/runScheduledDailySummaryWorkerCommand.ts',
+        runSqliteBackupCommand: 'src/lib/server/db/runSqliteBackupCommand.ts'
+      },
       output: {
-        entryFileNames: 'runScheduledDailySummaryWorkerCommand.js'
+        entryFileNames: '[name].js'
       }
     }
   }

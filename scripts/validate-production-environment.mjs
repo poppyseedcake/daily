@@ -21,3 +21,20 @@ if (missingValues.length > 0) {
   console.error(`Production configuration is required for: ${missingValues.join(', ')}`);
   process.exitCode = 1;
 }
+
+if (process.env.DAILY_SYSTEMD_BACKUP_UNIT === 'true') {
+  const systemdBackupPaths = {
+    DATABASE_URL: '/var/lib/daily/daily.db',
+    BACKUP_DIRECTORY: '/var/backups/daily'
+  };
+  const pathsOutsideUnitSandbox = Object.entries(systemdBackupPaths)
+    .filter(([name, expected]) => process.env[name]?.trim() !== expected)
+    .map(([name]) => name);
+
+  if (pathsOutsideUnitSandbox.length > 0) {
+    console.error(
+      `Production paths must match the systemd backup unit write permissions: ${pathsOutsideUnitSandbox.join(', ')}`
+    );
+    process.exitCode = 1;
+  }
+}

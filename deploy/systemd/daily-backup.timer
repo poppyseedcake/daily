@@ -1,0 +1,11 @@
+[Unit]
+Description=Run the Daily verified SQLite backup daily
+Documentation=https://github.com/poppyseedcake/daily
+
+[Timer]
+OnCalendar=daily
+Persistent=true
+Unit=daily-backup.service
+
+[Install]
+WantedBy=timers.target
