@@ -1,4 +1,4 @@
-# Operate the Daily web service with systemd
+# Operate Daily with systemd
 
 The production web process runs as the dedicated, unprivileged `daily` account. Keep
 replaceable release code in `/srv/daily`, persistent SQLite data in `/var/lib/daily`,
@@ -21,6 +21,8 @@ sudo install --directory --owner=root --group=daily --mode=0750 /etc/daily
 sudo install --directory --owner=daily --group=daily --mode=0750 /var/backups/daily
 sudo install --owner=root --group=daily --mode=0640 deploy/systemd/daily.env.example /etc/daily/daily.env
 sudo install --owner=root --group=root --mode=0644 deploy/systemd/daily-web.service /etc/systemd/system/daily-web.service
+sudo install --owner=root --group=root --mode=0644 deploy/systemd/daily-scheduled-worker.service /etc/systemd/system/daily-scheduled-worker.service
+sudo install --owner=root --group=root --mode=0644 deploy/systemd/daily-scheduled-worker.timer /etc/systemd/system/daily-scheduled-worker.timer
 ```
 
 Install a successfully built release in a versioned, root-owned directory under
@@ -40,20 +42,36 @@ unhealthy.
 Ask systemd to validate the installed unit, reload it, and enable automatic startup:
 
 ```sh
-sudo systemd-analyze verify /etc/systemd/system/daily-web.service
+sudo systemd-analyze verify /etc/systemd/system/daily-web.service /etc/systemd/system/daily-scheduled-worker.service /etc/systemd/system/daily-scheduled-worker.timer
 sudo systemctl daemon-reload
 sudo systemctl enable --now daily-web.service
+sudo systemctl enable --now daily-scheduled-worker.timer
 ```
 
 The restart policy retries unexpected failures after five seconds, but permits no
 more than five starts in 60 seconds. A normal stop sends `SIGTERM` to Node and gives
 it 30 seconds to finish before systemd escalates termination.
 
+The timer starts `daily-scheduled-worker.service` once per minute. `Persistent=true`
+makes systemd evaluate a recently missed activation shortly after a reboot. Because
+the target is a single oneshot service, normal timer activation cannot start a
+second invocation while that unit is still active. Application-level Delivery Record
+idempotency remains authoritative if an operator starts the worker manually or an
+abnormal duplicate invocation occurs.
+
+The worker shares the web service's release directory, production environment file,
+database configuration, unprivileged identity, and write restrictions. It is still
+an independent unit: a non-zero worker exit leaves a failing worker result in systemd
+without terminating the web service. The command's privacy-safe aggregate completion
+output and exit status are available in the worker service journal.
+
 ## Inspect status and logs
 
 ```sh
 sudo systemctl status daily-web.service
 sudo journalctl -u daily-web.service --since today
+sudo systemctl status daily-scheduled-worker.timer daily-scheduled-worker.service
+sudo journalctl -u daily-scheduled-worker.service --since today
 ```
 
 After changing `/etc/daily/daily.env` or switching `/srv/daily/current`, restart the
@@ -62,6 +80,17 @@ service explicitly and inspect its status:
 ```sh
 sudo systemctl restart daily-web.service
 sudo systemctl status daily-web.service
+```
+
+After switching `/srv/daily/current` or changing the environment, the next timer
+activation uses the new release and configuration. To verify command wiring without
+waiting for the timer, start the oneshot explicitly and inspect its result and safe
+aggregate log output:
+
+```sh
+sudo systemctl start daily-scheduled-worker.service
+sudo systemctl status daily-scheduled-worker.service
+sudo journalctl -u daily-scheduled-worker.service -n 20
 ```
 
 ## Verify readiness
