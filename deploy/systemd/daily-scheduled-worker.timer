@@ -1,0 +1,12 @@
+[Unit]
+Description=Run the Daily scheduled summary worker once per minute
+Documentation=https://github.com/poppyseedcake/daily
+
+[Timer]
+OnCalendar=*-*-* *:*:00
+Persistent=true
+Unit=daily-scheduled-worker.service
+
+[Install]
+WantedBy=timers.target
+
