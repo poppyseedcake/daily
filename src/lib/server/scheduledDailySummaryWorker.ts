@@ -114,6 +114,7 @@ const countOutcome = (counts: ScheduledDailySummaryWorkerCounts, result: WorkerO
       return { outcome: 'failed' as const, classification };
     }
     case 'claim-lost':
+    case 'user-deleting':
     case 'not-qualifying':
     case 'already-processed':
     case 'already-claimed':

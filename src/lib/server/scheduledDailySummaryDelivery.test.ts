@@ -6,6 +6,7 @@ import { createUserCalendarConnectionStore } from './db/calendarConnectionStore'
 import { createUserCommuteSetupStore } from './db/commuteSetupStore';
 import { createDeliveryRecordStore } from './db/deliveryRecordStore';
 import { createScheduledDailySummaryOccurrenceStore } from './db/scheduledDailySummaryOccurrenceStore';
+import { createUserLifecycleStore } from './db/userLifecycleStore';
 import * as schema from './db/schema';
 import { createUserSummaryConfigurationStore } from './db/summaryConfigurationStore';
 import { createUserTodoStore } from './db/todoStore';
@@ -26,7 +27,8 @@ const applyMigrations = (sqlite: Database.Database) => {
     '0005_add_selected_calendar_metadata.sql',
     '0010_add_commute_setup.sql',
     '0011_add_next_summary_at.sql',
-    '0012_add_scheduled_delivery_claims.sql'
+    '0012_add_scheduled_delivery_claims.sql',
+    '0015_add_user_lifecycle.sql'
   ]) {
     sqlite.exec(readFileSync(`drizzle/${migration}`, 'utf8'));
   }
@@ -62,13 +64,18 @@ const saveQualifyingUser = (
 const createTestDelivery = ({
   database,
   send,
-  now
+  now,
+  isActive
 }: {
   database: ReturnType<typeof drizzle<typeof schema>>;
   send: DailySummaryDeliveryProvider['send'];
   now: () => Date;
+  isActive?: (userId: string) => Promise<boolean>;
 }) => {
   const generator = createScheduledDailySummaryGenerator({
+    userLifecycleStore: isActive
+      ? { isActive }
+      : createUserLifecycleStore(database),
     configurationStore: createUserSummaryConfigurationStore(database),
     todoStore: createUserTodoStore(database),
     weatherLocationStore: createUserWeatherLocationStore(database),
@@ -84,6 +91,9 @@ const createTestDelivery = ({
   return createScheduledDailySummaryDelivery({
     occurrenceStore: createScheduledDailySummaryOccurrenceStore(database),
     deliveryRecordStore: createDeliveryRecordStore(database),
+    userLifecycleStore: isActive
+      ? { isActive }
+      : createUserLifecycleStore(database),
     generator,
     deliveryProvider: { send },
     providerName: 'fake-delivery',
@@ -158,6 +168,32 @@ describe('scheduled Daily Summary delivery', () => {
     expect(
       sqlite.prepare('select next_summary_at from users where id = ?').get('user-1')
     ).toEqual({ next_summary_at: '2026-10-25T06:00:00Z' });
+  });
+
+  test('does not begin a provider call when deletion wins the race after generation', async () => {
+    saveQualifyingUser(sqlite, {
+      userId: 'user-1',
+      scheduledAt: '2026-10-24T05:00:00Z'
+    });
+    const send = vi.fn();
+    let checks = 0;
+    const delivery = createTestDelivery({
+      database,
+      send,
+      now: () => new Date('2026-10-24T05:00:00.000Z'),
+      async isActive(userId) {
+        checks += 1;
+        if (checks === 3) {
+          await createUserLifecycleStore(database).startDeleting(userId);
+        }
+        return createUserLifecycleStore(database).isActive(userId);
+      },
+    });
+
+    await expect(delivery.processOneDueOccurrence()).resolves.toMatchObject({
+      outcome: 'user-deleting'
+    });
+    expect(send).not.toHaveBeenCalled();
   });
 
   test('delivers qualifying Todo content when Weather is unavailable', async () => {

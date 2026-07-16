@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { db } from '$lib/server/db';
 import type { SummaryConfiguration } from '$lib/summaryConfiguration';
 import { summaryConfigurations, users } from './schema';
@@ -41,6 +41,17 @@ export const createUserSummaryConfigurationStore = (
   },
   async save(userId, configuration, nextSummaryAt) {
     database.transaction((transaction) => {
+      const activeUser = transaction
+        .update(users)
+        .set({ nextSummaryAt })
+        .where(and(eq(users.id, userId), eq(users.lifecycleState, 'active')))
+        .returning({ id: users.id })
+        .get();
+
+      if (!activeUser) {
+        return;
+      }
+
       transaction
         .insert(summaryConfigurations)
         .values({
@@ -53,7 +64,6 @@ export const createUserSummaryConfigurationStore = (
         })
         .run();
 
-      transaction.update(users).set({ nextSummaryAt }).where(eq(users.id, userId)).run();
     });
   }
 });

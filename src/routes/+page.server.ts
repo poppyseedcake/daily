@@ -41,6 +41,7 @@ import { summaryConfigurationSchema } from '$lib/summaryConfiguration';
 import { createDefaultTodoState, todoStateSchema } from '$lib/todo';
 import { googleMapsOperations } from '$lib/server/googleMapsOperations';
 import { toDeliveryHistoryRecord } from '$lib/deliveryRecords';
+import { userLifecycleStore } from '$lib/server/db/userLifecycleStore';
 
 const testDeliveryFailureMessage = (classification: DailySummaryDeliveryErrorClassification) => {
   switch (classification) {
@@ -66,6 +67,15 @@ const validationFailureResponse = {
   reason: 'validation-failed',
   message: 'The saved Daily Summary setup is invalid, so no provider request was made.'
 } as const;
+
+const deletingUserTestDeliveryFailure = {
+  outcome: 'failed',
+  reason: 'user-deleting',
+  message: 'User deletion has started, so no Daily Summary was sent.'
+} as const;
+
+const rejectTestDeliveryForInactiveUser = async (userId: string) =>
+  (await userLifecycleStore.isActive(userId)) ? null : deletingUserTestDeliveryFailure;
 
 type CalendarGenerationContext = {
   accessToken: string | null;
@@ -124,7 +134,13 @@ export const load = async ({ request }) => {
   const session = await auth.api.getSession({
     headers: request.headers
   });
-  const authState = authStateFromSession(session);
+  let authState = authStateFromSession(session);
+  if (
+    authState.mode === 'user' &&
+    !(await userLifecycleStore.isActive(authState.userId))
+  ) {
+    authState = { mode: 'visitor' };
+  }
   const calendarConnectionResult = new URL(request.url).searchParams.get('calendarConnection');
 
   if (authState.mode === 'user' && calendarConnectionResult === 'success') {
@@ -352,6 +368,11 @@ export const actions = {
       };
     }
 
+    const inactiveUserFailure = await rejectTestDeliveryForInactiveUser(authState.userId);
+    if (inactiveUserFailure) {
+      return inactiveUserFailure;
+    }
+
     const requestedAt = new Date().toISOString();
     const configuration = await loadUserSummaryConfiguration(
       userSummaryConfigurationStore,
@@ -402,6 +423,11 @@ export const actions = {
     let accepted;
 
     try {
+      const inactiveUserFailure = await rejectTestDeliveryForInactiveUser(authState.userId);
+      if (inactiveUserFailure) {
+        return inactiveUserFailure;
+      }
+
       accepted = await dailySummaryDeliveryProvider.send(message);
     } catch (error) {
       if (!(error instanceof DailySummaryDeliveryError)) {

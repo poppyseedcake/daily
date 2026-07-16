@@ -16,7 +16,8 @@ describe('scheduled Daily Summary occurrence batches', () => {
       '0000_bootstrap_daily.sql',
       '0002_add_delivery_records.sql',
       '0011_add_next_summary_at.sql',
-      '0012_add_scheduled_delivery_claims.sql'
+      '0012_add_scheduled_delivery_claims.sql',
+      '0015_add_user_lifecycle.sql'
     ]) {
       sqlite.exec(readFileSync(`drizzle/${migration}`, 'utf8'));
     }
@@ -73,5 +74,32 @@ describe('scheduled Daily Summary occurrence batches', () => {
       { scheduledAt: '2026-07-14T07:00:00.000Z', workId: 'new:user-exact' }
     ]);
     expect(third).toEqual([]);
+  });
+
+  test('excludes both new and retryable work for deleting Users', async () => {
+    const insertUser = sqlite.prepare(
+      "insert into users (id, google_subject, email, next_summary_at, lifecycle_state) values (?, ?, ?, ?, 'deleting')"
+    );
+    insertUser.run('deleting-new', 'google-new', 'new@private.example', '2026-07-14T07:00:00Z');
+    insertUser.run('deleting-retry', 'google-retry', 'retry@private.example', null);
+    sqlite.prepare(
+      `insert into delivery_records (
+        id, user_id, attempt_type, requested_at, delivery_status, provider_name,
+        scheduled_at, attempt_count, next_retry_at, error_classification
+      ) values (?, ?, 'scheduled', ?, 'retrying', ?, ?, 1, ?, 'provider-unavailable')`
+    ).run(
+      'record-retry',
+      'deleting-retry',
+      '2026-07-14T06:58:00Z',
+      'fake-delivery',
+      '2026-07-14T06:58:00Z',
+      '2026-07-14T07:00:00Z'
+    );
+
+    await expect(store.loadProcessableBatch({
+      now: '2026-07-14T07:00:00Z',
+      limit: 10,
+      after: null
+    })).resolves.toEqual([]);
   });
 });
