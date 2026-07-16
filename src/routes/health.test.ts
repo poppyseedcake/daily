@@ -3,6 +3,7 @@ import { drizzle } from 'drizzle-orm/better-sqlite3';
 import { afterAll, describe, expect, test, vi } from 'vitest';
 
 const sqlite = new Database(':memory:');
+sqlite.exec('CREATE TABLE scheduled_worker_runs (id TEXT PRIMARY KEY)');
 
 vi.doMock('$lib/server/db', () => ({
   db: drizzle(sqlite)
@@ -32,6 +33,21 @@ describe.sequential('Health endpoint', () => {
     expect(response.status).toBe(503);
     expect(response.headers.get('content-type')).toBe('application/json');
     expect(responseText).toBe('{"status":"unhealthy"}');
+  });
+
+  test('reports unhealthy when the database schema has not been migrated', async () => {
+    const unmigratedSqlite = new Database(':memory:');
+    vi.resetModules();
+    vi.doMock('$lib/server/db', () => ({
+      db: drizzle(unmigratedSqlite)
+    }));
+    const { GET: getHealth } = await import('./health/+server');
+
+    const response = await getHealth();
+
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toEqual({ status: 'unhealthy' });
+    unmigratedSqlite.close();
   });
 
   test('reports unhealthy when the database module cannot open SQLite', async () => {

@@ -1,0 +1,50 @@
+[Unit]
+Description=Daily web application
+Documentation=https://github.com/poppyseedcake/daily
+Wants=network-online.target
+After=network-online.target
+StartLimitIntervalSec=60s
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=daily
+Group=daily
+WorkingDirectory=/srv/daily/current
+Environment=NODE_ENV=production
+EnvironmentFile=/etc/daily/daily.env
+ExecStartPre=/usr/bin/node scripts/validate-production-environment.mjs
+ExecStart=/usr/bin/node build
+Restart=on-failure
+RestartSec=5s
+KillSignal=SIGTERM
+TimeoutStopSec=30s
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=daily-web
+UMask=0027
+
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+ProtectProc=invisible
+ProcSubset=pid
+RestrictSUIDSGID=true
+RestrictRealtime=true
+RestrictNamespaces=true
+LockPersonality=true
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+SystemCallArchitectures=native
+ReadWritePaths=/var/lib/daily
+
+[Install]
+WantedBy=multi-user.target
