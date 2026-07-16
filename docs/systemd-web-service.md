@@ -44,6 +44,10 @@ migration explicitly as part of deployment. Readiness verifies a table introduce
 by the latest migration, so a fresh or partially migrated SQLite database remains
 unhealthy.
 
+For every production release, use the single ordered workflow in
+`docs/production-deployment.md`. Do not switch the `current` symlink or migrate the
+database by hand during a normal deployment.
+
 Ask systemd to validate the installed unit, reload it, and enable automatic startup:
 
 ```sh
