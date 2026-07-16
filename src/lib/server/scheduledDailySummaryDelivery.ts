@@ -5,7 +5,10 @@ import {
   DailySummaryDeliveryError,
   type DailySummaryDeliveryProvider
 } from './dailySummaryDelivery';
-import type { ScheduledDailySummaryGenerationResult } from './scheduledDailySummaryGeneration';
+import {
+  ScheduledDailySummaryUserNotActiveError,
+  type ScheduledDailySummaryGenerationResult
+} from './scheduledDailySummaryGeneration';
 import type {
   DeliveryErrorClassification,
   DeliveryRecord,
@@ -70,6 +73,7 @@ type ScheduledDailySummaryDeliveryRecordStore = {
 
 export const scheduledDailySummaryDeliveryOutcomeNames = [
   'claim-lost',
+  'user-deleting',
   'retry-exhausted',
   'stale-occurrence',
   'retry-pending',
@@ -89,9 +93,15 @@ type ScheduledDailySummaryGenerator = {
   generate(userId: string): Promise<ScheduledDailySummaryGenerationResult>;
 };
 
+type ActiveUserStore = {
+  isActive(userId: string): Promise<boolean>;
+  beginProviderSubmission<T>(userId: string, submit: () => Promise<T>): Promise<T | null>;
+};
+
 export type ScheduledDailySummaryDeliveryDependencies = {
   occurrenceStore: ScheduledDailySummaryOccurrenceStore;
   deliveryRecordStore: ScheduledDailySummaryDeliveryRecordStore;
+  userLifecycleStore: ActiveUserStore;
   generator: ScheduledDailySummaryGenerator;
   deliveryProvider: DailySummaryDeliveryProvider;
   providerName: string;
@@ -113,6 +123,7 @@ const occurrenceIdempotencyKey = (occurrence: DueScheduledDailySummaryOccurrence
 export const createScheduledDailySummaryDelivery = ({
   occurrenceStore,
   deliveryRecordStore,
+  userLifecycleStore,
   generator,
   deliveryProvider,
   providerName,
@@ -124,6 +135,10 @@ export const createScheduledDailySummaryDelivery = ({
     processingStartedAt = now()
   ) => {
     const processingStartedAtIso = processingStartedAt.toISOString();
+
+    if (!(await userLifecycleStore.isActive(occurrence.userId))) {
+      return { outcome: 'user-deleting' as const };
+    }
 
     const existing = await deliveryRecordStore.loadScheduledOccurrence(
       occurrence.userId,
@@ -159,7 +174,15 @@ export const createScheduledDailySummaryDelivery = ({
       }
     }
 
-    const generated = await generator.generate(occurrence.userId);
+    let generated: ScheduledDailySummaryGenerationResult;
+    try {
+      generated = await generator.generate(occurrence.userId);
+    } catch (error) {
+      if (error instanceof ScheduledDailySummaryUserNotActiveError) {
+        return { outcome: 'user-deleting' as const };
+      }
+      throw error;
+    }
     const nextSummaryAt =
       calculateNextSummaryAt(
         generated.input.configuration,
@@ -207,14 +230,21 @@ export const createScheduledDailySummaryDelivery = ({
 
       let accepted;
       try {
-        accepted = await deliveryProvider.send({
-          to: occurrence.summaryRecipient,
-          from: senderAddress(),
-          subject: 'Daily Summary',
-          html: generated.rendered.html,
-          text: generated.rendered.text,
-          idempotencyKey: occurrenceIdempotencyKey(occurrence)
-        });
+        accepted = await userLifecycleStore.beginProviderSubmission(
+          occurrence.userId,
+          () =>
+            deliveryProvider.send({
+              to: occurrence.summaryRecipient,
+              from: senderAddress(),
+              subject: 'Daily Summary',
+              html: generated.rendered.html,
+              text: generated.rendered.text,
+              idempotencyKey: occurrenceIdempotencyKey(occurrence)
+            })
+        );
+        if (!accepted) {
+          return { outcome: 'user-deleting' as const, occurrenceId: claim.id };
+        }
       } catch (error) {
         if (!(error instanceof DailySummaryDeliveryError)) {
           throw error;

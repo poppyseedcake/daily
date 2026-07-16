@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { db } from '$lib/server/db';
 import {
   defaultSummaryConfiguration
@@ -7,12 +7,17 @@ import { summaryConfigurationFromFlat } from '../summaryConfigurationPersistence
 import type { SummaryScheduleBackfillStore } from '../nextSummaryScheduleBackfill';
 import { summaryConfigurations, users } from './schema';
 
-export const nextSummaryScheduleBackfillStore: SummaryScheduleBackfillStore = {
+type NextSummaryScheduleBackfillDatabase = typeof db;
+
+export const createNextSummaryScheduleBackfillStore = (
+  database: NextSummaryScheduleBackfillDatabase
+): SummaryScheduleBackfillStore => ({
   async loadUsers() {
-    const rows = await db
+    const rows = await database
       .select({ userId: users.id, configuration: summaryConfigurations })
       .from(users)
-      .leftJoin(summaryConfigurations, eq(summaryConfigurations.userId, users.id));
+      .leftJoin(summaryConfigurations, eq(summaryConfigurations.userId, users.id))
+      .where(eq(users.lifecycleState, 'active'));
 
     return rows.map(({ userId, configuration }) => ({
       userId,
@@ -22,6 +27,11 @@ export const nextSummaryScheduleBackfillStore: SummaryScheduleBackfillStore = {
     }));
   },
   async saveNextSummaryAt(userId, nextSummaryAt) {
-    await db.update(users).set({ nextSummaryAt }).where(eq(users.id, userId));
+    await database
+      .update(users)
+      .set({ nextSummaryAt })
+      .where(and(eq(users.id, userId), eq(users.lifecycleState, 'active')));
   }
-};
+});
+
+export const nextSummaryScheduleBackfillStore = createNextSummaryScheduleBackfillStore(db);

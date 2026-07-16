@@ -3,6 +3,7 @@ import type { SummaryConfiguration } from '$lib/summaryConfiguration';
 import type { DailySummaryDeliveryProvider } from './dailySummaryDelivery';
 import {
   createScheduledDailySummaryGenerator,
+  ScheduledDailySummaryUserNotActiveError,
   type ScheduledDailySummaryGenerationDependencies
 } from './scheduledDailySummaryGeneration';
 
@@ -28,10 +29,13 @@ const usefulTodoState = {
   ]
 };
 
+const activeUserLifecycleStore = { isActive: vi.fn().mockResolvedValue(true) };
+
 const createProviderIsolationDependencies = (
   summaryConfiguration: SummaryConfiguration,
   overrides: Partial<ScheduledDailySummaryGenerationDependencies>
 ): ScheduledDailySummaryGenerationDependencies => ({
+  userLifecycleStore: activeUserLifecycleStore,
   configurationStore: { load: vi.fn().mockResolvedValue(summaryConfiguration) },
   todoStore: { load: vi.fn().mockResolvedValue(usefulTodoState) },
   weatherLocationStore: { load: vi.fn().mockResolvedValue(null) },
@@ -46,6 +50,24 @@ const createProviderIsolationDependencies = (
 });
 
 describe('scheduled Daily Summary generation', () => {
+  test('rejects a deleting User before loading setup or providers', async () => {
+    const configurationStore = { load: vi.fn() };
+    const dependencies = createProviderIsolationDependencies(configuration, {
+      userLifecycleStore: { isActive: vi.fn().mockResolvedValue(false) },
+      configurationStore
+    });
+    const generator = createScheduledDailySummaryGenerator(dependencies);
+
+    await expect(generator.generate('user-1')).rejects.toBeInstanceOf(
+      ScheduledDailySummaryUserNotActiveError
+    );
+    expect(configurationStore.load).not.toHaveBeenCalled();
+    expect(dependencies.todoStore.load).not.toHaveBeenCalled();
+    expect(dependencies.weatherProvider.fetchDailyForecast).not.toHaveBeenCalled();
+    expect(dependencies.calendarEventProvider).not.toHaveBeenCalled();
+    expect(dependencies.commuteEstimateProvider).not.toHaveBeenCalled();
+  });
+
   test('loads current User setup and live provider data into the shared renderer', async () => {
     const currentTodoTitle = { value: 'Prepare first update' };
     const currentWeatherHigh = { value: 26 };
@@ -91,6 +113,7 @@ describe('scheduled Daily Summary generation', () => {
       })
     };
     const generator = createScheduledDailySummaryGenerator({
+      userLifecycleStore: activeUserLifecycleStore,
       configurationStore: { load: vi.fn().mockResolvedValue(configuration) },
       todoStore: {
         load: vi.fn().mockImplementation(async () => ({
@@ -183,6 +206,7 @@ describe('scheduled Daily Summary generation', () => {
       sections: { weather: false, commute: false, calendar: false, todo: false }
     };
     const generator = createScheduledDailySummaryGenerator({
+      userLifecycleStore: activeUserLifecycleStore,
       configurationStore: { load: vi.fn().mockResolvedValue(disabledConfiguration) },
       todoStore: { load: vi.fn().mockResolvedValue({ todoCategories: [], todoTasks: [] }) },
       weatherLocationStore: { load: vi.fn().mockResolvedValue(null) },
@@ -393,6 +417,7 @@ describe('scheduled Daily Summary generation', () => {
       sections: { weather: true, commute: true, calendar: true, todo: true }
     };
     const generator = createScheduledDailySummaryGenerator({
+      userLifecycleStore: activeUserLifecycleStore,
       configurationStore: { load: vi.fn().mockResolvedValue(mixedConfiguration) },
       todoStore: { load: vi.fn().mockResolvedValue({ todoCategories: [], todoTasks: [] }) },
       weatherLocationStore: { load: vi.fn().mockResolvedValue(null) },

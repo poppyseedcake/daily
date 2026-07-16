@@ -57,6 +57,7 @@ export const createScheduledDailySummaryOccurrenceStore = (
       .where(
         and(
           eq(deliveryRecords.attemptType, 'scheduled'),
+          eq(users.lifecycleState, 'active'),
           isNotNull(deliveryRecords.scheduledAt),
           or(
             and(
@@ -89,6 +90,7 @@ export const createScheduledDailySummaryOccurrenceStore = (
       .where(
         and(
           isNotNull(newScheduledAt),
+          eq(users.lifecycleState, 'active'),
           sql`julianday(${newScheduledAt}) <= julianday(${now})`,
           afterCursorCondition(newScheduledAt, newWorkId, after)
         )
@@ -127,7 +129,13 @@ export const createScheduledDailySummaryOccurrenceStore = (
       const rows = await database
         .update(users)
         .set({ nextSummaryAt: nextSummaryAt })
-        .where(and(eq(users.id, userId), eq(users.nextSummaryAt, scheduledAt)))
+        .where(
+          and(
+            eq(users.id, userId),
+            eq(users.lifecycleState, 'active'),
+            eq(users.nextSummaryAt, scheduledAt)
+          )
+        )
         .returning({ id: users.id });
 
       return rows.length === 1;

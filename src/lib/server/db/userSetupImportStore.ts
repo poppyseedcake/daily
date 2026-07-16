@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { db } from '$lib/server/db';
 import {
   commuteDays,
@@ -51,6 +51,15 @@ const hasExistingCommuteSetup = (database: Pick<SetupImportDatabase, 'select'>, 
         .get()
   );
 
+const isActiveUser = (database: Pick<SetupImportDatabase, 'select'>, userId: string) =>
+  Boolean(
+    database
+      .select({ id: users.id })
+      .from(users)
+      .where(and(eq(users.id, userId), eq(users.lifecycleState, 'active')))
+      .get()
+  );
+
 export const createUserSetupImportStore = (
   database: SetupImportDatabase
 ): UserSetupImportPersistenceStore => ({
@@ -67,6 +76,7 @@ export const createUserSetupImportStore = (
           return hasExistingCommuteSetup(transaction, userId);
         },
         saveSummaryConfiguration(summaryConfiguration, nextSummaryAt) {
+          if (!isActiveUser(transaction, summaryConfiguration.userId)) return;
           transaction.insert(summaryConfigurations).values(summaryConfiguration).run();
           transaction
             .update(users)
@@ -75,26 +85,31 @@ export const createUserSetupImportStore = (
             .run();
         },
         saveTodoCategories(categories) {
+          if (categories[0] && !isActiveUser(transaction, categories[0].userId)) return;
           if (categories.length > 0) {
             transaction.insert(todoCategories).values(categories).run();
           }
         },
         saveTodoTasks(tasks) {
+          if (tasks[0] && !isActiveUser(transaction, tasks[0].userId)) return;
           if (tasks.length > 0) {
             transaction.insert(todoTasks).values(tasks).run();
           }
         },
         saveWeatherLocation(weatherLocation) {
+          if (weatherLocation && !isActiveUser(transaction, weatherLocation.userId)) return;
           if (weatherLocation) {
             transaction.insert(weatherLocations).values(weatherLocation).run();
           }
         },
         saveCommuteRoutes(routes) {
+          if (routes[0] && !isActiveUser(transaction, routes[0].userId)) return;
           if (routes.length > 0) {
             transaction.insert(commuteRoutes).values(routes).run();
           }
         },
         saveCommuteDays(userId, days) {
+          if (!isActiveUser(transaction, userId)) return;
           if (days.length > 0) {
             transaction
               .insert(commuteDays)

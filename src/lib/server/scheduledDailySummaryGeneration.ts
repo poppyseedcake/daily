@@ -43,6 +43,7 @@ type ScheduledCalendarConnectionStore = {
 };
 
 export type ScheduledDailySummaryGenerationDependencies = {
+  userLifecycleStore: { isActive(userId: string): Promise<boolean> };
   configurationStore: Pick<UserSummaryConfigurationStore, 'load'>;
   todoStore: Pick<UserTodoPersistenceStore, 'load'>;
   weatherLocationStore: Pick<UserWeatherLocationPersistenceStore, 'load'>;
@@ -58,6 +59,7 @@ export type ScheduledDailySummaryGenerationDependencies = {
 };
 
 export const createScheduledDailySummaryGenerator = ({
+  userLifecycleStore,
   configurationStore,
   todoStore,
   weatherLocationStore,
@@ -70,6 +72,10 @@ export const createScheduledDailySummaryGenerator = ({
   now = () => new Date()
 }: ScheduledDailySummaryGenerationDependencies) => ({
   async generate(userId: string): Promise<ScheduledDailySummaryGenerationResult> {
+    if (!(await userLifecycleStore.isActive(userId))) {
+      throw new ScheduledDailySummaryUserNotActiveError();
+    }
+
     const configuration = await loadUserSummaryConfiguration(configurationStore, userId);
     const [todoState, weatherLocation, commuteSetup, calendarContext] = await Promise.all([
       loadUserTodoState(todoStore, userId),
@@ -111,6 +117,13 @@ export const createScheduledDailySummaryGenerator = ({
     };
   }
 });
+
+export class ScheduledDailySummaryUserNotActiveError extends Error {
+  constructor() {
+    super('Scheduled Daily Summary generation requires an active User.');
+    this.name = 'ScheduledDailySummaryUserNotActiveError';
+  }
+}
 
 const safelyLoadCommuteEstimateProvider = (
   providerForUser: ScheduledDailySummaryGenerationDependencies['commuteEstimateProvider'],

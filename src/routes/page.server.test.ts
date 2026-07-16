@@ -28,10 +28,12 @@ const {
   calendarListProviderMode,
   calendarEventProviderMode,
   validationFailure,
-  loadFailure
+  loadFailure,
+  lifecycleActive
 } = vi.hoisted(() => ({
   getSession: vi.fn(),
   loadFailure: { enabled: false },
+  lifecycleActive: { value: true },
   deliveryProviderMode: {
     outcome: 'accepted' as
       | 'accepted'
@@ -165,6 +167,14 @@ vi.mock('$lib/server/auth', () => ({
   auth: {
     api: {
       getSession
+    }
+  }
+}));
+
+vi.mock('$lib/server/db/userLifecycleStore', () => ({
+  userLifecycleStore: {
+    async isActive() {
+      return lifecycleActive.value;
     }
   }
 }));
@@ -497,6 +507,7 @@ describe('Daily page server load', () => {
   beforeEach(() => {
     getSession.mockReset();
     loadFailure.enabled = false;
+    lifecycleActive.value = true;
     deliveryProviderMode.outcome = 'accepted';
     weatherProviderMode.outcome = 'available';
     commuteProviderMode.outcome = 'available';
@@ -1430,5 +1441,34 @@ describe('Daily page server load', () => {
     });
     expect(sentMessages).toEqual([]);
     expect(recordedDeliveryRecords).toEqual([]);
+  });
+
+  test('does not generate a preview or call its providers for a deleting User', async () => {
+    getSession.mockResolvedValue({
+      user: { id: 'user-1', email: 'user@example.com', emailVerified: true }
+    });
+    lifecycleActive.value = false;
+
+    const result = await loadPage();
+
+    expect(result.authState).toEqual({ mode: 'visitor' });
+    expect(result.renderedSummaryHtml).toBeNull();
+    expect(sentForecastRequests).toEqual([]);
+    expect(sentCommuteEstimateRequests).toEqual([]);
+    expect(sentCalendarEventRequests).toEqual([]);
+  });
+
+  test('does not submit a test Daily Summary for a deleting User', async () => {
+    getSession.mockResolvedValue({
+      user: { id: 'user-1', email: 'user@example.com', emailVerified: true }
+    });
+    lifecycleActive.value = false;
+
+    await expect(sendTestDailySummary()).resolves.toEqual({
+      outcome: 'failed',
+      reason: 'user-deleting',
+      message: 'User deletion has started, so no Daily Summary was sent.'
+    });
+    expect(sentMessages).toEqual([]);
   });
 });

@@ -26,6 +26,7 @@ const createTestDatabase = () => {
   sqlite.exec(readFileSync('drizzle/0003_add_weather_locations.sql', 'utf8'));
   sqlite.exec(readFileSync('drizzle/0010_add_commute_setup.sql', 'utf8'));
   sqlite.exec(readFileSync('drizzle/0011_add_next_summary_at.sql', 'utf8'));
+  sqlite.exec(readFileSync('drizzle/0015_add_user_lifecycle.sql', 'utf8'));
 
   return {
     sqlite,
@@ -206,6 +207,32 @@ describe('SQLite User Setup import store', () => {
     expect(sqlite.prepare('select next_summary_at from users where id = ?').get('user-1')).toEqual({
       next_summary_at: '2026-06-23T16:45:00Z'
     });
+  });
+
+  test('cannot recreate setup or scheduling for a deleting User', async () => {
+    sqlite.prepare("update users set lifecycle_state = 'deleting' where id = ?").run('user-1');
+    const store = createUserSetupImportStore(database);
+
+    await persistUserSetupImportDraftForNewUser(
+      store,
+      'user-1',
+      validDraft(),
+      Temporal.Instant.from('2026-06-22T16:45:00Z')
+    );
+
+    expect(sqlite.prepare('select next_summary_at from users where id = ?').get('user-1')).toEqual({
+      next_summary_at: null
+    });
+    for (const table of [
+      'summary_configurations',
+      'todo_categories',
+      'todo_tasks',
+      'weather_locations',
+      'commute_routes',
+      'commute_days'
+    ]) {
+      expect(sqlite.prepare(`select count(*) as count from ${table}`).get()).toEqual({ count: 0 });
+    }
   });
 
   test('treats an existing Weather Location as existing User setup', async () => {

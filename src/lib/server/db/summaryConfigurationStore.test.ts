@@ -16,6 +16,7 @@ describe('SQLite User Summary Configuration store', () => {
     sqlite.pragma('foreign_keys = ON');
     sqlite.exec(readFileSync('drizzle/0000_bootstrap_daily.sql', 'utf8'));
     sqlite.exec(readFileSync('drizzle/0011_add_next_summary_at.sql', 'utf8'));
+    sqlite.exec(readFileSync('drizzle/0015_add_user_lifecycle.sql', 'utf8'));
     sqlite
       .prepare(
         'insert into users (id, google_subject, email) values (?, ?, ?)'
@@ -65,5 +66,24 @@ describe('SQLite User Summary Configuration store', () => {
     expect(sqlite.prepare('select next_summary_at from users where id = ?').get('user-1')).toEqual({
       next_summary_at: null
     });
+  });
+
+  test('cannot restore Summary Delivery or scheduling for a deleting User', async () => {
+    sqlite.prepare("update users set lifecycle_state = 'deleting' where id = ?").run('user-1');
+    const store = createUserSummaryConfigurationStore(drizzle(sqlite, { schema }));
+
+    await saveUserSummaryConfiguration(
+      store,
+      'user-1',
+      { ...defaultSummaryConfiguration, summaryDeliveryEnabled: true },
+      Temporal.Instant.from('2026-06-22T00:00:00Z')
+    );
+
+    expect(sqlite.prepare('select next_summary_at from users where id = ?').get('user-1')).toEqual({
+      next_summary_at: null
+    });
+    expect(sqlite.prepare(
+      'select count(*) as count from summary_configurations where user_id = ?'
+    ).get('user-1')).toEqual({ count: 0 });
   });
 });

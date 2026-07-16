@@ -124,6 +124,21 @@ describe('Daily database schema', () => {
     });
   });
 
+  test('ships the active and deleting User lifecycle with existing Users active', () => {
+    const migration = readFileSync('drizzle/0015_add_user_lifecycle.sql', 'utf8');
+    const journal = JSON.parse(readFileSync('drizzle/meta/_journal.json', 'utf8')) as {
+      entries: Array<{ idx: number; tag: string }>;
+    };
+
+    expect(getTableColumns(users).lifecycleState).toBeDefined();
+    expect(migration).toContain("ADD `lifecycle_state` text DEFAULT 'active' NOT NULL");
+    expect(migration).toContain("CHECK (`lifecycle_state` IN ('active', 'deleting'))");
+    expect(journal.entries.find(({ idx }) => idx === 15)).toMatchObject({
+      idx: 15,
+      tag: '0015_add_user_lifecycle'
+    });
+  });
+
   test('ships an initial SQLite migration for the core schema', () => {
     const migrationPath = 'drizzle/0000_bootstrap_daily.sql';
 

@@ -1,4 +1,4 @@
-import { sql } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { db } from '$lib/server/db';
 import { users } from './schema';
 import {
@@ -39,7 +39,8 @@ export const createDailyUserIdentityStore = (
           set: {
             email: identity.email,
             updatedAt: sql`CURRENT_TIMESTAMP`
-          }
+          },
+          setWhere: eq(users.lifecycleState, 'active')
         });
     } catch (error) {
       if (isUsersEmailUniqueConflict(error)) {

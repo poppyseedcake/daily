@@ -14,9 +14,11 @@ import { scheduledDailySummaryOccurrenceStore } from './db/scheduledDailySummary
 import { userSummaryConfigurationStore } from './db/summaryConfigurationStore';
 import { userTodoStore } from './db/todoStore';
 import { userWeatherLocationStore } from './db/weatherLocationStore';
+import { userLifecycleStore } from './db/userLifecycleStore';
 
 export const createProductionScheduledDailySummaryWorkerDependencies = () => {
   const generator = createScheduledDailySummaryGenerator({
+    userLifecycleStore,
     configurationStore: userSummaryConfigurationStore,
     todoStore: userTodoStore,
     weatherLocationStore: userWeatherLocationStore,
@@ -34,6 +36,7 @@ export const createProductionScheduledDailySummaryWorkerDependencies = () => {
   const delivery = createScheduledDailySummaryDelivery({
     occurrenceStore: scheduledDailySummaryOccurrenceStore,
     deliveryRecordStore,
+    userLifecycleStore,
     generator,
     deliveryProvider: dailySummaryDeliveryProvider,
     providerName: 'resend',
