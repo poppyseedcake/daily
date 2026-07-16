@@ -1,4 +1,4 @@
-import { execFileSync } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { describe, expect, test } from 'vitest';
 
@@ -77,12 +77,20 @@ describe('systemd web service contract', () => {
   test.runIf(existsSync('/usr/bin/systemd-analyze'))(
     'passes systemd unit verification when systemd tooling is available',
     () => {
-      expect(() =>
-        execFileSync('/usr/bin/systemd-analyze', ['verify', servicePath], {
-          encoding: 'utf8',
-          stdio: 'pipe'
-        })
-      ).not.toThrow();
+      const verification = spawnSync('/usr/bin/systemd-analyze', ['verify', servicePath], {
+        encoding: 'utf8'
+      });
+      const diagnostics = `${verification.stdout}${verification.stderr}`
+        .split('\n')
+        .filter(Boolean);
+      const unexpectedDiagnostics = diagnostics.filter(
+        (line) =>
+          line !==
+          'daily-web.service: Command /usr/bin/node is not executable: No such file or directory'
+      );
+
+      expect(verification.error).toBeUndefined();
+      expect(unexpectedDiagnostics).toEqual([]);
     }
   );
 });
