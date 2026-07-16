@@ -43,9 +43,10 @@ import { googleMapsOperations } from '$lib/server/googleMapsOperations';
 import { toDeliveryHistoryRecord } from '$lib/deliveryRecords';
 import { userLifecycleStore } from '$lib/server/db/userLifecycleStore';
 import { accountDeletionStore } from '$lib/server/db/accountDeletionStore';
-import { accountDeletionConfirmation, deleteDailyAccount } from '$lib/server/accountDeletion';
+import { accountDeletionConfirmation } from '$lib/accountDeletion';
+import { deleteDailyAccount } from '$lib/server/accountDeletion';
 import { env } from '$env/dynamic/private';
-import { fail, redirect } from '@sveltejs/kit';
+import { fail } from '@sveltejs/kit';
 
 const testDeliveryFailureMessage = (classification: DailySummaryDeliveryErrorClassification) => {
   switch (classification) {
@@ -335,10 +336,7 @@ export const load = async ({ request }) => {
     commuteSetup,
     deliveryRecords,
     selectedCalendarConfiguration,
-    renderedSummaryHtml,
-    ...(new URL(request.url).searchParams.get('accountDeletion') === 'success'
-      ? { accountDeletionSucceeded: true as const }
-      : {})
+    renderedSummaryHtml
   };
 };
 
@@ -370,7 +368,7 @@ export const actions = {
     if (!deleted) {
       return fail(409, { accountDeletionError: 'Account deletion could not be completed.' });
     }
-    redirect(303, '/?accountDeletion=success');
+    return { accountDeletionSucceeded: true as const };
   },
   disconnectGoogleCalendar: async ({ request }) => {
     const session = await auth.api.getSession({

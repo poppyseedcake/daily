@@ -122,6 +122,9 @@ test('signed-in User irreversibly deletes the account and returns to Visitor mod
     await expect(page.getByText('Visitor mode', { exact: true })).toBeVisible();
     expect(database.prepare('select count(*) as count from users where id = ?').get(userId)).toEqual({ count: 0 });
     expect(database.prepare('select count(*) as count from auth_user where id = ?').get(userId)).toEqual({ count: 0 });
+    expect(database.prepare('select count(*) as count from auth_session where user_id = ?').get(userId)).toEqual({ count: 0 });
+    expect(database.prepare('select count(*) as count from auth_account where user_id = ?').get(userId)).toEqual({ count: 0 });
+    expect(database.prepare('select count(*) as count from summary_configurations where user_id = ?').get(userId)).toEqual({ count: 0 });
   } finally {
     database.prepare('delete from auth_user where id = ?').run(userId);
     database.prepare('delete from users where id = ?').run(userId);

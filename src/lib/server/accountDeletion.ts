@@ -1,7 +1,5 @@
 import { createGoogleMapsPersonAttribution } from './googleMapsPersonAttribution';
 
-export const accountDeletionConfirmation = 'DELETE MY ACCOUNT';
-
 export type AccountDeletionStore = {
   startDeleting(userId: string): Promise<'started' | 'resuming' | 'missing'>;
   loadGoogleTokens(userId: string): Promise<string[]>;
@@ -17,7 +15,8 @@ export const googleTokenRevoker: GoogleTokenRevoker = {
     const response = await fetch('https://oauth2.googleapis.com/revoke', {
       method: 'POST',
       headers: { 'content-type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({ token })
+      body: new URLSearchParams({ token }),
+      signal: AbortSignal.timeout(5_000)
     });
 
     if (!response.ok) throw new Error('google-token-revocation-failed');

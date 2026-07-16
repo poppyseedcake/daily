@@ -1,5 +1,10 @@
 # SQLite backups
 
+Account deletion applies to the live Daily database only. Historical backups remain immutable,
+restricted recovery artifacts until normal retention removes them; they are not recalled or
+rewritten after an account is deleted. Likewise, an email already accepted by the delivery
+provider cannot be recalled from the provider or its recipient.
+
 Daily owns one online SQLite backup command for routine and deployment recovery points:
 
 ```sh

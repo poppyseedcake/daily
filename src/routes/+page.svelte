@@ -54,6 +54,7 @@
     type CommuteRoute
   } from '$lib/commuteRoute';
   import type { SelectedCalendarConfiguration, SelectedCalendarOption } from '$lib/selectedCalendars';
+  import { accountDeletionConfirmation } from '$lib/accountDeletion';
 
   const visitorAuthState = { mode: 'visitor' } as const;
   let { data, form }: { data?: PageData; form?: ActionData } = $props();
@@ -1241,7 +1242,7 @@
 <main class="min-h-screen bg-stone-100 text-stone-950">
   <div class="mx-auto grid w-full max-w-6xl gap-6 px-4 py-5 sm:px-6 lg:grid-cols-[1fr_20rem] lg:px-8">
     <section class="space-y-6">
-      {#if data?.accountDeletionSucceeded}
+      {#if form?.accountDeletionSucceeded}
         <div class="rounded-lg border border-emerald-300 bg-emerald-50 p-4 text-emerald-900" role="status">
           Your Daily account and locally held User data were deleted. You are now in Visitor mode.
         </div>
@@ -1313,7 +1314,7 @@
           </p>
           <form class="mt-4 space-y-3" method="POST" action="?/deleteAccount">
             <label class="block text-sm font-medium text-stone-800" for="account-deletion-confirmation">
-              Enter DELETE MY ACCOUNT exactly to confirm
+              Enter {accountDeletionConfirmation} exactly to confirm
             </label>
             <input
               class="h-10 w-full max-w-sm rounded-md border border-stone-300 px-3"

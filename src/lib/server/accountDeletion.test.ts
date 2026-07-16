@@ -1,5 +1,6 @@
 import { describe, expect, test, vi } from 'vitest';
-import { accountDeletionConfirmation, deleteDailyAccount } from './accountDeletion';
+import { accountDeletionConfirmation } from '$lib/accountDeletion';
+import { deleteDailyAccount } from './accountDeletion';
 
 const secret = 'a-secure-attribution-secret-with-32-bytes';
 

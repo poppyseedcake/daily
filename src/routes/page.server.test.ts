@@ -29,11 +29,15 @@ const {
   calendarEventProviderMode,
   validationFailure,
   loadFailure,
-  lifecycleActive
+  lifecycleActive,
+  deletionStart,
+  deletionFinish
 } = vi.hoisted(() => ({
   getSession: vi.fn(),
   loadFailure: { enabled: false },
   lifecycleActive: { value: true },
+  deletionStart: vi.fn(),
+  deletionFinish: vi.fn(),
   deliveryProviderMode: {
     outcome: 'accepted' as
       | 'accepted'
@@ -176,6 +180,14 @@ vi.mock('$lib/server/db/userLifecycleStore', () => ({
     async isActive() {
       return lifecycleActive.value;
     }
+  }
+}));
+
+vi.mock('$lib/server/db/accountDeletionStore', () => ({
+  accountDeletionStore: {
+    startDeleting: deletionStart,
+    loadGoogleTokens: vi.fn().mockResolvedValue([]),
+    finishDeleting: deletionFinish
   }
 }));
 
@@ -402,7 +414,8 @@ vi.mock('$lib/server/dailySummaryDelivery', async () => {
 
 vi.mock('$env/dynamic/private', () => ({
   env: {
-    ADMINISTRATOR_EMAIL_ALLOWLIST: ' admin@example.com '
+    ADMINISTRATOR_EMAIL_ALLOWLIST: ' admin@example.com ',
+    GOOGLE_MAPS_ATTRIBUTION_SECRET: 'page-server-test-attribution-secret-32-bytes'
   }
 }));
 
@@ -503,11 +516,21 @@ const disconnectGoogleCalendar = () =>
     })
   } as Parameters<typeof actions.disconnectGoogleCalendar>[0]);
 
+const deleteAccount = (confirmation?: string) => {
+  const formData = new FormData();
+  if (confirmation !== undefined) formData.set('confirmation', confirmation);
+  return actions.deleteAccount({
+    request: new Request('http://localhost/?/deleteAccount', { method: 'POST', body: formData })
+  } as Parameters<typeof actions.deleteAccount>[0]);
+};
+
 describe('Daily page server load', () => {
   beforeEach(() => {
     getSession.mockReset();
     loadFailure.enabled = false;
     lifecycleActive.value = true;
+    deletionStart.mockReset().mockResolvedValue('started');
+    deletionFinish.mockReset().mockResolvedValue(true);
     deliveryProviderMode.outcome = 'accepted';
     weatherProviderMode.outcome = 'available';
     commuteProviderMode.outcome = 'available';
@@ -847,6 +870,36 @@ describe('Daily page server load', () => {
       message: 'Sign in with Google to disconnect Google Calendar.'
     });
     expect(calendarConnectionWrites).toEqual([]);
+  });
+
+  test('rejects account deletion for a Visitor without touching User data', async () => {
+    getSession.mockResolvedValue(null);
+    await expect(deleteAccount('DELETE MY ACCOUNT')).resolves.toMatchObject({ status: 403 });
+    expect(deletionStart).not.toHaveBeenCalled();
+    expect(deletionFinish).not.toHaveBeenCalled();
+  });
+
+  test.each([undefined, '', 'delete my account', 'DELETE MY ACCOUNT '])(
+    'rejects missing or incorrect account confirmation %s without touching User data',
+    async (confirmation) => {
+      getSession.mockResolvedValue({
+        user: { id: 'user-1', email: 'user@example.com', emailVerified: true }
+      });
+      await expect(deleteAccount(confirmation)).resolves.toMatchObject({ status: 400 });
+      expect(deletionStart).not.toHaveBeenCalled();
+      expect(deletionFinish).not.toHaveBeenCalled();
+    }
+  );
+
+  test('finishes account deletion for the currently signed-in User', async () => {
+    getSession.mockResolvedValue({
+      user: { id: 'user-1', email: 'user@example.com', emailVerified: true }
+    });
+    await expect(deleteAccount('DELETE MY ACCOUNT')).resolves.toEqual({
+      accountDeletionSucceeded: true
+    });
+    expect(deletionStart).toHaveBeenCalledWith('user-1');
+    expect(deletionFinish).toHaveBeenCalledOnce();
   });
 
   test('loads defaults for a new signed-in User without imported Local Setup', async () => {
