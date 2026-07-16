@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import Database from 'better-sqlite3';
 import { drizzle } from 'drizzle-orm/better-sqlite3';
-import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import * as schema from './schema';
 import { createUserLifecycleStore } from './userLifecycleStore';
 
@@ -61,5 +61,33 @@ describe('SQLite User lifecycle boundary', () => {
     expect(sqlite.prepare(
       'select summary_delivery_enabled from summary_configurations where user_id = ?'
     ).get('user-1')).toEqual({ summary_delivery_enabled: 0 });
+  });
+
+  test('begins provider submission inside the active User transaction boundary', async () => {
+    sqlite.prepare(
+      'insert into users (id, google_subject, email) values (?, ?, ?)'
+    ).run('user-1', 'google-1', 'private@example.com');
+    const observedStates: string[] = [];
+
+    await expect(
+      store.beginProviderSubmission('user-1', async () => {
+        const row = sqlite.prepare(
+          'select lifecycle_state from users where id = ?'
+        ).get('user-1') as { lifecycle_state: string };
+        observedStates.push(row.lifecycle_state);
+        return 'accepted';
+      })
+    ).resolves.toBe('accepted');
+    expect(observedStates).toEqual(['active']);
+  });
+
+  test('does not begin provider submission after deleting is committed', async () => {
+    sqlite.prepare(
+      "insert into users (id, google_subject, email, lifecycle_state) values (?, ?, ?, 'deleting')"
+    ).run('user-1', 'google-1', 'private@example.com');
+    const submit = vi.fn();
+
+    await expect(store.beginProviderSubmission('user-1', submit)).resolves.toBeNull();
+    expect(submit).not.toHaveBeenCalled();
   });
 });

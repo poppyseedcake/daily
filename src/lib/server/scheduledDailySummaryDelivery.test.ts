@@ -72,10 +72,18 @@ const createTestDelivery = ({
   now: () => Date;
   isActive?: (userId: string) => Promise<boolean>;
 }) => {
+  const persistedLifecycleStore = createUserLifecycleStore(database);
+  const generationLifecycleStore = isActive ? { isActive } : persistedLifecycleStore;
+  const deliveryLifecycleStore = isActive
+    ? {
+        isActive,
+        async beginProviderSubmission<T>(userId: string, submit: () => Promise<T>) {
+          return (await isActive(userId)) ? submit() : null;
+        }
+      }
+    : persistedLifecycleStore;
   const generator = createScheduledDailySummaryGenerator({
-    userLifecycleStore: isActive
-      ? { isActive }
-      : createUserLifecycleStore(database),
+    userLifecycleStore: generationLifecycleStore,
     configurationStore: createUserSummaryConfigurationStore(database),
     todoStore: createUserTodoStore(database),
     weatherLocationStore: createUserWeatherLocationStore(database),
@@ -91,9 +99,7 @@ const createTestDelivery = ({
   return createScheduledDailySummaryDelivery({
     occurrenceStore: createScheduledDailySummaryOccurrenceStore(database),
     deliveryRecordStore: createDeliveryRecordStore(database),
-    userLifecycleStore: isActive
-      ? { isActive }
-      : createUserLifecycleStore(database),
+    userLifecycleStore: deliveryLifecycleStore,
     generator,
     deliveryProvider: { send },
     providerName: 'fake-delivery',
