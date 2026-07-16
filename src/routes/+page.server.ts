@@ -42,6 +42,11 @@ import { createDefaultTodoState, todoStateSchema } from '$lib/todo';
 import { googleMapsOperations } from '$lib/server/googleMapsOperations';
 import { toDeliveryHistoryRecord } from '$lib/deliveryRecords';
 import { userLifecycleStore } from '$lib/server/db/userLifecycleStore';
+import { accountDeletionStore } from '$lib/server/db/accountDeletionStore';
+import { accountDeletionConfirmation } from '$lib/accountDeletion';
+import { deleteDailyAccount } from '$lib/server/accountDeletion';
+import { env } from '$env/dynamic/private';
+import { fail } from '@sveltejs/kit';
 
 const testDeliveryFailureMessage = (classification: DailySummaryDeliveryErrorClassification) => {
   switch (classification) {
@@ -139,6 +144,19 @@ export const load = async ({ request }) => {
     authState.mode === 'user' &&
     !(await userLifecycleStore.isActive(authState.userId))
   ) {
+    try {
+      const attributionSecret = env.GOOGLE_MAPS_ATTRIBUTION_SECRET;
+      if (attributionSecret) {
+        await deleteDailyAccount({
+          userId: authState.userId,
+          attributionSecret,
+          store: accountDeletionStore
+        });
+      }
+    } catch {
+      // The committed deleting state is resumable; a later page load will retry cleanup.
+      console.warn('Account deletion cleanup remains pending.');
+    }
     authState = { mode: 'visitor' };
   }
   const calendarConnectionResult = new URL(request.url).searchParams.get('calendarConnection');
@@ -336,6 +354,35 @@ export const load = async ({ request }) => {
 };
 
 export const actions = {
+  deleteAccount: async ({ request }) => {
+    const session = await auth.api.getSession({ headers: request.headers });
+    const authState = authStateFromSession(session);
+    if (authState.mode !== 'user') {
+      return fail(403, { accountDeletionError: 'Only a signed-in User can delete an account.' });
+    }
+
+    const formData = await request.formData();
+    if (formData.get('confirmation') !== accountDeletionConfirmation) {
+      return fail(400, {
+        accountDeletionError: `Enter ${accountDeletionConfirmation} exactly to continue.`
+      });
+    }
+
+    const attributionSecret = env.GOOGLE_MAPS_ATTRIBUTION_SECRET;
+    if (!attributionSecret) {
+      return fail(503, { accountDeletionError: 'Account deletion is temporarily unavailable.' });
+    }
+
+    const deleted = await deleteDailyAccount({
+      userId: authState.userId,
+      attributionSecret,
+      store: accountDeletionStore
+    });
+    if (!deleted) {
+      return fail(409, { accountDeletionError: 'Account deletion could not be completed.' });
+    }
+    return { accountDeletionSucceeded: true as const };
+  },
   disconnectGoogleCalendar: async ({ request }) => {
     const session = await auth.api.getSession({
       headers: request.headers

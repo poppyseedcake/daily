@@ -18,7 +18,8 @@ export default defineConfig({
       SCHEDULED_WORKER_OVERDUE_MINUTES: '5',
       GOOGLE_MAPS_GLOBAL_DAILY_CAP: '100',
       GOOGLE_MAPS_GLOBAL_MONTHLY_CAP: '1000',
-      GOOGLE_MAPS_PER_PERSON_DAILY_LIMIT: '50'
+      GOOGLE_MAPS_PER_PERSON_DAILY_LIMIT: '50',
+      GOOGLE_MAPS_ATTRIBUTION_SECRET: 'daily-playwright-maps-attribution-secret-32-bytes'
     },
     url: baseURL,
     reuseExistingServer: !process.env.CI
