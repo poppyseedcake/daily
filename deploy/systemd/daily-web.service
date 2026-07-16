@@ -13,6 +13,7 @@ Group=daily
 WorkingDirectory=/srv/daily/current
 Environment=NODE_ENV=production
 EnvironmentFile=/etc/daily/daily.env
+ExecStartPre=/usr/bin/node scripts/validate-production-environment.mjs
 ExecStart=/usr/bin/node build
 Restart=on-failure
 RestartSec=5s

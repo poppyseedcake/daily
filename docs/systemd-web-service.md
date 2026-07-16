@@ -26,9 +26,16 @@ sudo install --owner=root --group=root --mode=0644 deploy/systemd/daily-web.serv
 Install a successfully built release in a versioned, root-owned directory under
 `/srv/daily/releases`. Make `/srv/daily/current` a symlink to that release. The
 `daily` account needs read and traverse access to the release, but must not own it.
-Edit `/etc/daily/daily.env`, replace every placeholder, and keep its `root:daily`
-ownership and `0640` mode. The application does not migrate its database on normal
-startup; apply migrations explicitly as part of deployment.
+Edit `/etc/daily/daily.env`, fill every blank or placeholder, and keep its
+`root:daily` ownership and `0640` mode. Generate independent random values of at
+least 32 bytes for `BETTER_AUTH_SECRET` and `GOOGLE_MAPS_ATTRIBUTION_SECRET`; never
+reuse a value from an example or another deployment. The service refuses to start
+when either secret is missing, known to be a template value, or too short.
+
+The application does not migrate its database on normal startup; apply every
+migration explicitly as part of deployment. Readiness verifies a table introduced
+by the latest migration, so a fresh or partially migrated SQLite database remains
+unhealthy.
 
 Ask systemd to validate the installed unit, reload it, and enable automatic startup:
 

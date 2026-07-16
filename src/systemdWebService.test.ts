@@ -16,6 +16,7 @@ describe('systemd web service contract', () => {
     expect(service).toContain('Group=daily');
     expect(service).toContain('WorkingDirectory=/srv/daily/current');
     expect(service).toContain('EnvironmentFile=/etc/daily/daily.env');
+    expect(service).toContain('ExecStartPre=/usr/bin/node scripts/validate-production-environment.mjs');
     expect(service).toContain('ExecStart=/usr/bin/node build');
   });
 
