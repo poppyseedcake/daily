@@ -1,5 +1,7 @@
 import { spawnSync } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
 
 const servicePath = 'deploy/systemd/daily-scheduled-worker.service';
@@ -67,25 +69,35 @@ describe('systemd scheduled worker contract', () => {
   test.runIf(existsSync('/usr/bin/systemd-analyze'))(
     'passes systemd unit verification when systemd tooling is available',
     () => {
-      const verification = spawnSync(
-        '/usr/bin/systemd-analyze',
-        ['verify', servicePath, timerPath],
-        { encoding: 'utf8' }
+      const verificationDirectory = mkdtempSync(join(tmpdir(), 'daily-systemd-worker-'));
+      const verificationServicePath = join(
+        verificationDirectory,
+        'daily-scheduled-worker.service'
       );
-      const diagnostics = `${verification.stdout}${verification.stderr}`
-        .split('\n')
-        .filter(Boolean);
-      const unexpectedDiagnostics = diagnostics.filter(
-        (line) =>
-          line !==
-            'daily-scheduled-worker.service: Command /usr/bin/node is not executable: No such file or directory' &&
-          line !==
-            'daily-scheduled-worker.service: Command /usr/bin/npm is not executable: No such file or directory'
-      );
+      const verificationTimerPath = join(verificationDirectory, 'daily-scheduled-worker.timer');
 
-      expect(verification.error).toBeUndefined();
-      expect(verification.status).toBe(0);
-      expect(unexpectedDiagnostics).toEqual([]);
+      try {
+        const portableService = read(servicePath)
+          .replace(/^ExecStartPre=.*$/m, 'ExecStartPre=/bin/true')
+          .replace(/^ExecStart=.*$/m, 'ExecStart=/bin/true');
+        writeFileSync(verificationServicePath, portableService);
+        writeFileSync(verificationTimerPath, read(timerPath));
+
+        const verification = spawnSync(
+          '/usr/bin/systemd-analyze',
+          ['verify', verificationServicePath, verificationTimerPath],
+          { encoding: 'utf8' }
+        );
+        const diagnostics = `${verification.stdout}${verification.stderr}`
+          .split('\n')
+          .filter(Boolean);
+
+        expect(verification.error).toBeUndefined();
+        expect(verification.status).toBe(0);
+        expect(diagnostics).toEqual([]);
+      } finally {
+        rmSync(verificationDirectory, { recursive: true, force: true });
+      }
     }
   );
 });
