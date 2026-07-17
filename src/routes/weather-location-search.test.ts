@@ -9,7 +9,7 @@ vi.mock('$lib/server/weatherLocationGeocoding', async (importOriginal) => {
 
   return {
     ...original,
-    deterministicWeatherLocationGeocodingProvider: {
+    openMeteoWeatherLocationGeocodingProvider: () => ({
       async search(query: string) {
         providerCalls.push(query);
 
@@ -26,7 +26,7 @@ vi.mock('$lib/server/weatherLocationGeocoding', async (importOriginal) => {
           }
         ];
       }
-    }
+    })
   };
 });
 

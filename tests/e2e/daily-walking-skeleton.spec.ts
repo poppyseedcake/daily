@@ -495,6 +495,21 @@ test('Visitor Summary Configuration persists after page refresh', async ({ page 
 
 test('Visitor Weather Location persists after page refresh', async ({ page }) => {
   await stubOpenMeteoForecast(page);
+  await page.route('/weather-location-search?**', async (route) => {
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({
+        outcome: 'found',
+        locations: [
+          {
+            label: 'Warsaw, Masovian Voivodeship, Poland',
+            latitude: 52.2297,
+            longitude: 21.0122
+          }
+        ]
+      })
+    });
+  });
   await page.goto('/');
 
   await expect(page.getByText('Choose a Weather Location to preview live weather.')).toBeVisible();
@@ -505,7 +520,7 @@ test('Visitor Weather Location persists after page refresh', async ({ page }) =>
   await expect(page.getByLabel('City Search')).toHaveValue('Warsaw');
   await page.getByRole('button', { name: 'Search' }).click();
   await page
-    .getByRole('list', { name: 'Weather Location search results' })
+    .getByRole('listbox', { name: 'Weather Location search results' })
     .getByRole('button', { name: 'Select' })
     .first()
     .click();
@@ -524,6 +539,35 @@ test('Visitor Weather Location persists after page refresh', async ({ page }) =>
   await expect(
     page.getByText('Rainy. Low 12C, high 19C. Chance of precipitation 80%.')
   ).toBeVisible();
+});
+
+test('Visitor receives Weather Location suggestions while typing', async ({ page }) => {
+  const searchQueries: string[] = [];
+  await page.route('/weather-location-search?**', async (route) => {
+    const url = new URL(route.request().url());
+    searchQueries.push(url.searchParams.get('q') ?? '');
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({
+        outcome: 'found',
+        locations: [
+          {
+            label: 'Krakow, Lesser Poland, Poland',
+            latitude: 50.06143,
+            longitude: 19.93658
+          }
+        ]
+      })
+    });
+  });
+
+  await page.goto('/');
+  await page.getByLabel('City Search').fill('Krak');
+
+  await expect(page.getByText('Krakow, Lesser Poland, Poland')).toBeVisible();
+  await page.getByLabel('City Search').press('Enter');
+  await expect(page.getByText('Weather Location saved in this browser only.')).toBeVisible();
+  expect(searchQueries).toEqual(['Krak']);
 });
 
 test('Visitor manages ordered Commute Routes and Commute Days in browser-local setup', async ({ page }) => {

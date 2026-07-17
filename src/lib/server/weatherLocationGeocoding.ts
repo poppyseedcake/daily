@@ -12,6 +12,48 @@ export type WeatherLocationGeocodingProvider = {
   search: (query: string) => Promise<WeatherLocation[]>;
 };
 
+type Fetch = (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
+
+const openMeteoGeocodingResponseSchema = z.object({
+  results: z
+    .array(
+      z.object({
+        name: z.string().min(1),
+        admin1: z.string().min(1).optional(),
+        country: z.string().min(1).optional(),
+        latitude: z.number(),
+        longitude: z.number()
+      })
+    )
+    .optional()
+});
+
+export const openMeteoWeatherLocationGeocodingProvider = (
+  fetch: Fetch = globalThis.fetch
+): WeatherLocationGeocodingProvider => ({
+  async search(query) {
+    const url = new URL('https://geocoding-api.open-meteo.com/v1/search');
+    url.searchParams.set('name', query);
+    url.searchParams.set('count', '8');
+    url.searchParams.set('language', 'en');
+    url.searchParams.set('format', 'json');
+
+    const response = await fetch(url);
+
+    if (!response.ok) {
+      throw new Error(`Open-Meteo geocoding failed with status ${response.status}.`);
+    }
+
+    const payload = openMeteoGeocodingResponseSchema.parse(await response.json());
+
+    return (payload.results ?? []).map((result) => ({
+      label: [...new Set([result.name, result.admin1, result.country].filter(Boolean))].join(', '),
+      latitude: result.latitude,
+      longitude: result.longitude
+    }));
+  }
+});
+
 const deterministicLocations: WeatherLocation[] = [
   {
     label: 'Springfield, Illinois, United States',
