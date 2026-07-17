@@ -300,6 +300,45 @@ describe('Daily Summary renderer', () => {
     expect(rendered.text).toContain('10:00 Planning (Work)');
   });
 
+  test.each([null, 'not-a-color'])(
+    'falls back to the Selected Calendar label when its color is %s',
+    (calendarColor) => {
+      const rendered = renderDailySummary({
+        configuration: {
+          ...defaultSummaryConfiguration,
+          sections: { weather: false, commute: false, calendar: true, todo: false }
+        },
+        sections: {
+          weather: { status: 'available', label: 'Weather', detail: 'Hidden.' },
+          commute: { status: 'available', label: 'Commute', detail: 'Hidden.' },
+          calendar: { status: 'available', label: 'Calendar', detail: 'No events.' },
+          todo: { status: 'available', label: 'Todo', detail: 'Hidden.' }
+        },
+        calendarSection: {
+          label: 'Calendar',
+          today: {
+            label: 'Today',
+            allDayEvents: [],
+            timedEvents: [
+              {
+                id: 'planning',
+                title: 'Planning',
+                calendarLabel: 'Work & Focus',
+                calendarColor,
+                localStartTime: '10:00'
+              }
+            ]
+          },
+          weekAhead: []
+        },
+        todoSection: null
+      });
+
+      expect(rendered.html).toContain('(Work &amp; Focus) <time>10:00</time> Planning');
+      expect(rendered.html).not.toContain('aria-label="Work &amp; Focus calendar"');
+    }
+  );
+
   test('omits Todo output when the module-prepared Todo Section is empty', () => {
     const rendered = renderDailySummary({
       configuration: {

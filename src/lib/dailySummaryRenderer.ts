@@ -185,7 +185,7 @@ const renderCalendarColorMarker = (
   event: { calendarLabel: string; calendarColor?: string | null }
 ) => {
   if (!event.calendarColor || !calendarColorPattern.test(event.calendarColor)) {
-    return '';
+    return `(${escapeHtml(event.calendarLabel)}) `;
   }
 
   const calendarLabel = escapeHtml(event.calendarLabel);

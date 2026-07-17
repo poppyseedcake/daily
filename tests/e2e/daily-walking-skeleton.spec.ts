@@ -570,6 +570,39 @@ test('Visitor receives Weather Location suggestions while typing', async ({ page
   expect(searchQueries).toEqual(['Krak']);
 });
 
+test('Visitor can dismiss a pending Weather Location search', async ({ page }) => {
+  const searchQueries: string[] = [];
+  await page.route('/weather-location-search?**', async (route) => {
+    searchQueries.push(new URL(route.request().url()).searchParams.get('q') ?? '');
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({
+        outcome: 'found',
+        locations: [
+          {
+            label: 'Krakow, Lesser Poland, Poland',
+            latitude: 50.06143,
+            longitude: 19.93658
+          }
+        ]
+      })
+    });
+  });
+
+  await page.goto('/');
+  await page.getByLabel('City Search').fill('Krak');
+  await expect.poll(() => searchQueries).toEqual(['Krak']);
+  const searchResponse = page.waitForResponse((response) =>
+    response.url().includes('/weather-location-search?')
+  );
+  await page.getByLabel('City Search').press('Escape');
+  await searchResponse;
+
+  await expect(page.getByRole('listbox', { name: 'Weather Location search results' })).toHaveCount(0);
+  await expect(page.getByText('Krakow, Lesser Poland, Poland')).toHaveCount(0);
+});
+
 test('Visitor manages ordered Commute Routes and Commute Days in browser-local setup', async ({ page }) => {
   const pointSelections: Array<{ latitude: number; longitude: number }> = [];
   await page.route('/commute-point-selection', async (route) => {

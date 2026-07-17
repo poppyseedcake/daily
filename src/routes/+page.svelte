@@ -527,12 +527,18 @@
       return false;
     }
   };
+  const cancelPendingWeatherLocationSearch = () => {
+    clearTimeout(weatherLocationSearchTimer);
+    weatherLocationSearchTimer = undefined;
+    weatherLocationSearchRequest += 1;
+  };
   const searchWeatherLocation = async () => {
+    cancelPendingWeatherLocationSearch();
     const searchInput = globalThis.document?.getElementById('weather-location-search');
     const currentSearchQuery =
       searchInput instanceof HTMLInputElement ? searchInput.value : weatherLocationSearchQuery;
     weatherLocationSearchQuery = currentSearchQuery;
-    const request = ++weatherLocationSearchRequest;
+    const request = weatherLocationSearchRequest;
     weatherLocationStatus = 'Searching Weather Locations...';
     weatherLocationStatusTone = 'neutral';
 
@@ -577,8 +583,7 @@
     }
   };
   const suggestWeatherLocations = () => {
-    clearTimeout(weatherLocationSearchTimer);
-    weatherLocationSearchRequest += 1;
+    cancelPendingWeatherLocationSearch();
     weatherLocationSearchResults = [];
     activeWeatherLocationSuggestion = -1;
 
@@ -588,9 +593,14 @@
       return;
     }
 
-    weatherLocationSearchTimer = setTimeout(() => void searchWeatherLocation(), 300);
+    weatherLocationSearchTimer = setTimeout(() => {
+      weatherLocationSearchTimer = undefined;
+      void searchWeatherLocation();
+    }, 300);
   };
   const saveWeatherLocation = async (location: WeatherLocation) => {
+    cancelPendingWeatherLocationSearch();
+
     if (authState.mode !== 'user') {
       weatherLocation = location;
       weatherLocationSearchResults = [];
@@ -1558,6 +1568,7 @@
                       return;
                     }
                     if (event.key === 'Escape') {
+                      cancelPendingWeatherLocationSearch();
                       weatherLocationSearchResults = [];
                       activeWeatherLocationSuggestion = -1;
                       return;
