@@ -87,6 +87,69 @@ const stubOpenMeteoForecast = async (page: Page) => {
   });
 };
 
+test('Selected Calendar changes update the signed-in User preview without a page reload', async ({ page }) => {
+  const port = process.env.PLAYWRIGHT_PORT ?? '5173';
+  const database = new Database(join(tmpdir(), `daily-playwright-${port}.db`));
+  const now = Math.floor(Date.now() / 1000);
+  const userId = `calendar-preview-user-${crypto.randomUUID()}`;
+  const googleSubject = `google-${userId}`;
+  const sessionToken = crypto.randomUUID();
+
+  try {
+    database.prepare('insert into auth_user values (?, ?, ?, true, null, ?, ?)')
+      .run(userId, 'Calendar User', 'calendar@example.com', now, now);
+    database.prepare('insert into auth_session values (?, ?, ?, ?, ?, null, null, ?)')
+      .run(crypto.randomUUID(), now + 3600, sessionToken, now, now, userId);
+    database.prepare(`insert into auth_account (
+      id, account_id, provider_id, user_id, access_token, access_token_expires_at, scope, created_at, updated_at
+    ) values (?, ?, 'google', ?, 'fixture-access-token', ?, ?, ?, ?)`).run(
+      crypto.randomUUID(),
+      googleSubject,
+      userId,
+      now + 3600,
+      'openid email profile https://www.googleapis.com/auth/calendar.readonly',
+      now,
+      now
+    );
+    database.prepare('insert into users (id, google_subject, email) values (?, ?, ?)')
+      .run(userId, googleSubject, 'calendar@example.com');
+    database.prepare('insert into summary_configurations (id, user_id) values (?, ?)')
+      .run(crypto.randomUUID(), userId);
+    database.prepare(`insert into calendar_connections (
+      id, user_id, connection_status, provider_account_id, granted_scopes,
+      access_token_available, refresh_token_available, access_token_expires_at, updated_at
+    ) values (?, ?, 'connected', ?, ?, true, false, ?, ?)`).run(
+      crypto.randomUUID(),
+      userId,
+      googleSubject,
+      JSON.stringify(['https://www.googleapis.com/auth/calendar.readonly']),
+      now + 3600,
+      new Date().toISOString()
+    );
+    database.prepare(`insert into selected_calendars (
+      id, user_id, calendar_id, position, summary, background_color, \`primary\`
+    ) values (?, ?, 'primary', 0, 'Primary', '#3f51b5', true)`).run(crypto.randomUUID(), userId);
+
+    await page.context().addCookies([{
+      name: 'better-auth.session_token',
+      value: `${sessionToken}.${await makeSignature(sessionToken, 'daily-playwright-auth-secret-at-least-32-characters')}`,
+      domain: '127.0.0.1', path: '/'
+    }]);
+    await page.goto('/');
+    await expect(page.getByText('Primary planning')).toBeVisible();
+    await expect(page.getByText('Work review')).toHaveCount(0);
+
+    await page.locator('#selected-calendar-work').check();
+
+    await expect(page.getByText('Selected Calendars saved to your account.')).toBeVisible();
+    await expect(page.getByText('Work review')).toBeVisible();
+  } finally {
+    database.prepare('delete from auth_user where id = ?').run(userId);
+    database.prepare('delete from users where id = ?').run(userId);
+    database.close();
+  }
+});
+
 test('signed-in User irreversibly deletes the account and returns to Visitor mode', async ({ page }) => {
   const port = process.env.PLAYWRIGHT_PORT ?? '5173';
   const database = new Database(join(tmpdir(), `daily-playwright-${port}.db`));
@@ -432,6 +495,21 @@ test('Visitor Summary Configuration persists after page refresh', async ({ page 
 
 test('Visitor Weather Location persists after page refresh', async ({ page }) => {
   await stubOpenMeteoForecast(page);
+  await page.route('/weather-location-search?**', async (route) => {
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({
+        outcome: 'found',
+        locations: [
+          {
+            label: 'Warsaw, Masovian Voivodeship, Poland',
+            latitude: 52.2297,
+            longitude: 21.0122
+          }
+        ]
+      })
+    });
+  });
   await page.goto('/');
 
   await expect(page.getByText('Choose a Weather Location to preview live weather.')).toBeVisible();
@@ -442,7 +520,7 @@ test('Visitor Weather Location persists after page refresh', async ({ page }) =>
   await expect(page.getByLabel('City Search')).toHaveValue('Warsaw');
   await page.getByRole('button', { name: 'Search' }).click();
   await page
-    .getByRole('list', { name: 'Weather Location search results' })
+    .getByRole('listbox', { name: 'Weather Location search results' })
     .getByRole('button', { name: 'Select' })
     .first()
     .click();
@@ -461,6 +539,68 @@ test('Visitor Weather Location persists after page refresh', async ({ page }) =>
   await expect(
     page.getByText('Rainy. Low 12C, high 19C. Chance of precipitation 80%.')
   ).toBeVisible();
+});
+
+test('Visitor receives Weather Location suggestions while typing', async ({ page }) => {
+  const searchQueries: string[] = [];
+  await page.route('/weather-location-search?**', async (route) => {
+    const url = new URL(route.request().url());
+    searchQueries.push(url.searchParams.get('q') ?? '');
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({
+        outcome: 'found',
+        locations: [
+          {
+            label: 'Krakow, Lesser Poland, Poland',
+            latitude: 50.06143,
+            longitude: 19.93658
+          }
+        ]
+      })
+    });
+  });
+
+  await page.goto('/');
+  await page.getByLabel('City Search').fill('Krak');
+
+  await expect(page.getByText('Krakow, Lesser Poland, Poland')).toBeVisible();
+  await page.getByLabel('City Search').press('Enter');
+  await expect(page.getByText('Weather Location saved in this browser only.')).toBeVisible();
+  expect(searchQueries).toEqual(['Krak']);
+});
+
+test('Visitor can dismiss a pending Weather Location search', async ({ page }) => {
+  const searchQueries: string[] = [];
+  await page.route('/weather-location-search?**', async (route) => {
+    searchQueries.push(new URL(route.request().url()).searchParams.get('q') ?? '');
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({
+        outcome: 'found',
+        locations: [
+          {
+            label: 'Krakow, Lesser Poland, Poland',
+            latitude: 50.06143,
+            longitude: 19.93658
+          }
+        ]
+      })
+    });
+  });
+
+  await page.goto('/');
+  await page.getByLabel('City Search').fill('Krak');
+  await expect.poll(() => searchQueries).toEqual(['Krak']);
+  const searchResponse = page.waitForResponse((response) =>
+    response.url().includes('/weather-location-search?')
+  );
+  await page.getByLabel('City Search').press('Escape');
+  await searchResponse;
+
+  await expect(page.getByRole('listbox', { name: 'Weather Location search results' })).toHaveCount(0);
+  await expect(page.getByText('Krakow, Lesser Poland, Poland')).toHaveCount(0);
 });
 
 test('Visitor manages ordered Commute Routes and Commute Days in browser-local setup', async ({ page }) => {

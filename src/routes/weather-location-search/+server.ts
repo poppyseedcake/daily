@@ -1,13 +1,13 @@
 import { json } from '@sveltejs/kit';
 import {
-  deterministicWeatherLocationGeocodingProvider,
+  openMeteoWeatherLocationGeocodingProvider,
   searchWeatherLocations
 } from '$lib/server/weatherLocationGeocoding';
 
 export const GET = async ({ request }) => {
   const url = new URL(request.url);
   const result = await searchWeatherLocations(
-    deterministicWeatherLocationGeocodingProvider,
+    openMeteoWeatherLocationGeocodingProvider(),
     url.searchParams.get('q') ?? ''
   );
 

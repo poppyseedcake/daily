@@ -2,6 +2,7 @@
   import { CalendarDays, Check, CloudSun, GripVertical, Mail, MapPin, Pencil, Search, ShieldCheck, Trash2 } from '@lucide/svelte';
   import { dragHandle, dragHandleZone, SHADOW_ITEM_MARKER_PROPERTY_NAME, TRIGGERS } from 'svelte-dnd-action';
   import { onMount } from 'svelte';
+  import { invalidateAll } from '$app/navigation';
   import type { ActionData, PageData } from './$types';
   import Panel from '$lib/components/Panel.svelte';
   import { calendarReadinessForAuthMode } from '$lib/calendarReadiness';
@@ -144,6 +145,9 @@
   let weatherLocation = $state<WeatherLocation | null>(initialWeatherLocation);
   let weatherLocationSearchQuery = $state('');
   let weatherLocationSearchResults = $state<WeatherLocation[]>([]);
+  let activeWeatherLocationSuggestion = $state(-1);
+  let weatherLocationSearchTimer: ReturnType<typeof setTimeout> | undefined;
+  let weatherLocationSearchRequest = 0;
   let weatherLocationStatus = $state(
     initialWeatherLocation ? 'Weather Location saved to your account.' : 'No Weather Location saved yet.'
   );
@@ -523,11 +527,18 @@
       return false;
     }
   };
+  const cancelPendingWeatherLocationSearch = () => {
+    clearTimeout(weatherLocationSearchTimer);
+    weatherLocationSearchTimer = undefined;
+    weatherLocationSearchRequest += 1;
+  };
   const searchWeatherLocation = async () => {
+    cancelPendingWeatherLocationSearch();
     const searchInput = globalThis.document?.getElementById('weather-location-search');
     const currentSearchQuery =
       searchInput instanceof HTMLInputElement ? searchInput.value : weatherLocationSearchQuery;
     weatherLocationSearchQuery = currentSearchQuery;
+    const request = weatherLocationSearchRequest;
     weatherLocationStatus = 'Searching Weather Locations...';
     weatherLocationStatusTone = 'neutral';
 
@@ -540,6 +551,8 @@
         locations?: WeatherLocation[];
         reason?: string;
       };
+
+      if (request !== weatherLocationSearchRequest) return;
 
       if (result.outcome === 'unavailable') {
         weatherLocationSearchResults = [];
@@ -556,18 +569,38 @@
       }
 
       weatherLocationSearchResults = result.locations ?? [];
+      activeWeatherLocationSuggestion = weatherLocationSearchResults.length > 0 ? 0 : -1;
       weatherLocationStatus =
         weatherLocationSearchResults.length > 0
           ? 'Choose a Weather Location result.'
           : 'No matching Weather Locations found.';
       weatherLocationStatusTone = weatherLocationSearchResults.length > 0 ? 'neutral' : 'warning';
     } catch {
+      if (request !== weatherLocationSearchRequest) return;
       weatherLocationSearchResults = [];
       weatherLocationStatus = 'Weather Location search failed. Try again.';
       weatherLocationStatusTone = 'error';
     }
   };
+  const suggestWeatherLocations = () => {
+    cancelPendingWeatherLocationSearch();
+    weatherLocationSearchResults = [];
+    activeWeatherLocationSuggestion = -1;
+
+    if (weatherLocationSearchQuery.trim().length < 2) {
+      weatherLocationStatus = 'Type at least 2 characters to see city suggestions.';
+      weatherLocationStatusTone = 'neutral';
+      return;
+    }
+
+    weatherLocationSearchTimer = setTimeout(() => {
+      weatherLocationSearchTimer = undefined;
+      void searchWeatherLocation();
+    }, 300);
+  };
   const saveWeatherLocation = async (location: WeatherLocation) => {
+    cancelPendingWeatherLocationSearch();
+
     if (authState.mode !== 'user') {
       weatherLocation = location;
       weatherLocationSearchResults = [];
@@ -857,7 +890,10 @@
 
     if (!saved) {
       selectedCalendarConfiguration = previousConfiguration;
+      return;
     }
+
+    await invalidateAll();
   };
   const queueUserSummaryConfigurationSave = (configuration: SummaryConfiguration, snapshot: string) => {
     queuedUserSummaryConfigurationSnapshot = snapshot;
@@ -1504,15 +1540,44 @@
                   bind:value={weatherLocationSearchQuery}
                   id="weather-location-search"
                   aria-label="City Search"
+                  role="combobox"
+                  aria-autocomplete="list"
+                  aria-controls="weather-location-suggestions"
+                  aria-expanded={weatherLocationSearchResults.length > 0}
+                  aria-activedescendant={activeWeatherLocationSuggestion >= 0
+                    ? `weather-location-suggestion-${activeWeatherLocationSuggestion}`
+                    : undefined}
                   placeholder="Search city"
                   disabled={!localSetupHydrated}
                   oninput={(event) => {
                     weatherLocationSearchQuery = readInputValue(event);
+                    suggestWeatherLocations();
                   }}
                   onkeydown={(event) => {
+                    if (event.key === 'ArrowDown' && weatherLocationSearchResults.length > 0) {
+                      event.preventDefault();
+                      activeWeatherLocationSuggestion =
+                        (activeWeatherLocationSuggestion + 1) % weatherLocationSearchResults.length;
+                      return;
+                    }
+                    if (event.key === 'ArrowUp' && weatherLocationSearchResults.length > 0) {
+                      event.preventDefault();
+                      activeWeatherLocationSuggestion =
+                        (activeWeatherLocationSuggestion - 1 + weatherLocationSearchResults.length) %
+                        weatherLocationSearchResults.length;
+                      return;
+                    }
+                    if (event.key === 'Escape') {
+                      cancelPendingWeatherLocationSearch();
+                      weatherLocationSearchResults = [];
+                      activeWeatherLocationSuggestion = -1;
+                      return;
+                    }
                     if (event.key === 'Enter') {
                       event.preventDefault();
-                      void searchWeatherLocation();
+                      const suggestion = weatherLocationSearchResults[activeWeatherLocationSuggestion];
+                      if (suggestion) void saveWeatherLocation(suggestion);
+                      else void searchWeatherLocation();
                     }
                   }}
                 />
@@ -1529,9 +1594,19 @@
             </div>
 
             {#if weatherLocationSearchResults.length > 0}
-              <ul class="grid gap-2" aria-label="Weather Location search results">
-                {#each weatherLocationSearchResults as result}
-                  <li class="rounded-md border border-stone-200 px-3 py-2">
+              <ul
+                class="grid gap-2"
+                aria-label="Weather Location search results"
+                id="weather-location-suggestions"
+                role="listbox"
+              >
+                {#each weatherLocationSearchResults as result, index}
+                  <li
+                    class={`rounded-md border px-3 py-2 ${index === activeWeatherLocationSuggestion ? 'border-emerald-600 bg-emerald-50' : 'border-stone-200'}`}
+                    id={`weather-location-suggestion-${index}`}
+                    role="option"
+                    aria-selected={index === activeWeatherLocationSuggestion}
+                  >
                     <div class="flex flex-wrap items-center justify-between gap-3">
                       <div class="min-w-0">
                         <p class="break-words font-medium text-stone-950">{result.label}</p>

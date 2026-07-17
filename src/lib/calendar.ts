@@ -44,12 +44,14 @@ export type AllDayCalendarEvent = {
   id: string;
   title: string;
   calendarLabel: string;
+  calendarColor?: string | null;
 };
 
 export type TimedCalendarEvent = {
   id: string;
   title: string;
   calendarLabel: string;
+  calendarColor?: string | null;
   localStartTime: string;
 };
 
@@ -105,8 +107,11 @@ export const buildCalendarSection = ({
     userTimeZone
   });
   const weekAhead = buildWeekAhead(today);
-  const selectedCalendarLabels = new Map(
-    selectedCalendars.map((calendar) => [calendar.id, calendar.summary])
+  const selectedCalendarMetadata = new Map(
+    selectedCalendars.map((calendar) => [
+      calendar.id,
+      { label: calendar.summary, color: calendar.backgroundColor }
+    ])
   );
   const eventsByDate = new Map<
     string,
@@ -121,7 +126,9 @@ export const buildCalendarSection = ({
       continue;
     }
 
-    const calendarLabel = selectedCalendarLabels.get(event.calendarId) ?? event.calendarSummary;
+    const calendarMetadata = selectedCalendarMetadata.get(event.calendarId);
+    const calendarLabel = calendarMetadata?.label ?? event.calendarSummary;
+    const calendarColor = calendarMetadata?.color;
 
     if (event.kind === 'timed') {
       const localDate = Temporal.Instant.from(event.start)
@@ -138,6 +145,7 @@ export const buildCalendarSection = ({
         id: event.id,
         title: event.summary,
         calendarLabel,
+        ...(calendarColor ? { calendarColor } : {}),
         localStartTime: formatLocalTime(
           Temporal.Instant.from(event.start).toZonedDateTimeISO(userTimeZone)
         )
@@ -150,7 +158,8 @@ export const buildCalendarSection = ({
         localEvents.allDayEvents.push({
           id: event.id,
           title: event.summary,
-          calendarLabel
+          calendarLabel,
+          ...(calendarColor ? { calendarColor } : {})
         });
         eventsByDate.set(localDate, localEvents);
       }
