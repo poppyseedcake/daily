@@ -4,7 +4,7 @@ import { renderDailySummary } from './dailySummaryRenderer';
 import { defaultSummaryConfiguration } from './summaryConfiguration';
 
 const selectedCalendars = [
-  { id: 'personal', summary: 'Personal', backgroundColor: null, primary: true }
+  { id: 'personal', summary: 'Personal', backgroundColor: '#3f51b5', primary: true }
 ];
 
 describe('Calendar Section', () => {
@@ -37,9 +37,22 @@ describe('Calendar Section', () => {
 
     expect(section.today).toEqual({
       label: 'Today',
-      allDayEvents: [{ id: 'holiday', title: 'Holiday', calendarLabel: 'Personal' }],
+      allDayEvents: [
+        {
+          id: 'holiday',
+          title: 'Holiday',
+          calendarLabel: 'Personal',
+          calendarColor: '#3f51b5'
+        }
+      ],
       timedEvents: [
-        { id: 'standup', title: 'Standup', calendarLabel: 'Personal', localStartTime: '12:00' }
+        {
+          id: 'standup',
+          title: 'Standup',
+          calendarLabel: 'Personal',
+          calendarColor: '#3f51b5',
+          localStartTime: '12:00'
+        }
       ]
     });
   });
@@ -63,11 +76,36 @@ describe('Calendar Section', () => {
     });
 
     expect(section.today?.allDayEvents).toEqual([
-      { id: 'conference', title: 'Conference', calendarLabel: 'Personal' }
+      {
+        id: 'conference',
+        title: 'Conference',
+        calendarLabel: 'Personal',
+        calendarColor: '#3f51b5'
+      }
     ]);
     expect(section.weekAhead.map((day) => [day.label, day.allDayEvents])).toEqual([
-      ['Thu, Jul 9', [{ id: 'conference', title: 'Conference', calendarLabel: 'Personal' }]],
-      ['Fri, Jul 10', [{ id: 'conference', title: 'Conference', calendarLabel: 'Personal' }]]
+      [
+        'Thu, Jul 9',
+        [
+          {
+            id: 'conference',
+            title: 'Conference',
+            calendarLabel: 'Personal',
+            calendarColor: '#3f51b5'
+          }
+        ]
+      ],
+      [
+        'Fri, Jul 10',
+        [
+          {
+            id: 'conference',
+            title: 'Conference',
+            calendarLabel: 'Personal',
+            calendarColor: '#3f51b5'
+          }
+        ]
+      ]
     ]);
   });
 

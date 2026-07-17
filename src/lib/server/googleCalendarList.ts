@@ -5,6 +5,9 @@ import { authAccount } from '$lib/server/db/schema';
 import type { CalendarEventProvider, CalendarProviderEvent } from '$lib/calendar';
 import type { ProviderCalendarListEntry } from '$lib/selectedCalendars';
 
+const googleCalendarApiBaseUrl =
+  process.env.GOOGLE_CALENDAR_API_BASE_URL ?? 'https://www.googleapis.com/calendar/v3';
+
 export type GoogleCalendarListProvider = {
   loadCalendars: (accessToken: string) => Promise<ProviderCalendarListEntry[]>;
 };
@@ -49,7 +52,7 @@ export const isGoogleCalendarAuthorizationFailure = (error: unknown) =>
 
 export const googleCalendarListProvider: GoogleCalendarListProvider = {
   async loadCalendars(accessToken) {
-    const response = await fetch('https://www.googleapis.com/calendar/v3/users/me/calendarList', {
+    const response = await fetch(`${googleCalendarApiBaseUrl}/users/me/calendarList`, {
       headers: {
         authorization: `Bearer ${accessToken}`
       }
@@ -89,7 +92,7 @@ export const googleCalendarEventProvider = (accessToken: string): CalendarEventP
             timeZone
           });
           const response = await fetch(
-            `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events?${params.toString()}`,
+            `${googleCalendarApiBaseUrl}/calendars/${encodeURIComponent(calendarId)}/events?${params.toString()}`,
             {
               headers: {
                 authorization: `Bearer ${accessToken}`

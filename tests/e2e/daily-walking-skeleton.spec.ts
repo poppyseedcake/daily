@@ -87,6 +87,69 @@ const stubOpenMeteoForecast = async (page: Page) => {
   });
 };
 
+test('Selected Calendar changes update the signed-in User preview without a page reload', async ({ page }) => {
+  const port = process.env.PLAYWRIGHT_PORT ?? '5173';
+  const database = new Database(join(tmpdir(), `daily-playwright-${port}.db`));
+  const now = Math.floor(Date.now() / 1000);
+  const userId = `calendar-preview-user-${crypto.randomUUID()}`;
+  const googleSubject = `google-${userId}`;
+  const sessionToken = crypto.randomUUID();
+
+  try {
+    database.prepare('insert into auth_user values (?, ?, ?, true, null, ?, ?)')
+      .run(userId, 'Calendar User', 'calendar@example.com', now, now);
+    database.prepare('insert into auth_session values (?, ?, ?, ?, ?, null, null, ?)')
+      .run(crypto.randomUUID(), now + 3600, sessionToken, now, now, userId);
+    database.prepare(`insert into auth_account (
+      id, account_id, provider_id, user_id, access_token, access_token_expires_at, scope, created_at, updated_at
+    ) values (?, ?, 'google', ?, 'fixture-access-token', ?, ?, ?, ?)`).run(
+      crypto.randomUUID(),
+      googleSubject,
+      userId,
+      now + 3600,
+      'openid email profile https://www.googleapis.com/auth/calendar.readonly',
+      now,
+      now
+    );
+    database.prepare('insert into users (id, google_subject, email) values (?, ?, ?)')
+      .run(userId, googleSubject, 'calendar@example.com');
+    database.prepare('insert into summary_configurations (id, user_id) values (?, ?)')
+      .run(crypto.randomUUID(), userId);
+    database.prepare(`insert into calendar_connections (
+      id, user_id, connection_status, provider_account_id, granted_scopes,
+      access_token_available, refresh_token_available, access_token_expires_at, updated_at
+    ) values (?, ?, 'connected', ?, ?, true, false, ?, ?)`).run(
+      crypto.randomUUID(),
+      userId,
+      googleSubject,
+      JSON.stringify(['https://www.googleapis.com/auth/calendar.readonly']),
+      now + 3600,
+      new Date().toISOString()
+    );
+    database.prepare(`insert into selected_calendars (
+      id, user_id, calendar_id, position, summary, background_color, \`primary\`
+    ) values (?, ?, 'primary', 0, 'Primary', '#3f51b5', true)`).run(crypto.randomUUID(), userId);
+
+    await page.context().addCookies([{
+      name: 'better-auth.session_token',
+      value: `${sessionToken}.${await makeSignature(sessionToken, 'daily-playwright-auth-secret-at-least-32-characters')}`,
+      domain: '127.0.0.1', path: '/'
+    }]);
+    await page.goto('/');
+    await expect(page.getByText('Primary planning')).toBeVisible();
+    await expect(page.getByText('Work review')).toHaveCount(0);
+
+    await page.locator('#selected-calendar-work').check();
+
+    await expect(page.getByText('Selected Calendars saved to your account.')).toBeVisible();
+    await expect(page.getByText('Work review')).toBeVisible();
+  } finally {
+    database.prepare('delete from auth_user where id = ?').run(userId);
+    database.prepare('delete from users where id = ?').run(userId);
+    database.close();
+  }
+});
+
 test('signed-in User irreversibly deletes the account and returns to Visitor mode', async ({ page }) => {
   const port = process.env.PLAYWRIGHT_PORT ?? '5173';
   const database = new Database(join(tmpdir(), `daily-playwright-${port}.db`));

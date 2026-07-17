@@ -159,11 +159,11 @@ const renderCalendarDay = (day: CalendarSection['weekAhead'][number]) => {
   const htmlEvents = [
     ...day.allDayEvents.map(
       (event) =>
-        `<li>All day ${escapeHtml(event.title)} <span>(${escapeHtml(event.calendarLabel)})</span></li>`
+        `<li>${renderCalendarColorMarker(event)}All day ${escapeHtml(event.title)}</li>`
     ),
     ...day.timedEvents.map(
       (event) =>
-        `<li><time>${escapeHtml(event.localStartTime)}</time> ${escapeHtml(event.title)} <span>(${escapeHtml(event.calendarLabel)})</span></li>`
+        `<li>${renderCalendarColorMarker(event)}<time>${escapeHtml(event.localStartTime)}</time> ${escapeHtml(event.title)}</li>`
     )
   ];
   const textEvents = [
@@ -177,6 +177,19 @@ const renderCalendarDay = (day: CalendarSection['weekAhead'][number]) => {
     html: `<h4>${escapeHtml(day.label)}</h4><ul>${htmlEvents.join('')}</ul>`,
     text: `${day.label}\n${textEvents.join('\n')}`
   };
+};
+
+const calendarColorPattern = /^#[0-9a-f]{6}$/i;
+
+const renderCalendarColorMarker = (
+  event: { calendarLabel: string; calendarColor?: string | null }
+) => {
+  if (!event.calendarColor || !calendarColorPattern.test(event.calendarColor)) {
+    return '';
+  }
+
+  const calendarLabel = escapeHtml(event.calendarLabel);
+  return `<span aria-label="${calendarLabel} calendar" title="${calendarLabel}" style="display:inline-block;width:10px;height:10px;margin-right:6px;border-radius:2px;background-color:${event.calendarColor}"></span>`;
 };
 
 const renderAvailableSection = (label: string, detail: string): RenderedSection => ({

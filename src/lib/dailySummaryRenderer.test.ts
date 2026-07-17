@@ -262,6 +262,44 @@ describe('Daily Summary renderer', () => {
     expect(rendered.html).not.toContain('<h2>Calendar</h2></section>');
   });
 
+  test('renders Calendar Events with their Selected Calendar color instead of a parenthesized label', () => {
+    const rendered = renderDailySummary({
+      configuration: {
+        ...defaultSummaryConfiguration,
+        sections: { weather: false, commute: false, calendar: true, todo: false }
+      },
+      sections: {
+        weather: { status: 'available', label: 'Weather', detail: 'Hidden.' },
+        commute: { status: 'available', label: 'Commute', detail: 'Hidden.' },
+        calendar: { status: 'available', label: 'Calendar', detail: 'No events.' },
+        todo: { status: 'available', label: 'Todo', detail: 'Hidden.' }
+      },
+      calendarSection: {
+        label: 'Calendar',
+        today: {
+          label: 'Today',
+          allDayEvents: [],
+          timedEvents: [
+            {
+              id: 'planning',
+              title: 'Planning',
+              calendarLabel: 'Work',
+              calendarColor: '#0b8043',
+              localStartTime: '10:00'
+            }
+          ]
+        },
+        weekAhead: []
+      },
+      todoSection: null
+    });
+
+    expect(rendered.html).toContain('background-color:#0b8043');
+    expect(rendered.html).toContain('aria-label="Work calendar"');
+    expect(rendered.html).not.toContain('(Work)');
+    expect(rendered.text).toContain('10:00 Planning (Work)');
+  });
+
   test('omits Todo output when the module-prepared Todo Section is empty', () => {
     const rendered = renderDailySummary({
       configuration: {

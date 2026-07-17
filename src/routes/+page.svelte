@@ -2,6 +2,7 @@
   import { CalendarDays, Check, CloudSun, GripVertical, Mail, MapPin, Pencil, Search, ShieldCheck, Trash2 } from '@lucide/svelte';
   import { dragHandle, dragHandleZone, SHADOW_ITEM_MARKER_PROPERTY_NAME, TRIGGERS } from 'svelte-dnd-action';
   import { onMount } from 'svelte';
+  import { invalidateAll } from '$app/navigation';
   import type { ActionData, PageData } from './$types';
   import Panel from '$lib/components/Panel.svelte';
   import { calendarReadinessForAuthMode } from '$lib/calendarReadiness';
@@ -857,7 +858,10 @@
 
     if (!saved) {
       selectedCalendarConfiguration = previousConfiguration;
+      return;
     }
+
+    await invalidateAll();
   };
   const queueUserSummaryConfigurationSave = (configuration: SummaryConfiguration, snapshot: string) => {
     queuedUserSummaryConfigurationSnapshot = snapshot;
