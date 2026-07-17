@@ -7,8 +7,10 @@ CREATE TABLE `auth_user` (
   `created_at` integer NOT NULL,
   `updated_at` integer NOT NULL
 );
+--> statement-breakpoint
 
 CREATE UNIQUE INDEX `auth_user_email_idx` ON `auth_user` (`email`);
+--> statement-breakpoint
 
 CREATE TABLE `auth_session` (
   `id` text PRIMARY KEY NOT NULL,
@@ -21,8 +23,10 @@ CREATE TABLE `auth_session` (
   `user_id` text NOT NULL,
   FOREIGN KEY (`user_id`) REFERENCES `auth_user` (`id`) ON UPDATE no action ON DELETE cascade
 );
+--> statement-breakpoint
 
 CREATE UNIQUE INDEX `auth_session_token_idx` ON `auth_session` (`token`);
+--> statement-breakpoint
 
 CREATE TABLE `auth_account` (
   `id` text PRIMARY KEY NOT NULL,
@@ -40,6 +44,7 @@ CREATE TABLE `auth_account` (
   `updated_at` integer NOT NULL,
   FOREIGN KEY (`user_id`) REFERENCES `auth_user` (`id`) ON UPDATE no action ON DELETE cascade
 );
+--> statement-breakpoint
 
 CREATE TABLE `auth_verification` (
   `id` text PRIMARY KEY NOT NULL,

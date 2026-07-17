@@ -5,9 +5,12 @@ CREATE TABLE `users` (
   `created_at` text DEFAULT CURRENT_TIMESTAMP NOT NULL,
   `updated_at` text DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
+--> statement-breakpoint
 
 CREATE UNIQUE INDEX `users_google_subject_idx` ON `users` (`google_subject`);
+--> statement-breakpoint
 CREATE UNIQUE INDEX `users_email_idx` ON `users` (`email`);
+--> statement-breakpoint
 
 CREATE TABLE `summary_configurations` (
   `id` text PRIMARY KEY NOT NULL,
@@ -22,8 +25,10 @@ CREATE TABLE `summary_configurations` (
   `todo_section_enabled` integer DEFAULT true NOT NULL,
   FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON UPDATE no action ON DELETE cascade
 );
+--> statement-breakpoint
 
 CREATE UNIQUE INDEX `summary_configurations_user_id_unique` ON `summary_configurations` (`user_id`);
+--> statement-breakpoint
 
 CREATE TABLE `todo_categories` (
   `id` text PRIMARY KEY NOT NULL,
@@ -32,6 +37,7 @@ CREATE TABLE `todo_categories` (
   `position` integer NOT NULL,
   FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON UPDATE no action ON DELETE cascade
 );
+--> statement-breakpoint
 
 CREATE TABLE `todo_tasks` (
   `id` text PRIMARY KEY NOT NULL,

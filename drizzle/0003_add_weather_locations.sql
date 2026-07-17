@@ -6,4 +6,5 @@ CREATE TABLE `weather_locations` (
   `longitude` real NOT NULL,
   FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON UPDATE no action ON DELETE cascade
 );
+--> statement-breakpoint
 CREATE UNIQUE INDEX `weather_locations_user_id_unique` ON `weather_locations` (`user_id`);
