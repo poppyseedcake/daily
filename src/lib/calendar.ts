@@ -107,11 +107,11 @@ export const buildCalendarSection = ({
     userTimeZone
   });
   const weekAhead = buildWeekAhead(today);
-  const selectedCalendarLabels = new Map(
-    selectedCalendars.map((calendar) => [calendar.id, calendar.summary])
-  );
-  const selectedCalendarColors = new Map(
-    selectedCalendars.map((calendar) => [calendar.id, calendar.backgroundColor])
+  const selectedCalendarMetadata = new Map(
+    selectedCalendars.map((calendar) => [
+      calendar.id,
+      { label: calendar.summary, color: calendar.backgroundColor }
+    ])
   );
   const eventsByDate = new Map<
     string,
@@ -126,8 +126,9 @@ export const buildCalendarSection = ({
       continue;
     }
 
-    const calendarLabel = selectedCalendarLabels.get(event.calendarId) ?? event.calendarSummary;
-    const calendarColor = selectedCalendarColors.get(event.calendarId);
+    const calendarMetadata = selectedCalendarMetadata.get(event.calendarId);
+    const calendarLabel = calendarMetadata?.label ?? event.calendarSummary;
+    const calendarColor = calendarMetadata?.color;
 
     if (event.kind === 'timed') {
       const localDate = Temporal.Instant.from(event.start)
