@@ -76,7 +76,7 @@ const stubOpenMeteoForecast = async (page: Page) => {
       contentType: 'application/json',
       body: JSON.stringify({
         daily: {
-          time: [localDateForTimeZone('Europe/Warsaw')],
+          time: [localDateForTimeZone('UTC')],
           weather_code: [61],
           temperature_2m_min: [12],
           temperature_2m_max: [19],
