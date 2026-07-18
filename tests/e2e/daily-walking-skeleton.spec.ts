@@ -605,6 +605,9 @@ test('Visitor can dismiss a pending Weather Location search', async ({ page }) =
 
 test('Visitor manages ordered Commute Routes and Commute Days in browser-local setup', async ({ page }) => {
   const pointSelections: Array<{ latitude: number; longitude: number }> = [];
+  await page.route('/commute-estimate', async (route) => {
+    await route.fulfill({ json: { outcome: 'available', estimate: { durationMinutes: 24 } } });
+  });
   await page.route('/commute-point-selection', async (route) => {
     const request = route.request().postDataJSON() as { latitude: number; longitude: number };
     pointSelections.push(request);
@@ -689,8 +692,7 @@ test('Visitor manages ordered Commute Routes and Commute Days in browser-local s
   expect(pointSelections).toContainEqual({ latitude: 51, longitude: 20 });
 });
 
-test('Visitor preview renders eligible Commute estimates and local unavailable behavior without live Google calls', async ({ page }) => {
-  let estimateOutcome: 'available' | 'unavailable' | 'invalid-route' = 'available';
+test('Visitor preview reuses the saved Commute estimate without live Google calls', async ({ page }) => {
   let estimateRequests = 0;
   const commuteDays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
   await page.route('/commute-point-selection', async (route) => {
@@ -700,12 +702,7 @@ test('Visitor preview renders eligible Commute estimates and local unavailable b
   await page.route('/commute-estimate', async (route) => {
     estimateRequests += 1;
     await route.fulfill({
-      status: estimateOutcome === 'invalid-route' ? 400 : 200,
-      json: estimateOutcome === 'available'
-        ? { outcome: 'available', estimate: { durationMinutes: 24 } }
-        : estimateOutcome === 'unavailable'
-          ? { outcome: 'unavailable', reason: 'global-daily-cap' }
-          : { outcome: 'invalid-route' }
+      json: { outcome: 'available', estimate: { durationMinutes: 24 } }
     });
   });
   await page.goto('/');
@@ -721,6 +718,10 @@ test('Visitor preview renders eligible Commute estimates and local unavailable b
   await expect(page.getByText('Office route: 24 minutes')).toBeVisible();
   expect(estimateRequests).toBe(1);
 
+  await page.reload();
+  await expect(page.getByText('Office route: 24 minutes')).toBeVisible();
+  expect(estimateRequests).toBe(1);
+
   const currentUtcDay = new Intl.DateTimeFormat('en-US', {
     timeZone: 'UTC',
     weekday: 'long'
@@ -733,18 +734,12 @@ test('Visitor preview renders eligible Commute estimates and local unavailable b
   await expect(page.getByText('Office route: 24 minutes')).toHaveCount(0);
   expect(estimateRequests).toBe(1);
 
-  estimateOutcome = 'unavailable';
   for (const day of commuteDays) {
     await page.getByLabel(`${day} Commute Day`).check();
   }
-  await expect(page.getByText('Live Commute is unavailable right now.')).toBeVisible();
+  await expect(page.getByText('Office route: 24 minutes')).toBeVisible();
   await expect(page.getByText('Demo Calendar - sample Calendar Events for the Week Ahead.')).toBeVisible();
-
-  estimateOutcome = 'invalid-route';
-  await page.getByLabel('Sunday Commute Day').uncheck();
-  await page.getByLabel('Sunday Commute Day').check();
-  await expect(page.getByText('Live Commute is unavailable right now.')).toBeVisible();
-  await expect(page.getByText('Office route: 0 minutes')).toHaveCount(0);
+  expect(estimateRequests).toBe(1);
 });
 
 test('Visitor sees unavailable Weather Location search reason when geocoding fails', async ({ page }) => {

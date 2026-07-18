@@ -681,7 +681,20 @@
     commuteDestinationLatitude = '52.2318';
     commuteDestinationLongitude = '21.0067';
   };
-  const saveCommuteRoute = () => {
+  const requestCommutePreviewDuration = async (route: { origin: CommutePoint; destination: CommutePoint }) => {
+    const response = await fetch('/commute-estimate', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(route)
+    });
+    if (!response.ok) return null;
+
+    const result = await response.json();
+    return result?.outcome === 'available' && Number.isFinite(result.estimate?.durationMinutes)
+      ? Math.round(result.estimate.durationMinutes)
+      : null;
+  };
+  const saveCommuteRoute = async () => {
     if (!editingCommuteRouteId && commuteRoutes.length >= 5) {
       commuteRouteStatus = 'You can save at most five Commute Routes.';
       commuteRouteStatusTone = 'warning';
@@ -698,11 +711,37 @@
       return;
     }
     if (editingCommuteRouteId) {
-      if (authState.mode === 'user') {
-        void saveUserCommuteRoute(editingCommuteRouteId, { ...result.data, enabled: commuteRoutes.find((route) => route.id === editingCommuteRouteId)?.enabled ?? true });
+      const existingRoute = commuteRoutes.find((route) => route.id === editingCommuteRouteId);
+      if (!existingRoute) {
+        commuteRouteStatus = 'Commute Route is no longer available.';
+        commuteRouteStatusTone = 'warning';
         return;
       }
-      commuteRoutes = commuteRoutes.map((route) => route.id === editingCommuteRouteId ? { ...route, ...result.data } : route);
+      if (authState.mode === 'user') {
+        void saveUserCommuteRoute(editingCommuteRouteId, { ...result.data, enabled: existingRoute.enabled });
+        return;
+      }
+      let previewDurationMinutes = existingRoute.previewDurationMinutes ?? null;
+      const endpointsChanged =
+        existingRoute.origin.latitude !== result.data.origin.latitude ||
+        existingRoute.origin.longitude !== result.data.origin.longitude ||
+        existingRoute.destination.latitude !== result.data.destination.latitude ||
+        existingRoute.destination.longitude !== result.data.destination.longitude;
+      if (previewDurationMinutes === null || endpointsChanged) {
+        try {
+          previewDurationMinutes = await requestCommutePreviewDuration(result.data);
+        } catch {
+          previewDurationMinutes = null;
+        }
+        if (previewDurationMinutes === null) {
+          commuteRouteStatus = 'Commute estimate is unavailable, so the route was not updated.';
+          commuteRouteStatusTone = 'error';
+          return;
+        }
+      }
+      commuteRoutes = commuteRoutes.map((route) => route.id === editingCommuteRouteId
+        ? { ...route, ...result.data, previewDurationMinutes }
+        : route);
       clearCommuteRouteDraft();
       commuteRouteStatus = 'Commute Route updated in this browser only.';
       commuteRouteStatusTone = 'success';
@@ -716,7 +755,20 @@
       void createUserCommuteRoute(result.data);
       return;
     }
-    commuteRoutes = [...commuteRoutes, { ...result.data, id, enabled: true }];
+    commuteRouteStatus = 'Fetching a baseline Commute estimate...';
+    commuteRouteStatusTone = 'neutral';
+    let previewDurationMinutes: number | null;
+    try {
+      previewDurationMinutes = await requestCommutePreviewDuration(result.data);
+    } catch {
+      previewDurationMinutes = null;
+    }
+    if (previewDurationMinutes === null) {
+      commuteRouteStatus = 'Commute estimate is unavailable, so the route was not saved.';
+      commuteRouteStatusTone = 'error';
+      return;
+    }
+    commuteRoutes = [...commuteRoutes, { ...result.data, id, enabled: true, previewDurationMinutes }];
     clearCommuteRouteDraft();
     commuteRouteStatus = 'Commute Route saved in this browser only.';
     commuteRouteStatusTone = 'success';
@@ -1192,24 +1244,7 @@
       todoTasks,
       weatherLocation,
       commuteRoutes,
-      commuteDays,
-      commuteEstimateProvider: {
-        async estimateCommute(request) {
-          const response = await fetch('/commute-estimate', {
-            method: 'POST',
-            headers: { 'content-type': 'application/json' },
-            body: JSON.stringify(request)
-          });
-          if (!response.ok) {
-            return { outcome: 'unavailable', reason: 'provider-unavailable' };
-          }
-
-          const result = await response.json();
-          return result?.outcome === 'available' || result?.outcome === 'unavailable'
-            ? result
-            : { outcome: 'unavailable', reason: 'provider-unavailable' };
-        }
-      }
+      commuteDays
     }).then((previewInput) => {
       if (renderVersion === previewRenderVersion) {
         renderedSummaryHtml = renderDailySummary(previewInput).html;

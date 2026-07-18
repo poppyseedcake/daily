@@ -26,6 +26,7 @@ const applyMigrations = (sqlite: Database.Database) => {
     '0004_add_calendar_connections.sql',
     '0005_add_selected_calendar_metadata.sql',
     '0010_add_commute_setup.sql',
+    '0016_add_commute_preview_duration.sql',
     '0011_add_next_summary_at.sql',
     '0012_add_scheduled_delivery_claims.sql',
     '0015_add_user_lifecycle.sql'

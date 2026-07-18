@@ -1,16 +1,22 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
-const { getSession, createRoute, updateRoute, deleteRoute, saveDays } = vi.hoisted(() => ({
+const { getSession, loadCommuteSetup, createRoute, updateRoute, deleteRoute, saveDays, estimateCommute, requestGateway } = vi.hoisted(() => ({
   getSession: vi.fn(),
+  loadCommuteSetup: vi.fn(),
   createRoute: vi.fn(),
   updateRoute: vi.fn(),
   deleteRoute: vi.fn(),
-  saveDays: vi.fn()
+  saveDays: vi.fn(),
+  estimateCommute: vi.fn(),
+  requestGateway: vi.fn()
 }));
 
 vi.mock('$lib/server/auth', () => ({ auth: { api: { getSession } } }));
 vi.mock('$lib/server/db/commuteSetupStore', () => ({
-  userCommuteSetupStore: { createRoute, updateRoute, deleteRoute, saveDays, async load() { return null; } }
+  userCommuteSetupStore: { load: loadCommuteSetup, createRoute, updateRoute, deleteRoute, saveDays }
+}));
+vi.mock('$lib/server/googleMapsOperations', () => ({
+  googleMapsOperations: { requestGateway }
 }));
 
 const { POST } = await import('./commute-routes/+server');
@@ -32,10 +38,15 @@ const request = (url: string, method: string, body?: unknown) => new Request(url
 describe('User Commute endpoints', () => {
   beforeEach(() => {
     getSession.mockReset();
+    loadCommuteSetup.mockReset();
+    loadCommuteSetup.mockResolvedValue(null);
     createRoute.mockReset();
     updateRoute.mockReset();
     deleteRoute.mockReset();
     saveDays.mockReset();
+    estimateCommute.mockReset();
+    requestGateway.mockReset();
+    requestGateway.mockReturnValue({ estimateCommute });
   });
 
   test('rejects Visitor writes before they reach the Commute persistence store', async () => {
@@ -43,6 +54,25 @@ describe('User Commute endpoints', () => {
     const response = await POST({ request: request('http://localhost/commute-routes', 'POST', route) } as Parameters<typeof POST>[0]);
     expect(response.status).toBe(401);
     expect(createRoute).not.toHaveBeenCalled();
+  });
+
+  test('fetches one baseline estimate and persists it when a User creates a Commute Route', async () => {
+    getSession.mockResolvedValue(signedInUser);
+    estimateCommute.mockResolvedValue({ outcome: 'available', estimate: { durationMinutes: 12.4 } });
+    createRoute.mockImplementation(async (_userId, draft) => ({ id: 'route-1', ...draft, enabled: true }));
+
+    const response = await POST({ request: request('http://localhost/commute-routes', 'POST', route) } as Parameters<typeof POST>[0]);
+
+    expect(response.status).toBe(201);
+    expect(estimateCommute).toHaveBeenCalledOnce();
+    expect(createRoute).toHaveBeenCalledWith('user-1', {
+      ...route,
+      previewDurationMinutes: 12
+    });
+    await expect(response.json()).resolves.toMatchObject({
+      outcome: 'created',
+      route: { previewDurationMinutes: 12 }
+    });
   });
 
   test('validates crafted route and weekday payloads before writing', async () => {
@@ -57,7 +87,11 @@ describe('User Commute endpoints', () => {
 
   test('scopes update and deletion to the authenticated User', async () => {
     getSession.mockResolvedValue(signedInUser);
-    updateRoute.mockResolvedValue({ id: 'route-1', ...route, enabled: false });
+    loadCommuteSetup.mockResolvedValue({
+      routes: [{ id: 'route-1', ...route, previewDurationMinutes: 12, enabled: true }],
+      days: ['monday']
+    });
+    updateRoute.mockImplementation(async (_userId, routeId, update) => ({ id: routeId, ...update }));
     deleteRoute.mockResolvedValue(true);
     const updated = await PUT({ request: request('http://localhost/commute-routes/route-1', 'PUT', { ...route, enabled: false }), params: { routeId: 'route-1' } } as Parameters<typeof PUT>[0]);
     const deleted = await DELETE({ request: request('http://localhost/commute-routes/route-1', 'DELETE'), params: { routeId: 'route-1' } } as Parameters<typeof DELETE>[0]);

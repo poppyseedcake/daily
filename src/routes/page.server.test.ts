@@ -159,11 +159,12 @@ const userCalendarReadiness = {
   unavailableReason: 'Connect Google Calendar to include Calendar Events.'
 } as const;
 
-const commuteRoute = (id: string, name: string, enabled = true) => ({
+const commuteRoute = (id: string, name: string, enabled = true, previewDurationMinutes = 26) => ({
   id,
   name,
   origin: { label: `${name} origin`, latitude: 52.1, longitude: 21.1 },
   destination: { label: `${name} destination`, latitude: 52.2, longitude: 21.2 },
+  previewDurationMinutes,
   enabled
 });
 
@@ -814,6 +815,19 @@ describe('Daily page server load', () => {
       selectedCalendarConfiguration: null,
       renderedSummaryHtml: expect.any(String)
     });
+  });
+
+  test('renders the signed-in User Commute preview from its saved baseline without Maps usage', async () => {
+    getSession.mockResolvedValue({
+      user: { id: 'user-1', email: 'user@example.com', emailVerified: true }
+    });
+    savedCommuteSetup.routes.push(commuteRoute('route-office', 'Office'));
+
+    const result = await loadPage();
+
+    expect(result.renderedSummaryHtml).toContain('Office: 26 minutes');
+    expect(commuteUsageAdmissions).toEqual([]);
+    expect(sentCommuteEstimateRequests).toEqual([]);
   });
 
   test('persists successful Calendar consent and reports a connected Calendar state', async () => {

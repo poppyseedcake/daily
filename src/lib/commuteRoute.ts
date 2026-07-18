@@ -20,7 +20,8 @@ export const commuteRouteDraftSchema = z.object({
 });
 export const commuteRouteSchema = commuteRouteDraftSchema.extend({
   id: z.string().trim().min(1).max(80),
-  enabled: z.boolean()
+  enabled: z.boolean(),
+  previewDurationMinutes: z.number().int().nonnegative().nullable().optional()
 });
 export const commuteRouteUpdateSchema = commuteRouteDraftSchema.extend({
   enabled: z.boolean()

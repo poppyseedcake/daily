@@ -39,16 +39,14 @@ const todoTasks: TodoTask[] = [
 ];
 
 describe('Daily Summary preview input', () => {
-  test('fetches and renders one live estimate for every enabled route on the local Commute Day', async () => {
+  test('renders saved baseline estimates without provider requests on the local Commute Day', async () => {
     const routes: CommuteRoute[] = [
-      { id: 'office', name: 'Office', enabled: true, origin: { label: 'Home', latitude: 40.1, longitude: -73.9 }, destination: { label: 'Office', latitude: 40.7, longitude: -74 } },
+      { id: 'office', name: 'Office', enabled: true, previewDurationMinutes: 31, origin: { label: 'Home', latitude: 40.1, longitude: -73.9 }, destination: { label: 'Office', latitude: 40.7, longitude: -74 } },
       { id: 'gym', name: 'Gym', enabled: false, origin: { label: 'Home', latitude: 40.1, longitude: -73.9 }, destination: { label: 'Gym', latitude: 40.5, longitude: -73.8 } },
-      { id: 'school', name: 'School run', enabled: true, origin: { label: 'Home', latitude: 40.1, longitude: -73.9 }, destination: { label: 'School', latitude: 40.6, longitude: -73.7 } }
+      { id: 'school', name: 'School run', enabled: true, previewDurationMinutes: 14, origin: { label: 'Home', latitude: 40.1, longitude: -73.9 }, destination: { label: 'School', latitude: 40.6, longitude: -73.7 } }
     ];
     const commuteEstimateProvider = {
-      estimateCommute: vi.fn()
-        .mockResolvedValueOnce({ outcome: 'available', estimate: { durationMinutes: 24 } } as const)
-        .mockResolvedValueOnce({ outcome: 'available', estimate: { durationMinutes: 11 } } as const)
+      estimateCommute: vi.fn().mockRejectedValue(new Error('preview must not call Routes API'))
     };
 
     const preview = await buildDailySummaryInput({
@@ -62,10 +60,10 @@ describe('Daily Summary preview input', () => {
     });
     const rendered = renderDailySummary(preview);
 
-    expect(commuteEstimateProvider.estimateCommute).toHaveBeenCalledTimes(2);
-    expect(rendered.text).toContain('Commute\nOffice: 24 minutes\nSchool run: 11 minutes');
-    expect(rendered.html).toContain('Office: 24 minutes');
-    expect(rendered.html).toContain('School run: 11 minutes');
+    expect(commuteEstimateProvider.estimateCommute).not.toHaveBeenCalled();
+    expect(rendered.text).toContain('Commute\nOffice: 31 minutes\nSchool run: 14 minutes');
+    expect(rendered.html).toContain('Office: 31 minutes');
+    expect(rendered.html).toContain('School run: 14 minutes');
     expect(rendered.text).not.toContain('Gym');
   });
 
@@ -76,6 +74,7 @@ describe('Daily Summary preview input', () => {
       todoTasks,
       commuteRoutes: [{ id: 'office', name: 'Office', enabled: true, origin: { label: 'Home', latitude: 40.1, longitude: -73.9 }, destination: { label: 'Office', latitude: 40.7, longitude: -74 } }],
       commuteDays: ['wednesday'],
+      commuteEstimateMode: 'live',
       commuteEstimateProvider: { estimateCommute: vi.fn().mockResolvedValue({ outcome: 'available', estimate: { durationMinutes: 24 } }) },
       weatherLocation: { label: 'New York', latitude: 40.7, longitude: -74 },
       weatherProvider: { fetchDailyForecast: vi.fn().mockResolvedValue({ outcome: 'available', forecast: { daily: { time: ['2026-07-08'], weather_code: [0], temperature_2m_min: [18], temperature_2m_max: [27], precipitation_probability_max: [5] } } }) },
@@ -108,6 +107,7 @@ describe('Daily Summary preview input', () => {
       todoTasks,
       commuteRoutes: routes,
       commuteDays: ['wednesday'],
+      commuteEstimateMode: 'live',
       commuteEstimateProvider,
       now: new Date('2026-07-09T02:30:00.000Z')
     });
@@ -145,6 +145,7 @@ describe('Daily Summary preview input', () => {
       todoTasks,
       commuteRoutes: [{ id: 'office', name: 'Office', enabled: true, origin: { label: 'Home', latitude: 40.1, longitude: -73.9 }, destination: { label: 'Office', latitude: 40.7, longitude: -74 } }],
       commuteDays: ['wednesday'],
+      commuteEstimateMode: 'live',
       commuteEstimateProvider: { estimateCommute: vi.fn().mockResolvedValue({ outcome: 'unavailable', reason: 'global-daily-cap' }) },
       now: new Date('2026-07-09T02:30:00.000Z')
     });

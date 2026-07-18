@@ -113,6 +113,13 @@
       "when": 1784232000000,
       "tag": "0015_add_user_lifecycle",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "6",
+      "when": 1784325600000,
+      "tag": "0016_add_commute_preview_duration",
+      "breakpoints": true
     }
   ]
 }

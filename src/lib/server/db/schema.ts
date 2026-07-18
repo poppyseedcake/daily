@@ -95,6 +95,7 @@ export const commuteRoutes = sqliteTable(
     destinationLabel: text('destination_label').notNull(),
     destinationLatitude: real('destination_latitude').notNull(),
     destinationLongitude: real('destination_longitude').notNull(),
+    previewDurationMinutes: integer('preview_duration_minutes'),
     enabled: integer('enabled', { mode: 'boolean' }).notNull().default(true),
     position: integer('position').notNull()
   },

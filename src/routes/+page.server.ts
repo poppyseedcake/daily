@@ -328,7 +328,6 @@ export const load = async ({ request }) => {
               weatherLocation,
               commuteRoutes: commuteSetup?.routes ?? [],
               commuteDays: commuteSetup?.days ?? [],
-              commuteEstimateProvider: commuteEstimateProviderFor(authState),
               calendarReadiness,
               selectedCalendars,
               calendarEventProvider: calendarGenerationContext?.accessToken
@@ -452,6 +451,7 @@ export const actions = {
         weatherLocation,
         commuteRoutes: commuteSetup.routes,
         commuteDays: commuteSetup.days,
+        commuteEstimateMode: 'live',
         commuteEstimateProvider: commuteEstimateProviderFor(authState),
         calendarReadiness: calendarGenerationContext.readiness,
         selectedCalendars: calendarGenerationContext.selectedCalendars,

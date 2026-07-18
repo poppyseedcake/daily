@@ -20,6 +20,7 @@ const routeFromRow = (row: typeof commuteRoutes.$inferSelect): CommuteRoute => (
     latitude: row.destinationLatitude,
     longitude: row.destinationLongitude
   },
+  previewDurationMinutes: row.previewDurationMinutes,
   enabled: row.enabled
 });
 
@@ -75,7 +76,13 @@ export const createUserCommuteSetupStore = (
       const route: CommuteRoute = { id: randomUUID(), ...draft, enabled: true };
       transaction
         .insert(commuteRoutes)
-        .values({ id: route.id, userId, position: nextPosition ?? 1, ...routeValues(route) })
+        .values({
+          id: route.id,
+          userId,
+          position: nextPosition ?? 1,
+          ...routeValues(route),
+          previewDurationMinutes: route.previewDurationMinutes ?? null
+        })
         .run();
       if (currentCount === 0) {
         transaction
@@ -90,7 +97,10 @@ export const createUserCommuteSetupStore = (
   async updateRoute(userId, routeId, route) {
     const result = await database
       .update(commuteRoutes)
-      .set(routeValues(route))
+      .set({
+        ...routeValues(route),
+        previewDurationMinutes: route.previewDurationMinutes ?? null
+      })
       .where(and(eq(commuteRoutes.id, routeId), eq(commuteRoutes.userId, userId)))
       .returning();
     return result[0] ? routeFromRow(result[0]) : null;

@@ -10,6 +10,7 @@ const createTestDatabase = () => {
   sqlite.pragma('foreign_keys = ON');
   sqlite.exec(readFileSync('drizzle/0000_bootstrap_daily.sql', 'utf8'));
   sqlite.exec(readFileSync('drizzle/0010_add_commute_setup.sql', 'utf8'));
+  sqlite.exec(readFileSync('drizzle/0016_add_commute_preview_duration.sql', 'utf8'));
   return { sqlite, database: drizzle(sqlite, { schema }) };
 };
 
@@ -20,7 +21,8 @@ const saveUser = (sqlite: Database.Database, id: string) => {
 const routeDraft = (name: string) => ({
   name,
   origin: { label: 'Home', latitude: 52.2297, longitude: 21.0122 },
-  destination: { label: 'Office', latitude: 52.2318, longitude: 21.0067 }
+  destination: { label: 'Office', latitude: 52.2318, longitude: 21.0067 },
+  previewDurationMinutes: 17
 });
 
 describe('SQLite User Commute setup store', () => {
@@ -45,7 +47,10 @@ describe('SQLite User Commute setup store', () => {
     expect(first).not.toBe('route-limit-reached');
     expect(second).not.toBe('route-limit-reached');
     await expect(store.load('user-1')).resolves.toMatchObject({
-      routes: [{ name: 'Morning commute', enabled: true }, { name: 'Evening commute', enabled: true }],
+      routes: [
+        { name: 'Morning commute', enabled: true, previewDurationMinutes: 17 },
+        { name: 'Evening commute', enabled: true, previewDurationMinutes: 17 }
+      ],
       days: ['monday', 'wednesday', 'sunday']
     });
     await expect(store.load('user-2')).resolves.toMatchObject({

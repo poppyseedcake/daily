@@ -297,6 +297,20 @@ describe('Daily database schema', () => {
     });
   });
 
+  test('ships persisted baseline Commute durations for cost-free previews', () => {
+    const migration = readFileSync('drizzle/0016_add_commute_preview_duration.sql', 'utf8');
+    const journal = JSON.parse(readFileSync('drizzle/meta/_journal.json', 'utf8')) as {
+      entries: Array<{ idx: number; tag: string }>;
+    };
+
+    expect(getTableColumns(commuteRoutes).previewDurationMinutes).toBeDefined();
+    expect(migration).toContain('ADD `preview_duration_minutes` integer');
+    expect(journal.entries.find(({ idx }) => idx === 16)).toMatchObject({
+      idx: 16,
+      tag: '0016_add_commute_preview_duration'
+    });
+  });
+
   test('ships nullable UTC next Daily Summary schedule storage in an upgrade migration', () => {
     const migration = readFileSync('drizzle/0011_add_next_summary_at.sql', 'utf8');
     const journal = JSON.parse(readFileSync('drizzle/meta/_journal.json', 'utf8')) as {
