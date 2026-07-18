@@ -653,6 +653,7 @@ test('Visitor manages ordered Commute Routes and Commute Days in browser-local s
   await expect(page.getByText('Evening commute', { exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Enable Evening commute' })).toBeVisible();
 
+  const savedRoutes = page.locator('[aria-label="Saved Commute Routes"]');
   for (const routeName of ['Route two', 'Route three', 'Route four', 'Route five']) {
     await page.getByLabel('Route Name').fill(routeName);
     await page.getByLabel('Origin latitude').fill('50');
@@ -662,9 +663,9 @@ test('Visitor manages ordered Commute Routes and Commute Days in browser-local s
     await page.getByRole('button', { name: 'Select' }).first().click();
     await page.getByRole('button', { name: 'Select' }).nth(1).click();
     await page.getByRole('button', { name: 'Add Commute Route' }).click();
+    await expect(savedRoutes.getByText(routeName, { exact: true })).toBeVisible();
   }
 
-  const savedRoutes = page.locator('[aria-label="Saved Commute Routes"]');
   await expect(savedRoutes.getByText('Evening commute', { exact: true })).toBeVisible();
   await expect(savedRoutes.getByText('Route two', { exact: true })).toBeVisible();
   await expect(savedRoutes.getByText('Route five', { exact: true })).toBeVisible();
