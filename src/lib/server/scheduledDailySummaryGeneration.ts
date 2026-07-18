@@ -99,6 +99,7 @@ export const createScheduledDailySummaryGenerator = ({
       weatherProvider,
       commuteRoutes: commuteSetup.routes,
       commuteDays: commuteSetup.days,
+      commuteEstimateMode: 'live',
       commuteEstimateProvider: configuration.sections.commute
         ? safelyLoadCommuteEstimateProvider(commuteEstimateProvider, userId)
         : undefined,

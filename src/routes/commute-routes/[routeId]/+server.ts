@@ -3,6 +3,7 @@ import { auth } from '$lib/server/auth';
 import { userCommuteSetupStore } from '$lib/server/db/commuteSetupStore';
 import { authStateFromSession } from '$lib/server/pageAuthState';
 import { updateUserCommuteRoute } from '$lib/server/commuteSetupPersistence';
+import { googleMapsOperations } from '$lib/server/googleMapsOperations';
 
 const authenticatedUser = async (request: Request) =>
   authStateFromSession(await auth.api.getSession({ headers: request.headers }));
@@ -22,10 +23,19 @@ export const PUT = async ({ request, params }) => {
     userCommuteSetupStore,
     authState.userId,
     params.routeId,
-    payload
+    payload,
+    googleMapsOperations.requestGateway(authState)
   );
   return json(result, {
-    status: result.outcome === 'updated' ? 200 : result.outcome === 'not-found' ? 404 : result.outcome === 'invalid-route' ? 400 : 500
+    status: result.outcome === 'updated'
+      ? 200
+      : result.outcome === 'not-found'
+        ? 404
+        : result.outcome === 'invalid-route'
+          ? 400
+          : result.outcome === 'estimate-unavailable'
+            ? 503
+            : 500
   });
 };
 

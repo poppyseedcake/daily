@@ -65,6 +65,7 @@ describe('Visitor Local Setup module', () => {
           name: 'Morning commute',
           origin: { label: 'Home', latitude: 52.2297, longitude: 21.0122 },
           destination: { label: 'Office', latitude: 52.2318, longitude: 21.0067 },
+          previewDurationMinutes: 24,
           enabled: false
         }
       ],
@@ -425,6 +426,7 @@ describe('Visitor Local Setup module', () => {
           name: 'Morning commute',
           origin: { label: 'Home', latitude: 52.2297, longitude: 21.0122 },
           destination: { label: 'Office', latitude: 52.2318, longitude: 21.0067 },
+          previewDurationMinutes: 24,
           enabled: false
         }
       ],
@@ -562,6 +564,7 @@ describe('Visitor Local Setup module', () => {
           destinationLabel: 'Office',
           destinationLatitude: 52.2318,
           destinationLongitude: 21.0067,
+          previewDurationMinutes: 24,
           enabled: false,
           position: 1
         }

@@ -36,6 +36,7 @@ export type DailySummaryGenerationSetup = {
   commuteRoutes?: CommuteRoute[];
   commuteDays?: readonly CommuteDay[];
   commuteEstimateProvider?: Pick<GoogleMapsRequestGateway, 'estimateCommute'>;
+  commuteEstimateMode?: 'saved' | 'live';
   now?: Date;
 };
 
@@ -52,6 +53,7 @@ export const buildDailySummaryInput = async ({
   commuteRoutes = [],
   commuteDays = [],
   commuteEstimateProvider,
+  commuteEstimateMode = 'saved',
   now = new Date()
 }: DailySummaryGenerationSetup): Promise<DailySummaryInput> => {
   const weather = await buildWeatherGenerationState({
@@ -72,6 +74,7 @@ export const buildDailySummaryInput = async ({
     routes: commuteRoutes,
     days: commuteDays,
     provider: commuteEstimateProvider,
+    mode: commuteEstimateMode,
     now
   });
 
@@ -97,11 +100,12 @@ const commuteDayByIsoDay = [
   'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'
 ] as const;
 
-const buildCommuteGenerationResult = async ({ configuration, routes, days, provider, now }: {
+const buildCommuteGenerationResult = async ({ configuration, routes, days, provider, mode, now }: {
   configuration: SummaryConfiguration;
   routes: CommuteRoute[];
   days: readonly CommuteDay[];
   provider: Pick<GoogleMapsRequestGateway, 'estimateCommute'> | undefined;
+  mode: 'saved' | 'live';
   now: Date;
 }): Promise<{
   commuteSection: DailySummaryInput['commuteSection'];
@@ -115,6 +119,21 @@ const buildCommuteGenerationResult = async ({ configuration, routes, days, provi
 
   if (!configuration.sections.commute || !days.includes(localDay) || enabledRoutes.length === 0) {
     return { commuteSection: null, sectionState: { status: 'available', label: 'Commute', detail: '' } };
+  }
+
+  if (mode === 'saved') {
+    return {
+      commuteSection: {
+        label: 'Commute',
+        estimates: enabledRoutes.map((route) => ({
+          routeName: route.name,
+          ...(route.previewDurationMinutes == null
+            ? { outcome: 'unavailable' as const }
+            : { outcome: 'available' as const, durationMinutes: route.previewDurationMinutes })
+        }))
+      },
+      sectionState: { status: 'available', label: 'Commute', detail: '' }
+    };
   }
 
   const unavailable = () => ({

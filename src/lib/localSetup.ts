@@ -101,6 +101,7 @@ export type UserSetupImportDraft = {
     destinationLabel: string;
     destinationLatitude: number;
     destinationLongitude: number;
+    previewDurationMinutes: number | null;
     enabled: boolean;
     position: number;
   }>;
@@ -357,6 +358,7 @@ export const createUserSetupImportDraftFromLocalSetup = (
       destinationLabel: route.destination.label,
       destinationLatitude: route.destination.latitude,
       destinationLongitude: route.destination.longitude,
+      previewDurationMinutes: route.previewDurationMinutes ?? null,
       enabled: route.enabled,
       position: index + 1
     })),

@@ -68,6 +68,7 @@ const validDraft = (): UserSetupImportDraft => ({
       destinationLabel: 'Office',
       destinationLatitude: 52.2318,
       destinationLongitude: 21.0067,
+      previewDurationMinutes: 18,
       enabled: false,
       position: 1
     }
@@ -209,6 +210,7 @@ describe('User Setup import persistence', () => {
         destinationLabel: 'Office',
         destinationLatitude: 52.2318,
         destinationLongitude: 21.0067,
+        previewDurationMinutes: 18,
         enabled: true,
         position: 1
       }

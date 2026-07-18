@@ -76,7 +76,7 @@ const stubOpenMeteoForecast = async (page: Page) => {
       contentType: 'application/json',
       body: JSON.stringify({
         daily: {
-          time: [localDateForTimeZone('Europe/Warsaw')],
+          time: [localDateForTimeZone('UTC')],
           weather_code: [61],
           temperature_2m_min: [12],
           temperature_2m_max: [19],
@@ -605,6 +605,9 @@ test('Visitor can dismiss a pending Weather Location search', async ({ page }) =
 
 test('Visitor manages ordered Commute Routes and Commute Days in browser-local setup', async ({ page }) => {
   const pointSelections: Array<{ latitude: number; longitude: number }> = [];
+  await page.route('/commute-estimate', async (route) => {
+    await route.fulfill({ json: { outcome: 'available', estimate: { durationMinutes: 24 } } });
+  });
   await page.route('/commute-point-selection', async (route) => {
     const request = route.request().postDataJSON() as { latitude: number; longitude: number };
     pointSelections.push(request);
@@ -650,6 +653,7 @@ test('Visitor manages ordered Commute Routes and Commute Days in browser-local s
   await expect(page.getByText('Evening commute', { exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Enable Evening commute' })).toBeVisible();
 
+  const savedRoutes = page.locator('[aria-label="Saved Commute Routes"]');
   for (const routeName of ['Route two', 'Route three', 'Route four', 'Route five']) {
     await page.getByLabel('Route Name').fill(routeName);
     await page.getByLabel('Origin latitude').fill('50');
@@ -659,9 +663,9 @@ test('Visitor manages ordered Commute Routes and Commute Days in browser-local s
     await page.getByRole('button', { name: 'Select' }).first().click();
     await page.getByRole('button', { name: 'Select' }).nth(1).click();
     await page.getByRole('button', { name: 'Add Commute Route' }).click();
+    await expect(savedRoutes.getByText(routeName, { exact: true })).toBeVisible();
   }
 
-  const savedRoutes = page.locator('[aria-label="Saved Commute Routes"]');
   await expect(savedRoutes.getByText('Evening commute', { exact: true })).toBeVisible();
   await expect(savedRoutes.getByText('Route two', { exact: true })).toBeVisible();
   await expect(savedRoutes.getByText('Route five', { exact: true })).toBeVisible();
@@ -689,8 +693,7 @@ test('Visitor manages ordered Commute Routes and Commute Days in browser-local s
   expect(pointSelections).toContainEqual({ latitude: 51, longitude: 20 });
 });
 
-test('Visitor preview renders eligible Commute estimates and local unavailable behavior without live Google calls', async ({ page }) => {
-  let estimateOutcome: 'available' | 'unavailable' | 'invalid-route' = 'available';
+test('Visitor preview reuses the saved Commute estimate without live Google calls', async ({ page }) => {
   let estimateRequests = 0;
   const commuteDays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
   await page.route('/commute-point-selection', async (route) => {
@@ -700,12 +703,7 @@ test('Visitor preview renders eligible Commute estimates and local unavailable b
   await page.route('/commute-estimate', async (route) => {
     estimateRequests += 1;
     await route.fulfill({
-      status: estimateOutcome === 'invalid-route' ? 400 : 200,
-      json: estimateOutcome === 'available'
-        ? { outcome: 'available', estimate: { durationMinutes: 24 } }
-        : estimateOutcome === 'unavailable'
-          ? { outcome: 'unavailable', reason: 'global-daily-cap' }
-          : { outcome: 'invalid-route' }
+      json: { outcome: 'available', estimate: { durationMinutes: 24 } }
     });
   });
   await page.goto('/');
@@ -721,6 +719,10 @@ test('Visitor preview renders eligible Commute estimates and local unavailable b
   await expect(page.getByText('Office route: 24 minutes')).toBeVisible();
   expect(estimateRequests).toBe(1);
 
+  await page.reload();
+  await expect(page.getByText('Office route: 24 minutes')).toBeVisible();
+  expect(estimateRequests).toBe(1);
+
   const currentUtcDay = new Intl.DateTimeFormat('en-US', {
     timeZone: 'UTC',
     weekday: 'long'
@@ -733,18 +735,45 @@ test('Visitor preview renders eligible Commute estimates and local unavailable b
   await expect(page.getByText('Office route: 24 minutes')).toHaveCount(0);
   expect(estimateRequests).toBe(1);
 
-  estimateOutcome = 'unavailable';
   for (const day of commuteDays) {
     await page.getByLabel(`${day} Commute Day`).check();
   }
-  await expect(page.getByText('Live Commute is unavailable right now.')).toBeVisible();
+  await expect(page.getByText('Office route: 24 minutes')).toBeVisible();
   await expect(page.getByText('Demo Calendar - sample Calendar Events for the Week Ahead.')).toBeVisible();
+  expect(estimateRequests).toBe(1);
+});
 
-  estimateOutcome = 'invalid-route';
-  await page.getByLabel('Sunday Commute Day').uncheck();
-  await page.getByLabel('Sunday Commute Day').check();
-  await expect(page.getByText('Live Commute is unavailable right now.')).toBeVisible();
-  await expect(page.getByText('Office route: 0 minutes')).toHaveCount(0);
+test('Visitor can rename a legacy Commute Route without a saved baseline or Maps access', async ({ page }) => {
+  await page.route('/commute-point-selection', async (route) => {
+    const point = route.request().postDataJSON() as { latitude: number; longitude: number };
+    await route.fulfill({ json: { outcome: 'available', point: { label: 'Selected point', ...point } } });
+  });
+  await page.route('/commute-estimate', async (route) => {
+    await route.fulfill({ json: { outcome: 'available', estimate: { durationMinutes: 24 } } });
+  });
+  await page.goto('/');
+  await page.getByLabel('Route Name').fill('Legacy route');
+  await page.getByRole('button', { name: 'Select' }).first().click();
+  await page.getByRole('button', { name: 'Select' }).nth(1).click();
+  await page.getByRole('button', { name: 'Add Commute Route' }).click();
+  await expect(page.getByText('Commute Route saved in this browser only.')).toBeVisible();
+
+  await page.evaluate(() => {
+    const key = 'daily.visitorLocalSetup.v1';
+    const setup = JSON.parse(localStorage.getItem(key) ?? '{}');
+    delete setup.commuteRoutes[0].previewDurationMinutes;
+    localStorage.setItem(key, JSON.stringify(setup));
+  });
+  await page.reload();
+  await page.unroute('/commute-estimate');
+  await page.route('/commute-estimate', async (route) => route.abort());
+
+  await page.getByRole('button', { name: 'Edit Legacy route' }).click();
+  await page.getByLabel('Route Name').fill('Renamed legacy route');
+  await page.getByRole('button', { name: 'Save Commute Route' }).click();
+
+  await expect(page.getByText('Commute Route updated in this browser only.')).toBeVisible();
+  await expect(page.getByText('Renamed legacy route', { exact: true })).toBeVisible();
 });
 
 test('Visitor sees unavailable Weather Location search reason when geocoding fails', async ({ page }) => {

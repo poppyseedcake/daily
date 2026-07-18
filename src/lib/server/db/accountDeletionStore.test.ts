@@ -67,7 +67,7 @@ const seedUserData = (sqlite: Database.Database) => {
   sqlite.prepare("insert into todo_categories values ('category-1','user-1','Private',0)").run();
   sqlite.prepare("insert into todo_tasks values ('task-1','user-1','category-1','Canary','high',0,false)").run();
   sqlite.prepare("insert into weather_locations values ('weather-1','user-1','Private place',1,2)").run();
-  sqlite.prepare("insert into commute_routes values ('route-1','user-1','Work','A',1,2,'B',3,4,true,0)").run();
+  sqlite.prepare("insert into commute_routes (id,user_id,name,origin_label,origin_latitude,origin_longitude,destination_label,destination_latitude,destination_longitude,preview_duration_minutes,enabled,position) values ('route-1','user-1','Work','A',1,2,'B',3,4,12,true,0)").run();
   sqlite.prepare("insert into commute_days values ('user-1','monday')").run();
   sqlite.prepare("insert into calendar_connections (id,user_id,connection_status) values ('calendar-1','user-1','connected')").run();
   sqlite.prepare("insert into selected_calendars (id,user_id,calendar_id,position) values ('selected-1','user-1','private-calendar',0)").run();

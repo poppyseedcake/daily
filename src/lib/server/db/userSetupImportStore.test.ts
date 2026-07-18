@@ -25,6 +25,7 @@ const createTestDatabase = () => {
   sqlite.exec(readFileSync('drizzle/0000_bootstrap_daily.sql', 'utf8'));
   sqlite.exec(readFileSync('drizzle/0003_add_weather_locations.sql', 'utf8'));
   sqlite.exec(readFileSync('drizzle/0010_add_commute_setup.sql', 'utf8'));
+  sqlite.exec(readFileSync('drizzle/0016_add_commute_preview_duration.sql', 'utf8'));
   sqlite.exec(readFileSync('drizzle/0011_add_next_summary_at.sql', 'utf8'));
   sqlite.exec(readFileSync('drizzle/0015_add_user_lifecycle.sql', 'utf8'));
 
@@ -94,6 +95,7 @@ const validDraft = (): UserSetupImportDraft => ({
       destinationLabel: 'Office',
       destinationLatitude: 52.2318,
       destinationLongitude: 21.0067,
+      previewDurationMinutes: 18,
       enabled: false,
       position: 1
     },
@@ -107,6 +109,7 @@ const validDraft = (): UserSetupImportDraft => ({
       destinationLabel: 'Home entrance',
       destinationLatitude: 52.2298,
       destinationLongitude: 21.0123,
+      previewDurationMinutes: 21,
       enabled: true,
       position: 2
     }
