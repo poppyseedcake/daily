@@ -742,6 +742,39 @@ test('Visitor preview reuses the saved Commute estimate without live Google call
   expect(estimateRequests).toBe(1);
 });
 
+test('Visitor can rename a legacy Commute Route without a saved baseline or Maps access', async ({ page }) => {
+  await page.route('/commute-point-selection', async (route) => {
+    const point = route.request().postDataJSON() as { latitude: number; longitude: number };
+    await route.fulfill({ json: { outcome: 'available', point: { label: 'Selected point', ...point } } });
+  });
+  await page.route('/commute-estimate', async (route) => {
+    await route.fulfill({ json: { outcome: 'available', estimate: { durationMinutes: 24 } } });
+  });
+  await page.goto('/');
+  await page.getByLabel('Route Name').fill('Legacy route');
+  await page.getByRole('button', { name: 'Select' }).first().click();
+  await page.getByRole('button', { name: 'Select' }).nth(1).click();
+  await page.getByRole('button', { name: 'Add Commute Route' }).click();
+  await expect(page.getByText('Commute Route saved in this browser only.')).toBeVisible();
+
+  await page.evaluate(() => {
+    const key = 'daily.visitorLocalSetup.v1';
+    const setup = JSON.parse(localStorage.getItem(key) ?? '{}');
+    delete setup.commuteRoutes[0].previewDurationMinutes;
+    localStorage.setItem(key, JSON.stringify(setup));
+  });
+  await page.reload();
+  await page.unroute('/commute-estimate');
+  await page.route('/commute-estimate', async (route) => route.abort());
+
+  await page.getByRole('button', { name: 'Edit Legacy route' }).click();
+  await page.getByLabel('Route Name').fill('Renamed legacy route');
+  await page.getByRole('button', { name: 'Save Commute Route' }).click();
+
+  await expect(page.getByText('Commute Route updated in this browser only.')).toBeVisible();
+  await expect(page.getByText('Renamed legacy route', { exact: true })).toBeVisible();
+});
+
 test('Visitor sees unavailable Weather Location search reason when geocoding fails', async ({ page }) => {
   await page.route('/weather-location-search?**', async (route) => {
     await route.fulfill({

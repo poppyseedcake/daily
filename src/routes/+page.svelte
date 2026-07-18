@@ -727,7 +727,7 @@
         existingRoute.origin.longitude !== result.data.origin.longitude ||
         existingRoute.destination.latitude !== result.data.destination.latitude ||
         existingRoute.destination.longitude !== result.data.destination.longitude;
-      if (previewDurationMinutes === null || endpointsChanged) {
+      if (endpointsChanged) {
         try {
           previewDurationMinutes = await requestCommutePreviewDuration(result.data);
         } catch {

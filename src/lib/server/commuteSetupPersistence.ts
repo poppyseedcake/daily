@@ -10,6 +10,30 @@ import type { GoogleMapsRequestGateway } from './googleMapsRequestGateway';
 
 type NewCommuteRoute = Omit<CommuteRoute, 'id' | 'enabled'>;
 
+const commuteRouteCreationLocks = new Map<string, Promise<void>>();
+
+const withCommuteRouteCreationLock = async <Result>(
+  userId: string,
+  create: () => Promise<Result>
+): Promise<Result> => {
+  const previous = commuteRouteCreationLocks.get(userId) ?? Promise.resolve();
+  let release!: () => void;
+  const current = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  commuteRouteCreationLocks.set(userId, current);
+  await previous;
+
+  try {
+    return await create();
+  } finally {
+    release();
+    if (commuteRouteCreationLocks.get(userId) === current) {
+      commuteRouteCreationLocks.delete(userId);
+    }
+  }
+};
+
 export type UserCommuteSetupStore = {
   load: (userId: string) => Promise<{ routes: CommuteRoute[]; days: CommuteDay[] } | null>;
   createRoute: (userId: string, route: NewCommuteRoute) => Promise<CommuteRoute | 'route-limit-reached'>;
@@ -34,22 +58,24 @@ export const createUserCommuteRoute = async (
   if (!result.success) return { outcome: 'invalid-route' };
 
   try {
-    const existingSetup = await store.load(userId);
-    if ((existingSetup?.routes.length ?? 0) >= 5) return { outcome: 'route-limit-reached' };
+    return await withCommuteRouteCreationLock(userId, async () => {
+      const existingSetup = await store.load(userId);
+      if ((existingSetup?.routes.length ?? 0) >= 5) return { outcome: 'route-limit-reached' as const };
 
-    const estimate = await commuteEstimateProvider.estimateCommute({
-      origin: result.data.origin,
-      destination: result.data.destination
-    });
-    if (estimate.outcome !== 'available') return { outcome: 'estimate-unavailable' };
+      const estimate = await commuteEstimateProvider.estimateCommute({
+        origin: result.data.origin,
+        destination: result.data.destination
+      });
+      if (estimate.outcome !== 'available') return { outcome: 'estimate-unavailable' as const };
 
-    const created = await store.createRoute(userId, {
-      ...result.data,
-      previewDurationMinutes: Math.round(estimate.estimate.durationMinutes)
+      const created = await store.createRoute(userId, {
+        ...result.data,
+        previewDurationMinutes: Math.round(estimate.estimate.durationMinutes)
+      });
+      return created === 'route-limit-reached'
+        ? { outcome: 'route-limit-reached' as const }
+        : { outcome: 'created' as const, route: created };
     });
-    return created === 'route-limit-reached'
-      ? { outcome: 'route-limit-reached' }
-      : { outcome: 'created', route: created };
   } catch {
     return { outcome: 'save-failed' };
   }
@@ -71,7 +97,6 @@ export const updateUserCommuteRoute = async (
 
     let previewDurationMinutes = current.previewDurationMinutes ?? null;
     if (
-      previewDurationMinutes === null ||
       !sameCoordinates(current.origin, result.data.origin) ||
       !sameCoordinates(current.destination, result.data.destination)
     ) {
