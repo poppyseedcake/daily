@@ -2,6 +2,8 @@
 
 Daily reserves one unit of shared Google Maps usage before each protected provider call. Configure the limits with `GOOGLE_MAPS_GLOBAL_DAILY_CAP` and `GOOGLE_MAPS_GLOBAL_MONTHLY_CAP`; both values must be positive integers.
 
+Google Places address lookup has an additional fixed monthly cap of 10,000 provider calls. Every Autocomplete request and every selected-address Place Details request consumes one unit. The Admin Panel reports these two categories separately. Reaching this cap blocks further address lookup until the next UTC month without blocking already-saved Commute Route estimates, unless a shared Google Maps cap has also been reached.
+
 Configure the high per-person abuse limit with `GOOGLE_MAPS_PER_PERSON_DAILY_LIMIT` and provide an independent secret of at least 32 bytes in `GOOGLE_MAPS_ATTRIBUTION_SECRET`. Signed-in Users are attributed from trusted session identity. Visitors are attributed from the trusted client address and normalized User-Agent at the server request boundary, so clearing cookies or opening a fresh browser profile does not reset their usage bucket. Both modes are converted to keyed SHA-256 identities before accounting; raw User IDs, client addresses, User-Agent values, and the attribution secret must not be included in logs, diagnostics, or Admin Panel output.
 
 All accounting uses UTC. Daily periods start at `00:00:00 UTC`, and monthly periods start at `00:00:00 UTC` on the first calendar day. The same UTC period keys are used for stored counters, operational usage snapshots, rollover, and future alerts. User Time Zone does not affect these global periods.

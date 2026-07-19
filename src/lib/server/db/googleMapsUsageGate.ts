@@ -49,12 +49,21 @@ export type GoogleMapsUsageCapsEnvironment = {
   GOOGLE_MAPS_PER_PERSON_DAILY_LIMIT?: string;
 };
 
-type UsageByCategory = Record<GoogleMapsCallCategory, number>;
+type UsageByCategory = Record<'map-point-selection' | 'commute-estimate', number>;
+
+export const googlePlacesMonthlyCap = 10_000;
 
 export type GoogleMapsUsageSnapshot = {
   timeBasis: 'UTC';
   day: { periodStart: string; total: number; byCategory: UsageByCategory };
   month: { periodStart: string; total: number; byCategory: UsageByCategory };
+  placesMonth: {
+    periodStart: string;
+    total: number;
+    cap: number;
+    autocomplete: number;
+    details: number;
+  };
 };
 
 export type GoogleMapsDurableUsageGate = GoogleMapsUsageGate & {
@@ -69,6 +78,7 @@ export type GoogleMapsOperationsSnapshot = {
   timeBasis: 'UTC';
   daily: GoogleMapsUsageSnapshot['day'] & { cap: number };
   monthly: GoogleMapsUsageSnapshot['month'] & { cap: number };
+  placesMonthly: GoogleMapsUsageSnapshot['placesMonth'];
   capAlerts: {
     daily: GoogleMapsCapAlertOutcome | null;
     monthly: GoogleMapsCapAlertOutcome | null;
@@ -245,13 +255,37 @@ export const createGoogleMapsUsageGate = ({
       .all();
 
     for (const row of rows) {
-      byCategory[row.category] = row.requestCount;
+      if (row.category === 'map-point-selection' || row.category === 'commute-estimate') {
+        byCategory[row.category] = row.requestCount;
+      }
     }
 
     return {
       periodStart: period.start,
       total: usageForPeriod(source, period),
       byCategory
+    };
+  };
+
+  const placesSnapshotFor = (source: GoogleMapsDatabase, period: UsagePeriod) => {
+    const usageForCategory = (category: 'places-autocomplete' | 'places-details') =>
+      source
+        .select({ requestCount: googleMapsUsage.requestCount })
+        .from(googleMapsUsage)
+        .where(and(
+          eq(googleMapsUsage.periodKind, period.kind),
+          eq(googleMapsUsage.periodStartUtc, period.start),
+          eq(googleMapsUsage.category, category)
+        ))
+        .get()?.requestCount ?? 0;
+    const autocomplete = usageForCategory('places-autocomplete');
+    const details = usageForCategory('places-details');
+    return {
+      periodStart: period.start,
+      total: autocomplete + details,
+      cap: googlePlacesMonthlyCap,
+      autocomplete,
+      details
     };
   };
 
@@ -397,6 +431,16 @@ export const createGoogleMapsUsageGate = ({
           };
         }
 
+        if (
+          (category === 'places-autocomplete' || category === 'places-details') &&
+          placesSnapshotFor(transaction, month).total >= googlePlacesMonthlyCap
+        ) {
+          return {
+            admission: { outcome: 'suspended', reason: 'places-monthly-cap' },
+            alerts: []
+          };
+        }
+
         reserve(transaction, day, category);
         reserve(transaction, month, category);
         reservePersonUsage(transaction, day, attribution);
@@ -416,7 +460,8 @@ export const createGoogleMapsUsageGate = ({
     return {
       timeBasis: 'UTC',
       day: snapshotFor(source, day),
-      month: snapshotFor(source, month)
+      month: snapshotFor(source, month),
+      placesMonth: placesSnapshotFor(source, month)
     };
   };
 
@@ -528,6 +573,7 @@ export const createGoogleMapsUsageGate = ({
           timeBasis: usage.timeBasis,
           daily: { ...usage.day, cap: dailyCap },
           monthly: { ...usage.month, cap: monthlyCap },
+          placesMonthly: usage.placesMonth,
           capAlerts: {
             daily: capAlertOutcomeFor(transaction, 'daily', day.start),
             monthly: capAlertOutcomeFor(transaction, 'monthly', month.start)

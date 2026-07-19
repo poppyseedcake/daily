@@ -14,6 +14,7 @@ import {
   type GoogleMapsAttributionAuthState
 } from './googleMapsPersonAttribution';
 import { createGoogleRoutesProvider } from './googleRoutesProvider';
+import { createGooglePlacesProvider } from './googlePlacesProvider';
 import { selectLocalPoint } from './localPointSelection';
 import { createTechnicalEventRecorder } from './technicalEventRecorder';
 
@@ -55,6 +56,7 @@ export const googleMapsOperations = {
     createGoogleMapsRequestGateway({
       provider: {
         selectPoint: async (request) => selectLocalPoint(request),
+        ...createGooglePlacesProvider({ apiKey: env.GOOGLE_MAPS_API_KEY ?? '' }),
         ...createGoogleRoutesProvider({ apiKey: env.GOOGLE_MAPS_API_KEY ?? '' })
       },
       usageGate: usageGate(),

@@ -96,6 +96,13 @@ describe('Admin Panel server load', () => {
         cap: 500,
         byCategory: { 'map-point-selection': 60, 'commute-estimate': 50 }
       },
+      placesMonthly: {
+        periodStart: '2026-07',
+        total: 70,
+        cap: 10000,
+        autocomplete: 60,
+        details: 10
+      },
       capAlerts: {
         daily: {
           periodStart: '2026-07-13',

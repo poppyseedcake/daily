@@ -262,7 +262,7 @@ export const googleMapsUsage = sqliteTable(
     periodKind: text('period_kind', { enum: ['day', 'month'] }).notNull(),
     periodStartUtc: text('period_start_utc').notNull(),
     category: text('category', {
-      enum: ['map-point-selection', 'commute-estimate']
+      enum: ['map-point-selection', 'places-autocomplete', 'places-details', 'commute-estimate']
     }).notNull(),
     requestCount: integer('request_count').notNull()
   },
@@ -274,7 +274,7 @@ export const googleMapsUsage = sqliteTable(
     ),
     check(
       'google_maps_usage_category_check',
-      sql`${table.category} IN ('map-point-selection', 'commute-estimate')`
+      sql`${table.category} IN ('map-point-selection', 'places-autocomplete', 'places-details', 'commute-estimate')`
     ),
     check('google_maps_usage_request_count_check', sql`${table.requestCount} >= 0`)
   ]
