@@ -127,6 +127,13 @@
       "when": 1784498400000,
       "tag": "0017_add_google_places_usage_categories",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "6",
+      "when": 1784502000000,
+      "tag": "0018_split_google_api_person_limits",
+      "breakpoints": true
     }
   ]
 }

@@ -54,7 +54,7 @@ describe('CI workflow contract', () => {
       /accounts\.google\.com|googleapis\.com|maps\.googleapis\.com|open-meteo\.com|api\.resend\.com|ssh|scp/
     );
     expect(source).not.toMatch(
-      /GOOGLE_CLIENT_SECRET|GOOGLE_MAPS_API_KEY|RESEND_API_KEY|RESEND_FROM_EMAIL/
+      /GOOGLE_CLIENT_SECRET|GOOGLE_(?:ROUTES|PLACES)_API_KEY|RESEND_API_KEY|RESEND_FROM_EMAIL/
     );
   });
 

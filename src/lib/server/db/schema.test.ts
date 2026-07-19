@@ -240,6 +240,24 @@ describe('Daily database schema', () => {
     });
   });
 
+  test('splits per-person usage into Routes and Places quota groups', () => {
+    const migration = readFileSync(
+      'drizzle/0018_split_google_api_person_limits.sql',
+      'utf8'
+    );
+    const journal = JSON.parse(readFileSync('drizzle/meta/_journal.json', 'utf8')) as {
+      entries: Array<{ idx: number; tag: string; version: string }>;
+    };
+
+    expect(migration).toContain('`quota_group` text NOT NULL');
+    expect(migration).toContain("'routes', `request_count`");
+    expect(journal.entries.find(({ idx }) => idx === 18)).toMatchObject({
+      idx: 18,
+      tag: '0018_split_google_api_person_limits',
+      version: '6'
+    });
+  });
+
   test('ships opaque per-person Google Maps counters without Admin-facing metadata', () => {
     const migration = readFileSync('drizzle/0007_add_google_maps_person_usage.sql', 'utf8');
     const journal = JSON.parse(readFileSync('drizzle/meta/_journal.json', 'utf8')) as {

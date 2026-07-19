@@ -285,10 +285,12 @@ export const googleMapsPersonUsage = sqliteTable(
   {
     periodStartUtc: text('period_start_utc').notNull(),
     personUsageIdentity: text('person_usage_identity').notNull(),
+    quotaGroup: text('quota_group', { enum: ['routes', 'places'] }).notNull(),
     requestCount: integer('request_count').notNull()
   },
   (table) => [
-    primaryKey({ columns: [table.periodStartUtc, table.personUsageIdentity] }),
+    primaryKey({ columns: [table.periodStartUtc, table.personUsageIdentity, table.quotaGroup] }),
+    check('google_maps_person_usage_quota_group_check', sql`${table.quotaGroup} IN ('routes', 'places')`),
     check('google_maps_person_usage_request_count_check', sql`${table.requestCount} >= 0`)
   ]
 );

@@ -130,7 +130,7 @@
               </p>
             </div>
             <div class="rounded-md border border-zinc-200 p-3">
-              <dt class="text-zinc-600">Daily usage · {data.googleMaps.daily.periodStart}</dt>
+              <dt class="text-zinc-600">Routes API daily usage · {data.googleMaps.daily.periodStart}</dt>
               <dd class="mt-1 text-xl font-semibold">
                 {data.googleMaps.daily.total} / {data.googleMaps.daily.cap}
               </dd>
@@ -140,7 +140,7 @@
               </p>
             </div>
             <div class="rounded-md border border-zinc-200 p-3">
-              <dt class="text-zinc-600">Monthly usage · {data.googleMaps.monthly.periodStart}</dt>
+              <dt class="text-zinc-600">Routes API monthly usage · {data.googleMaps.monthly.periodStart}</dt>
               <dd class="mt-1 text-xl font-semibold">
                 {data.googleMaps.monthly.total} / {data.googleMaps.monthly.cap}
               </dd>
