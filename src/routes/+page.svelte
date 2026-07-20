@@ -704,6 +704,11 @@
   };
   const clearCommuteRouteDraft = () => {
     editingCommuteRouteId = null;
+    for (const kind of ['origin', 'destination'] as const) {
+      clearTimeout(commuteSearchTimers[kind]);
+      commuteSearchRequests[kind] += 1;
+    }
+    commuteSearchResults = { origin: [], destination: [] };
     commuteRouteName = '';
     commuteOrigin = null;
     commuteDestination = null;
