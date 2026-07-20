@@ -87,6 +87,45 @@ const stubOpenMeteoForecast = async (page: Page) => {
   });
 };
 
+const commuteFixturePoints = {
+  origin: { label: 'Origin point', latitude: 50, longitude: 19 },
+  destination: { label: 'Destination point', latitude: 51, longitude: 20 }
+};
+
+const stubCommuteAddressSearch = async (
+  page: Page,
+  resolvedPoints: Array<{ latitude: number; longitude: number }> = []
+) => {
+  await page.route('/commute-point-search?**', async (route) => {
+    const query = new URL(route.request().url()).searchParams.get('q') ?? '';
+    const kind = query.toLowerCase().includes('destination') ? 'destination' : 'origin';
+    await route.fulfill({
+      json: {
+        outcome: 'available',
+        suggestions: [{
+          placeId: `${kind}-place`,
+          label: commuteFixturePoints[kind].label
+        }]
+      }
+    });
+  });
+  await page.route('/commute-point-selection', async (route) => {
+    const request = route.request().postDataJSON() as { placeId: string };
+    const kind = request.placeId === 'destination-place' ? 'destination' : 'origin';
+    const point = commuteFixturePoints[kind];
+    resolvedPoints.push({ latitude: point.latitude, longitude: point.longitude });
+    await route.fulfill({ json: { outcome: 'available', point } });
+  });
+};
+
+const selectCommuteAddress = async (page: Page, kind: 'Origin' | 'Destination') => {
+  await page.getByLabel(`Commute ${kind} Search`).fill(`${kind} address`);
+  const option = page.getByRole('option').filter({ hasText: `${kind} point` });
+  await expect(option).toBeVisible();
+  await option.getByRole('button', { name: 'Select' }).click();
+  await expect(page.getByText(`${kind} point`, { exact: true })).toBeVisible();
+};
+
 test('Selected Calendar changes update the signed-in User preview without a page reload', async ({ page }) => {
   const port = process.env.PLAYWRIGHT_PORT ?? '5173';
   const database = new Database(join(tmpdir(), `daily-playwright-${port}.db`));
@@ -605,39 +644,15 @@ test('Visitor can dismiss a pending Weather Location search', async ({ page }) =
 
 test('Visitor manages ordered Commute Routes and Commute Days in browser-local setup', async ({ page }) => {
   const pointSelections: Array<{ latitude: number; longitude: number }> = [];
+  await stubCommuteAddressSearch(page, pointSelections);
   await page.route('/commute-estimate', async (route) => {
     await route.fulfill({ json: { outcome: 'available', estimate: { durationMinutes: 24 } } });
-  });
-  await page.route('/commute-point-selection', async (route) => {
-    const request = route.request().postDataJSON() as { latitude: number; longitude: number };
-    pointSelections.push(request);
-    const origin = request.latitude === 50;
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({
-        outcome: 'available',
-        point: origin
-          ? {
-              label: 'Origin point',
-              ...request
-            }
-          : {
-              label: 'Destination point',
-              ...request
-            }
-      })
-    });
   });
   await page.goto('/');
 
   await page.getByLabel('Route Name').fill('Morning commute');
-  await page.getByLabel('Origin latitude').fill('50');
-  await page.getByLabel('Origin longitude').fill('19');
-  await page.getByLabel('Destination latitude').fill('51');
-  await page.getByLabel('Destination longitude').fill('20');
-  await page.getByRole('button', { name: 'Select' }).first().click();
-  await page.getByRole('button', { name: 'Select' }).nth(1).click();
+  await selectCommuteAddress(page, 'Origin');
+  await selectCommuteAddress(page, 'Destination');
   await page.getByRole('button', { name: 'Add Commute Route' }).click();
 
   await expect(page.getByText('Commute Route saved in this browser only.')).toBeVisible();
@@ -656,12 +671,8 @@ test('Visitor manages ordered Commute Routes and Commute Days in browser-local s
   const savedRoutes = page.locator('[aria-label="Saved Commute Routes"]');
   for (const routeName of ['Route two', 'Route three', 'Route four', 'Route five']) {
     await page.getByLabel('Route Name').fill(routeName);
-    await page.getByLabel('Origin latitude').fill('50');
-    await page.getByLabel('Origin longitude').fill('19');
-    await page.getByLabel('Destination latitude').fill('51');
-    await page.getByLabel('Destination longitude').fill('20');
-    await page.getByRole('button', { name: 'Select' }).first().click();
-    await page.getByRole('button', { name: 'Select' }).nth(1).click();
+    await selectCommuteAddress(page, 'Origin');
+    await selectCommuteAddress(page, 'Destination');
     await page.getByRole('button', { name: 'Add Commute Route' }).click();
     await expect(savedRoutes.getByText(routeName, { exact: true })).toBeVisible();
   }
@@ -696,10 +707,7 @@ test('Visitor manages ordered Commute Routes and Commute Days in browser-local s
 test('Visitor preview reuses the saved Commute estimate without live Google calls', async ({ page }) => {
   let estimateRequests = 0;
   const commuteDays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-  await page.route('/commute-point-selection', async (route) => {
-    const point = route.request().postDataJSON() as { latitude: number; longitude: number };
-    await route.fulfill({ json: { outcome: 'available', point: { label: 'Selected point', ...point } } });
-  });
+  await stubCommuteAddressSearch(page);
   await page.route('/commute-estimate', async (route) => {
     estimateRequests += 1;
     await route.fulfill({
@@ -712,8 +720,8 @@ test('Visitor preview reuses the saved Commute estimate without live Google call
   }
   expect(estimateRequests).toBe(0);
   await page.getByLabel('Route Name').fill('Office route');
-  await page.getByRole('button', { name: 'Select' }).first().click();
-  await page.getByRole('button', { name: 'Select' }).nth(1).click();
+  await selectCommuteAddress(page, 'Origin');
+  await selectCommuteAddress(page, 'Destination');
   await page.getByRole('button', { name: 'Add Commute Route' }).click();
 
   await expect(page.getByText('Office route: 24 minutes')).toBeVisible();
@@ -744,17 +752,14 @@ test('Visitor preview reuses the saved Commute estimate without live Google call
 });
 
 test('Visitor can rename a legacy Commute Route without a saved baseline or Maps access', async ({ page }) => {
-  await page.route('/commute-point-selection', async (route) => {
-    const point = route.request().postDataJSON() as { latitude: number; longitude: number };
-    await route.fulfill({ json: { outcome: 'available', point: { label: 'Selected point', ...point } } });
-  });
+  await stubCommuteAddressSearch(page);
   await page.route('/commute-estimate', async (route) => {
     await route.fulfill({ json: { outcome: 'available', estimate: { durationMinutes: 24 } } });
   });
   await page.goto('/');
   await page.getByLabel('Route Name').fill('Legacy route');
-  await page.getByRole('button', { name: 'Select' }).first().click();
-  await page.getByRole('button', { name: 'Select' }).nth(1).click();
+  await selectCommuteAddress(page, 'Origin');
+  await selectCommuteAddress(page, 'Destination');
   await page.getByRole('button', { name: 'Add Commute Route' }).click();
   await expect(page.getByText('Commute Route saved in this browser only.')).toBeVisible();
 
