@@ -14,6 +14,7 @@ import {
   type GoogleMapsAttributionAuthState
 } from './googleMapsPersonAttribution';
 import { createGoogleRoutesProvider } from './googleRoutesProvider';
+import { createGooglePlacesProvider } from './googlePlacesProvider';
 import { selectLocalPoint } from './localPointSelection';
 import { createTechnicalEventRecorder } from './technicalEventRecorder';
 
@@ -22,9 +23,11 @@ const usageGate = () =>
     database: db,
     capAlertDelivery: googleMapsCapAlertDelivery,
     ...readGoogleMapsUsageCaps({
-      GOOGLE_MAPS_GLOBAL_DAILY_CAP: env.GOOGLE_MAPS_GLOBAL_DAILY_CAP,
-      GOOGLE_MAPS_GLOBAL_MONTHLY_CAP: env.GOOGLE_MAPS_GLOBAL_MONTHLY_CAP,
-      GOOGLE_MAPS_PER_PERSON_DAILY_LIMIT: env.GOOGLE_MAPS_PER_PERSON_DAILY_LIMIT
+      GOOGLE_ROUTES_GLOBAL_DAILY_CAP: env.GOOGLE_ROUTES_GLOBAL_DAILY_CAP,
+      GOOGLE_ROUTES_GLOBAL_MONTHLY_CAP: env.GOOGLE_ROUTES_GLOBAL_MONTHLY_CAP,
+      GOOGLE_ROUTES_PER_PERSON_DAILY_LIMIT: env.GOOGLE_ROUTES_PER_PERSON_DAILY_LIMIT,
+      GOOGLE_PLACES_GLOBAL_MONTHLY_CAP: env.GOOGLE_PLACES_GLOBAL_MONTHLY_CAP,
+      GOOGLE_PLACES_PER_PERSON_DAILY_LIMIT: env.GOOGLE_PLACES_PER_PERSON_DAILY_LIMIT
     })
   });
 
@@ -55,7 +58,8 @@ export const googleMapsOperations = {
     createGoogleMapsRequestGateway({
       provider: {
         selectPoint: async (request) => selectLocalPoint(request),
-        ...createGoogleRoutesProvider({ apiKey: env.GOOGLE_MAPS_API_KEY ?? '' })
+        ...createGooglePlacesProvider({ apiKey: env.GOOGLE_PLACES_API_KEY ?? '' }),
+        ...createGoogleRoutesProvider({ apiKey: env.GOOGLE_ROUTES_API_KEY ?? '' })
       },
       usageGate: usageGate(),
       attribution: createGoogleMapsPersonAttribution({

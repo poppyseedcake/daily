@@ -120,7 +120,17 @@
 
           <dl class="grid gap-3 text-sm sm:grid-cols-2 md:grid-cols-1">
             <div class="rounded-md border border-zinc-200 p-3">
-              <dt class="text-zinc-600">Daily usage · {data.googleMaps.daily.periodStart}</dt>
+              <dt class="text-zinc-600">Places API monthly usage · {data.googleMaps.placesMonthly.periodStart}</dt>
+              <dd class="mt-1 text-xl font-semibold">
+                {data.googleMaps.placesMonthly.total} / {data.googleMaps.placesMonthly.cap}
+              </dd>
+              <p class="mt-1 text-xs text-zinc-600">
+                Autocomplete {data.googleMaps.placesMonthly.autocomplete} · Address details
+                {data.googleMaps.placesMonthly.details}
+              </p>
+            </div>
+            <div class="rounded-md border border-zinc-200 p-3">
+              <dt class="text-zinc-600">Routes API daily usage · {data.googleMaps.daily.periodStart}</dt>
               <dd class="mt-1 text-xl font-semibold">
                 {data.googleMaps.daily.total} / {data.googleMaps.daily.cap}
               </dd>
@@ -130,7 +140,7 @@
               </p>
             </div>
             <div class="rounded-md border border-zinc-200 p-3">
-              <dt class="text-zinc-600">Monthly usage · {data.googleMaps.monthly.periodStart}</dt>
+              <dt class="text-zinc-600">Routes API monthly usage · {data.googleMaps.monthly.periodStart}</dt>
               <dd class="mt-1 text-xl font-semibold">
                 {data.googleMaps.monthly.total} / {data.googleMaps.monthly.cap}
               </dd>

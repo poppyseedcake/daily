@@ -443,6 +443,12 @@ vi.mock('$lib/server/googleMapsOperations', async () => {
           async selectPoint() {
             throw new Error('not used');
           },
+          async searchAddresses() {
+            return [];
+          },
+          async resolveAddress() {
+            return { label: 'Resolved point', latitude: 52.1, longitude: 21.1 };
+          },
           async estimateCommute(request) {
             sentCommuteEstimateRequests.push(request);
 

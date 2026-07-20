@@ -4,20 +4,18 @@ import { auth } from '$lib/server/auth';
 import { authStateFromSession } from '$lib/server/pageAuthState';
 import { googleMapsOperations } from '$lib/server/googleMapsOperations';
 
-const pointRequestSchema = z.object({
-  placeId: z.string().trim().min(1).max(240).refine((value) => !/[<>]/.test(value)),
+const querySchema = z.object({
+  query: z.string().trim().min(3).max(120).refine((value) => !/[<>]/.test(value)),
   sessionToken: z.string().regex(/^[A-Za-z0-9_-]{1,36}$/)
 });
 
-export const POST = async ({ request, getClientAddress }) => {
-  let payload: unknown;
-  try {
-    payload = await request.json();
-  } catch {
-    return json({ outcome: 'invalid-point' }, { status: 400 });
-  }
-  const pointRequest = pointRequestSchema.safeParse(payload);
-  if (!pointRequest.success) return json({ outcome: 'invalid-point' }, { status: 400 });
+export const GET = async ({ request, getClientAddress }) => {
+  const url = new URL(request.url);
+  const input = querySchema.safeParse({
+    query: url.searchParams.get('q') ?? '',
+    sessionToken: url.searchParams.get('sessionToken') ?? ''
+  });
+  if (!input.success) return json({ outcome: 'invalid-query' }, { status: 400 });
 
   const authState = authStateFromSession(await auth.api.getSession({ headers: request.headers }));
   try {
@@ -27,7 +25,7 @@ export const POST = async ({ request, getClientAddress }) => {
         ? { clientAddress: getClientAddress(), userAgent: request.headers.get('user-agent') ?? '' }
         : undefined
     );
-    return json(await gateway.resolveAddress(pointRequest.data));
+    return json(await gateway.searchAddresses(input.data));
   } catch {
     return json({ outcome: 'unavailable', reason: 'usage-gate-unavailable' });
   }

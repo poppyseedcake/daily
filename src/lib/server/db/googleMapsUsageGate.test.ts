@@ -37,7 +37,7 @@ const createDatabase = (path = ':memory:', initialize = true) => {
       CREATE TABLE google_maps_usage (
         period_kind text NOT NULL CHECK (period_kind IN ('day', 'month')),
         period_start_utc text NOT NULL,
-        category text NOT NULL CHECK (category IN ('map-point-selection', 'commute-estimate')),
+        category text NOT NULL CHECK (category IN ('map-point-selection', 'places-autocomplete', 'places-details', 'commute-estimate')),
         request_count integer NOT NULL CHECK (request_count >= 0),
         PRIMARY KEY (period_kind, period_start_utc, category)
       )
@@ -45,8 +45,9 @@ const createDatabase = (path = ':memory:', initialize = true) => {
       CREATE TABLE google_maps_person_usage (
         period_start_utc text NOT NULL,
         person_usage_identity text NOT NULL,
+        quota_group text NOT NULL CHECK (quota_group IN ('routes', 'places')),
         request_count integer NOT NULL CHECK (request_count >= 0),
-        PRIMARY KEY (period_start_utc, person_usage_identity)
+        PRIMARY KEY (period_start_utc, person_usage_identity, quota_group)
       );
       CREATE TABLE google_maps_control (
         control_key text PRIMARY KEY NOT NULL CHECK (control_key = 'admin-kill-switch'),
@@ -82,6 +83,63 @@ afterEach(() => {
 
 describe('Google Maps usage gate', () => {
   const person = { personUsageIdentity: 'privacy-safe-person-a' };
+
+  test('tracks Places calls separately and blocks the 10,001st call in a UTC month', async () => {
+    const database = createDatabase();
+    database.prepare(`
+      INSERT INTO google_maps_usage (period_kind, period_start_utc, category, request_count)
+      VALUES ('month', '2026-07', 'places-autocomplete', 9999)
+    `).run();
+    const gate = createTestGoogleMapsUsageGate({
+      database: drizzleDatabase(database),
+      dailyCap: 20_000,
+      monthlyCap: 20_000,
+      perPersonDailyLimit: 20_000,
+      now: () => new Date('2026-07-12T12:00:00.000Z')
+    });
+
+    await expect(gate.admit('places-details', person)).resolves.toEqual({ outcome: 'admitted' });
+    await expect(gate.admit('places-autocomplete', person)).resolves.toEqual({
+      outcome: 'suspended',
+      reason: 'places-monthly-cap'
+    });
+    await expect(gate.currentOperations(false)).resolves.toMatchObject({
+      placesMonthly: {
+        periodStart: '2026-07',
+        total: 10_000,
+        cap: 10_000,
+        autocomplete: 9999,
+        details: 1
+      }
+    });
+  });
+
+  test('keeps Places usage outside Routes global and per-person limits', async () => {
+    const gate = createTestGoogleMapsUsageGate({
+      database: drizzleDatabase(createDatabase()),
+      dailyCap: 1,
+      monthlyCap: 1,
+      perPersonDailyLimit: 1,
+      placesMonthlyCap: 10_000,
+      placesPerPersonDailyLimit: 3,
+      now: () => new Date('2026-07-12T12:00:00.000Z')
+    });
+
+    await expect(gate.admit('places-autocomplete', person)).resolves.toEqual({ outcome: 'admitted' });
+    await expect(gate.admit('places-details', person)).resolves.toEqual({ outcome: 'admitted' });
+    await expect(gate.admit('places-autocomplete', person)).resolves.toEqual({ outcome: 'admitted' });
+    await expect(gate.admit('places-autocomplete', person)).resolves.toEqual({
+      outcome: 'suspended',
+      reason: 'per-person-daily-limit'
+    });
+
+    await expect(gate.admit('commute-estimate', person)).resolves.toEqual({ outcome: 'admitted' });
+    await expect(gate.currentOperations(false)).resolves.toMatchObject({
+      daily: { total: 1 },
+      monthly: { total: 1 },
+      placesMonthly: { total: 3, cap: 10_000 }
+    });
+  });
 
   test('delivers one privacy-safe operator alert when the daily cap is reached', async () => {
     const deliveredAlerts: unknown[] = [];
@@ -530,6 +588,13 @@ describe('Google Maps usage gate', () => {
         periodStart: '2026-07',
         total: 2,
         byCategory: { 'map-point-selection': 1, 'commute-estimate': 1 }
+      },
+      placesMonth: {
+        periodStart: '2026-07',
+        total: 0,
+        cap: 10_000,
+        autocomplete: 0,
+        details: 0
       }
     });
     await expect(restartedGate.admit('commute-estimate', person)).resolves.toEqual({ outcome: 'admitted' });
@@ -597,17 +662,27 @@ describe('Google Maps usage gate', () => {
   test('reads positive integer caps from deployment configuration', () => {
     expect(
       readGoogleMapsUsageCaps({
-        GOOGLE_MAPS_GLOBAL_DAILY_CAP: '25',
-        GOOGLE_MAPS_GLOBAL_MONTHLY_CAP: '500',
-        GOOGLE_MAPS_PER_PERSON_DAILY_LIMIT: '50'
+        GOOGLE_ROUTES_GLOBAL_DAILY_CAP: '25',
+        GOOGLE_ROUTES_GLOBAL_MONTHLY_CAP: '500',
+        GOOGLE_ROUTES_PER_PERSON_DAILY_LIMIT: '50',
+        GOOGLE_PLACES_GLOBAL_MONTHLY_CAP: '10000',
+        GOOGLE_PLACES_PER_PERSON_DAILY_LIMIT: '500'
       })
-    ).toEqual({ dailyCap: 25, monthlyCap: 500, perPersonDailyLimit: 50 });
+    ).toEqual({
+      dailyCap: 25,
+      monthlyCap: 500,
+      perPersonDailyLimit: 50,
+      placesMonthlyCap: 10_000,
+      placesPerPersonDailyLimit: 500
+    });
 
     expect(() =>
       readGoogleMapsUsageCaps({
-        GOOGLE_MAPS_GLOBAL_DAILY_CAP: '0',
-        GOOGLE_MAPS_GLOBAL_MONTHLY_CAP: 'not-a-number',
-        GOOGLE_MAPS_PER_PERSON_DAILY_LIMIT: '-1'
+        GOOGLE_ROUTES_GLOBAL_DAILY_CAP: '0',
+        GOOGLE_ROUTES_GLOBAL_MONTHLY_CAP: 'not-a-number',
+        GOOGLE_ROUTES_PER_PERSON_DAILY_LIMIT: '-1',
+        GOOGLE_PLACES_GLOBAL_MONTHLY_CAP: '10000',
+        GOOGLE_PLACES_PER_PERSON_DAILY_LIMIT: '500'
       })
     ).toThrow('Google Maps usage limits must be positive integers');
   });
@@ -737,6 +812,13 @@ describe('Google Maps usage gate', () => {
         cap: 2,
         byCategory: { 'map-point-selection': 0, 'commute-estimate': 1 }
       },
+      placesMonthly: {
+        periodStart: '2026-07',
+        total: 0,
+        cap: 10_000,
+        autocomplete: 0,
+        details: 0
+      },
       environmentKillSwitchEnabled: false,
       adminKillSwitchEnabled: false,
       effectiveState: 'suspended',
@@ -857,6 +939,12 @@ describe('Google Maps usage gate', () => {
       async selectPoint() {
         providerCalls += 1;
         throw new Error('provider failed after consuming quota');
+      },
+      async searchAddresses() {
+        return [];
+      },
+      async resolveAddress() {
+        return { label: 'point', latitude: 52, longitude: 21 };
       },
       async estimateCommute() {
         providerCalls += 1;

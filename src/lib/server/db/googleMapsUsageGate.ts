@@ -1,4 +1,4 @@
-import { and, eq, lt, sql, sum } from 'drizzle-orm';
+import { and, eq, inArray, lt, sql, sum } from 'drizzle-orm';
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import type {
   GoogleMapsAdmission,
@@ -38,23 +38,34 @@ export type GoogleMapsUsageGateOptions = {
   dailyCap: number;
   monthlyCap: number;
   perPersonDailyLimit: number;
+  placesMonthlyCap?: number;
+  placesPerPersonDailyLimit?: number;
   capAlertDelivery: GoogleMapsCapAlertDelivery;
   now?: () => Date;
   capAlertDiagnostics?: (event: GoogleMapsCapAlertDiagnosticsEvent) => void;
 };
 
 export type GoogleMapsUsageCapsEnvironment = {
-  GOOGLE_MAPS_GLOBAL_DAILY_CAP?: string;
-  GOOGLE_MAPS_GLOBAL_MONTHLY_CAP?: string;
-  GOOGLE_MAPS_PER_PERSON_DAILY_LIMIT?: string;
+  GOOGLE_ROUTES_GLOBAL_DAILY_CAP?: string;
+  GOOGLE_ROUTES_GLOBAL_MONTHLY_CAP?: string;
+  GOOGLE_ROUTES_PER_PERSON_DAILY_LIMIT?: string;
+  GOOGLE_PLACES_GLOBAL_MONTHLY_CAP?: string;
+  GOOGLE_PLACES_PER_PERSON_DAILY_LIMIT?: string;
 };
 
-type UsageByCategory = Record<GoogleMapsCallCategory, number>;
+type UsageByCategory = Record<'map-point-selection' | 'commute-estimate', number>;
 
 export type GoogleMapsUsageSnapshot = {
   timeBasis: 'UTC';
   day: { periodStart: string; total: number; byCategory: UsageByCategory };
   month: { periodStart: string; total: number; byCategory: UsageByCategory };
+  placesMonth: {
+    periodStart: string;
+    total: number;
+    cap: number;
+    autocomplete: number;
+    details: number;
+  };
 };
 
 export type GoogleMapsDurableUsageGate = GoogleMapsUsageGate & {
@@ -69,6 +80,7 @@ export type GoogleMapsOperationsSnapshot = {
   timeBasis: 'UTC';
   daily: GoogleMapsUsageSnapshot['day'] & { cap: number };
   monthly: GoogleMapsUsageSnapshot['month'] & { cap: number };
+  placesMonthly: GoogleMapsUsageSnapshot['placesMonth'];
   capAlerts: {
     daily: GoogleMapsCapAlertOutcome | null;
     monthly: GoogleMapsCapAlertOutcome | null;
@@ -117,16 +129,39 @@ const positiveInteger = (value: string | undefined): number | null => {
 
 export const readGoogleMapsUsageCaps = (
   environment: GoogleMapsUsageCapsEnvironment
-): Pick<GoogleMapsUsageGateOptions, 'dailyCap' | 'monthlyCap' | 'perPersonDailyLimit'> => {
-  const dailyCap = positiveInteger(environment.GOOGLE_MAPS_GLOBAL_DAILY_CAP);
-  const monthlyCap = positiveInteger(environment.GOOGLE_MAPS_GLOBAL_MONTHLY_CAP);
-  const perPersonDailyLimit = positiveInteger(environment.GOOGLE_MAPS_PER_PERSON_DAILY_LIMIT);
+): Pick<
+  GoogleMapsUsageGateOptions,
+  | 'dailyCap'
+  | 'monthlyCap'
+  | 'perPersonDailyLimit'
+  | 'placesMonthlyCap'
+  | 'placesPerPersonDailyLimit'
+> => {
+  const dailyCap = positiveInteger(environment.GOOGLE_ROUTES_GLOBAL_DAILY_CAP);
+  const monthlyCap = positiveInteger(environment.GOOGLE_ROUTES_GLOBAL_MONTHLY_CAP);
+  const perPersonDailyLimit = positiveInteger(environment.GOOGLE_ROUTES_PER_PERSON_DAILY_LIMIT);
+  const placesMonthlyCap = positiveInteger(environment.GOOGLE_PLACES_GLOBAL_MONTHLY_CAP);
+  const placesPerPersonDailyLimit = positiveInteger(
+    environment.GOOGLE_PLACES_PER_PERSON_DAILY_LIMIT
+  );
 
-  if (dailyCap === null || monthlyCap === null || perPersonDailyLimit === null) {
+  if (
+    dailyCap === null ||
+    monthlyCap === null ||
+    perPersonDailyLimit === null ||
+    placesMonthlyCap === null ||
+    placesPerPersonDailyLimit === null
+  ) {
     throw new Error('Google Maps usage limits must be positive integers');
   }
 
-  return { dailyCap, monthlyCap, perPersonDailyLimit };
+  return {
+    dailyCap,
+    monthlyCap,
+    perPersonDailyLimit,
+    placesMonthlyCap,
+    placesPerPersonDailyLimit
+  };
 };
 
 export const setGoogleMapsAdminKillSwitch = (
@@ -169,6 +204,8 @@ export const createGoogleMapsUsageGate = ({
   dailyCap,
   monthlyCap,
   perPersonDailyLimit,
+  placesMonthlyCap = 10_000,
+  placesPerPersonDailyLimit = perPersonDailyLimit,
   capAlertDelivery,
   now = () => new Date(),
   capAlertDiagnostics = (event) => {
@@ -181,7 +218,11 @@ export const createGoogleMapsUsageGate = ({
     !Number.isSafeInteger(monthlyCap) ||
     monthlyCap <= 0 ||
     !Number.isSafeInteger(perPersonDailyLimit) ||
-    perPersonDailyLimit <= 0
+    perPersonDailyLimit <= 0 ||
+    !Number.isSafeInteger(placesMonthlyCap) ||
+    placesMonthlyCap <= 0 ||
+    !Number.isSafeInteger(placesPerPersonDailyLimit) ||
+    placesPerPersonDailyLimit <= 0
   ) {
     throw new Error('Google Maps usage limits must be positive integers');
   }
@@ -194,7 +235,8 @@ export const createGoogleMapsUsageGate = ({
         .where(
           and(
             eq(googleMapsUsage.periodKind, period.kind),
-            eq(googleMapsUsage.periodStartUtc, period.start)
+            eq(googleMapsUsage.periodStartUtc, period.start),
+            inArray(googleMapsUsage.category, ['map-point-selection', 'commute-estimate'])
           )
         )
         .get()?.total ?? 0
@@ -245,13 +287,37 @@ export const createGoogleMapsUsageGate = ({
       .all();
 
     for (const row of rows) {
-      byCategory[row.category] = row.requestCount;
+      if (row.category === 'map-point-selection' || row.category === 'commute-estimate') {
+        byCategory[row.category] = row.requestCount;
+      }
     }
 
     return {
       periodStart: period.start,
       total: usageForPeriod(source, period),
       byCategory
+    };
+  };
+
+  const placesSnapshotFor = (source: GoogleMapsDatabase, period: UsagePeriod) => {
+    const usageForCategory = (category: 'places-autocomplete' | 'places-details') =>
+      source
+        .select({ requestCount: googleMapsUsage.requestCount })
+        .from(googleMapsUsage)
+        .where(and(
+          eq(googleMapsUsage.periodKind, period.kind),
+          eq(googleMapsUsage.periodStartUtc, period.start),
+          eq(googleMapsUsage.category, category)
+        ))
+        .get()?.requestCount ?? 0;
+    const autocomplete = usageForCategory('places-autocomplete');
+    const details = usageForCategory('places-details');
+    return {
+      periodStart: period.start,
+      total: autocomplete + details,
+      cap: placesMonthlyCap,
+      autocomplete,
+      details
     };
   };
 
@@ -331,7 +397,8 @@ export const createGoogleMapsUsageGate = ({
   const personUsageForDay = (
     source: GoogleMapsDatabase,
     day: UsagePeriod,
-    attribution: GoogleMapsPersonAttribution
+    attribution: GoogleMapsPersonAttribution,
+    quotaGroup: 'routes' | 'places'
   ) =>
     source
       .select({ requestCount: googleMapsPersonUsage.requestCount })
@@ -339,7 +406,8 @@ export const createGoogleMapsUsageGate = ({
       .where(
         and(
           eq(googleMapsPersonUsage.periodStartUtc, day.start),
-          eq(googleMapsPersonUsage.personUsageIdentity, attribution.personUsageIdentity)
+          eq(googleMapsPersonUsage.personUsageIdentity, attribution.personUsageIdentity),
+          eq(googleMapsPersonUsage.quotaGroup, quotaGroup)
         )
       )
       .get()?.requestCount ?? 0;
@@ -347,17 +415,23 @@ export const createGoogleMapsUsageGate = ({
   const reservePersonUsage = (
     source: GoogleMapsDatabase,
     day: UsagePeriod,
-    attribution: GoogleMapsPersonAttribution
+    attribution: GoogleMapsPersonAttribution,
+    quotaGroup: 'routes' | 'places'
   ) =>
     source
       .insert(googleMapsPersonUsage)
       .values({
         periodStartUtc: day.start,
         personUsageIdentity: attribution.personUsageIdentity,
+        quotaGroup,
         requestCount: 1
       })
       .onConflictDoUpdate({
-        target: [googleMapsPersonUsage.periodStartUtc, googleMapsPersonUsage.personUsageIdentity],
+        target: [
+          googleMapsPersonUsage.periodStartUtc,
+          googleMapsPersonUsage.personUsageIdentity,
+          googleMapsPersonUsage.quotaGroup
+        ],
         set: { requestCount: sql`${googleMapsPersonUsage.requestCount} + 1` }
       })
       .run();
@@ -371,35 +445,47 @@ export const createGoogleMapsUsageGate = ({
     database.transaction(
       (transaction): { admission: GoogleMapsAdmission; alerts: GoogleMapsCapAlert[] } => {
         const [day, month] = periods;
+        const isPlaces = category === 'places-autocomplete' || category === 'places-details';
+        const quotaGroup = isPlaces ? 'places' : 'routes';
+        const personLimit = isPlaces ? placesPerPersonDailyLimit : perPersonDailyLimit;
 
         if (readGoogleMapsAdminKillSwitch(transaction)) {
           return { admission: { outcome: 'suspended', reason: 'admin-kill-switch' }, alerts: [] };
         }
 
-        if (personUsageForDay(transaction, day, attribution) >= perPersonDailyLimit) {
+        if (personUsageForDay(transaction, day, attribution, quotaGroup) >= personLimit) {
           return {
             admission: { outcome: 'suspended', reason: 'per-person-daily-limit' },
             alerts: []
           };
         }
 
-        if (usageForPeriod(transaction, day) >= dailyCap) {
+        if (!isPlaces && usageForPeriod(transaction, day) >= dailyCap) {
           return {
             admission: { outcome: 'suspended', reason: 'global-daily-cap' },
             alerts: claimReachedCapAlerts(transaction, day, month, claimedAt)
           };
         }
 
-        if (usageForPeriod(transaction, month) >= monthlyCap) {
+        if (!isPlaces && usageForPeriod(transaction, month) >= monthlyCap) {
           return {
             admission: { outcome: 'suspended', reason: 'global-monthly-cap' },
             alerts: claimReachedCapAlerts(transaction, day, month, claimedAt)
           };
         }
 
+        if (
+          isPlaces && placesSnapshotFor(transaction, month).total >= placesMonthlyCap
+        ) {
+          return {
+            admission: { outcome: 'suspended', reason: 'places-monthly-cap' },
+            alerts: []
+          };
+        }
+
         reserve(transaction, day, category);
         reserve(transaction, month, category);
-        reservePersonUsage(transaction, day, attribution);
+        reservePersonUsage(transaction, day, attribution, quotaGroup);
         return {
           admission: { outcome: 'admitted' },
           alerts: claimReachedCapAlerts(transaction, day, month, claimedAt)
@@ -416,7 +502,8 @@ export const createGoogleMapsUsageGate = ({
     return {
       timeBasis: 'UTC',
       day: snapshotFor(source, day),
-      month: snapshotFor(source, month)
+      month: snapshotFor(source, month),
+      placesMonth: placesSnapshotFor(source, month)
     };
   };
 
@@ -528,6 +615,7 @@ export const createGoogleMapsUsageGate = ({
           timeBasis: usage.timeBasis,
           daily: { ...usage.day, cap: dailyCap },
           monthly: { ...usage.month, cap: monthlyCap },
+          placesMonthly: usage.placesMonth,
           capAlerts: {
             daily: capAlertOutcomeFor(transaction, 'daily', day.start),
             monthly: capAlertOutcomeFor(transaction, 'monthly', month.start)

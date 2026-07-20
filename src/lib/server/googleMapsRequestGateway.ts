@@ -1,14 +1,19 @@
 import { env } from '$env/dynamic/private';
 import { z } from 'zod';
 
-export type GoogleMapsCallCategory = 'map-point-selection' | 'commute-estimate';
+export type GoogleMapsCallCategory =
+  | 'map-point-selection'
+  | 'places-autocomplete'
+  | 'places-details'
+  | 'commute-estimate';
 
 export type GoogleMapsSuspensionReason =
   | 'environment-kill-switch'
   | 'admin-kill-switch'
   | 'per-person-daily-limit'
   | 'global-daily-cap'
-  | 'global-monthly-cap';
+  | 'global-monthly-cap'
+  | 'places-monthly-cap';
 
 export type GoogleMapsUnavailableReason =
   | GoogleMapsSuspensionReason
@@ -27,6 +32,10 @@ export type GoogleMapsPointSelectionRequest = {
   longitude: number;
 };
 
+export type GooglePlacesAddressSuggestion = { placeId: string; label: string };
+export type GooglePlacesAddressSearchRequest = { query: string; sessionToken: string };
+export type GooglePlacesAddressResolutionRequest = { placeId: string; sessionToken: string };
+
 export type GoogleMapsCommuteEstimateRequest = {
   origin: GoogleMapsPoint;
   destination: GoogleMapsPoint;
@@ -38,6 +47,10 @@ export type GoogleMapsCommuteEstimate = {
 
 export type GoogleMapsProvider = {
   selectPoint: (request: GoogleMapsPointSelectionRequest) => Promise<GoogleMapsPoint>;
+  searchAddresses: (
+    request: GooglePlacesAddressSearchRequest
+  ) => Promise<GooglePlacesAddressSuggestion[]>;
+  resolveAddress: (request: GooglePlacesAddressResolutionRequest) => Promise<GoogleMapsPoint>;
   estimateCommute: (
     request: GoogleMapsCommuteEstimateRequest
   ) => Promise<GoogleMapsCommuteEstimate | null>;
@@ -73,6 +86,10 @@ export type GoogleMapsPointSelectionResult =
   | { outcome: 'available'; point: GoogleMapsPoint }
   | GoogleMapsUnavailableResult;
 
+export type GooglePlacesAddressSearchResult =
+  | { outcome: 'available'; suggestions: GooglePlacesAddressSuggestion[] }
+  | GoogleMapsUnavailableResult;
+
 export type GoogleMapsCommuteEstimateResult =
   | { outcome: 'available'; estimate: GoogleMapsCommuteEstimate }
   | GoogleMapsUnavailableResult;
@@ -80,6 +97,12 @@ export type GoogleMapsCommuteEstimateResult =
 export type GoogleMapsRequestGateway = {
   selectPoint: (
     request: GoogleMapsPointSelectionRequest
+  ) => Promise<GoogleMapsPointSelectionResult>;
+  searchAddresses: (
+    request: GooglePlacesAddressSearchRequest
+  ) => Promise<GooglePlacesAddressSearchResult>;
+  resolveAddress: (
+    request: GooglePlacesAddressResolutionRequest
   ) => Promise<GoogleMapsPointSelectionResult>;
   estimateCommute: (
     request: GoogleMapsCommuteEstimateRequest
@@ -110,12 +133,18 @@ const googleMapsCommuteEstimateSchema = z.object({
   durationMinutes: z.number().finite().nonnegative()
 });
 
+const googlePlacesAddressSuggestionSchema = z.object({
+  placeId: z.string().trim().min(1).max(240),
+  label: z.string().trim().min(1).max(240)
+});
+
 const googleMapsSuspensionReasonSchema = z.enum([
   'environment-kill-switch',
   'admin-kill-switch',
   'per-person-daily-limit',
   'global-daily-cap',
-  'global-monthly-cap'
+  'global-monthly-cap',
+  'places-monthly-cap'
 ]);
 
 const defaultDiagnostics = (event: GoogleMapsDiagnosticsEvent) => {
@@ -203,6 +232,23 @@ export const createGoogleMapsRequestGateway = ({
           outcome: 'available' as const,
           point: googleMapsPointSchema.parse(point)
         })
+      );
+    },
+    async searchAddresses(request) {
+      return executeProtectedGoogleMapsRequest(
+        'places-autocomplete',
+        () => provider.searchAddresses(request),
+        (suggestions) => ({
+          outcome: 'available' as const,
+          suggestions: z.array(googlePlacesAddressSuggestionSchema).max(5).parse(suggestions)
+        })
+      );
+    },
+    async resolveAddress(request) {
+      return executeProtectedGoogleMapsRequest(
+        'places-details',
+        () => provider.resolveAddress(request),
+        (point) => ({ outcome: 'available' as const, point: googleMapsPointSchema.parse(point) })
       );
     },
     async estimateCommute(request) {

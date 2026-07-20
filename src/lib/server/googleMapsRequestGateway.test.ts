@@ -20,6 +20,8 @@ const destination = {
 
 const createProvider = (): GoogleMapsProvider => ({
   selectPoint: vi.fn().mockResolvedValue(origin),
+  searchAddresses: vi.fn().mockResolvedValue([{ placeId: 'origin-id', label: origin.label }]),
+  resolveAddress: vi.fn().mockResolvedValue(origin),
   estimateCommute: vi.fn().mockResolvedValue({ durationMinutes: 24 })
 });
 
@@ -46,12 +48,20 @@ describe('Google Maps request gateway', () => {
       outcome: 'available',
       point: origin
     });
+    await expect(gateway.searchAddresses({ query: 'Home', sessionToken: 'session' })).resolves.toEqual({
+      outcome: 'available',
+      suggestions: [{ placeId: 'origin-id', label: origin.label }]
+    });
+    await expect(gateway.resolveAddress({ placeId: 'origin-id', sessionToken: 'session' })).resolves.toEqual({
+      outcome: 'available',
+      point: origin
+    });
     await expect(gateway.estimateCommute({ origin, destination })).resolves.toEqual({
       outcome: 'available',
       estimate: { durationMinutes: 24 }
     });
 
-    expect(categories).toEqual(['map-point-selection', 'commute-estimate']);
+    expect(categories).toEqual(['map-point-selection', 'places-autocomplete', 'places-details', 'commute-estimate']);
     expect(provider.selectPoint).toHaveBeenCalledWith({
       latitude: origin.latitude,
       longitude: origin.longitude

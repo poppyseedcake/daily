@@ -75,7 +75,7 @@ const seedUserData = (sqlite: Database.Database) => {
   sqlite.prepare("insert into auth_user values ('user-1','Private','private@example.com',true,null,1,1)").run();
   sqlite.prepare("insert into auth_session values ('session-1',9999999999,'session-canary',1,1,null,null,'user-1')").run();
   sqlite.prepare("insert into auth_account (id,account_id,provider_id,user_id,access_token,refresh_token,id_token,created_at,updated_at) values ('account-1','google-1','google','user-1','access-canary','refresh-canary','id-canary',1,1)").run();
-  sqlite.prepare("insert into google_maps_person_usage values ('2026-07-16','person-1',2)").run();
+  sqlite.prepare("insert into google_maps_person_usage values ('2026-07-16','person-1','routes',2)").run();
   sqlite.prepare("insert into google_maps_usage values ('day','2026-07-16','commute-estimate',2)").run();
   sqlite.prepare("insert into google_maps_control values ('admin-kill-switch',false)").run();
   sqlite.prepare("insert into google_maps_cap_alerts values ('daily','2026-07-16','delivered','2026-07-16T00:00:00Z',null,null)").run();

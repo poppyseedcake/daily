@@ -58,6 +58,7 @@
   import { accountDeletionConfirmation } from '$lib/accountDeletion';
 
   const visitorAuthState = { mode: 'visitor' } as const;
+  type CommuteAddressSuggestion = { placeId: string; label: string };
   let { data, form }: { data?: PageData; form?: ActionData } = $props();
   const authState = $derived(data?.authState ?? visitorAuthState);
   const calendarReadiness = $derived(
@@ -158,12 +159,13 @@
   let commuteDays = $state<CommuteDay[]>([...initialCommuteSetup.days]);
   let editingCommuteRouteId = $state<string | null>(null);
   let commuteRouteName = $state('');
-  let commuteOriginLatitude = $state('52.2285');
-  let commuteOriginLongitude = $state('21.0037');
-  let commuteDestinationLatitude = $state('52.2318');
-  let commuteDestinationLongitude = $state('21.0067');
   let commuteOrigin = $state<CommutePoint | null>(null);
   let commuteDestination = $state<CommutePoint | null>(null);
+  let commuteSearchQueries = $state({ origin: '', destination: '' });
+  let commuteSearchResults = $state({ origin: [] as CommuteAddressSuggestion[], destination: [] as CommuteAddressSuggestion[] });
+  let commuteSearchSessionTokens = { origin: '', destination: '' };
+  let commuteSearchTimers: { origin?: ReturnType<typeof setTimeout>; destination?: ReturnType<typeof setTimeout> } = {};
+  let commuteSearchRequests = { origin: 0, destination: 0 };
   let commuteRouteStatus = $state('Select an Origin and Destination to create a Commute Route.');
   let commuteRouteStatusTone = $state<'success' | 'warning' | 'error' | 'neutral'>('neutral');
   let selectedCalendarConfiguration = $state<SelectedCalendarConfiguration | null>(
@@ -328,10 +330,8 @@
     commuteRouteName = '';
     commuteOrigin = null;
     commuteDestination = null;
-    commuteOriginLatitude = '52.2285';
-    commuteOriginLongitude = '21.0037';
-    commuteDestinationLatitude = '52.2318';
-    commuteDestinationLongitude = '21.0067';
+    commuteSearchQueries = { origin: '', destination: '' };
+    commuteSearchSessionTokens = { origin: '', destination: '' };
     weatherLocationSearchQuery = setup.weatherLocation?.label ?? '';
     weatherLocationStatus = setup.weatherLocation
       ? 'Weather Location saved in this browser only.'
@@ -638,48 +638,82 @@
       weatherLocationStatusTone = 'error';
     }
   };
-  const selectCommutePoint = async (kind: 'origin' | 'destination') => {
-    const latitude = Number(kind === 'origin' ? commuteOriginLatitude : commuteDestinationLatitude);
-    const longitude = Number(kind === 'origin' ? commuteOriginLongitude : commuteDestinationLongitude);
-
-    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
-      commuteRouteStatus = 'Enter valid latitude and longitude values.';
-      commuteRouteStatusTone = 'warning';
-      return;
-    }
-
-    commuteRouteStatus = `Selecting Commute ${kind === 'origin' ? 'Origin' : 'Destination'}...`;
+  const suggestCommutePoints = (kind: 'origin' | 'destination') => {
+    clearTimeout(commuteSearchTimers[kind]);
+    commuteSearchRequests[kind] += 1;
+    commuteSearchResults[kind] = [];
+    if (commuteSearchQueries[kind].trim().length < 3) return;
+    commuteSearchSessionTokens[kind] ||= crypto.randomUUID();
+    const request = commuteSearchRequests[kind];
+    commuteSearchTimers[kind] = setTimeout(async () => {
+      try {
+        const parameters = new URLSearchParams({
+          q: commuteSearchQueries[kind],
+          sessionToken: commuteSearchSessionTokens[kind]
+        });
+        const response = await fetch(`/commute-point-search?${parameters}`);
+        const result = (await response.json()) as { outcome?: string; suggestions?: CommuteAddressSuggestion[]; reason?: string };
+        if (request !== commuteSearchRequests[kind]) return;
+        commuteSearchResults[kind] = result.outcome === 'available' ? result.suggestions ?? [] : [];
+        if (result.outcome === 'unavailable') {
+          commuteRouteStatus = result.reason === 'places-monthly-cap'
+            ? 'Monthly address search limit has been reached.'
+            : 'Address search is unavailable right now.';
+          commuteRouteStatusTone = 'warning';
+        }
+      } catch {
+        if (request === commuteSearchRequests[kind]) commuteSearchResults[kind] = [];
+      }
+    }, 300);
+  };
+  const selectCommuteSuggestion = async (kind: 'origin' | 'destination', suggestion: CommuteAddressSuggestion) => {
+    clearTimeout(commuteSearchTimers[kind]);
+    const selectionRequest = ++commuteSearchRequests[kind];
+    commuteSearchResults[kind] = [];
+    commuteRouteStatus = 'Resolving selected address...';
     commuteRouteStatusTone = 'neutral';
     try {
       const response = await fetch('/commute-point-selection', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ latitude, longitude })
+        body: JSON.stringify({
+          placeId: suggestion.placeId,
+          sessionToken: commuteSearchSessionTokens[kind]
+        })
       });
       const result = (await response.json()) as { outcome?: string; point?: CommutePoint; reason?: string };
-      if (!response.ok || result.outcome !== 'available' || !result.point) {
-        commuteRouteStatus = `Commute point selection is unavailable${result.reason ? ` (${result.reason})` : ''}.`;
-        commuteRouteStatusTone = 'error';
+      if (selectionRequest !== commuteSearchRequests[kind]) return;
+      if (result.outcome !== 'available' || !result.point) {
+        commuteRouteStatus = result.reason === 'places-monthly-cap'
+          ? 'Monthly address search limit has been reached.'
+          : 'The selected address could not be resolved.';
+        commuteRouteStatusTone = 'warning';
         return;
       }
+      commuteSearchQueries[kind] = result.point.label;
       if (kind === 'origin') commuteOrigin = result.point;
       else commuteDestination = result.point;
+      commuteSearchSessionTokens[kind] = '';
       commuteRouteStatus = `Commute ${kind === 'origin' ? 'Origin' : 'Destination'} selected.`;
       commuteRouteStatusTone = 'success';
     } catch {
-      commuteRouteStatus = 'Commute point selection is unavailable right now.';
+      if (selectionRequest !== commuteSearchRequests[kind]) return;
+      commuteRouteStatus = 'The selected address could not be resolved.';
       commuteRouteStatusTone = 'error';
     }
   };
   const clearCommuteRouteDraft = () => {
     editingCommuteRouteId = null;
+    for (const kind of ['origin', 'destination'] as const) {
+      clearTimeout(commuteSearchTimers[kind]);
+      commuteSearchRequests[kind] += 1;
+    }
+    commuteSearchResults = { origin: [], destination: [] };
     commuteRouteName = '';
     commuteOrigin = null;
     commuteDestination = null;
-    commuteOriginLatitude = '52.2285';
-    commuteOriginLongitude = '21.0037';
-    commuteDestinationLatitude = '52.2318';
-    commuteDestinationLongitude = '21.0067';
+    commuteSearchQueries = { origin: '', destination: '' };
+    commuteSearchSessionTokens = { origin: '', destination: '' };
   };
   const requestCommutePreviewDuration = async (route: { origin: CommutePoint; destination: CommutePoint }) => {
     const response = await fetch('/commute-estimate', {
@@ -778,10 +812,8 @@
     commuteRouteName = route.name;
     commuteOrigin = route.origin;
     commuteDestination = route.destination;
-    commuteOriginLatitude = route.origin.latitude.toString();
-    commuteOriginLongitude = route.origin.longitude.toString();
-    commuteDestinationLatitude = route.destination.latitude.toString();
-    commuteDestinationLongitude = route.destination.longitude.toString();
+    commuteSearchQueries = { origin: route.origin.label, destination: route.destination.label };
+    commuteSearchSessionTokens = { origin: '', destination: '' };
     commuteRouteStatus = `Editing route: ${route.name}.`;
     commuteRouteStatusTone = 'neutral';
   };
@@ -1761,41 +1793,36 @@
                 {:else}
                   <p class="mt-1 text-sm text-stone-600">No point selected.</p>
                 {/if}
-                <div class="mt-3 grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
+                <div class="mt-3 grid gap-2">
                   <input
                     class="h-10 rounded-md border border-stone-300 px-3"
-                    aria-label={`${selection.label} Latitude`}
-                    value={selection.kind === 'origin' ? commuteOriginLatitude : commuteDestinationLatitude}
+                    aria-label={`${selection.label} Search`}
+                    value={commuteSearchQueries[selection.kind]}
                     disabled={!localSetupHydrated}
-                    inputmode="decimal"
-                    placeholder="Latitude"
+                    role="combobox"
+                    aria-autocomplete="list"
+                    aria-controls={`commute-${selection.kind}-suggestions`}
+                    aria-expanded={commuteSearchResults[selection.kind].length > 0}
+                    placeholder="Search place"
                     oninput={(event) => {
-                      if (selection.kind === 'origin') commuteOriginLatitude = readInputValue(event);
-                      else commuteDestinationLatitude = readInputValue(event);
+                      commuteSearchQueries[selection.kind] = readInputValue(event);
+                      if (selection.kind === 'origin') commuteOrigin = null;
+                      else commuteDestination = null;
+                      suggestCommutePoints(selection.kind);
                     }}
                   />
-                  <input
-                    class="h-10 rounded-md border border-stone-300 px-3"
-                    aria-label={`${selection.label} Longitude`}
-                    value={selection.kind === 'origin' ? commuteOriginLongitude : commuteDestinationLongitude}
-                    disabled={!localSetupHydrated}
-                    inputmode="decimal"
-                    placeholder="Longitude"
-                    oninput={(event) => {
-                      if (selection.kind === 'origin') commuteOriginLongitude = readInputValue(event);
-                      else commuteDestinationLongitude = readInputValue(event);
-                    }}
-                  />
-                  <button
-                    class="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-stone-300 px-4 text-sm font-semibold text-stone-800 hover:bg-stone-50"
-                    type="button"
-                    disabled={!localSetupHydrated}
-                    onclick={() => selectCommutePoint(selection.kind)}
-                  >
-                    <MapPin size={18} aria-hidden="true" />
-                    Select
-                  </button>
                 </div>
+                {#if commuteSearchResults[selection.kind].length > 0}
+                  <ul class="mt-2 grid gap-2" id={`commute-${selection.kind}-suggestions`} role="listbox" aria-label={`${selection.label} search results`}>
+                    {#each commuteSearchResults[selection.kind] as result}
+                      <li class="flex items-center justify-between gap-3 rounded-md border border-stone-200 px-3 py-2" role="option" aria-selected="false">
+                        <p class="font-medium text-stone-950">{result.label}</p>
+                        <button class="rounded-md bg-emerald-700 px-3 py-2 text-sm font-semibold text-white" type="button" onclick={() => void selectCommuteSuggestion(selection.kind, result)}>Select</button>
+                      </li>
+                    {/each}
+                    <li class="text-right text-xs text-stone-500" aria-hidden="true">Powered by Google</li>
+                  </ul>
+                {/if}
               </div>
             {/each}
 
