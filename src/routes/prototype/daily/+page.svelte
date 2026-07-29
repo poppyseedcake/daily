@@ -43,6 +43,7 @@
     History,
     Inbox,
     ListTodo,
+    LogOut,
     MapPin,
     Menu,
     Pause,
@@ -85,6 +86,20 @@
     to: string;
     days: Weekday[];
   };
+  type CalendarSource = {
+    id: string;
+    name: string;
+    color: string;
+    enabled: boolean;
+  };
+  type CalendarEvent = {
+    id: number;
+    date: string;
+    time: string;
+    title: string;
+    calendarId: string;
+    detail?: string;
+  };
 
   const variants: Array<{ key: Variant; name: string }> = [
     { key: 'a', name: 'Daily Desk' },
@@ -105,6 +120,14 @@
     { name: 'Łódź', country: 'Poland', temperature: 21, condition: 'Cloudy' }
   ];
   const weekdays: Weekday[] = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  const calendarEvents: CalendarEvent[] = [
+    { id: 1, date: 'Today · Tue 28 Jul', time: '09:30', title: 'Design sync', calendarId: 'work', detail: 'Google Meet' },
+    { id: 2, date: 'Today · Tue 28 Jul', time: '14:00', title: 'Dentist appointment', calendarId: 'personal', detail: 'Marszałkowska 18' },
+    { id: 3, date: 'Wed 29 Jul', time: '11:00', title: 'Weekly planning', calendarId: 'work', detail: 'Room 4B' },
+    { id: 4, date: 'Fri 31 Jul', time: '18:30', title: 'Dinner with Marta', calendarId: 'personal' },
+    { id: 5, date: 'Sun 2 Aug', time: 'All day', title: 'Anna’s birthday', calendarId: 'birthdays' },
+    { id: 6, date: 'Mon 3 Aug', time: '10:00', title: 'Roadmap review', calendarId: 'work', detail: 'Google Meet' }
+  ];
 
   let tasks = $state<PrototypeTask[]>([
     { id: 1, title: 'Send revised proposal', category: 'Today', urgency: 'high', done: false },
@@ -153,6 +176,21 @@
   let commuteTo = $state('');
   let commuteDays = $state<Weekday[]>([]);
   let nextCommuteId = 3;
+  let googleCalendarConnected = $state(false);
+  let calendarJustDisconnected = $state(false);
+  let calendarAuthOpen = $state(false);
+  let calendarAgendaOpen = $state(false);
+  let calendarSettingsOpen = $state(false);
+  let calendarDisconnectConfirm = $state(false);
+  let calendarTile = $state<HTMLButtonElement>();
+  let calendarAuthDialog = $state<HTMLDialogElement>();
+  let calendarAgendaDialog = $state<HTMLDialogElement>();
+  let calendarSettingsDialog = $state<HTMLDialogElement>();
+  let calendarSources = $state<CalendarSource[]>([
+    { id: 'personal', name: 'Personal', color: '#617d49', enabled: true },
+    { id: 'work', name: 'Work', color: '#4f6f9f', enabled: true },
+    { id: 'birthdays', name: 'Birthdays', color: '#d6a52d', enabled: false }
+  ]);
   let editingTaskId = $state<number | null>(null);
   let editingTaskTitle = $state('');
   let editingTaskUrgency = $state<PrototypeTask['urgency']>('low');
@@ -187,6 +225,20 @@
         ? commuteRoutes[0].to
         : `${commuteRoutes.length} routes`
   );
+  const visibleCalendarEvents = $derived(
+    calendarEvents.filter((event) =>
+      calendarSources.some((source) => source.id === event.calendarId && source.enabled)
+    )
+  );
+  const calendarAgenda = $derived(
+    [...new Set(calendarEvents.map((event) => event.date))]
+      .map((date) => ({
+        date,
+        events: visibleCalendarEvents.filter((event) => event.date === date)
+      }))
+      .filter((day) => day.events.length)
+  );
+  const enabledCalendarCount = $derived(calendarSources.filter((source) => source.enabled).length);
 
   const setVariant = (next: Variant) => {
     const nextUrl = new URL(page.url);
@@ -427,6 +479,74 @@
     if (editingCommuteId === null || editingCommuteId === 0) return;
     commuteRoutes = commuteRoutes.filter((route) => route.id !== editingCommuteId);
     editingCommuteId = null;
+  };
+
+  const openCalendarAgenda = async () => {
+    if (!googleCalendarConnected) {
+      calendarJustDisconnected = false;
+      calendarAuthOpen = true;
+      await tick();
+      calendarAuthDialog?.showModal();
+      calendarAuthDialog?.focus();
+      return;
+    }
+
+    calendarAgendaOpen = true;
+    await tick();
+    calendarAgendaDialog?.showModal();
+    calendarAgendaDialog?.focus();
+  };
+
+  const closeCalendarAgenda = () => {
+    calendarAgendaDialog?.close();
+    calendarAgendaOpen = false;
+    calendarTile?.focus();
+  };
+
+  const closeCalendarAuth = () => {
+    calendarAuthDialog?.close();
+    calendarAuthOpen = false;
+    calendarTile?.focus();
+  };
+
+  const authorizeGoogleCalendar = async () => {
+    calendarAuthDialog?.close();
+    calendarAuthOpen = false;
+    googleCalendarConnected = true;
+    await openCalendarAgenda();
+  };
+
+  const openCalendarSettings = async () => {
+    closeCalendarAgenda();
+    calendarDisconnectConfirm = false;
+    calendarSettingsOpen = true;
+    await tick();
+    calendarSettingsDialog?.showModal();
+    calendarSettingsDialog?.focus();
+  };
+
+  const closeCalendarSettings = (returnFocus = true) => {
+    calendarSettingsDialog?.close();
+    calendarSettingsOpen = false;
+    calendarDisconnectConfirm = false;
+    if (returnFocus) calendarTile?.focus();
+  };
+
+  const returnToCalendarAgenda = async () => {
+    closeCalendarSettings(false);
+    await openCalendarAgenda();
+  };
+
+  const toggleCalendarSource = (id: string) => {
+    calendarSources = calendarSources.map((source) =>
+      source.id === id ? { ...source, enabled: !source.enabled } : source
+    );
+  };
+
+  const disconnectGoogleCalendar = () => {
+    closeCalendarSettings();
+    googleCalendarConnected = false;
+    calendarJustDisconnected = true;
   };
 
   const toggleTask = (id: number) => {
@@ -972,10 +1092,33 @@
           <span><small>Commute</small><strong>{commuteSummary}</strong></span>
           <ChevronRight size={15} aria-hidden="true" />
         </button>
-        <div class="board-status-item">
+        <button
+          bind:this={calendarTile}
+          class="board-status-item board-status-item--interactive board-calendar-status"
+          type="button"
+          aria-haspopup="dialog"
+          aria-label={googleCalendarConnected
+            ? `Open calendar. ${visibleCalendarEvents.length} events this week.`
+            : 'Connect Google Calendar'}
+          onclick={() => void openCalendarAgenda()}
+        >
           <CalendarDays size={18} />
-          <span><small>Calendar</small><strong>Demo · 3 events</strong></span>
-        </div>
+          <span>
+            <small>
+              Calendar{googleCalendarConnected
+                ? ' · Google'
+                : calendarJustDisconnected
+                  ? ' · Disconnected'
+                  : ' · Not connected'}
+            </small>
+            <strong>
+              {googleCalendarConnected
+                ? `${visibleCalendarEvents.length} events this week`
+                : 'Connect Google Calendar'}
+            </strong>
+          </span>
+          <ChevronRight size={15} aria-hidden="true" />
+        </button>
         <div class="board-status-item board-summary-status">
           {#if deliveryEnabled}<Send size={18} />{:else}<Pause size={18} />{/if}
           <span><small>Summary delivery</small><strong>{deliveryEnabled ? 'Ready after sign-in' : 'Paused'}</strong></span>
@@ -1129,6 +1272,175 @@
       </section>
     </section>
   </main>
+{/if}
+
+{#if calendarAuthOpen}
+  <dialog
+    bind:this={calendarAuthDialog}
+    class="placement-dialog calendar-auth-dialog"
+    aria-labelledby="calendar-auth-title"
+    aria-describedby="calendar-auth-description"
+    tabindex="-1"
+    oncancel={(event) => {
+      event.preventDefault();
+      closeCalendarAuth();
+    }}
+  >
+    <span class="google-mark calendar-auth-mark" aria-hidden="true">G</span>
+    <span class="placement-kicker">Google Calendar</span>
+    <h2 id="calendar-auth-title">Connect your calendar</h2>
+    <p id="calendar-auth-description">
+      Continue to Google to choose an account and allow read-only access to your calendars.
+    </p>
+    <div class="calendar-auth-scope">
+      <CalendarDays size={18} aria-hidden="true" />
+      <span><strong>View calendar events</strong><small>Daily cannot create, edit or delete events.</small></span>
+    </div>
+    <footer>
+      <button type="button" aria-label="Cancel Google Calendar connection" onclick={closeCalendarAuth}>
+        <X size={21} />
+      </button>
+      <button class="calendar-google-button" type="button" onclick={() => void authorizeGoogleCalendar()}>
+        Continue with Google
+        <ArrowRight size={17} />
+      </button>
+    </footer>
+  </dialog>
+{/if}
+
+{#if calendarAgendaOpen}
+  <dialog
+    bind:this={calendarAgendaDialog}
+    class="placement-dialog calendar-dialog"
+    aria-labelledby="calendar-agenda-title"
+    tabindex="-1"
+    oncancel={(event) => {
+      event.preventDefault();
+      closeCalendarAgenda();
+    }}
+  >
+    <header class="calendar-dialog-heading">
+      <span aria-hidden="true"></span>
+      <div>
+        <span class="placement-kicker">Google Calendar</span>
+        <h2 id="calendar-agenda-title">Next 7 days</h2>
+      </div>
+      <button
+        type="button"
+        aria-label="Calendar settings"
+        title="Calendar settings"
+        onclick={() => void openCalendarSettings()}
+      >
+        <Settings size={18} />
+      </button>
+    </header>
+
+    <div class="calendar-agenda">
+      {#each calendarAgenda as day (day.date)}
+        <section>
+          <h3>{day.date}</h3>
+          <div>
+            {#each day.events as event (event.id)}
+              {@const source = calendarSources.find((item) => item.id === event.calendarId)}
+              <article class="calendar-event">
+                <time>{event.time}</time>
+                <span
+                  class="calendar-event-dot"
+                  style={`--calendar-color: ${source?.color ?? '#617d49'}`}
+                  aria-hidden="true"
+                ></span>
+                <div>
+                  <strong>{event.title}</strong>
+                  <small>
+                    {source?.name}{event.detail ? ` · ${event.detail}` : ''}
+                  </small>
+                </div>
+              </article>
+            {/each}
+          </div>
+        </section>
+      {:else}
+        <div class="calendar-empty">
+          <CalendarDays size={20} aria-hidden="true" />
+          <strong>No events to show</strong>
+          <span>Choose at least one calendar in settings.</span>
+        </div>
+      {/each}
+    </div>
+
+    <footer>
+      <button type="button" aria-label="Close calendar" onclick={closeCalendarAgenda}>
+        <X size={21} />
+      </button>
+      <span>{enabledCalendarCount} {enabledCalendarCount === 1 ? 'calendar' : 'calendars'}</span>
+    </footer>
+  </dialog>
+{/if}
+
+{#if calendarSettingsOpen}
+  <dialog
+    bind:this={calendarSettingsDialog}
+    class="placement-dialog calendar-dialog calendar-settings-dialog"
+    aria-labelledby="calendar-settings-title"
+    tabindex="-1"
+    oncancel={(event) => {
+      event.preventDefault();
+      void returnToCalendarAgenda();
+    }}
+  >
+    <header class="calendar-dialog-heading">
+      <button type="button" aria-label="Back to events" onclick={() => void returnToCalendarAgenda()}>
+        <ArrowLeft size={18} />
+      </button>
+      <div>
+        <span class="placement-kicker">Google Calendar</span>
+        <h2 id="calendar-settings-title">Calendars</h2>
+      </div>
+      <span aria-hidden="true"></span>
+    </header>
+
+    <div class="calendar-source-list" role="group" aria-label="Calendars shown in Daily">
+      {#each calendarSources as source (source.id)}
+        <button
+          type="button"
+          aria-pressed={source.enabled}
+          onclick={() => toggleCalendarSource(source.id)}
+        >
+          <span class="calendar-source-color" style={`--calendar-color: ${source.color}`}></span>
+          <span>
+            <strong>{source.name}</strong>
+            <small>{calendarEvents.filter((event) => event.calendarId === source.id).length} upcoming</small>
+          </span>
+          <span class="calendar-source-switch" aria-hidden="true"><i></i></span>
+        </button>
+      {/each}
+    </div>
+
+    {#if calendarDisconnectConfirm}
+      <div class="calendar-disconnect-confirm" role="alert">
+        <div>
+          <strong>Disconnect Google Calendar?</strong>
+          <p>Events from jan.kowalski@gmail.com will no longer appear in Daily.</p>
+        </div>
+        <div>
+          <button type="button" onclick={() => (calendarDisconnectConfirm = false)}>Keep connected</button>
+          <button type="button" onclick={disconnectGoogleCalendar}>Disconnect</button>
+        </div>
+      </div>
+    {:else}
+      <div class="calendar-account">
+        <span class="google-mark" aria-hidden="true">G</span>
+        <span>
+          <strong>jan.kowalski@gmail.com</strong>
+          <small>Google account</small>
+        </span>
+        <button type="button" onclick={() => (calendarDisconnectConfirm = true)}>
+          <LogOut size={16} />
+          Disconnect
+        </button>
+      </div>
+    {/if}
+  </dialog>
 {/if}
 
 {#if commuteDialogOpen}
@@ -2587,6 +2899,10 @@
     outline-offset: 2px;
   }
 
+  .board-calendar-status > :global(svg:first-child) {
+    color: #4c6f35;
+  }
+
   .board-status-ribbon small,
   .board-status-ribbon strong {
     display: block;
@@ -3688,6 +4004,411 @@
     color: #92978f;
   }
 
+  /* Calendar — a quiet weekly agenda with settings one level deeper */
+  .calendar-auth-dialog {
+    width: min(400px, calc(100% - 32px));
+    text-align: center;
+  }
+
+  .calendar-auth-mark {
+    margin: 0 auto 12px;
+  }
+
+  .placement-dialog.calendar-auth-dialog h2 {
+    position: static;
+    width: auto;
+    height: auto;
+    margin: 0;
+    overflow: visible;
+    clip: auto;
+    color: #20251f;
+    font-size: 21px;
+    font-weight: 730;
+    letter-spacing: -0.025em;
+    line-height: 1.2;
+    white-space: normal;
+  }
+
+  .calendar-auth-dialog > p {
+    max-width: 34ch;
+    margin: 10px auto 20px;
+    color: #636c60;
+    font-size: 11px;
+    line-height: 1.55;
+  }
+
+  .calendar-auth-scope {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    gap: 11px;
+    border-block: 1px solid #dfe3dc;
+    color: #587044;
+    padding: 14px 4px;
+    text-align: left;
+  }
+
+  .calendar-auth-scope strong,
+  .calendar-auth-scope small {
+    display: block;
+  }
+
+  .calendar-auth-scope strong {
+    color: #30352e;
+    font-size: 11px;
+  }
+
+  .calendar-auth-scope small {
+    margin-top: 3px;
+    color: #71796e;
+    font-size: 9px;
+  }
+
+  .calendar-auth-dialog > footer {
+    margin-top: 20px;
+  }
+
+  .calendar-auth-dialog > footer > .calendar-google-button {
+    width: auto;
+    gap: 8px;
+    padding: 0 13px;
+    font-size: 10px;
+    font-weight: 750;
+  }
+
+  .calendar-dialog {
+    width: min(460px, calc(100% - 32px));
+    padding: 20px 22px 18px;
+  }
+
+  .calendar-dialog-heading {
+    display: grid;
+    grid-template-columns: 40px minmax(0, 1fr) 40px;
+    align-items: start;
+    margin-bottom: 17px;
+  }
+
+  .placement-dialog.calendar-dialog h2 {
+    position: static;
+    width: auto;
+    height: auto;
+    margin: 0;
+    overflow: visible;
+    clip: auto;
+    color: #20251f;
+    font-size: 21px;
+    font-weight: 730;
+    letter-spacing: -0.025em;
+    line-height: 1.2;
+    text-align: center;
+    white-space: normal;
+  }
+
+  .calendar-dialog-heading .placement-kicker {
+    margin-top: 3px;
+  }
+
+  .calendar-dialog-heading > button {
+    width: 38px;
+    height: 38px;
+    display: grid;
+    place-items: center;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: #687064;
+  }
+
+  .calendar-dialog-heading > button:hover {
+    background: #f0f2ed;
+    color: #425438;
+  }
+
+  .calendar-agenda {
+    max-height: min(510px, calc(100dvh - 184px));
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+  }
+
+  .calendar-agenda > section + section {
+    margin-top: 18px;
+  }
+
+  .calendar-agenda h3 {
+    margin: 0 0 6px;
+    color: #687064;
+    font-size: 9px;
+    font-weight: 780;
+  }
+
+  .calendar-agenda > section > div {
+    border-top: 1px solid #dfe3dc;
+  }
+
+  .calendar-event {
+    min-height: 58px;
+    display: grid;
+    grid-template-columns: 48px 8px minmax(0, 1fr);
+    align-items: center;
+    gap: 10px;
+    border-bottom: 1px solid #e3e7e0;
+    padding: 8px 4px;
+  }
+
+  .calendar-event time {
+    color: #626a5f;
+    font-size: 10px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .calendar-event-dot,
+  .calendar-source-color {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--calendar-color);
+  }
+
+  .calendar-event > div {
+    min-width: 0;
+  }
+
+  .calendar-event strong,
+  .calendar-event small {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .calendar-event strong {
+    color: #272c25;
+    font-size: 12px;
+    line-height: 1.35;
+  }
+
+  .calendar-event small {
+    margin-top: 3px;
+    color: #6f776c;
+    font-size: 9px;
+  }
+
+  .calendar-dialog > footer {
+    justify-content: space-between;
+    margin-top: 16px;
+  }
+
+  .calendar-dialog > footer > span {
+    color: #747b71;
+    font-size: 9px;
+  }
+
+  .calendar-dialog > footer > button:last-child {
+    border-color: #d9ded5;
+    background: #ffffff;
+    color: #687064;
+  }
+
+  .calendar-empty {
+    min-height: 180px;
+    display: grid;
+    place-items: center;
+    align-content: center;
+    gap: 5px;
+    color: #737a70;
+    text-align: center;
+  }
+
+  .calendar-empty strong {
+    margin-top: 4px;
+    font-size: 12px;
+  }
+
+  .calendar-empty span {
+    font-size: 10px;
+  }
+
+  .calendar-settings-dialog {
+    padding-bottom: 22px;
+  }
+
+  .calendar-source-list {
+    border-top: 1px solid #dfe3dc;
+  }
+
+  .calendar-source-list > button {
+    width: 100%;
+    min-height: 62px;
+    display: grid;
+    grid-template-columns: 10px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 12px;
+    border: 0;
+    border-bottom: 1px solid #e1e5de;
+    background: transparent;
+    color: #2d322b;
+    padding: 8px 4px;
+    text-align: left;
+  }
+
+  .calendar-source-list > button:hover {
+    background: #f2f4ef;
+  }
+
+  .calendar-source-list strong,
+  .calendar-source-list small {
+    display: block;
+  }
+
+  .calendar-source-list strong {
+    font-size: 12px;
+  }
+
+  .calendar-source-list small {
+    margin-top: 3px;
+    color: #71796e;
+    font-size: 9px;
+  }
+
+  .calendar-source-switch {
+    position: relative;
+    width: 32px;
+    height: 18px;
+    border-radius: 999px;
+    background: #c9cec5;
+    transition: background 150ms ease;
+  }
+
+  .calendar-source-switch i {
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: #ffffff;
+    box-shadow: 0 1px 3px rgb(28 33 25 / 0.22);
+    transition: transform 150ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .calendar-source-list > button[aria-pressed='true'] .calendar-source-switch {
+    background: #617d49;
+  }
+
+  .calendar-source-list > button[aria-pressed='true'] .calendar-source-switch i {
+    transform: translateX(14px);
+  }
+
+  .calendar-account {
+    display: grid;
+    grid-template-columns: 30px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 10px;
+    margin-top: 22px;
+    border-top: 1px solid #dfe3dc;
+    padding-top: 17px;
+  }
+
+  .google-mark {
+    width: 28px;
+    height: 28px;
+    display: grid;
+    place-items: center;
+    border: 1px solid #d9ded5;
+    border-radius: 50%;
+    background: #ffffff;
+    color: #4285f4;
+    font-size: 13px;
+    font-weight: 800;
+  }
+
+  .calendar-account > span:nth-child(2) {
+    min-width: 0;
+  }
+
+  .calendar-account strong,
+  .calendar-account small {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .calendar-account strong {
+    color: #30352e;
+    font-size: 10px;
+  }
+
+  .calendar-account small {
+    margin-top: 2px;
+    color: #747b71;
+    font-size: 8px;
+  }
+
+  .calendar-account button {
+    min-height: 36px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    border: 1px solid #e1d2cf;
+    border-radius: 8px;
+    background: #ffffff;
+    color: #9a473f;
+    padding: 0 10px;
+    font: inherit;
+    font-size: 9px;
+    font-weight: 720;
+  }
+
+  .calendar-account button:hover {
+    background: #fbf5f4;
+  }
+
+  .calendar-disconnect-confirm {
+    display: grid;
+    gap: 14px;
+    margin-top: 22px;
+    border-top: 1px solid #e1d2cf;
+    padding-top: 17px;
+  }
+
+  .calendar-disconnect-confirm strong {
+    color: #402d2a;
+    font-size: 11px;
+  }
+
+  .calendar-disconnect-confirm p {
+    margin: 5px 0 0;
+    color: #756863;
+    font-size: 9px;
+    line-height: 1.5;
+  }
+
+  .calendar-disconnect-confirm > div:last-child {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+
+  .calendar-disconnect-confirm button {
+    min-height: 38px;
+    border: 1px solid #d9ded5;
+    border-radius: 8px;
+    background: #ffffff;
+    color: #626a5f;
+    padding: 0 11px;
+    font: inherit;
+    font-size: 9px;
+    font-weight: 720;
+  }
+
+  .calendar-disconnect-confirm button:last-child {
+    border-color: #a75047;
+    background: #a75047;
+    color: #ffffff;
+  }
+
   /* Commute routes — overview first, details only while editing */
   .commute-dialog {
     width: min(430px, calc(100% - 32px));
@@ -4760,6 +5481,39 @@
 
     .placement-dialog > footer > button {
       justify-content: center;
+    }
+
+    .calendar-dialog > footer {
+      align-items: center;
+      flex-direction: row;
+    }
+
+    .calendar-dialog > footer > button {
+      width: 44px;
+    }
+
+    .calendar-dialog-heading > button {
+      width: 44px;
+      height: 44px;
+    }
+
+    .calendar-account {
+      grid-template-columns: 30px minmax(0, 1fr);
+    }
+
+    .calendar-account > button {
+      grid-column: 1 / -1;
+      min-height: 44px;
+      justify-content: center;
+      margin-top: 4px;
+    }
+
+    .calendar-disconnect-confirm button {
+      min-height: 44px;
+    }
+
+    .calendar-auth-dialog > footer > .calendar-google-button {
+      width: 100%;
     }
 
     .sheet-task > button:last-child {
