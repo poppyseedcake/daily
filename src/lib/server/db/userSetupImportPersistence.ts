@@ -55,6 +55,7 @@ const persistedCommuteRouteSchema = z.object({
   destinationLatitude: commutePointSchema.shape.latitude,
   destinationLongitude: commutePointSchema.shape.longitude,
   previewDurationMinutes: z.number().int().nonnegative().nullable(),
+  days: commuteDaysSchema,
   enabled: z.boolean(),
   position: z.number().int().positive()
 });

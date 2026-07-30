@@ -102,6 +102,7 @@ export type UserSetupImportDraft = {
     destinationLatitude: number;
     destinationLongitude: number;
     previewDurationMinutes: number | null;
+    days: CommuteDay[];
     enabled: boolean;
     position: number;
   }>;
@@ -192,6 +193,28 @@ const fallbackLoadResult = (outcome: LocalSetupLoadOutcome) => ({
   setup: createDefaultLocalSetup()
 });
 
+const withMigratedCommuteRouteDays = (setup: unknown): unknown => {
+  if (
+    typeof setup !== 'object' ||
+    setup === null ||
+    !('commuteRoutes' in setup) ||
+    !Array.isArray(setup.commuteRoutes) ||
+    !('commuteDays' in setup) ||
+    !Array.isArray(setup.commuteDays)
+  ) {
+    return setup;
+  }
+
+  return {
+    ...setup,
+    commuteRoutes: setup.commuteRoutes.map((route) =>
+      typeof route === 'object' && route !== null && !('days' in route)
+        ? { ...route, days: setup.commuteDays }
+        : route
+    )
+  };
+};
+
 const sortTasksWithinIncomingCategoryOrder = (tasks: TodoTask[]) => {
   const tasksByCategory = new Map<string | null, TodoTask[]>();
 
@@ -239,7 +262,7 @@ export const loadLocalSetup = (
     return fallbackLoadResult('invalid-json');
   }
 
-  const result = supportedLocalSetupSchema.safeParse(parsedSetup);
+  const result = supportedLocalSetupSchema.safeParse(withMigratedCommuteRouteDays(parsedSetup));
 
   if (result.success) {
     return { outcome: 'loaded', setup: result.data as LocalSetup };
@@ -359,6 +382,7 @@ export const createUserSetupImportDraftFromLocalSetup = (
       destinationLatitude: route.destination.latitude,
       destinationLongitude: route.destination.longitude,
       previewDurationMinutes: route.previewDurationMinutes ?? null,
+      days: route.days,
       enabled: route.enabled,
       position: index + 1
     })),

@@ -139,6 +139,7 @@ test('Visitor creates and keeps a Commute Route from the minimalist route dialog
 
 test('Visitor manages Todo Groups and compact task rows through the Task Board', async ({ page }) => {
   await page.getByRole('button', { name: 'New group' }).click();
+  await expect(page.getByLabel('New Todo Category')).toBeFocused();
   await page.getByLabel('New Todo Category').fill('Work');
   await page.getByRole('button', { name: 'Add Todo Category' }).click();
 
@@ -162,9 +163,57 @@ test('Visitor manages Todo Groups and compact task rows through the Task Board',
   await page.getByRole('checkbox', { name: 'Complete Send final proposal' }).click();
   await expect(workTasks.getByText('Send final proposal')).toHaveCount(0);
 
-  page.once('dialog', (dialog) => dialog.accept());
   await page.getByRole('button', { name: 'Delete Work' }).click();
+  const confirmation = page.getByRole('dialog', { name: 'Delete group?' });
+  await expect(confirmation).toBeVisible();
+  await confirmation.getByRole('button', { name: 'Delete group' }).click();
   await expect(page.getByRole('heading', { name: 'Work' })).toHaveCount(0);
+});
+
+test('Visitor configures Commute Days independently for each route', async ({ page }) => {
+  await page.getByRole('button', { name: 'Commute. 0 routes' }).click();
+  await page.getByRole('button', { name: 'Add route' }).click();
+
+  await expect(page.getByRole('group', { name: 'Route days' })).toBeVisible();
+  await page.getByRole('button', { name: 'Monday route day' }).click();
+  await expect(page.getByRole('button', { name: 'Monday route day' })).toHaveAttribute(
+    'aria-pressed',
+    'false'
+  );
+  await page.getByRole('button', { name: 'Friday route day' }).click();
+  await expect(page.getByRole('button', { name: 'Friday route day' })).toHaveAttribute(
+    'aria-pressed',
+    'false'
+  );
+});
+
+test('Visitor edits Summary Delivery time in a focused modal', async ({ page }) => {
+  await page.getByRole('button', { name: /Summary delivery/ }).click();
+
+  const delivery = page.getByRole('dialog', { name: 'Delivery time' });
+  await expect(delivery).toBeVisible();
+  await expect(delivery.getByLabel('Summary Time')).toBeFocused();
+  await delivery.getByLabel('Summary Time').fill('08:30');
+  await delivery.getByLabel('User Time Zone').selectOption('Asia/Tokyo');
+  await delivery.getByRole('button', { name: 'Save delivery time' }).click();
+
+  await expect(page.getByRole('button', { name: /Summary delivery/ })).toContainText('08:30');
+  await expect(page.getByRole('button', { name: /Summary delivery/ })).toContainText('Asia/Tokyo');
+});
+
+test.describe('Visitor system time zone', () => {
+  test.use({ timezoneId: 'Asia/Tokyo' });
+
+  test('uses the browser time zone for a new Local Setup', async ({ page }) => {
+    await expect(page.getByRole('button', { name: /Summary delivery/ })).toContainText(
+      'Asia/Tokyo'
+    );
+  });
+});
+
+test('Todo board omits redundant persistence and Ungrouped helper copy', async ({ page }) => {
+  await expect(page.getByText('Todo state saved to your account.')).toHaveCount(0);
+  await expect(page.getByText('Tasks waiting for a home')).toHaveCount(0);
 });
 
 test('Visitor reorders Todo Tasks with the keyboard and keeps the order after refresh', async ({

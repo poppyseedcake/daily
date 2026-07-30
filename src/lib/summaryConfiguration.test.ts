@@ -40,6 +40,21 @@ describe('summary configuration validation', () => {
     expect(configuration.sections.todo).toBe(false);
   });
 
+  test('accepts any valid IANA time zone and rejects unknown zones', () => {
+    expect(
+      summaryConfigurationSchema.safeParse({
+        ...defaultSummaryConfiguration,
+        userTimeZone: 'Asia/Tokyo'
+      }).success
+    ).toBe(true);
+    expect(
+      summaryConfigurationSchema.safeParse({
+        ...defaultSummaryConfiguration,
+        userTimeZone: 'Not/A_Time_Zone'
+      }).success
+    ).toBe(false);
+  });
+
   test('rejects invalid user-facing Summary Configuration mutations', () => {
     const result = summaryConfigurationSchema.safeParse({
       summaryTime: 'morning',

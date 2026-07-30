@@ -56,6 +56,56 @@ test('secondary destinations stay outside the main view until requested', async 
   await expect(page.getByRole('dialog', { name: 'Settings' })).toBeVisible();
 });
 
+test.describe('new signed-in User time zone', () => {
+  test.use({ timezoneId: 'Asia/Tokyo' });
+
+  test('uses and persists the browser time zone when no Summary Configuration exists', async ({
+    page
+  }) => {
+    const port = process.env.PLAYWRIGHT_PORT ?? '5173';
+    const database = new Database(join(tmpdir(), `daily-playwright-${port}.db`));
+    const now = Math.floor(Date.now() / 1000);
+    const userId = `timezone-board-user-${crypto.randomUUID()}`;
+    const sessionToken = crypto.randomUUID();
+
+    try {
+      database.prepare('insert into auth_user values (?, ?, ?, true, null, ?, ?)')
+        .run(userId, 'Timezone User', 'timezone@example.com', now, now);
+      database.prepare('insert into auth_session values (?, ?, ?, ?, ?, null, null, ?)')
+        .run(crypto.randomUUID(), now + 3600, sessionToken, now, now, userId);
+      database.prepare(
+        'insert into auth_account (id, account_id, provider_id, user_id, created_at, updated_at) values (?, ?, ?, ?, ?, ?)'
+      ).run(crypto.randomUUID(), `google-${userId}`, 'google', userId, now, now);
+      database.prepare('insert into users (id, google_subject, email) values (?, ?, ?)')
+        .run(userId, `google-${userId}`, 'timezone@example.com');
+
+      await page.context().addCookies([{
+        name: 'better-auth.session_token',
+        value: `${sessionToken}.${await makeSignature(
+          sessionToken,
+          'daily-playwright-auth-secret-at-least-32-characters'
+        )}`,
+        domain: '127.0.0.1',
+        path: '/'
+      }]);
+      await page.goto('/');
+
+      await expect(page.getByRole('button', { name: /Summary delivery/ })).toContainText(
+        'Asia/Tokyo'
+      );
+      await expect.poll(() =>
+        database
+          .prepare('select user_time_zone from summary_configurations where user_id = ?')
+          .get(userId)
+      ).toEqual({ user_time_zone: 'Asia/Tokyo' });
+    } finally {
+      database.prepare('delete from auth_user where id = ?').run(userId);
+      database.prepare('delete from users where id = ?').run(userId);
+      database.close();
+    }
+  });
+});
+
 test('connected User sees the week agenda and can change visible Google Calendars', async ({
   page
 }) => {
@@ -181,6 +231,7 @@ test('signed-in User can inspect Delivery History and irreversibly delete the ac
     }]);
     await page.goto('/');
     await expect(page.getByLabel('New Todo Task')).toBeEnabled();
+    await expect(page.getByText('Todo state saved to your account.')).toHaveCount(0);
 
     await page.getByRole('button', { name: 'Open delivery history' }).click();
     const history = page.getByRole('dialog', { name: 'Delivery history' });

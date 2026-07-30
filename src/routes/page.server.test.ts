@@ -164,6 +164,7 @@ const commuteRoute = (id: string, name: string, enabled = true, previewDurationM
   name,
   origin: { label: `${name} origin`, latitude: 52.1, longitude: 21.1 },
   destination: { label: `${name} destination`, latitude: 52.2, longitude: 21.2 },
+  days: savedCommuteSetup.days,
   previewDurationMinutes,
   enabled
 });
@@ -855,6 +856,7 @@ describe('Daily page server load', () => {
       },
       isAdministrator: false,
       calendarReadiness: userCalendarReadiness,
+      hasSavedSummaryConfiguration: true,
       summaryConfiguration: savedConfiguration,
       todoState: savedTodoState,
       weatherLocation: savedWeatherLocation,
@@ -978,6 +980,7 @@ describe('Daily page server load', () => {
       },
       isAdministrator: false,
       calendarReadiness: userCalendarReadiness,
+      hasSavedSummaryConfiguration: false,
       summaryConfiguration: defaultSummaryConfiguration,
       todoState: {
         todoCategories: [],
@@ -1045,6 +1048,7 @@ describe('Daily page server load', () => {
       },
       isAdministrator: true,
       calendarReadiness: userCalendarReadiness,
+      hasSavedSummaryConfiguration: false,
       summaryConfiguration: defaultSummaryConfiguration,
       todoState: {
         todoCategories: [],

@@ -94,10 +94,20 @@
     { key: 'calendar', label: 'Calendar' },
     { key: 'todo', label: 'Todo' }
   ];
-  const userTimeZones: UserTimeZone[] = ['Europe/Warsaw', 'America/New_York', 'UTC'];
   const initialSummaryConfiguration = summaryConfigurationSchema.parse(
     data?.summaryConfiguration ?? defaultSummaryConfiguration
   );
+  const resolvedSystemTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const availableTimeZones =
+    typeof Intl.supportedValuesOf === 'function'
+      ? Intl.supportedValuesOf('timeZone')
+      : ['Europe/Warsaw', 'America/New_York'];
+  const supportedTimeZones = [
+    initialSummaryConfiguration.userTimeZone,
+    resolvedSystemTimeZone,
+    'UTC',
+    ...availableTimeZones
+  ].filter((timeZone, index, timeZones) => timeZones.indexOf(timeZone) === index);
   const initialTodoState = todoStateSchema.parse(data?.todoState ?? createDefaultTodoState());
   const initialWeatherLocation = data?.weatherLocation
     ? weatherLocationSchema.parse(data.weatherLocation)
@@ -181,6 +191,7 @@
   let commuteDays = $state<CommuteDay[]>([...initialCommuteSetup.days]);
   let editingCommuteRouteId = $state<string | null>(null);
   let commuteRouteName = $state('');
+  let commuteRouteDays = $state<CommuteDay[]>([...defaultCommuteDays]);
   let commuteOrigin = $state<CommutePoint | null>(null);
   let commuteDestination = $state<CommutePoint | null>(null);
   let commuteSearchQueries = $state({ origin: '', destination: '' });
@@ -217,6 +228,15 @@
   let secondaryPanel = $state<'settings' | 'history' | null>(null);
   let secondaryDialog = $state<HTMLDialogElement>();
   let categoryComposerOpen = $state(false);
+  let newCategoryInput = $state<HTMLInputElement>();
+  let categoryPendingDeletion = $state<TodoCategory | null>(null);
+  let categoryDeletionDialog = $state<HTMLDialogElement>();
+  let categoryDeletionCancelButton = $state<HTMLButtonElement>();
+  let summaryDeliveryDialogOpen = $state(false);
+  let summaryDeliveryDialog = $state<HTMLDialogElement>();
+  let summaryDeliveryTimeInput = $state<HTMLInputElement>();
+  let summaryTimeDraft = $state('07:00');
+  let userTimeZoneDraft = $state<UserTimeZone>('UTC');
   let calendarDisconnectConfirmation = $state(false);
 
   onMount(() => {
@@ -226,12 +246,18 @@
         return;
       }
 
+      if (data?.hasSavedSummaryConfiguration === false) {
+        useSystemTimeZone();
+      }
       localSetupHydrated = true;
       todoControlsReady = true;
       return;
     }
 
     const loadOutcome = restoreVisitorLocalSetup();
+    if (loadOutcome === 'empty') {
+      useSystemTimeZone();
+    }
     const restoredSetup = currentLocalSetup();
     hydratedLocalSetupSnapshot = localSetupSnapshot(restoredSetup);
 
@@ -313,6 +339,15 @@
     }
   };
 
+  const systemTimeZone = () => {
+    const result = summaryConfigurationSchema.shape.userTimeZone.safeParse(resolvedSystemTimeZone);
+    return result.success ? result.data : 'UTC';
+  };
+
+  const useSystemTimeZone = () => {
+    patchSummaryConfiguration({ userTimeZone: systemTimeZone() });
+  };
+
   const readInputChecked = (event: Event) => (event.currentTarget as HTMLInputElement).checked;
   const readInputValue = (event: Event) => (event.currentTarget as HTMLInputElement).value;
   const nextId = (prefix: string) => `${prefix}-${nextTodoId++}`;
@@ -366,6 +401,7 @@
     commuteDays = setup.commuteDays;
     editingCommuteRouteId = null;
     commuteRouteName = '';
+    commuteRouteDays = [...defaultCommuteDays];
     commuteOrigin = null;
     commuteDestination = null;
     commuteSearchQueries = { origin: '', destination: '' };
@@ -774,6 +810,7 @@
     }
     commuteSearchResults = { origin: [], destination: [] };
     commuteRouteName = '';
+    commuteRouteDays = [...defaultCommuteDays];
     commuteOrigin = null;
     commuteDestination = null;
     commuteSearchQueries = { origin: '', destination: '' };
@@ -801,7 +838,8 @@
     const result = commuteRouteDraftSchema.safeParse({
       name: commuteRouteName,
       origin: commuteOrigin,
-      destination: commuteDestination
+      destination: commuteDestination,
+      days: commuteRouteDays
     });
     if (!result.success) {
       commuteRouteStatus = 'Provide a valid route name, Origin, and Destination before saving.';
@@ -875,6 +913,7 @@
     commuteEditorOpen = true;
     editingCommuteRouteId = route.id;
     commuteRouteName = route.name;
+    commuteRouteDays = [...route.days];
     commuteOrigin = route.origin;
     commuteDestination = route.destination;
     commuteSearchQueries = { origin: route.origin.label, destination: route.destination.label };
@@ -901,15 +940,13 @@
       candidate.id === route.id ? { ...candidate, enabled: !candidate.enabled } : candidate
     );
   };
-  const toggleCommuteDay = (day: CommuteDay, checked: boolean) => {
+  const toggleCommuteRouteDay = (day: CommuteDay, checked: boolean) => {
     const nextDays = checked
-      ? commuteDayValues.filter((candidate) => candidate === day || commuteDays.includes(candidate))
-      : commuteDays.filter((candidate) => candidate !== day);
-    if (authState.mode === 'user') {
-      void saveUserCommuteDays(nextDays);
-      return;
-    }
-    commuteDays = nextDays;
+      ? commuteDayValues.filter(
+          (candidate) => candidate === day || commuteRouteDays.includes(candidate)
+        )
+      : commuteRouteDays.filter((candidate) => candidate !== day);
+    commuteRouteDays = nextDays;
   };
   const createUserCommuteRoute = async (draft: Omit<CommuteRoute, 'id' | 'enabled'>) => {
     commuteRouteStatus = 'Saving Commute Route to your account...';
@@ -967,24 +1004,6 @@
       commuteRouteStatusTone = response.status === 404 ? 'warning' : 'error';
     } catch {
       commuteRouteStatus = 'Commute Route delete failed. Try again.';
-      commuteRouteStatusTone = 'error';
-    }
-  };
-  const saveUserCommuteDays = async (days: CommuteDay[]) => {
-    commuteRouteStatus = 'Saving Commute Days to your account...';
-    commuteRouteStatusTone = 'neutral';
-    try {
-      const response = await fetch('/commute-days', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(days) });
-      if (response.ok) {
-        commuteDays = days;
-        commuteRouteStatus = 'Commute Days saved to your account.';
-        commuteRouteStatusTone = 'success';
-        return;
-      }
-      commuteRouteStatus = 'Commute Days save failed. Try again.';
-      commuteRouteStatusTone = response.status === 400 ? 'warning' : 'error';
-    } catch {
-      commuteRouteStatus = 'Commute Days save failed. Try again.';
       commuteRouteStatusTone = 'error';
     }
   };
@@ -1345,6 +1364,38 @@
     secondaryPanel = null;
   };
 
+  const openSummaryDeliveryDialog = async () => {
+    summaryTimeDraft = summaryTime;
+    userTimeZoneDraft = userTimeZone;
+    summaryDeliveryDialogOpen = true;
+    await tick();
+    summaryDeliveryDialog?.showModal();
+    summaryDeliveryTimeInput?.focus();
+  };
+
+  const closeSummaryDeliveryDialog = () => {
+    summaryDeliveryDialog?.close();
+    summaryDeliveryDialogOpen = false;
+  };
+
+  const saveSummaryDeliveryTime = () => {
+    const result = summaryConfigurationSchema.safeParse({
+      ...currentSummaryConfiguration(),
+      summaryTime: summaryTimeDraft,
+      userTimeZone: userTimeZoneDraft
+    });
+    if (!result.success) return;
+
+    updateSummaryConfiguration(result.data);
+    closeSummaryDeliveryDialog();
+  };
+
+  const openCategoryComposer = async () => {
+    categoryComposerOpen = true;
+    await tick();
+    newCategoryInput?.focus();
+  };
+
   const startEditingTodoTask = (task: TodoTask) => {
     editingTaskId = task.id;
     editingTaskTitle = task.title;
@@ -1415,11 +1466,9 @@
     editingCategoryName = '';
   };
 
-  const deleteTodoCategory = (category: TodoCategory) => {
-    if (!globalThis.confirm(`Delete ${category.name} and all Todo Tasks inside it?`)) {
-      return;
-    }
-
+  const confirmTodoCategoryDeletion = () => {
+    const category = categoryPendingDeletion;
+    if (!category) return;
     const nextTodoState = deleteTodoCategoryInModule({
       categories: todoCategories,
       tasks: todoTasks,
@@ -1431,6 +1480,20 @@
     if (newTodoCategoryId === category.id) {
       newTodoCategoryId = '';
     }
+    categoryDeletionDialog?.close();
+    categoryPendingDeletion = null;
+  };
+
+  const requestTodoCategoryDeletion = async (category: TodoCategory) => {
+    categoryPendingDeletion = category;
+    await tick();
+    categoryDeletionDialog?.showModal();
+    categoryDeletionCancelButton?.focus();
+  };
+
+  const cancelTodoCategoryDeletion = () => {
+    categoryDeletionDialog?.close();
+    categoryPendingDeletion = null;
   };
   const calendarAgendaDays = $derived(
     authState.mode === 'visitor'
@@ -1801,10 +1864,17 @@
         </span>
         <ChevronRight size={15} />
       </button>
-      <div class="daily-context-tile daily-context-summary">
+      <button
+        class="daily-context-tile daily-context-summary"
+        type="button"
+        aria-label={`Summary delivery. ${summaryDeliveryEnabled ? `${summaryTime}, ${userTimeZone}` : 'Paused'}`}
+        aria-haspopup="dialog"
+        onclick={() => void openSummaryDeliveryDialog()}
+      >
         {#if summaryDeliveryEnabled}<Send size={18} />{:else}<Pause size={18} />{/if}
         <span><small>Summary delivery</small><strong>{summaryDeliveryEnabled ? `${summaryTime} · ${userTimeZone}` : 'Paused'}</strong></span>
-      </div>
+        <ChevronRight size={15} />
+      </button>
     </section>
 
     <form
@@ -1834,7 +1904,7 @@
     <div class="daily-groups-toolbar">
       <div><h2>Groups</h2><span>{todoCategories.length} active</span></div>
       {#if !categoryComposerOpen}
-        <button type="button" onclick={() => (categoryComposerOpen = true)}><Plus size={15} />New group</button>
+        <button type="button" onclick={() => void openCategoryComposer()}><Plus size={15} />New group</button>
       {/if}
     </div>
 
@@ -1851,6 +1921,7 @@
         <label>
           <span>Group name</span>
           <input
+            bind:this={newCategoryInput}
             bind:value={newCategoryName}
             aria-label="New Todo Category"
             maxlength="80"
@@ -1900,7 +1971,7 @@
               <div class="daily-column-actions">
                 <span>{tasksForCategory(category.id).length}</span>
                 <button type="button" aria-label={`Rename ${category.name}`} onclick={() => startEditingTodoCategory(category)}><Pencil size={14} /></button>
-                <button type="button" aria-label={`Delete ${category.name}`} onclick={() => deleteTodoCategory(category)}><Trash2 size={14} /></button>
+                <button type="button" aria-label={`Delete ${category.name}`} onclick={() => void requestTodoCategoryDeletion(category)}><Trash2 size={14} /></button>
               </div>
             {/if}
           </header>
@@ -1912,15 +1983,19 @@
     <section class="daily-ungrouped" aria-labelledby="ungrouped-heading">
       <header>
         <span class="daily-ungrouped-icon"><Inbox size={16} /></span>
-        <div><h2 id="ungrouped-heading">Ungrouped</h2><p>Tasks waiting for a home</p></div>
+        <div><h2 id="ungrouped-heading">Ungrouped</h2></div>
         <span>{tasksForCategory(null).length}</span>
       </header>
       {@render TodoTaskList(null, 'No Category Todo Tasks')}
     </section>
 
-    <p class={`daily-save-state daily-save-state--${authState.mode === 'user' ? userTodoStateStatusTone : localSetupStatusTone}`}>
-      {authState.mode === 'user' ? userTodoStateStatus : localSetupStatus}
-    </p>
+    {#if authState.mode === 'visitor' ||
+      userTodoStateStatusTone === 'error' ||
+      userTodoStateStatusTone === 'warning'}
+      <p class={`daily-save-state daily-save-state--${authState.mode === 'user' ? userTodoStateStatusTone : localSetupStatusTone}`}>
+        {authState.mode === 'user' ? userTodoStateStatus : localSetupStatus}
+      </p>
+    {/if}
   </section>
 </main>
 
@@ -2224,7 +2299,7 @@
   }
 
   .daily-context-summary {
-    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-columns: auto minmax(0, 1fr) auto;
   }
 
   .daily-capture {
@@ -2476,6 +2551,8 @@
     position: relative;
     width: 24px;
     height: 24px;
+    display: grid;
+    place-items: center;
   }
 
   .daily-task-check-label input {
@@ -2513,7 +2590,8 @@
   .daily-priority {
     width: 9px;
     height: 9px;
-    display: inline-block;
+    display: block;
+    align-self: center;
     border-radius: 50%;
   }
 
@@ -2531,6 +2609,7 @@
   }
 
   .daily-task-title {
+    align-self: center;
     min-width: 0;
     overflow: hidden;
     color: #2c302a;
@@ -2542,6 +2621,7 @@
   }
 
   .daily-task-edit {
+    align-self: center;
     width: 32px;
     height: 32px;
     display: grid;
@@ -2613,6 +2693,7 @@
 
   .daily-task-edit-actions {
     display: flex;
+    align-items: center;
     gap: 3px;
   }
 
@@ -2672,12 +2753,6 @@
   .daily-ungrouped h2 {
     margin: 0;
     font-size: 12px;
-  }
-
-  .daily-ungrouped p {
-    margin: 2px 0 0;
-    color: #777e73;
-    font-size: 9px;
   }
 
   .daily-ungrouped > header > span:last-child {
@@ -2777,6 +2852,97 @@
 
   .daily-placement-dialog {
     width: min(360px, calc(100% - 32px));
+  }
+
+  .daily-confirm-dialog {
+    width: min(380px, calc(100% - 32px));
+  }
+
+  .daily-confirm-dialog p {
+    margin: -5px auto 0;
+    max-width: 32ch;
+    color: #687064;
+    font-size: 11px;
+    line-height: 1.55;
+    text-align: center;
+  }
+
+  .daily-confirm-dialog footer {
+    justify-content: flex-end;
+  }
+
+  .daily-confirm-dialog footer button {
+    width: auto;
+    min-width: 92px;
+    padding: 0 14px;
+    font-size: 10px;
+    font-weight: 750;
+  }
+
+  .daily-confirm-dialog footer .is-danger {
+    border-color: #a75047;
+    background: #a75047;
+    color: #fff;
+  }
+
+  .daily-delivery-dialog {
+    width: min(390px, calc(100% - 32px));
+  }
+
+  .daily-delivery-form {
+    display: grid;
+    gap: 16px;
+  }
+
+  .daily-time-field span,
+  .daily-time-zone-field span {
+    display: block;
+    margin-bottom: 6px;
+    color: #687064;
+    font-size: 9px;
+    font-weight: 750;
+  }
+
+  .daily-time-field input {
+    width: 100%;
+    min-height: 86px;
+    border: 1px solid #c8d0c3;
+    border-radius: 12px;
+    outline: 0;
+    background: #fff;
+    color: #263021;
+    font: 720 42px/1 "Helvetica Neue", Helvetica, Arial, sans-serif;
+    letter-spacing: -0.035em;
+    text-align: center;
+  }
+
+  .daily-time-field input:focus,
+  .daily-time-zone-field select:focus {
+    border-color: #6b8556;
+    box-shadow: 0 0 0 3px rgb(92 120 69 / 0.14);
+  }
+
+  .daily-time-zone-field select {
+    width: 100%;
+    min-height: 43px;
+    border: 1px solid #d3d9cf;
+    border-radius: 9px;
+    outline: 0;
+    background: #fff;
+    color: #4d5549;
+    padding: 0 11px;
+    font-size: 11px;
+  }
+
+  .daily-delivery-form footer button:last-child {
+    width: auto;
+    min-width: 112px;
+    border-color: #587542;
+    background: #587542;
+    color: #fff;
+    padding: 0 14px;
+    font-size: 10px;
+    font-weight: 750;
   }
 
   .daily-placement-dialog > h2 {
@@ -3848,6 +4014,77 @@
   }
 </style>
 
+{#if categoryPendingDeletion}
+  <dialog
+    bind:this={categoryDeletionDialog}
+    class="daily-dialog daily-confirm-dialog"
+    aria-labelledby="category-deletion-title"
+    oncancel={(event) => {
+      event.preventDefault();
+      cancelTodoCategoryDeletion();
+    }}
+  >
+    <span class="daily-dialog-kicker">Todo</span>
+    <h2 id="category-deletion-title">Delete group?</h2>
+    <p>
+      “{categoryPendingDeletion.name}” and all tasks inside it will be permanently deleted.
+    </p>
+    <footer>
+      <button bind:this={categoryDeletionCancelButton} type="button" onclick={cancelTodoCategoryDeletion}>Cancel</button>
+      <button class="is-danger" type="button" onclick={confirmTodoCategoryDeletion}>Delete group</button>
+    </footer>
+  </dialog>
+{/if}
+
+{#if summaryDeliveryDialogOpen}
+  <dialog
+    bind:this={summaryDeliveryDialog}
+    class="daily-dialog daily-delivery-dialog"
+    aria-labelledby="summary-delivery-dialog-title"
+    oncancel={(event) => {
+      event.preventDefault();
+      closeSummaryDeliveryDialog();
+    }}
+  >
+    <span class="daily-dialog-kicker">Summary delivery</span>
+    <h2 id="summary-delivery-dialog-title">Delivery time</h2>
+    <form
+      class="daily-delivery-form"
+      onsubmit={(event) => {
+        event.preventDefault();
+        saveSummaryDeliveryTime();
+      }}
+    >
+      <label class="daily-time-field">
+        <span>Time</span>
+        <input
+          bind:this={summaryDeliveryTimeInput}
+          bind:value={summaryTimeDraft}
+          type="time"
+          aria-label="Summary Time"
+          required
+        />
+      </label>
+      <label class="daily-time-zone-field">
+        <span>Time zone</span>
+        <select bind:value={userTimeZoneDraft} aria-label="User Time Zone">
+          {#each supportedTimeZones as timeZone}
+            <option value={timeZone}>
+              {timeZone}{timeZone === systemTimeZone() ? ' · System' : ''}
+            </option>
+          {/each}
+        </select>
+      </label>
+      <footer>
+        <button type="button" aria-label="Cancel delivery time" onclick={closeSummaryDeliveryDialog}><X size={20} /></button>
+        <button type="submit" disabled={!summaryTimeSchema.safeParse(summaryTimeDraft).success}>
+          Save delivery time
+        </button>
+      </footer>
+    </form>
+  </dialog>
+{/if}
+
 {#if taskPlacementOpen}
   <dialog
     bind:this={taskPlacementDialog}
@@ -3979,7 +4216,10 @@
             <span>
               <strong>{route.name}</strong>
               <small>{route.origin.label} → {route.destination.label}</small>
-              <em>{route.enabled ? 'Enabled' : 'Paused'}</em>
+              <em>
+                {route.days.map((day) => day.slice(0, 2).toUpperCase()).join(' · ') || 'No days'}
+                · {route.enabled ? 'Enabled' : 'Paused'}
+              </em>
             </span>
             <Pencil size={15} />
           </button>
@@ -3988,20 +4228,6 @@
         {/each}
       </div>
       <button class="daily-add-route" type="button" onclick={startNewCommuteRoute}><Plus size={17} />Add route</button>
-      <fieldset class="daily-weekdays">
-        <legend>Commute days</legend>
-        <div>
-          {#each commuteDayValues as day}
-            <button
-              class:is-selected={commuteDays.includes(day)}
-              type="button"
-              aria-label={`${day[0]?.toUpperCase()}${day.slice(1)} Commute Day`}
-              aria-pressed={commuteDays.includes(day)}
-              onclick={() => toggleCommuteDay(day, !commuteDays.includes(day))}
-            >{day.slice(0, 1).toUpperCase()}</button>
-          {/each}
-        </div>
-      </fieldset>
       <footer><button type="button" aria-label="Close commute routes" onclick={closeCommuteDialog}><X size={20} /></button></footer>
     {:else}
       <header class="daily-dialog-heading">
@@ -4070,6 +4296,20 @@
             </div>
           {/if}
         {/each}
+        <fieldset class="daily-weekdays" aria-label="Route days">
+          <legend>Route days</legend>
+          <div>
+            {#each commuteDayValues as day}
+              <button
+                class:is-selected={commuteRouteDays.includes(day)}
+                type="button"
+                aria-label={`${day[0]?.toUpperCase()}${day.slice(1)} route day`}
+                aria-pressed={commuteRouteDays.includes(day)}
+                onclick={() => toggleCommuteRouteDay(day, !commuteRouteDays.includes(day))}
+              >{day.slice(0, 1).toUpperCase()}</button>
+            {/each}
+          </div>
+        </fieldset>
         <div class="daily-route-editor-actions">
           {#if editingCommuteRouteId}
             <button class="is-danger" type="button" aria-label={`Delete ${commuteRouteName}`} onclick={() => {
@@ -4238,7 +4478,7 @@
               bind:value={userTimeZone}
               onchange={() => patchSummaryConfiguration({ userTimeZone })}
             >
-              {#each userTimeZones as timeZone}<option value={timeZone}>{timeZone}</option>{/each}
+              {#each supportedTimeZones as timeZone}<option value={timeZone}>{timeZone}</option>{/each}
             </select>
           </label>
         </div>

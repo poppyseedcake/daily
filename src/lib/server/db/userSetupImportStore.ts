@@ -105,7 +105,10 @@ export const createUserSetupImportStore = (
         saveCommuteRoutes(routes) {
           if (routes[0] && !isActiveUser(transaction, routes[0].userId)) return;
           if (routes.length > 0) {
-            transaction.insert(commuteRoutes).values(routes).run();
+            transaction
+              .insert(commuteRoutes)
+              .values(routes.map((route) => ({ ...route, days: JSON.stringify(route.days) })))
+              .run();
           }
         },
         saveCommuteDays(userId, days) {

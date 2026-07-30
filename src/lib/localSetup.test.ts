@@ -98,6 +98,7 @@ describe('Visitor Local Setup module', () => {
     expect(result.setup).not.toHaveProperty('demoCalendar');
     expect(result.setup).not.toHaveProperty('mockWeather');
     expect(result.setup).not.toHaveProperty('mockCommute');
+    expect(result.setup.commuteRoutes[0]?.days).toEqual(storedSetup.commuteDays);
     expect(result.setup.todoTasks[0]?.completed).toBe(false);
   });
 
@@ -317,6 +318,7 @@ describe('Visitor Local Setup module', () => {
         {
           id: 'route-1',
           enabled: true,
+          days: ['monday', 'wednesday'],
           name: 'Morning commute',
           origin: {
             label: 'Warsaw Central Station, Warsaw, Poland',
@@ -332,6 +334,7 @@ describe('Visitor Local Setup module', () => {
         {
           id: 'route-2',
           enabled: false,
+          days: ['tuesday', 'thursday'],
           name: 'Evening commute',
           origin: { label: 'Office', latitude: 52.2318, longitude: 21.0067 },
           destination: { label: 'Home', latitude: 52.2285, longitude: 21.0037 }
@@ -427,6 +430,7 @@ describe('Visitor Local Setup module', () => {
           origin: { label: 'Home', latitude: 52.2297, longitude: 21.0122 },
           destination: { label: 'Office', latitude: 52.2318, longitude: 21.0067 },
           previewDurationMinutes: 24,
+          days: ['monday', 'wednesday', 'sunday'],
           enabled: false
         }
       ],
@@ -565,6 +569,7 @@ describe('Visitor Local Setup module', () => {
           destinationLatitude: 52.2318,
           destinationLongitude: 21.0067,
           previewDurationMinutes: 24,
+          days: ['monday', 'wednesday', 'sunday'],
           enabled: false,
           position: 1
         }

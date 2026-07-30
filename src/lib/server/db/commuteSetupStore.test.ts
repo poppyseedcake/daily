@@ -11,6 +11,7 @@ const createTestDatabase = () => {
   sqlite.exec(readFileSync('drizzle/0000_bootstrap_daily.sql', 'utf8'));
   sqlite.exec(readFileSync('drizzle/0010_add_commute_setup.sql', 'utf8'));
   sqlite.exec(readFileSync('drizzle/0016_add_commute_preview_duration.sql', 'utf8'));
+  sqlite.exec(readFileSync('drizzle/0019_add_commute_route_days.sql', 'utf8'));
   return { sqlite, database: drizzle(sqlite, { schema }) };
 };
 
@@ -18,10 +19,14 @@ const saveUser = (sqlite: Database.Database, id: string) => {
   sqlite.prepare('insert into users (id, google_subject, email, created_at, updated_at) values (?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)').run(id, `google-${id}`, `${id}@example.com`);
 };
 
-const routeDraft = (name: string) => ({
+const routeDraft = (
+  name: string,
+  days: Array<'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday'> = ['monday']
+) => ({
   name,
   origin: { label: 'Home', latitude: 52.2297, longitude: 21.0122 },
   destination: { label: 'Office', latitude: 52.2318, longitude: 21.0067 },
+  days,
   previewDurationMinutes: 17
 });
 
@@ -37,10 +42,10 @@ describe('SQLite User Commute setup store', () => {
 
   afterEach(() => sqlite.close());
 
-  test('persists ordered routes and shared days for their owning User only', async () => {
+  test('persists ordered routes with independent days for their owning User only', async () => {
     const store = createUserCommuteSetupStore(database);
-    const first = await store.createRoute('user-1', routeDraft('Morning commute'));
-    const second = await store.createRoute('user-1', routeDraft('Evening commute'));
+    const first = await store.createRoute('user-1', routeDraft('Morning commute', ['monday', 'wednesday']));
+    const second = await store.createRoute('user-1', routeDraft('Evening commute', ['tuesday', 'thursday']));
     await store.createRoute('user-2', routeDraft('Other User route'));
     await store.saveDays('user-1', ['monday', 'wednesday', 'sunday']);
 
@@ -48,8 +53,8 @@ describe('SQLite User Commute setup store', () => {
     expect(second).not.toBe('route-limit-reached');
     await expect(store.load('user-1')).resolves.toMatchObject({
       routes: [
-        { name: 'Morning commute', enabled: true, previewDurationMinutes: 17 },
-        { name: 'Evening commute', enabled: true, previewDurationMinutes: 17 }
+        { name: 'Morning commute', days: ['monday', 'wednesday'], enabled: true, previewDurationMinutes: 17 },
+        { name: 'Evening commute', days: ['tuesday', 'thursday'], enabled: true, previewDurationMinutes: 17 }
       ],
       days: ['monday', 'wednesday', 'sunday']
     });

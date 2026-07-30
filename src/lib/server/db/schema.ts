@@ -96,6 +96,7 @@ export const commuteRoutes = sqliteTable(
     destinationLatitude: real('destination_latitude').notNull(),
     destinationLongitude: real('destination_longitude').notNull(),
     previewDurationMinutes: integer('preview_duration_minutes'),
+    days: text('days').notNull().default('["monday","tuesday","wednesday","thursday","friday"]'),
     enabled: integer('enabled', { mode: 'boolean' }).notNull().default(true),
     position: integer('position').notNull()
   },

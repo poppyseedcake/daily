@@ -2,7 +2,19 @@ import { z } from 'zod';
 
 export const summaryTimeSchema = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/);
 
-export const userTimeZoneSchema = z.enum(['Europe/Warsaw', 'America/New_York', 'UTC']);
+export const userTimeZoneSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(100)
+  .refine((timeZone) => {
+    try {
+      new Intl.DateTimeFormat('en-US', { timeZone }).format();
+      return true;
+    } catch {
+      return false;
+    }
+  }, 'User Time Zone must be a valid IANA time zone.');
 
 export const summarySectionSchema = z.object({
   weather: z.boolean(),

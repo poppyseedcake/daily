@@ -13,20 +13,6 @@ export const commutePointSchema = z.object({
   longitude: z.number().finite().min(-180).max(180)
 });
 export const commuteRouteNameSchema = readableLabelSchema.max(80);
-export const commuteRouteDraftSchema = z.object({
-  name: commuteRouteNameSchema,
-  origin: commutePointSchema,
-  destination: commutePointSchema
-});
-export const commuteRouteSchema = commuteRouteDraftSchema.extend({
-  id: z.string().trim().min(1).max(80),
-  enabled: z.boolean(),
-  previewDurationMinutes: z.number().int().nonnegative().nullable().optional()
-});
-export const commuteRouteUpdateSchema = commuteRouteDraftSchema.extend({
-  enabled: z.boolean()
-});
-export const commuteRoutesSchema = z.array(commuteRouteSchema).max(5);
 
 export const commuteDayValues = [
   'monday',
@@ -42,6 +28,22 @@ export const commuteDaysSchema = z
   .max(commuteDayValues.length)
   .refine((days) => new Set(days).size === days.length, 'Commute Days must not repeat.');
 export const defaultCommuteDays = commuteDayValues.slice(0, 5);
+
+export const commuteRouteDraftSchema = z.object({
+  name: commuteRouteNameSchema,
+  origin: commutePointSchema,
+  destination: commutePointSchema,
+  days: commuteDaysSchema.default(defaultCommuteDays)
+});
+export const commuteRouteSchema = commuteRouteDraftSchema.extend({
+  id: z.string().trim().min(1).max(80),
+  enabled: z.boolean(),
+  previewDurationMinutes: z.number().int().nonnegative().nullable().optional()
+});
+export const commuteRouteUpdateSchema = commuteRouteDraftSchema.extend({
+  enabled: z.boolean()
+});
+export const commuteRoutesSchema = z.array(commuteRouteSchema).max(5);
 
 export type CommutePoint = z.infer<typeof commutePointSchema>;
 export type CommuteRoute = z.infer<typeof commuteRouteSchema>;

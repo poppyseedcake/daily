@@ -35,7 +35,7 @@ Daily turns a small amount of persistent personal setup into a private, schedule
 - Summary Delivery is enabled by default and must have an easily discoverable enable/pause control.
 - Todo Tasks support categories, urgency, ordering, editing, completion, and deletion.
 - Weather uses one chosen Weather Location.
-- Commute supports named driving routes and selected Commute Days.
+- Commute supports named driving routes with independently selected Commute Days.
 - Calendar uses selected Google calendars for signed-in Users and a clearly labeled Demo Calendar for Visitors.
 - The main UI must work equally well on desktop and mobile.
 - Mail Preview is not required on the primary view and may be removed from the main experience.

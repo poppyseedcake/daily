@@ -37,7 +37,10 @@ import { loadUserSummaryConfiguration } from '$lib/server/summaryConfigurationPe
 import { loadUserTodoState } from '$lib/server/todoPersistence';
 import { loadUserWeatherLocation } from '$lib/server/weatherLocationPersistence';
 import { loadUserCommuteSetup } from '$lib/server/commuteSetupPersistence';
-import { summaryConfigurationSchema } from '$lib/summaryConfiguration';
+import {
+  defaultSummaryConfiguration,
+  summaryConfigurationSchema
+} from '$lib/summaryConfiguration';
 import { createDefaultTodoState, todoStateSchema } from '$lib/todo';
 import { googleMapsOperations } from '$lib/server/googleMapsOperations';
 import { toDeliveryHistoryRecord } from '$lib/deliveryRecords';
@@ -174,9 +177,11 @@ export const load = async ({ request }) => {
   if (authState.mode === 'user' && calendarConnectionResult === 'failed') {
     await userCalendarConnectionStore.markFailed(authState.userId);
   }
-  const summaryConfiguration =
+  let summaryConfigurationLoadFailed = false;
+  const savedSummaryConfiguration =
     authState.mode === 'user'
-      ? await loadUserSummaryConfiguration(userSummaryConfigurationStore, authState.userId).catch((error: unknown) => {
+      ? await userSummaryConfigurationStore.load(authState.userId).catch((error: unknown) => {
+          summaryConfigurationLoadFailed = true;
           console.warn('Failed to load User Summary Configuration.', {
             userId: authState.userId,
             error
@@ -184,6 +189,12 @@ export const load = async ({ request }) => {
 
           return null;
         })
+      : null;
+  const summaryConfiguration =
+    authState.mode === 'user'
+      ? summaryConfigurationLoadFailed
+        ? null
+        : savedSummaryConfiguration ?? defaultSummaryConfiguration
       : null;
   const todoState =
     authState.mode === 'user'
@@ -361,6 +372,9 @@ export const load = async ({ request }) => {
     isAdministrator: isAdministratorAuthState(authState),
     calendarReadiness,
     summaryConfiguration,
+    ...(authState.mode === 'user' && !summaryConfigurationLoadFailed
+      ? { hasSavedSummaryConfiguration: savedSummaryConfiguration !== null }
+      : {}),
     todoState,
     weatherLocation,
     commuteSetup,

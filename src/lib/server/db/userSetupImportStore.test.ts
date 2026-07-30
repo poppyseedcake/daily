@@ -26,6 +26,7 @@ const createTestDatabase = () => {
   sqlite.exec(readFileSync('drizzle/0003_add_weather_locations.sql', 'utf8'));
   sqlite.exec(readFileSync('drizzle/0010_add_commute_setup.sql', 'utf8'));
   sqlite.exec(readFileSync('drizzle/0016_add_commute_preview_duration.sql', 'utf8'));
+  sqlite.exec(readFileSync('drizzle/0019_add_commute_route_days.sql', 'utf8'));
   sqlite.exec(readFileSync('drizzle/0011_add_next_summary_at.sql', 'utf8'));
   sqlite.exec(readFileSync('drizzle/0015_add_user_lifecycle.sql', 'utf8'));
 
@@ -96,6 +97,7 @@ const validDraft = (): UserSetupImportDraft => ({
       destinationLatitude: 52.2318,
       destinationLongitude: 21.0067,
       previewDurationMinutes: 18,
+      days: ['monday', 'wednesday'],
       enabled: false,
       position: 1
     },
@@ -110,6 +112,7 @@ const validDraft = (): UserSetupImportDraft => ({
       destinationLatitude: 52.2298,
       destinationLongitude: 21.0123,
       previewDurationMinutes: 21,
+      days: ['tuesday', 'thursday'],
       enabled: true,
       position: 2
     }
@@ -302,7 +305,8 @@ describe('SQLite User Setup import store', () => {
     const savedRoute = await commuteStore.createRoute('user-1', {
       name: 'Saved user route',
       origin: { label: 'Saved home', latitude: 50.1, longitude: 20.1 },
-      destination: { label: 'Saved office', latitude: 50.2, longitude: 20.2 }
+      destination: { label: 'Saved office', latitude: 50.2, longitude: 20.2 },
+      days: ['monday']
     });
 
     expect(savedRoute).not.toBe('route-limit-reached');

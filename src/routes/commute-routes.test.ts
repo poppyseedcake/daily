@@ -26,7 +26,8 @@ const { PUT: saveCommuteDays } = await import('./commute-days/+server');
 const route = {
   name: 'Morning commute',
   origin: { label: 'Home', latitude: 52.2297, longitude: 21.0122 },
-  destination: { label: 'Office', latitude: 52.2318, longitude: 21.0067 }
+  destination: { label: 'Office', latitude: 52.2318, longitude: 21.0067 },
+  days: ['monday', 'tuesday', 'wednesday', 'thursday', 'friday']
 };
 const signedInUser = { user: { id: 'user-1', email: 'user@example.com', emailVerified: true } };
 const request = (url: string, method: string, body?: unknown) => new Request(url, {

@@ -69,6 +69,7 @@ const validDraft = (): UserSetupImportDraft => ({
       destinationLatitude: 52.2318,
       destinationLongitude: 21.0067,
       previewDurationMinutes: 18,
+      days: ['monday', 'wednesday'],
       enabled: false,
       position: 1
     }
@@ -211,6 +212,7 @@ describe('User Setup import persistence', () => {
         destinationLatitude: 52.2318,
         destinationLongitude: 21.0067,
         previewDurationMinutes: 18,
+        days: ['monday', 'wednesday'],
         enabled: true,
         position: 1
       }
