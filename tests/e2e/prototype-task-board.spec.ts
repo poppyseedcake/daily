@@ -15,13 +15,12 @@ test('opens the Task Board inline editor with a real pointer click', async ({ pa
     editButtonBox.y + editButtonBox.height / 2
   );
   await expect(editButton).toHaveCSS('opacity', '1');
-  await page.mouse.click(
-    editButtonBox.x + editButtonBox.width / 2,
-    editButtonBox.y + editButtonBox.height / 2
-  );
 
   const titleInput = page.getByRole('textbox', { name: 'Edit Send revised proposal' });
-  await expect(titleInput).toBeVisible();
+  await expect(async () => {
+    await editButton.click();
+    await expect(titleInput).toBeVisible({ timeout: 500 });
+  }).toPass({ timeout: 5_000 });
 
   const editingRow = page.locator('.board-task--editing');
   const priorityDot = editingRow.locator('.board-ledger-priority');

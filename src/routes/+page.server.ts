@@ -296,7 +296,7 @@ export const load = async ({ request }) => {
           }
       })()
       : null;
-  const renderedSummaryHtml =
+  const renderedSummary =
     authState.mode === 'user'
       ? await (async () => {
           const validConfiguration = summaryConfigurationSchema.safeParse(summaryConfiguration);
@@ -319,22 +319,40 @@ export const load = async ({ request }) => {
                     }))
                 : (calendarGenerationContext?.selectedCalendars ?? [])
               : [];
-          return renderDailySummary(
-            await buildDailySummaryInput({
-              authMode: 'user',
-              configuration: validConfiguration.data,
-              todoCategories: validTodoState.data.todoCategories,
-              todoTasks: validTodoState.data.todoTasks,
-              weatherLocation,
-              commuteRoutes: commuteSetup?.routes ?? [],
-              commuteDays: commuteSetup?.days ?? [],
-              calendarReadiness,
-              selectedCalendars,
-              calendarEventProvider: calendarGenerationContext?.accessToken
-                ? googleCalendarEventProvider(calendarGenerationContext.accessToken)
-                : undefined
-            })
-          ).html;
+          const generationSetup = {
+            authMode: 'user',
+            configuration: validConfiguration.data,
+            todoCategories: validTodoState.data.todoCategories,
+            todoTasks: validTodoState.data.todoTasks,
+            weatherLocation,
+            commuteRoutes: commuteSetup?.routes ?? [],
+            commuteDays: commuteSetup?.days ?? [],
+            calendarReadiness,
+            selectedCalendars,
+            calendarEventProvider: calendarGenerationContext?.accessToken
+              ? googleCalendarEventProvider(calendarGenerationContext.accessToken)
+              : undefined
+          } as const;
+          const input = await buildDailySummaryInput(generationSetup);
+          const calendarAgendaInput = validConfiguration.data.sections.calendar
+            ? input
+            : await buildDailySummaryInput({
+                ...generationSetup,
+                configuration: {
+                  ...validConfiguration.data,
+                  sections: {
+                    weather: false,
+                    commute: false,
+                    calendar: true,
+                    todo: false
+                  }
+                }
+              });
+
+          return {
+            html: renderDailySummary(input).html,
+            calendarSection: calendarAgendaInput.calendarSection ?? null
+          };
         })()
       : null;
 
@@ -348,7 +366,8 @@ export const load = async ({ request }) => {
     commuteSetup,
     deliveryRecords,
     selectedCalendarConfiguration,
-    renderedSummaryHtml
+    renderedSummaryHtml: renderedSummary?.html ?? null,
+    calendarSection: renderedSummary?.calendarSection ?? null
   };
 };
 

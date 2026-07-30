@@ -589,7 +589,8 @@ describe('Daily page server load', () => {
       commuteSetup: null,
       deliveryRecords: [],
       selectedCalendarConfiguration: null,
-      renderedSummaryHtml: null
+      renderedSummaryHtml: null,
+      calendarSection: null
     });
   });
 
@@ -664,7 +665,14 @@ describe('Daily page server load', () => {
 
     await expect(loadPage()).resolves.toEqual(
       expect.objectContaining({
-        renderedSummaryHtml: expect.stringContaining('Planning')
+        renderedSummaryHtml: expect.stringContaining('Planning'),
+        calendarSection: expect.objectContaining({
+          today: expect.objectContaining({
+            timedEvents: expect.arrayContaining([
+              expect.objectContaining({ title: 'Planning' })
+            ])
+          })
+        })
       })
     );
     expect(sentCalendarEventRequests).toEqual([
@@ -676,6 +684,40 @@ describe('Daily page server load', () => {
       }
     ]);
     expect(loadedGoogleCalendarAccessTokens).toEqual(['user-1']);
+  });
+
+  test('loads the Calendar agenda when Calendar is excluded from the email summary', async () => {
+    getSession.mockResolvedValue({
+      user: { id: 'user-1', email: 'user@example.com', emailVerified: true }
+    });
+    savedConfiguration.sections.calendar = false;
+    savedCalendarConnection.status = 'connected';
+    savedSelectedCalendars.push({
+      id: 'work',
+      summary: 'Work',
+      backgroundColor: '#0b8043',
+      primary: false
+    });
+    providerCalendars.push({
+      id: 'work',
+      summary: 'Work',
+      backgroundColor: '#0b8043',
+      primary: false
+    });
+
+    await expect(loadPage()).resolves.toEqual(
+      expect.objectContaining({
+        renderedSummaryHtml: expect.not.stringContaining('Planning'),
+        calendarSection: expect.objectContaining({
+          today: expect.objectContaining({
+            timedEvents: expect.arrayContaining([
+              expect.objectContaining({ title: 'Planning' })
+            ])
+          })
+        })
+      })
+    );
+    expect(sentCalendarEventRequests).toHaveLength(1);
   });
 
   test('guides a connected User to reconnect when Calendar credentials are unusable', async () => {
@@ -819,7 +861,8 @@ describe('Daily page server load', () => {
       commuteSetup: savedCommuteSetup,
       deliveryRecords: savedDeliveryRecords,
       selectedCalendarConfiguration: null,
-      renderedSummaryHtml: expect.any(String)
+      renderedSummaryHtml: expect.any(String),
+      calendarSection: null
     });
   });
 
@@ -948,7 +991,8 @@ describe('Daily page server load', () => {
       },
       deliveryRecords: [],
       selectedCalendarConfiguration: null,
-      renderedSummaryHtml: expect.any(String)
+      renderedSummaryHtml: expect.any(String),
+      calendarSection: null
     });
   });
 
@@ -979,7 +1023,8 @@ describe('Daily page server load', () => {
       },
       deliveryRecords: [],
       selectedCalendarConfiguration: null,
-      renderedSummaryHtml: null
+      renderedSummaryHtml: null,
+      calendarSection: null
     });
     expect(console.warn).toHaveBeenCalledWith(
       'Failed to load User Summary Configuration.',
@@ -1013,7 +1058,8 @@ describe('Daily page server load', () => {
       },
       deliveryRecords: [],
       selectedCalendarConfiguration: null,
-      renderedSummaryHtml: expect.any(String)
+      renderedSummaryHtml: expect.any(String),
+      calendarSection: null
     });
   });
 
