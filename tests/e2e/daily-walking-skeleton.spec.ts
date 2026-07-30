@@ -29,7 +29,7 @@ test('Visitor Summary Configuration persists through the secondary Settings pane
   await page.getByRole('checkbox', { name: 'Weather Section' }).uncheck();
   await closePanel(page);
 
-  await page.getByRole('checkbox', { name: /Delivery on/ }).uncheck();
+  await page.getByRole('checkbox', { name: /Preview only/ }).uncheck();
   await expect(page.getByText('Delivery paused', { exact: true })).toBeVisible();
 
   await page.reload();
@@ -166,7 +166,10 @@ test('Visitor manages Todo Groups and compact task rows through the Task Board',
   await page.getByRole('button', { name: 'Delete Work' }).click();
   const confirmation = page.getByRole('dialog', { name: 'Delete group?' });
   await expect(confirmation).toBeVisible();
-  await confirmation.getByRole('button', { name: 'Delete group' }).click();
+  await expect(confirmation.getByText('Todo', { exact: true })).toHaveCount(0);
+  await expect(confirmation.getByRole('button', { name: 'Close delete group dialog' }))
+    .toBeVisible();
+  await confirmation.getByRole('button', { name: 'Delete group', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Work' })).toHaveCount(0);
 });
 
@@ -187,28 +190,42 @@ test('Visitor configures Commute Days independently for each route', async ({ pa
   );
 });
 
-test('Visitor edits Summary Delivery time in a focused modal', async ({ page }) => {
-  await page.getByRole('button', { name: /Summary delivery/ }).click();
+test('Visitor edits Mail Delivery time with the keyboard and mouse', async ({ page }) => {
+  await page.getByRole('button', { name: /Mail delivery/ }).click();
 
   const delivery = page.getByRole('dialog', { name: 'Delivery time' });
   await expect(delivery).toBeVisible();
-  await expect(delivery.getByLabel('Summary Time')).toBeFocused();
-  await delivery.getByLabel('Summary Time').fill('08:30');
+  await expect(delivery.getByRole('spinbutton', { name: 'Hours' })).toBeFocused();
+  await page.keyboard.press('ArrowUp');
+  await expect(delivery.getByRole('spinbutton', { name: 'Hours' })).toHaveText('08');
+  await page.keyboard.press('ArrowRight');
+  await expect(delivery.getByRole('spinbutton', { name: 'Minutes' }))
+    .toHaveAttribute('data-active', 'true');
+  await delivery.getByRole('button', { name: 'Increase minutes' }).click();
+  await expect(delivery.getByRole('spinbutton', { name: 'Minutes' })).toHaveText('01');
+  await expect(delivery.getByRole('spinbutton', { name: 'Minutes' }))
+    .toHaveAttribute('data-active', 'true');
+  await delivery.getByRole('button', { name: 'Edit time zone' }).click();
   await delivery.getByLabel('User Time Zone').selectOption('Asia/Tokyo');
   await delivery.getByRole('button', { name: 'Save delivery time' }).click();
 
-  await expect(page.getByRole('button', { name: /Summary delivery/ })).toContainText('08:30');
-  await expect(page.getByRole('button', { name: /Summary delivery/ })).toContainText('Asia/Tokyo');
+  await expect(page.getByRole('button', { name: /Mail delivery/ })).toContainText('08:01');
+  await expect(page.getByRole('button', { name: /Mail delivery/ })).toContainText('Asia/Tokyo');
 });
 
 test.describe('Visitor system time zone', () => {
   test.use({ timezoneId: 'Asia/Tokyo' });
 
   test('uses the browser time zone for a new Local Setup', async ({ page }) => {
-    await expect(page.getByRole('button', { name: /Summary delivery/ })).toContainText(
+    await expect(page.getByRole('button', { name: /Mail delivery/ })).toContainText(
       'Asia/Tokyo'
     );
   });
+});
+
+test('bottom rail offers sign-in in Visitor mode', async ({ page }) => {
+  await expect(page.locator('.daily-rail').getByRole('link', { name: 'Sign in with Google' }))
+    .toHaveAttribute('href', '/auth/google');
 });
 
 test('Todo board omits redundant persistence and Ungrouped helper copy', async ({ page }) => {
@@ -241,6 +258,63 @@ test('Visitor reorders Todo Tasks with the keyboard and keeps the order after re
   await page.reload();
   await expect(page.getByRole('list', { name: 'No Category Todo Tasks' }).getByRole('listitem'))
     .toHaveText([/Cook dinner/, /Plan meals/, /Buy groceries/]);
+});
+
+test('Visitor can drop a Todo Task anywhere in an empty stretched group', async ({ page }) => {
+  const addGroup = async (name: string) => {
+    await page.getByRole('button', { name: 'New group' }).click();
+    await page.getByLabel('New Todo Category').fill(name);
+    await page.getByRole('button', { name: 'Add Todo Category' }).click();
+  };
+  const addTaskToGroup = async (title: string, groupName: string) => {
+    await page.getByLabel('New Todo Task').fill(title);
+    await page.getByLabel('New Todo Task').press('Enter');
+    await expect(page.getByRole('dialog', { name: 'Add task' })).toBeVisible();
+
+    const groups = page.getByRole('dialog', { name: 'Add task' });
+    const groupNames = ['Target', 'Source'];
+    const targetIndex = groupNames.indexOf(groupName);
+    for (let index = 0; index <= targetIndex; index += 1) {
+      await groups.getByRole('button', { name: 'Next group' }).click();
+    }
+    await groups.getByRole('button', { name: 'Confirm adding task' }).click();
+  };
+
+  await addGroup('Target');
+  await addGroup('Source');
+  await addTaskToGroup('Source task one', 'Source');
+  await addTaskToGroup('Source task two', 'Source');
+
+  const sourceList = page.getByRole('list', { name: 'Source Todo Tasks' });
+  const targetList = page.getByRole('list', { name: 'Target Todo Tasks' });
+  const targetColumn = page.locator('section.daily-column').first();
+  const sourceHandle = sourceList.getByRole('button', { name: 'Move Source task one' });
+  const sourceHandleBox = await sourceHandle.boundingBox();
+  const targetListBox = await targetList.boundingBox();
+  const targetColumnBox = await targetColumn.boundingBox();
+
+  expect(sourceHandleBox).not.toBeNull();
+  expect(targetListBox?.height).toBeGreaterThan(80);
+  expect(targetColumnBox).not.toBeNull();
+  if (!sourceHandleBox || !targetColumnBox) return;
+
+  await page.mouse.move(
+    sourceHandleBox.x + sourceHandleBox.width / 2,
+    sourceHandleBox.y + sourceHandleBox.height / 2
+  );
+  await page.mouse.down();
+  await page.mouse.move(
+    targetColumnBox.x + targetColumnBox.width / 2,
+    targetColumnBox.y + targetColumnBox.height - 18,
+    { steps: 12 }
+  );
+  await page.waitForTimeout(250);
+  await expect(targetList).toHaveClass(/daily-task-list--drop-target/);
+  await expect(targetList.locator('li.daily-task--drop-placeholder')).toHaveCount(1);
+  await page.mouse.up();
+
+  await expect(targetList.getByText('Source task one')).toBeVisible();
+  await expect(sourceList.getByText('Source task one')).toHaveCount(0);
 });
 
 test('Visitor Calendar tile explains the Google handoff without exposing a main-view preview', async ({

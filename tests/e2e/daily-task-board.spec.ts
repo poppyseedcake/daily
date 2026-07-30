@@ -14,7 +14,10 @@ test('Visitor lands on the production Task Board without the email preview in th
   page
 }) => {
   await expect(page.getByRole('heading', { name: 'Task board' })).toBeVisible();
-  await expect(page.getByText('Visitor · local setup')).toBeVisible();
+  await expect(page.locator('.daily-visitor')).toHaveText('Visitor preview');
+  await expect(page.getByRole('complementary', { name: 'Visitor preview' })).toContainText(
+    'Sign in with Google to receive Daily Summaries by email.'
+  );
   await expect(page.getByRole('button', { name: /Weather/ })).toBeVisible();
   await expect(page.getByRole('button', { name: /Commute/ })).toBeVisible();
   await expect(page.getByRole('button', { name: /Calendar/ })).toBeVisible();
@@ -56,6 +59,18 @@ test('secondary destinations stay outside the main view until requested', async 
   await expect(page.getByRole('dialog', { name: 'Settings' })).toBeVisible();
 });
 
+test('the Settings panel closes when the user clicks outside it', async ({ page }) => {
+  await page.getByRole('button', { name: 'Open settings' }).click();
+  const settings = page.getByRole('dialog', { name: 'Settings' });
+  await expect(settings).toBeVisible();
+
+  const bounds = await settings.boundingBox();
+  expect(bounds).not.toBeNull();
+  await page.mouse.click(Math.max(8, bounds!.x - 16), bounds!.y + bounds!.height / 2);
+
+  await expect(settings).toBeHidden();
+});
+
 test.describe('new signed-in User time zone', () => {
   test.use({ timezoneId: 'Asia/Tokyo' });
 
@@ -90,7 +105,7 @@ test.describe('new signed-in User time zone', () => {
       }]);
       await page.goto('/');
 
-      await expect(page.getByRole('button', { name: /Summary delivery/ })).toContainText(
+      await expect(page.getByRole('button', { name: /Mail delivery/ })).toContainText(
         'Asia/Tokyo'
       );
       await expect.poll(() =>
@@ -246,7 +261,7 @@ test('signed-in User can inspect Delivery History and irreversibly delete the ac
       .fill('DELETE MY ACCOUNT');
     await page.getByRole('button', { name: 'Permanently delete my account' }).click();
 
-    await expect(page.getByText('Visitor · local setup')).toBeVisible();
+  await expect(page.locator('.daily-visitor')).toHaveText('Visitor preview');
     expect(database.prepare('select count(*) as count from users where id = ?').get(userId))
       .toEqual({ count: 0 });
   } finally {

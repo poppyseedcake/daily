@@ -12,6 +12,8 @@
     History,
     Inbox,
     ListTodo,
+    LogIn,
+    LogOut,
     Mail,
     MapPin,
     Pause,
@@ -231,12 +233,16 @@
   let newCategoryInput = $state<HTMLInputElement>();
   let categoryPendingDeletion = $state<TodoCategory | null>(null);
   let categoryDeletionDialog = $state<HTMLDialogElement>();
-  let categoryDeletionCancelButton = $state<HTMLButtonElement>();
+  let categoryDeletionCloseButton = $state<HTMLButtonElement>();
   let summaryDeliveryDialogOpen = $state(false);
   let summaryDeliveryDialog = $state<HTMLDialogElement>();
-  let summaryDeliveryTimeInput = $state<HTMLInputElement>();
+  let summaryDeliveryHoursButton = $state<HTMLButtonElement>();
+  let summaryDeliveryMinutesButton = $state<HTMLButtonElement>();
+  let summaryDeliveryTimeZoneSelect = $state<HTMLSelectElement>();
   let summaryTimeDraft = $state('07:00');
   let userTimeZoneDraft = $state<UserTimeZone>('UTC');
+  let activeSummaryTimePart = $state<'hours' | 'minutes'>('hours');
+  let summaryTimeZoneEditorOpen = $state(false);
   let calendarDisconnectConfirmation = $state(false);
 
   onMount(() => {
@@ -961,10 +967,16 @@
         commuteRouteStatusTone = 'success';
         return;
       }
-      commuteRouteStatus = result.outcome === 'route-limit-reached' ? 'You can save at most five Commute Routes.' : 'Commute Route save failed. Try again.';
+      commuteRouteStatus = result.outcome === 'route-limit-reached'
+        ? 'You can save at most five Commute Routes.'
+        : result.outcome === 'estimate-unavailable'
+          ? 'Travel time is unavailable. Check both addresses and try again.'
+          : result.outcome === 'invalid-route'
+            ? 'Check the route name, addresses, and selected days.'
+            : 'The route could not be saved. Refresh the page and try again.';
       commuteRouteStatusTone = response.status === 400 || response.status === 409 ? 'warning' : 'error';
     } catch {
-      commuteRouteStatus = 'Commute Route save failed. Try again.';
+      commuteRouteStatus = 'The route could not be saved. Check your connection and try again.';
       commuteRouteStatusTone = 'error';
     }
   };
@@ -981,10 +993,16 @@
         commuteRouteStatusTone = 'success';
         return;
       }
-      commuteRouteStatus = result.outcome === 'not-found' ? 'Commute Route is no longer available.' : 'Commute Route save failed. Try again.';
+      commuteRouteStatus = result.outcome === 'not-found'
+        ? 'Commute Route is no longer available.'
+        : result.outcome === 'estimate-unavailable'
+          ? 'Travel time is unavailable. Check both addresses and try again.'
+          : result.outcome === 'invalid-route'
+            ? 'Check the route name, addresses, and selected days.'
+            : 'The route could not be saved. Refresh the page and try again.';
       commuteRouteStatusTone = response.status === 400 || response.status === 404 ? 'warning' : 'error';
     } catch {
-      commuteRouteStatus = 'Commute Route save failed. Try again.';
+      commuteRouteStatus = 'The route could not be saved. Check your connection and try again.';
       commuteRouteStatusTone = 'error';
     }
   };
@@ -1364,18 +1382,85 @@
     secondaryPanel = null;
   };
 
+  const handleSecondaryPanelClick = (event: MouseEvent) => {
+    const dialog = secondaryDialog;
+    if (!dialog) return;
+
+    const bounds = dialog.getBoundingClientRect();
+    const clickedOutside =
+      event.clientX < bounds.left ||
+      event.clientX > bounds.right ||
+      event.clientY < bounds.top ||
+      event.clientY > bounds.bottom;
+
+    if (clickedOutside) closeSecondaryPanel();
+  };
+
   const openSummaryDeliveryDialog = async () => {
     summaryTimeDraft = summaryTime;
     userTimeZoneDraft = userTimeZone;
+    activeSummaryTimePart = 'hours';
+    summaryTimeZoneEditorOpen = false;
     summaryDeliveryDialogOpen = true;
     await tick();
     summaryDeliveryDialog?.showModal();
-    summaryDeliveryTimeInput?.focus();
+    summaryDeliveryHoursButton?.focus();
   };
 
   const closeSummaryDeliveryDialog = () => {
     summaryDeliveryDialog?.close();
     summaryDeliveryDialogOpen = false;
+  };
+
+  const summaryTimeParts = () => {
+    const [hours = '00', minutes = '00'] = summaryTimeDraft.split(':');
+    return { hours: Number(hours), minutes: Number(minutes) };
+  };
+
+  const adjustSummaryTime = (part: 'hours' | 'minutes', direction: 1 | -1) => {
+    activeSummaryTimePart = part;
+    const current = summaryTimeParts();
+    const nextHours = part === 'hours'
+      ? (current.hours + direction + 24) % 24
+      : current.hours;
+    const nextMinutes = part === 'minutes'
+      ? (current.minutes + direction + 60) % 60
+      : current.minutes;
+    summaryTimeDraft = `${String(nextHours).padStart(2, '0')}:${String(nextMinutes).padStart(2, '0')}`;
+    activateSummaryTimePart(part);
+  };
+
+  const activateSummaryTimePart = (part: 'hours' | 'minutes') => {
+    activeSummaryTimePart = part;
+    (part === 'hours' ? summaryDeliveryHoursButton : summaryDeliveryMinutesButton)?.focus();
+  };
+
+  const handleSummaryTimeKeydown = (
+    part: 'hours' | 'minutes',
+    event: KeyboardEvent
+  ) => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      saveSummaryDeliveryTime();
+      return;
+    }
+
+    if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+      event.preventDefault();
+      activateSummaryTimePart(event.key === 'ArrowLeft' ? 'hours' : 'minutes');
+      return;
+    }
+
+    if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
+      event.preventDefault();
+      adjustSummaryTime(part, event.key === 'ArrowUp' ? 1 : -1);
+    }
+  };
+
+  const editSummaryTimeZone = async () => {
+    summaryTimeZoneEditorOpen = true;
+    await tick();
+    summaryDeliveryTimeZoneSelect?.focus();
   };
 
   const saveSummaryDeliveryTime = () => {
@@ -1488,7 +1573,7 @@
     categoryPendingDeletion = category;
     await tick();
     categoryDeletionDialog?.showModal();
-    categoryDeletionCancelButton?.focus();
+    categoryDeletionCloseButton?.focus();
   };
 
   const cancelTodoCategoryDeletion = () => {
@@ -1666,7 +1751,12 @@
 </svelte:head>
 
 {#snippet TodoTaskRow(task: TodoTask)}
-  <li class:daily-task--editing={editingTaskId === task.id} class="daily-task" aria-label={task.title}>
+  <li
+    class:daily-task--editing={editingTaskId === task.id}
+    class:daily-task--drop-placeholder={isDndShadowTask(task)}
+    class="daily-task"
+    aria-label={task.title}
+  >
     {#if editingTaskId === task.id}
       <span class="daily-task-checkbox" aria-hidden="true"></span>
       <span class={`daily-priority daily-priority--${editingTaskUrgency}`} aria-hidden="true"></span>
@@ -1746,15 +1836,15 @@
       items: visibleTasksForCategory(categoryId),
       flipDurationMs: 150,
       type: 'todo-task',
-      useCursorForDetection: true
+      useCursorForDetection: true,
+      dropTargetStyle: { outline: 'none' },
+      dropTargetClasses: ['daily-task-list--drop-target']
     }}
     onconsider={(event) => handleTodoConsider(categoryId, event)}
     onfinalize={(event) => handleTodoFinalize(categoryId, event, categoryId !== null)}
   >
     {#each visibleTasksForCategory(categoryId) as task (task.id)}
       {@render TodoTaskRow(task)}
-    {:else}
-      <li class="daily-task-empty">Clear</li>
     {/each}
   </ul>
 {/snippet}
@@ -1776,9 +1866,15 @@
         disabled={!localSetupHydrated}
         onclick={() => void openSecondaryPanel('settings')}
       ><Settings size={20} /></button>
-      <button type="button" aria-label={authState.mode === 'visitor' ? 'Visitor menu' : 'User menu'}>
-        {authState.mode === 'visitor' ? 'V' : 'U'}
-      </button>
+      {#if authState.mode === 'visitor'}
+        <a href="/auth/google" aria-label="Sign in with Google" title="Sign in with Google">
+          <LogIn size={19} />
+        </a>
+      {:else}
+        <form method="POST" action="/auth/sign-out">
+          <button type="submit" aria-label="Sign out" title="Sign out"><LogOut size={19} /></button>
+        </form>
+      {/if}
     </nav>
   </aside>
 
@@ -1796,7 +1892,7 @@
       </div>
       <div class="daily-header-actions">
         {#if authState.mode === 'visitor'}
-          <span class="daily-visitor">Visitor · local setup</span>
+          <span class="daily-visitor">Visitor preview</span>
         {/if}
         <label class:daily-delivery--paused={!summaryDeliveryEnabled} class="daily-delivery">
           <input
@@ -1810,12 +1906,30 @@
           />
           <span class="daily-switch" aria-hidden="true"><i></i></span>
           <span>
-            <strong>{summaryDeliveryEnabled ? 'Delivery on' : 'Delivery paused'}</strong>
-            <small>{summaryDeliveryEnabled ? `Daily at ${summaryTime}` : 'No emails will be sent'}</small>
+            {#if authState.mode === 'visitor'}
+              <strong>{summaryDeliveryEnabled ? 'Preview only' : 'Delivery paused'}</strong>
+              <small>Sign in to receive emails</small>
+            {:else}
+              <strong>{summaryDeliveryEnabled ? 'Delivery on' : 'Delivery paused'}</strong>
+              <small>{summaryDeliveryEnabled ? `Daily at ${summaryTime}` : 'No emails will be sent'}</small>
+            {/if}
           </span>
         </label>
       </div>
     </header>
+
+    {#if authState.mode === 'visitor'}
+      <aside class="daily-visitor-banner" aria-labelledby="visitor-preview-title">
+        <span class="daily-visitor-banner__mark" aria-hidden="true"><Mail size={17} /></span>
+        <div>
+          <strong id="visitor-preview-title">Visitor preview</strong>
+          <p>Explore and configure Daily here. Sign in with Google to receive Daily Summaries by email.</p>
+        </div>
+        <a class="daily-visitor-banner__action" href="/auth/google">
+          Sign in with Google <ArrowRight size={15} aria-hidden="true" />
+        </a>
+      </aside>
+    {/if}
 
     <section class="daily-context-ribbon" id="daily-context" aria-label="Daily Summary context">
       <button
@@ -1867,12 +1981,15 @@
       <button
         class="daily-context-tile daily-context-summary"
         type="button"
-        aria-label={`Summary delivery. ${summaryDeliveryEnabled ? `${summaryTime}, ${userTimeZone}` : 'Paused'}`}
+        aria-label={`Mail delivery. ${authState.mode === 'visitor' ? 'Sign in is required to receive Daily Summaries' : summaryDeliveryEnabled ? `${summaryTime}, ${userTimeZone}` : 'Paused'}`}
         aria-haspopup="dialog"
         onclick={() => void openSummaryDeliveryDialog()}
       >
         {#if summaryDeliveryEnabled}<Send size={18} />{:else}<Pause size={18} />{/if}
-        <span><small>Summary delivery</small><strong>{summaryDeliveryEnabled ? `${summaryTime} · ${userTimeZone}` : 'Paused'}</strong></span>
+        <span>
+          <small>{authState.mode === 'visitor' ? 'Mail delivery · Sign in required' : 'Mail delivery'}</small>
+          <strong>{summaryDeliveryEnabled ? `${summaryTime} · ${userTimeZone}` : 'Paused'}</strong>
+        </span>
         <ChevronRight size={15} />
       </button>
     </section>
@@ -2104,12 +2221,16 @@
     margin-top: auto;
   }
 
-  .daily-rail-bottom button:last-child {
+  .daily-rail-bottom form {
+    margin: 0;
+  }
+
+  .daily-rail-bottom > a:last-child,
+  .daily-rail-bottom > button:last-child,
+  .daily-rail-bottom > form:last-child button {
     border-color: #d8ddd4;
     background: #fff;
     color: #4b5048;
-    font-size: 12px;
-    font-weight: 800;
   }
 
   .daily-board-main {
@@ -2156,8 +2277,73 @@
   }
 
   .daily-visitor {
-    color: #686e65;
+    color: #526d3f;
     font-size: 11px;
+    font-weight: 700;
+  }
+
+  .daily-visitor-banner {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 13px;
+    margin: -2px 0 20px;
+    border: 1px solid #b9c9ad;
+    border-radius: 10px;
+    background: #f0f5eb;
+    padding: 11px 12px;
+    color: #425637;
+  }
+
+  .daily-visitor-banner__mark {
+    width: 34px;
+    height: 34px;
+    display: grid;
+    place-items: center;
+    border: 1px solid #c3d2b8;
+    border-radius: 8px;
+    background: #fff;
+    color: #587542;
+  }
+
+  .daily-visitor-banner strong,
+  .daily-visitor-banner p {
+    display: block;
+  }
+
+  .daily-visitor-banner strong {
+    color: #33462a;
+    font-size: 11px;
+    font-weight: 750;
+  }
+
+  .daily-visitor-banner p {
+    margin: 3px 0 0;
+    color: #5c6b55;
+    font-size: 10px;
+    line-height: 1.45;
+  }
+
+  .daily-visitor-banner__action {
+    min-height: 36px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    border: 1px solid #587542;
+    border-radius: 8px;
+    background: #587542;
+    color: #fff;
+    padding: 0 11px;
+    font-size: 9px;
+    font-weight: 750;
+    text-decoration: none;
+    white-space: nowrap;
+  }
+
+  .daily-visitor-banner__action:hover {
+    border-color: #496238;
+    background: #496238;
   }
 
   .daily-delivery {
@@ -2428,6 +2614,8 @@
   }
 
   .daily-column {
+    display: flex;
+    flex-direction: column;
     min-width: 0;
     overflow: hidden;
     border: 1px solid #dfe3dc;
@@ -2514,10 +2702,36 @@
   }
 
   .daily-task-list {
+    position: relative;
+    flex: 1;
     min-height: 46px;
     margin: 0;
     padding: 0;
     list-style: none;
+    transition: background-color 150ms ease, box-shadow 150ms ease;
+  }
+
+  .daily-task-list:empty {
+    display: grid;
+    place-items: center;
+  }
+
+  .daily-task-list:empty::before {
+    color: #9aa096;
+    content: 'Clear';
+    font-size: 9px;
+  }
+
+  :global(.daily-task-list--drop-target) {
+    background: #f5f8f2;
+    box-shadow: inset 0 0 0 1px #b1c6a5;
+  }
+
+  :global(.daily-task-list--drop-target:empty)::before {
+    color: #587542;
+    content: 'Drop task here';
+    font-size: 10px;
+    font-weight: 700;
   }
 
   .daily-task {
@@ -2532,6 +2746,37 @@
 
   .daily-task:last-child {
     border-bottom: 0;
+  }
+
+  .daily-task--drop-placeholder {
+    position: relative;
+    border-bottom-color: transparent;
+    background: transparent;
+  }
+
+  .daily-task--drop-placeholder > * {
+    visibility: hidden;
+  }
+
+  .daily-task--drop-placeholder::before {
+    position: absolute;
+    top: 50%;
+    right: 12px;
+    left: 12px;
+    height: 1px;
+    background: #83937a;
+    content: "";
+  }
+
+  .daily-task--drop-placeholder::after {
+    position: absolute;
+    top: calc(50% - 3px);
+    left: 9px;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #617d49;
+    content: "";
   }
 
   .daily-task:hover {
@@ -2713,14 +2958,6 @@
     color: #737a70;
   }
 
-  .daily-task-empty {
-    min-height: 46px;
-    display: grid;
-    place-items: center;
-    color: #9aa096;
-    font-size: 9px;
-  }
-
   .daily-ungrouped {
     display: grid;
     grid-template-columns: minmax(180px, 0.3fr) minmax(0, 1fr);
@@ -2868,15 +3105,18 @@
   }
 
   .daily-confirm-dialog footer {
-    justify-content: flex-end;
+    justify-content: space-between;
   }
 
   .daily-confirm-dialog footer button {
-    width: auto;
-    min-width: 92px;
-    padding: 0 14px;
     font-size: 10px;
     font-weight: 750;
+  }
+
+  .daily-confirm-dialog footer .is-danger {
+    width: auto;
+    min-width: 112px;
+    padding: 0 16px;
   }
 
   .daily-confirm-dialog footer .is-danger {
@@ -2894,8 +3134,113 @@
     gap: 16px;
   }
 
-  .daily-time-field span,
-  .daily-time-zone-field span {
+  .daily-time-picker {
+    display: grid;
+    grid-template-columns: minmax(0, 96px) 20px minmax(0, 96px);
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    outline: 0;
+    padding: 5px 0 2px;
+  }
+
+  .daily-time-segment {
+    display: grid;
+    justify-items: center;
+    gap: 3px;
+  }
+
+  .daily-time-segment > button:not(.daily-time-value) {
+    width: 38px;
+    height: 30px;
+    display: grid;
+    place-items: center;
+    border: 0;
+    border-radius: 7px;
+    background: transparent;
+    color: #8a9286;
+  }
+
+  .daily-time-segment > button:not(.daily-time-value):hover {
+    background: #f0f3ed;
+    color: #526d3f;
+  }
+
+  .daily-time-value {
+    width: 88px;
+    min-height: 76px;
+    border: 1px solid transparent;
+    border-radius: 12px;
+    background: transparent;
+    color: #283025;
+    font: 730 45px/1 "Helvetica Neue", Helvetica, Arial, sans-serif;
+    letter-spacing: -0.035em;
+  }
+
+  .daily-time-value.is-active {
+    border-color: #879d77;
+    background: #f1f5ed;
+    box-shadow: 0 2px 8px rgb(53 69 43 / 0.08);
+    color: #24321e;
+  }
+
+  .daily-time-colon {
+    color: #5f675b;
+    font-size: 37px;
+    font-weight: 650;
+    transform: translateY(-1px);
+  }
+
+  .daily-time-zone {
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    color: #6d7569;
+  }
+
+  .daily-time-zone > span {
+    min-width: 0;
+    text-align: center;
+  }
+
+  .daily-time-zone small,
+  .daily-time-zone strong {
+    display: inline;
+    font-size: 9px;
+  }
+
+  .daily-time-zone small::after {
+    content: " · ";
+  }
+
+  .daily-time-zone strong {
+    color: #596254;
+    font-weight: 650;
+  }
+
+  .daily-time-zone > button {
+    width: 30px;
+    height: 30px;
+    display: grid;
+    place-items: center;
+    border: 0;
+    border-radius: 7px;
+    background: transparent;
+    color: #788174;
+  }
+
+  .daily-time-zone > button:hover {
+    background: #f0f3ed;
+    color: #526d3f;
+  }
+
+  .daily-time-zone label {
+    width: 100%;
+  }
+
+  .daily-time-zone label > span {
     display: block;
     margin-bottom: 6px;
     color: #687064;
@@ -2903,26 +3248,7 @@
     font-weight: 750;
   }
 
-  .daily-time-field input {
-    width: 100%;
-    min-height: 86px;
-    border: 1px solid #c8d0c3;
-    border-radius: 12px;
-    outline: 0;
-    background: #fff;
-    color: #263021;
-    font: 720 42px/1 "Helvetica Neue", Helvetica, Arial, sans-serif;
-    letter-spacing: -0.035em;
-    text-align: center;
-  }
-
-  .daily-time-field input:focus,
-  .daily-time-zone-field select:focus {
-    border-color: #6b8556;
-    box-shadow: 0 0 0 3px rgb(92 120 69 / 0.14);
-  }
-
-  .daily-time-zone-field select {
+  .daily-time-zone select {
     width: 100%;
     min-height: 43px;
     border: 1px solid #d3d9cf;
@@ -2932,6 +3258,11 @@
     color: #4d5549;
     padding: 0 11px;
     font-size: 11px;
+  }
+
+  .daily-time-zone select:focus {
+    border-color: #6b8556;
+    box-shadow: 0 0 0 3px rgb(92 120 69 / 0.14);
   }
 
   .daily-delivery-form footer button:last-child {
@@ -3896,6 +4227,16 @@
       justify-content: space-between;
     }
 
+    .daily-visitor-banner {
+      grid-template-columns: auto minmax(0, 1fr);
+      align-items: start;
+    }
+
+    .daily-visitor-banner__action {
+      grid-column: 2;
+      justify-self: start;
+    }
+
     .daily-context-ribbon {
       display: flex;
       overflow-x: auto;
@@ -3956,6 +4297,10 @@
     .daily-header-actions {
       align-items: stretch;
       flex-direction: column;
+    }
+
+    .daily-visitor-banner {
+      margin-bottom: 16px;
     }
 
     .daily-delivery {
@@ -4024,13 +4369,17 @@
       cancelTodoCategoryDeletion();
     }}
   >
-    <span class="daily-dialog-kicker">Todo</span>
     <h2 id="category-deletion-title">Delete group?</h2>
     <p>
       “{categoryPendingDeletion.name}” and all tasks inside it will be permanently deleted.
     </p>
     <footer>
-      <button bind:this={categoryDeletionCancelButton} type="button" onclick={cancelTodoCategoryDeletion}>Cancel</button>
+      <button
+        bind:this={categoryDeletionCloseButton}
+        type="button"
+        aria-label="Close delete group dialog"
+        onclick={cancelTodoCategoryDeletion}
+      ><X size={20} /></button>
       <button class="is-danger" type="button" onclick={confirmTodoCategoryDeletion}>Delete group</button>
     </footer>
   </dialog>
@@ -4046,7 +4395,7 @@
       closeSummaryDeliveryDialog();
     }}
   >
-    <span class="daily-dialog-kicker">Summary delivery</span>
+    <span class="daily-dialog-kicker">Mail delivery</span>
     <h2 id="summary-delivery-dialog-title">Delivery time</h2>
     <form
       class="daily-delivery-form"
@@ -4055,26 +4404,80 @@
         saveSummaryDeliveryTime();
       }}
     >
-      <label class="daily-time-field">
-        <span>Time</span>
-        <input
-          bind:this={summaryDeliveryTimeInput}
-          bind:value={summaryTimeDraft}
-          type="time"
-          aria-label="Summary Time"
-          required
-        />
-      </label>
-      <label class="daily-time-zone-field">
-        <span>Time zone</span>
-        <select bind:value={userTimeZoneDraft} aria-label="User Time Zone">
-          {#each supportedTimeZones as timeZone}
-            <option value={timeZone}>
-              {timeZone}{timeZone === systemTimeZone() ? ' · System' : ''}
-            </option>
-          {/each}
-        </select>
-      </label>
+      <div
+        class="daily-time-picker"
+        role="group"
+        aria-label="Mail delivery time"
+      >
+        <div class="daily-time-segment">
+          <button type="button" aria-label="Increase hours" onclick={() => adjustSummaryTime('hours', 1)}>
+            <ArrowUp size={18} />
+          </button>
+          <button
+            bind:this={summaryDeliveryHoursButton}
+            type="button"
+            class="daily-time-value"
+            class:is-active={activeSummaryTimePart === 'hours'}
+            role="spinbutton"
+            aria-label="Hours"
+            aria-valuemin="0"
+            aria-valuemax="23"
+            aria-valuenow={summaryTimeParts().hours}
+            data-active={activeSummaryTimePart === 'hours'}
+            onclick={() => activateSummaryTimePart('hours')}
+            onkeydown={(event) => handleSummaryTimeKeydown('hours', event)}
+          >{String(summaryTimeParts().hours).padStart(2, '0')}</button>
+          <button type="button" aria-label="Decrease hours" onclick={() => adjustSummaryTime('hours', -1)}>
+            <ArrowDown size={18} />
+          </button>
+        </div>
+        <span class="daily-time-colon" aria-hidden="true">:</span>
+        <div class="daily-time-segment">
+          <button type="button" aria-label="Increase minutes" onclick={() => adjustSummaryTime('minutes', 1)}>
+            <ArrowUp size={18} />
+          </button>
+          <button
+            bind:this={summaryDeliveryMinutesButton}
+            type="button"
+            class="daily-time-value"
+            class:is-active={activeSummaryTimePart === 'minutes'}
+            role="spinbutton"
+            aria-label="Minutes"
+            aria-valuemin="0"
+            aria-valuemax="59"
+            aria-valuenow={summaryTimeParts().minutes}
+            data-active={activeSummaryTimePart === 'minutes'}
+            onclick={() => activateSummaryTimePart('minutes')}
+            onkeydown={(event) => handleSummaryTimeKeydown('minutes', event)}
+          >{String(summaryTimeParts().minutes).padStart(2, '0')}</button>
+          <button type="button" aria-label="Decrease minutes" onclick={() => adjustSummaryTime('minutes', -1)}>
+            <ArrowDown size={18} />
+          </button>
+        </div>
+      </div>
+      <div class="daily-time-zone">
+        {#if summaryTimeZoneEditorOpen}
+          <label>
+            <span>Time zone</span>
+            <select
+              bind:this={summaryDeliveryTimeZoneSelect}
+              bind:value={userTimeZoneDraft}
+              aria-label="User Time Zone"
+            >
+              {#each supportedTimeZones as timeZone}
+                <option value={timeZone}>
+                  {timeZone}{timeZone === systemTimeZone() ? ' · System' : ''}
+                </option>
+              {/each}
+            </select>
+          </label>
+        {:else}
+          <span><small>Time zone</small><strong>{userTimeZoneDraft}</strong></span>
+          <button type="button" aria-label="Edit time zone" onclick={() => void editSummaryTimeZone()}>
+            <Pencil size={14} />
+          </button>
+        {/if}
+      </div>
       <footer>
         <button type="button" aria-label="Cancel delivery time" onclick={closeSummaryDeliveryDialog}><X size={20} /></button>
         <button type="submit" disabled={!summaryTimeSchema.safeParse(summaryTimeDraft).success}>
@@ -4432,6 +4835,7 @@
     bind:this={secondaryDialog}
     class="daily-secondary-dialog"
     aria-labelledby="secondary-panel-title"
+    onclick={handleSecondaryPanelClick}
     oncancel={(event) => {
       event.preventDefault();
       closeSecondaryPanel();
@@ -4540,8 +4944,8 @@
         </section>
       {:else}
         <section class="daily-settings-section">
-          <h3>Visitor mode</h3>
-          <p>Local Setup is saved in this browser only. Sign in to start Summary Delivery.</p>
+          <h3>Visitor preview</h3>
+          <p>Local Setup is saved in this browser only. Sign in with Google to receive Daily Summaries by email.</p>
           <a class="daily-google-button" href="/auth/google"><Mail size={17} />Sign in with Google</a>
         </section>
       {/if}
