@@ -62,6 +62,7 @@ test('Visitor can pause and resume a Summary Section from its context tile', asy
   for (const section of sections) {
     const tile = page.locator(`[data-summary-section="${section.key}"]`);
     await expect(tile).toContainText(`${section.label} · Active`);
+    await tile.hover();
     await tile.getByRole('button', { name: 'Pause section' }).click();
     await expect(tile).toContainText(`${section.label} · Paused`);
     await expect(tile.getByRole('button', { name: 'Resume section' }))
@@ -89,6 +90,7 @@ test('Visitor can pause and resume a Summary Section from its context tile', asy
 
   for (const section of sections) {
     const tile = page.locator(`[data-summary-section="${section.key}"]`);
+    await tile.hover();
     await tile.getByRole('button', { name: 'Resume section' }).click();
     await expect(tile).toContainText(`${section.label} · Active`);
   }

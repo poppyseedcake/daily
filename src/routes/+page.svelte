@@ -2545,7 +2545,26 @@
     color: #617d49;
     padding: 0;
     cursor: pointer;
-    transition: background 150ms ease, border-color 150ms ease, color 150ms ease;
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(2px);
+    transition: opacity 150ms ease, transform 150ms cubic-bezier(0.16, 1, 0.3, 1), background 150ms ease, border-color 150ms ease, color 150ms ease;
+  }
+
+  .daily-context-tile:hover .daily-context-tile__toggle,
+  .daily-context-tile:focus-within .daily-context-tile__toggle,
+  .daily-context-tile__toggle:focus-visible {
+    opacity: 1;
+    pointer-events: auto;
+    transform: none;
+  }
+
+  @media (hover: none) {
+    .daily-context-tile__toggle {
+      opacity: 1;
+      pointer-events: auto;
+      transform: none;
+    }
   }
 
   .daily-context-tile__toggle:hover {
