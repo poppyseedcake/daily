@@ -3677,7 +3677,7 @@
   }
 
   .daily-placement-group {
-    grid-template-columns: 42px minmax(0, 200px) 42px;
+    grid-template-columns: minmax(0, 200px);
   }
 
   .daily-placement-priority {
@@ -3706,6 +3706,10 @@
     border-radius: 8px;
     background: transparent;
     color: #6b7268;
+  }
+
+  .daily-placement-group button {
+    justify-self: center;
   }
 
   .daily-placement-group output {
