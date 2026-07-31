@@ -1499,7 +1499,7 @@
   const openTodoDialog = async () => {
     todoDialogOpen = true;
     await tick();
-    todoDialog?.showModal();
+    if (!todoDialog?.open) todoDialog?.showModal();
     todoDialog?.focus();
   };
 
