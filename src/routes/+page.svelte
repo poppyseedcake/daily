@@ -3676,24 +3676,19 @@
     justify-content: center;
   }
 
+  .daily-placement-controls {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+  }
+
   .daily-placement-group {
     grid-template-columns: minmax(0, 200px);
   }
 
   .daily-placement-priority {
-    grid-template-columns: 42px 48px 42px;
-    margin-top: 16px !important;
-  }
-
-  .daily-placement-group legend,
-  .daily-placement-priority legend {
-    grid-column: 1 / -1;
-    width: 100%;
-    margin-bottom: 5px;
-    color: #687064;
-    font-size: 9px;
-    font-weight: 750;
-    text-align: center;
+    grid-template-columns: 40px 32px 40px;
   }
 
   .daily-placement-group button,
@@ -4958,20 +4953,20 @@
     <span class="daily-dialog-kicker">New task</span>
     <h2 id="task-placement-title">Add task</h2>
     <p class="daily-placement-title">{newTodoTitle}</p>
-    <fieldset class="daily-placement-group">
-      <legend>Group</legend>
-      <button type="button" aria-label="Previous group" onclick={() => cycleTaskPlacementCategory(-1)}><ArrowUp size={18} /></button>
-      <output>{selectedTaskCategoryName}</output>
-      <button type="button" aria-label="Next group" onclick={() => cycleTaskPlacementCategory(1)}><ArrowDown size={18} /></button>
-    </fieldset>
-    <fieldset class="daily-placement-priority">
-      <legend>Urgency</legend>
-      <button type="button" aria-label="Previous urgency" onclick={() => cycleTaskPlacementUrgency(-1)}><ArrowLeft size={18} /></button>
-      <output class={`daily-placement-dot daily-placement-dot--${newTodoUrgency}`}>
-        <span class="sr-only">{urgencyLabel(newTodoUrgency)}</span>
-      </output>
-      <button type="button" aria-label="Next urgency" onclick={() => cycleTaskPlacementUrgency(1)}><ArrowRight size={18} /></button>
-    </fieldset>
+    <div class="daily-placement-controls">
+      <fieldset class="daily-placement-priority" aria-label="Urgency">
+        <button type="button" aria-label="Previous urgency" onclick={() => cycleTaskPlacementUrgency(-1)}><ArrowLeft size={18} /></button>
+        <output class={`daily-placement-dot daily-placement-dot--${newTodoUrgency}`}>
+          <span class="sr-only">{urgencyLabel(newTodoUrgency)}</span>
+        </output>
+        <button type="button" aria-label="Next urgency" onclick={() => cycleTaskPlacementUrgency(1)}><ArrowRight size={18} /></button>
+      </fieldset>
+      <fieldset class="daily-placement-group" aria-label="Group">
+        <button type="button" aria-label="Previous group" onclick={() => cycleTaskPlacementCategory(-1)}><ArrowUp size={18} /></button>
+        <output>{selectedTaskCategoryName}</output>
+        <button type="button" aria-label="Next group" onclick={() => cycleTaskPlacementCategory(1)}><ArrowDown size={18} /></button>
+      </fieldset>
+    </div>
     <footer>
       <button type="button" aria-label="Cancel adding task" onclick={closeTaskPlacement}><X size={20} /></button>
       <button type="button" aria-label="Confirm adding task" onclick={confirmTaskPlacement}><Check size={20} /></button>
