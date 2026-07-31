@@ -58,9 +58,11 @@
   import {
     addTodoCategory,
     addTodoTask,
+    buildTodoSection,
     completeTodoTask as completeTodoTaskInModule,
     createDefaultTodoState,
     deleteTodoCategory as deleteTodoCategoryInModule,
+    deleteTodoTask as deleteTodoTaskInModule,
     reorderTodoCategories as reorderTodoCategoriesInModule,
     reorderTodoTasks as reorderTodoTasksInModule,
     tasksForTodoCategory,
@@ -243,6 +245,8 @@
   let nextTodoId = initialTodoState.nextTodoId;
   let taskPlacementOpen = $state(false);
   let taskPlacementDialog = $state<HTMLDialogElement>();
+  let todoDialogOpen = $state(false);
+  let todoDialog = $state<HTMLDialogElement>();
   let weatherDialogOpen = $state(false);
   let weatherDialog = $state<HTMLDialogElement>();
   let commuteDialogOpen = $state(false);
@@ -1492,6 +1496,18 @@
     taskPlacementOpen = false;
   };
 
+  const openTodoDialog = async () => {
+    todoDialogOpen = true;
+    await tick();
+    todoDialog?.showModal();
+    todoDialog?.focus();
+  };
+
+  const closeTodoDialog = () => {
+    todoDialog?.close();
+    todoDialogOpen = false;
+  };
+
   const confirmTaskPlacement = () => {
     createTodoTask();
     closeTaskPlacement();
@@ -1739,6 +1755,10 @@
 
   const completeTodoTask = (taskId: string) => {
     todoTasks = completeTodoTaskInModule(todoTasks, taskId);
+  };
+
+  const deleteTodoTask = (taskId: string) => {
+    todoTasks = deleteTodoTaskInModule(todoTasks, taskId);
   };
 
   const createTodoCategory = () => {
@@ -2093,6 +2113,26 @@
   </ul>
 {/snippet}
 
+{#snippet TodoDialogTaskList(tasks: TodoTask[], label: string)}
+  <ul class="daily-todo-dialog__task-list" aria-label={label}>
+    {#each tasks as task (task.id)}
+      <li>
+        <span
+          class={`daily-priority daily-priority--${task.urgency}`}
+          aria-label={urgencyLabel(task.urgency)}
+        ></span>
+        <span class="daily-todo-dialog__task-title">{task.title}</span>
+        <button
+          type="button"
+          aria-label={`Delete ${task.title}`}
+          title={`Delete ${task.title}`}
+          onclick={() => deleteTodoTask(task.id)}
+        ><Trash2 size={15} aria-hidden="true" /></button>
+      </li>
+    {/each}
+  </ul>
+{/snippet}
+
 <main class="daily-board-shell">
   <aside class="daily-rail" aria-label="Primary navigation">
     <a class="daily-brand" href="/" aria-label="Daily home"><DailyLogo compact /></a>
@@ -2258,12 +2298,13 @@
           type="button"
           disabled={!localSetupHydrated}
           aria-label="Todo. Open task list"
-          onclick={() => document.getElementById('todo-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+          aria-haspopup="dialog"
+          onclick={() => void openTodoDialog()}
         >
           <ListTodo size={18} aria-hidden="true" />
           <span>
             <small id="todo-section-status">Todo · {enabledSections.todo ? 'Active' : 'Paused'}</small>
-            <strong>Open task list</strong>
+            <strong>{todoTasks.length} {todoTasks.length === 1 ? 'task' : 'tasks'}</strong>
           </span>
           <span class="daily-context-tile__arrow" aria-hidden="true"><ChevronRight size={15} /></span>
         </button>
@@ -2406,6 +2447,58 @@
     {/if}
   </section>
 </main>
+
+{#if todoDialogOpen}
+  <dialog
+    bind:this={todoDialog}
+    class="daily-dialog daily-todo-dialog"
+    aria-labelledby="todo-dialog-title"
+    oncancel={(event) => {
+      event.preventDefault();
+      closeTodoDialog();
+    }}
+  >
+    <header class="daily-dialog-heading">
+      <span></span>
+      <div>
+        <span class="daily-dialog-kicker">Todo</span>
+        <h2 id="todo-dialog-title">All tasks</h2>
+      </div>
+      <button type="button" aria-label="Close Todo task list" onclick={closeTodoDialog}><X size={19} /></button>
+    </header>
+    {#if todoTasks.length === 0}
+      <div class="daily-dialog-empty daily-todo-dialog__empty">
+        <ListTodo size={20} aria-hidden="true" />
+        <strong>No tasks yet</strong>
+        <span>Capture a task from the Todo board to see it here.</span>
+      </div>
+    {:else}
+      {@const todoSection = buildTodoSection(todoCategories, todoTasks)}
+      {#if todoSection}
+        <div class="daily-todo-dialog__groups">
+          {#if todoSection.uncategorizedTasks.length > 0}
+            <section class="daily-todo-dialog__group" aria-labelledby="todo-dialog-ungrouped-title">
+              <header>
+                <h3 id="todo-dialog-ungrouped-title">Ungrouped</h3>
+                <span>{todoSection.uncategorizedTasks.length}</span>
+              </header>
+              {@render TodoDialogTaskList(todoSection.uncategorizedTasks, 'Ungrouped Todo Tasks')}
+            </section>
+          {/if}
+          {#each todoSection.categoryGroups as group (group.category.id)}
+            <section class="daily-todo-dialog__group" aria-labelledby={`todo-dialog-group-${group.category.id}`}>
+              <header>
+                <h3 id={`todo-dialog-group-${group.category.id}`}>{group.category.name}</h3>
+                <span>{group.tasks.length}</span>
+              </header>
+              {@render TodoDialogTaskList(group.tasks, `${group.category.name} Todo Tasks`)}
+            </section>
+          {/each}
+        </div>
+      {/if}
+    {/if}
+  </dialog>
+{/if}
 
 <style>
   :global(body) {
@@ -3465,6 +3558,98 @@
 
   .daily-placement-dialog {
     width: min(360px, calc(100% - 32px));
+  }
+
+  .daily-todo-dialog {
+    width: min(460px, calc(100% - 32px));
+  }
+
+  .daily-todo-dialog .daily-dialog-heading {
+    margin-bottom: 8px;
+  }
+
+  .daily-todo-dialog__groups {
+    display: grid;
+    gap: 18px;
+  }
+
+  .daily-todo-dialog__group > header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 7px;
+  }
+
+  .daily-todo-dialog__group h3 {
+    margin: 0;
+    color: #4c5e43;
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  .daily-todo-dialog__group > header > span {
+    color: #7b8378;
+    font-size: 9px;
+  }
+
+  .daily-todo-dialog__task-list {
+    margin: 0;
+    overflow: hidden;
+    border: 1px solid #e0e5dd;
+    border-radius: 9px;
+    background: #fff;
+    padding: 0;
+    list-style: none;
+  }
+
+  .daily-todo-dialog__task-list li {
+    min-height: 46px;
+    display: grid;
+    grid-template-columns: 9px minmax(0, 1fr) 32px;
+    align-items: center;
+    gap: 10px;
+    border-bottom: 1px solid #eceeea;
+    padding: 5px 7px 5px 12px;
+  }
+
+  .daily-todo-dialog__task-list li:last-child {
+    border-bottom: 0;
+  }
+
+  .daily-todo-dialog__task-list li:hover {
+    background: #fafbf9;
+  }
+
+  .daily-todo-dialog__task-title {
+    min-width: 0;
+    overflow-wrap: anywhere;
+    color: #2c302a;
+    font-size: 11px;
+    font-weight: 580;
+    line-height: 1.4;
+  }
+
+  .daily-todo-dialog__task-list button {
+    width: 32px;
+    height: 32px;
+    display: grid;
+    place-items: center;
+    border: 0;
+    border-radius: 7px;
+    background: transparent;
+    color: #8a9086;
+  }
+
+  .daily-todo-dialog__task-list button:hover {
+    background: #f8ece9;
+    color: #a24b43;
+  }
+
+  .daily-todo-dialog__empty {
+    min-height: 180px;
   }
 
   .daily-confirm-dialog {
