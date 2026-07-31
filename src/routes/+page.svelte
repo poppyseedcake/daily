@@ -2217,7 +2217,14 @@
       </aside>
     {/if}
 
-    <section class="daily-context-ribbon" id="daily-context" aria-label="Daily Summary sections and delivery">
+    <section class="daily-context-zone" aria-labelledby="daily-context-title">
+      <header class="daily-zone-heading">
+        <div>
+          <h2 id="daily-context-title">Summary</h2>
+        </div>
+      </header>
+
+      <div class="daily-context-ribbon" id="daily-context" aria-label="Daily Summary sections and delivery">
       <div
         class:daily-context-tile--paused={!enabledSections.weather}
         class="daily-context-tile"
@@ -2324,127 +2331,139 @@
         </span>
         <ChevronRight size={15} />
       </button>
+      </div>
     </section>
 
-    <form
-      class="daily-capture"
-      onsubmit={(event) => {
-        event.preventDefault();
-        void openTaskPlacement();
-      }}
-    >
-      <Plus size={19} aria-hidden="true" />
-      <input
-        bind:value={newTodoTitle}
-        aria-label="New Todo Task"
-        placeholder="Capture a task…"
-        maxlength="120"
-        disabled={!todoControlsReady}
-        onkeydown={(event) => {
-          if (event.key === 'Enter') {
-            event.preventDefault();
-            void openTaskPlacement();
-          }
-        }}
-      />
-      <button type="submit" aria-label="Add Todo Task" disabled={!newTodoTitle.trim()}>Continue</button>
-    </form>
+    <section class="daily-todo-workspace" id="todo-section" aria-labelledby="todo-section-title">
+      <header class="daily-todo-heading">
+        <div>
+          <h2 id="todo-section-title">Your Tasks</h2>
+        </div>
+        <div class="daily-todo-heading__actions">
+          <span>{todoTasks.length} {todoTasks.length === 1 ? 'task' : 'tasks'}</span>
+        </div>
+      </header>
 
-    <div class="daily-groups-toolbar" id="todo-section">
-      <div><h2>Groups</h2><span>{todoCategories.length} active</span></div>
-      {#if !categoryComposerOpen}
-        <button type="button" onclick={() => void openCategoryComposer()}><Plus size={15} />New group</button>
-      {/if}
-    </div>
-
-    {#if categoryComposerOpen}
       <form
-        class="daily-group-composer"
+        class="daily-capture"
         onsubmit={(event) => {
           event.preventDefault();
-          createTodoCategory();
-          if (!newCategoryName) categoryComposerOpen = false;
+          void openTaskPlacement();
         }}
       >
-        <Plus size={16} />
-        <label>
-          <span>Group name</span>
-          <input
-            bind:this={newCategoryInput}
-            bind:value={newCategoryName}
-            aria-label="New Todo Category"
-            maxlength="80"
-            placeholder="e.g. Home"
-            onkeydown={(event) => {
-              if (event.key === 'Escape') {
-                categoryComposerOpen = false;
-                newCategoryName = '';
-              }
-            }}
-          />
-        </label>
-        <button type="button" onclick={() => (categoryComposerOpen = false)}>Cancel</button>
-        <button type="submit" aria-label="Add Todo Category">Add group</button>
+        <Plus size={19} aria-hidden="true" />
+        <input
+          bind:value={newTodoTitle}
+          aria-label="New Todo Task"
+          placeholder="Capture a task…"
+          maxlength="120"
+          disabled={!todoControlsReady}
+          onkeydown={(event) => {
+            if (event.key === 'Enter') {
+              event.preventDefault();
+              void openTaskPlacement();
+            }
+          }}
+        />
+        <button type="submit" aria-label="Add Todo Task" disabled={!newTodoTitle.trim()}>Continue</button>
       </form>
-    {/if}
 
-    <div
-      class="daily-columns"
-      aria-label="Todo Categories"
-      use:dragHandleZone={{
-        items: visibleTodoCategories(),
-        flipDurationMs: 150,
-        type: 'todo-category',
-        useCursorForDetection: true
-      }}
-      onconsider={handleTodoCategoryConsider}
-      onfinalize={handleTodoCategoryFinalize}
-    >
-      {#each visibleTodoCategories() as category, categoryIndex (category.id)}
-        <section class={`daily-column daily-column--${(categoryIndex % 3) + 1}`} aria-label={`${category.name} Todo Category`}>
-          <header>
-            {#if editingCategoryId === category.id}
-              <input bind:value={editingCategoryName} aria-label="Edit Todo Category" />
-              <button type="button" aria-label="Save Todo Category" onclick={saveEditingTodoCategory}><Check size={16} /></button>
-            {:else}
-              <div>
-                <span
-                  class="daily-category-mark"
-                  role="button"
-                  tabindex="0"
-                  aria-label={`Move category ${category.name}`}
-                  use:dragHandle
-                >{categoryIndex + 1}</span>
-                <h2>{category.name}</h2>
-              </div>
-              <div class="daily-column-actions">
-                <span>{tasksForCategory(category.id).length}</span>
-                <button type="button" aria-label={`Rename ${category.name}`} onclick={() => startEditingTodoCategory(category)}><Pencil size={14} /></button>
-                <button type="button" aria-label={`Delete ${category.name}`} onclick={() => void requestTodoCategoryDeletion(category)}><Trash2 size={14} /></button>
-              </div>
-            {/if}
-          </header>
-          {@render TodoTaskList(category.id, `${category.name} Todo Tasks`)}
-        </section>
-      {/each}
-    </div>
+      <div class="daily-groups-toolbar">
+        <div><h2>Groups</h2><span>{todoCategories.length} active</span></div>
+        {#if !categoryComposerOpen}
+          <button type="button" onclick={() => void openCategoryComposer()}><Plus size={15} />New group</button>
+        {/if}
+      </div>
 
-    <section class="daily-ungrouped" aria-labelledby="ungrouped-heading">
-      <header>
-        <span class="daily-ungrouped-icon"><Inbox size={16} /></span>
-        <div><h2 id="ungrouped-heading">Ungrouped</h2></div>
-        <span>{tasksForCategory(null).length}</span>
-      </header>
-      {@render TodoTaskList(null, 'No Category Todo Tasks')}
+      {#if categoryComposerOpen}
+        <form
+          class="daily-group-composer"
+          onsubmit={(event) => {
+            event.preventDefault();
+            createTodoCategory();
+            if (!newCategoryName) categoryComposerOpen = false;
+          }}
+        >
+          <Plus size={16} />
+          <label>
+            <span>Group name</span>
+            <input
+              bind:this={newCategoryInput}
+              bind:value={newCategoryName}
+              aria-label="New Todo Category"
+              maxlength="80"
+              placeholder="e.g. Home"
+              onkeydown={(event) => {
+                if (event.key === 'Escape') {
+                  categoryComposerOpen = false;
+                  newCategoryName = '';
+                }
+              }}
+            />
+          </label>
+          <button type="button" onclick={() => (categoryComposerOpen = false)}>Cancel</button>
+          <button type="submit" aria-label="Add Todo Category">Add group</button>
+        </form>
+      {/if}
+
+      <div
+        class="daily-columns"
+        aria-label="Todo Categories"
+        use:dragHandleZone={{
+          items: visibleTodoCategories(),
+          flipDurationMs: 150,
+          type: 'todo-category',
+          useCursorForDetection: true
+        }}
+        onconsider={handleTodoCategoryConsider}
+        onfinalize={handleTodoCategoryFinalize}
+      >
+        {#each visibleTodoCategories() as category, categoryIndex (category.id)}
+          <section class={`daily-column daily-column--${(categoryIndex % 3) + 1}`} aria-label={`${category.name} Todo Category`}>
+            <header>
+              {#if editingCategoryId === category.id}
+                <input bind:value={editingCategoryName} aria-label="Edit Todo Category" />
+                <button type="button" aria-label="Save Todo Category" onclick={saveEditingTodoCategory}><Check size={16} /></button>
+              {:else}
+                <div>
+                  <span
+                    class="daily-category-mark"
+                    role="button"
+                    tabindex="0"
+                    aria-label={`Move category ${category.name}`}
+                    use:dragHandle
+                  >{categoryIndex + 1}</span>
+                  <h2>{category.name}</h2>
+                </div>
+                <div class="daily-column-actions">
+                  <span>{tasksForCategory(category.id).length}</span>
+                  <button type="button" aria-label={`Rename ${category.name}`} onclick={() => startEditingTodoCategory(category)}><Pencil size={14} /></button>
+                  <button type="button" aria-label={`Delete ${category.name}`} onclick={() => void requestTodoCategoryDeletion(category)}><Trash2 size={14} /></button>
+                </div>
+              {/if}
+            </header>
+            {@render TodoTaskList(category.id, `${category.name} Todo Tasks`)}
+          </section>
+        {/each}
+      </div>
+
+      <section class="daily-ungrouped" aria-labelledby="ungrouped-heading">
+        <header>
+          <span class="daily-ungrouped-icon"><Inbox size={16} /></span>
+          <div><h2 id="ungrouped-heading">Ungrouped</h2></div>
+          <span>{tasksForCategory(null).length}</span>
+        </header>
+        {@render TodoTaskList(null, 'No Category Todo Tasks')}
+      </section>
+
+      {#if authState.mode === 'visitor' ||
+        userTodoStateStatusTone === 'error' ||
+        userTodoStateStatusTone === 'warning'}
+        <p class={`daily-save-state daily-save-state--${authState.mode === 'user' ? userTodoStateStatusTone : localSetupStatusTone}`}>
+          {authState.mode === 'user' ? userTodoStateStatus : localSetupStatus}
+        </p>
+      {/if}
     </section>
-
-    {#if authState.mode === 'visitor' ||
-      userTodoStateStatusTone === 'error' ||
-      userTodoStateStatusTone === 'warning'}
-      <p class={`daily-save-state daily-save-state--${authState.mode === 'user' ? userTodoStateStatusTone : localSetupStatusTone}`}>
-        {authState.mode === 'user' ? userTodoStateStatus : localSetupStatus}
-      </p>
-    {/if}
   </section>
 </main>
 
@@ -2800,6 +2819,46 @@
     transform: none;
   }
 
+  .daily-context-zone {
+    margin-top: 2px;
+  }
+
+  .daily-zone-heading,
+  .daily-zone-heading > div,
+  .daily-todo-heading,
+  .daily-todo-heading > div,
+  .daily-todo-heading__actions {
+    display: flex;
+    align-items: center;
+  }
+
+  .daily-zone-heading,
+  .daily-todo-heading {
+    justify-content: space-between;
+    gap: 18px;
+  }
+
+  .daily-zone-heading {
+    align-items: end;
+    margin-bottom: 13px;
+    padding: 0 2px;
+  }
+
+  .daily-zone-heading > div,
+  .daily-todo-heading > div:first-child {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .daily-zone-heading h2,
+  .daily-todo-heading h2 {
+    margin: 0;
+    color: #71776e;
+    font-size: 10px;
+    font-weight: 650;
+    letter-spacing: 0.06em;
+  }
+
   .daily-context-ribbon {
     display: grid;
     grid-template-columns: repeat(5, minmax(0, 1fr));
@@ -2955,6 +3014,27 @@
   button.daily-context-summary:hover {
     background: #f3f5f0;
     color: #496238;
+  }
+
+  .daily-todo-workspace {
+    margin-top: 31px;
+    border-top: 1px solid #cfd6cc;
+    padding-top: 24px;
+  }
+
+  .daily-todo-heading {
+    align-items: end;
+  }
+
+  .daily-todo-heading__actions {
+    gap: 12px;
+  }
+
+  .daily-todo-heading__actions > span {
+    color: #7b8478;
+    font-size: 9px;
+    font-weight: 500;
+    letter-spacing: 0;
   }
 
   .daily-capture {
@@ -4855,6 +4935,18 @@
       align-items: flex-start;
       flex-direction: column;
       gap: 15px;
+    }
+
+    .daily-zone-heading,
+    .daily-todo-heading {
+      align-items: flex-start;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .daily-todo-heading__actions {
+      width: 100%;
+      justify-content: space-between;
     }
 
     .daily-board-heading {
