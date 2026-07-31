@@ -121,6 +121,9 @@ export const updateTodoTask = (
 export const completeTodoTask = (tasks: TodoTask[], taskId: string) =>
   tasks.filter((task) => task.id !== taskId);
 
+export const deleteTodoTask = (tasks: TodoTask[], taskId: string) =>
+  tasks.filter((task) => task.id !== taskId);
+
 export const addTodoCategory = ({
   categories,
   input,

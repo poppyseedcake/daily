@@ -5,6 +5,7 @@ import {
   buildTodoSection,
   completeTodoTask,
   deleteTodoCategory,
+  deleteTodoTask,
   reorderTodoCategories,
   reorderTodoTasks,
   tasksForTodoCategory,
@@ -96,6 +97,13 @@ describe('Todo Module task lifecycle', () => {
 
   test('completes Todo Tasks by removing them from active Todo state', () => {
     expect(completeTodoTask(baseTasks, 'todo-2')).toEqual([
+      { id: 'todo-1', title: 'Plan meals', categoryId: null, urgency: 'low', position: 1 },
+      { id: 'todo-3', title: 'Draft update', categoryId: 'work', urgency: 'high', position: 1 }
+    ]);
+  });
+
+  test('deletes Todo Tasks from the active Todo state', () => {
+    expect(deleteTodoTask(baseTasks, 'todo-2')).toEqual([
       { id: 'todo-1', title: 'Plan meals', categoryId: null, urgency: 'low', position: 1 },
       { id: 'todo-3', title: 'Draft update', categoryId: 'work', urgency: 'high', position: 1 }
     ]);

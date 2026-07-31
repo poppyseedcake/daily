@@ -46,6 +46,27 @@ test('Visitor assigns a captured task to a group and urgency with the keyboard',
   await expect(ungrouped.getByLabel('Medium urgency')).toBeVisible();
 });
 
+test('Visitor opens all Todo Tasks from the context tile and can delete one', async ({ page }) => {
+  const pageErrors: string[] = [];
+  page.on('pageerror', (error) => pageErrors.push(error.message));
+
+  await page.getByLabel('New Todo Task').fill('Delete this task');
+  await page.getByLabel('New Todo Task').press('Enter');
+  await page.getByRole('dialog', { name: 'Add task' }).getByRole('button', { name: 'Confirm adding task' }).click();
+
+  const todoTile = page.locator('[data-summary-section="todo"]');
+  await todoTile.getByRole('button', { name: 'Todo. Open task list' }).dblclick();
+
+  const todoDialog = page.getByRole('dialog', { name: 'All tasks' });
+  await expect(todoDialog.getByText('Delete this task')).toBeVisible();
+  expect(pageErrors).not.toContainEqual(expect.stringContaining('InvalidStateError'));
+  await expect(todoDialog.getByRole('button', { name: 'Add Todo Task' })).toHaveCount(0);
+  await expect(todoDialog.getByRole('button', { name: 'Delete Delete this task' })).toBeVisible();
+
+  await todoDialog.getByRole('button', { name: 'Delete Delete this task' }).click();
+  await expect(todoDialog.getByText('No tasks yet')).toBeVisible();
+});
+
 test('Visitor opens focused Weather and Commute configuration from their context tiles', async ({
   page
 }) => {
