@@ -52,25 +52,46 @@ test('Visitor opens focused Weather and Commute configuration from their context
 });
 
 test('Visitor can pause and resume a Summary Section from its context tile', async ({ page }) => {
-  const weatherTile = page.locator('[data-summary-section="weather"]');
+  const sections = [
+    { key: 'weather', label: 'Weather', settingsId: 'weather-section-board' },
+    { key: 'commute', label: 'Commute', settingsId: 'commute-section-board' },
+    { key: 'calendar', label: 'Calendar', settingsId: 'calendar-section-board' },
+    { key: 'todo', label: 'Todo', settingsId: 'todo-section-board' }
+  ] as const;
 
-  await expect(weatherTile).toContainText('Weather · Active');
-  await expect(weatherTile.getByRole('button', { name: 'Pause section' }))
-    .toHaveAttribute('aria-pressed', 'true');
+  for (const section of sections) {
+    const tile = page.locator(`[data-summary-section="${section.key}"]`);
+    await expect(tile).toContainText(`${section.label} · Active`);
+    await tile.getByRole('button', { name: 'Pause section' }).click();
+    await expect(tile).toContainText(`${section.label} · Paused`);
+    await expect(tile.getByRole('button', { name: 'Resume section' }))
+      .toHaveAttribute('aria-pressed', 'false');
+  }
 
-  await weatherTile.getByRole('button', { name: 'Pause section' }).click();
+  await expect.poll(() => page.evaluate(() => {
+    const storedSetup = localStorage.getItem('daily.visitorLocalSetup.v1');
+    return storedSetup ? JSON.parse(storedSetup).summaryConfiguration.sections : null;
+  })).toEqual({ weather: false, commute: false, calendar: false, todo: false });
 
-  await expect(weatherTile).toContainText('Weather · Paused');
-  await expect(weatherTile.getByRole('button', { name: 'Resume section' }))
-    .toHaveAttribute('aria-pressed', 'false');
+  await page.reload();
+
+  for (const section of sections) {
+    await expect(page.locator(`[data-summary-section="${section.key}"]`))
+      .toContainText(`${section.label} · Paused`);
+  }
 
   await page.getByRole('button', { name: 'Open settings' }).click();
   const settings = page.getByRole('dialog', { name: 'Settings' });
-  await expect(settings.locator('#weather-section-board')).not.toBeChecked();
+  for (const section of sections) {
+    await expect(settings.locator(`#${section.settingsId}`)).not.toBeChecked();
+  }
   await settings.getByRole('button', { name: 'Close panel' }).click();
 
-  await weatherTile.getByRole('button', { name: 'Resume section' }).click();
-  await expect(weatherTile).toContainText('Weather · Active');
+  for (const section of sections) {
+    const tile = page.locator(`[data-summary-section="${section.key}"]`);
+    await tile.getByRole('button', { name: 'Resume section' }).click();
+    await expect(tile).toContainText(`${section.label} · Active`);
+  }
 });
 
 test('secondary destinations stay outside the main view until requested', async ({ page }) => {
