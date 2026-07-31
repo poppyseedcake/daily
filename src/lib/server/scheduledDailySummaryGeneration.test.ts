@@ -137,6 +137,7 @@ describe('scheduled Daily Summary generation', () => {
             id: 'office',
             name: 'Office',
             enabled: true,
+            days: ['tuesday'],
             origin: { label: 'Home', latitude: 52.2, longitude: 21 },
             destination: { label: 'Office', latitude: 52.3, longitude: 21.1 }
           }],
@@ -314,6 +315,7 @@ describe('scheduled Daily Summary generation', () => {
             load: vi.fn().mockResolvedValue({
               routes: [{
                 id: 'office', name: 'Office', enabled: true,
+                days: ['tuesday'],
                 origin: { label: 'Home', latitude: 52.2, longitude: 21 },
                 destination: { label: 'Office', latitude: 52.3, longitude: 21.1 }
               }],

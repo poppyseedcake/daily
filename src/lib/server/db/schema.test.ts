@@ -1,6 +1,7 @@
 import { getTableColumns, getTableName } from 'drizzle-orm';
 import { describe, expect, test } from 'vitest';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import Database from 'better-sqlite3';
 import {
   authAccount,
   authSession,
@@ -15,6 +16,8 @@ import {
   googleMapsUsage,
   googleMapsPersonUsage,
   selectedCalendars,
+  savedCommuteAddresses,
+  savedWeatherCities,
   scheduledWorkerRuns,
   summaryConfigurations,
   technicalLogRecords,
@@ -34,6 +37,8 @@ describe('Daily database schema', () => {
       getTableName(todoCategories),
       getTableName(todoTasks),
       getTableName(weatherLocations),
+      getTableName(savedWeatherCities),
+      getTableName(savedCommuteAddresses),
       getTableName(commuteRoutes),
       getTableName(commuteDays),
       getTableName(calendarConnections),
@@ -55,6 +60,8 @@ describe('Daily database schema', () => {
       'todo_categories',
       'todo_tasks',
       'weather_locations',
+      'saved_weather_cities',
+      'saved_commute_addresses',
       'commute_routes',
       'commute_days',
       'calendar_connections',
@@ -332,6 +339,54 @@ describe('Daily database schema', () => {
     });
   });
 
+  test('moves Commute Days onto each route while preserving existing selections', () => {
+    const migration = readFileSync('drizzle/0019_add_commute_route_days.sql', 'utf8');
+    const journal = JSON.parse(readFileSync('drizzle/meta/_journal.json', 'utf8')) as {
+      entries: Array<{ idx: number; tag: string }>;
+    };
+
+    expect(migration).toContain('ALTER TABLE `commute_routes`');
+    expect(migration).toContain('ADD `days` text');
+    expect(migration).toContain('FROM `commute_days`');
+    expect(journal.entries.find(({ idx }) => idx === 19)).toMatchObject({
+      idx: 19,
+      tag: '0019_add_commute_route_days'
+    });
+
+    const sqlite = new Database(':memory:');
+    try {
+      sqlite.exec(readFileSync('drizzle/0000_bootstrap_daily.sql', 'utf8'));
+      sqlite.exec(readFileSync('drizzle/0010_add_commute_setup.sql', 'utf8'));
+      for (const userId of ['custom-days', 'no-days']) {
+        sqlite
+          .prepare('insert into users (id, google_subject, email) values (?, ?, ?)')
+          .run(userId, `google-${userId}`, `${userId}@example.com`);
+        sqlite
+          .prepare(
+            `insert into commute_routes (
+              id, user_id, name, origin_label, origin_latitude, origin_longitude,
+              destination_label, destination_latitude, destination_longitude, enabled, position
+            ) values (?, ?, 'Office', 'Home', 1, 2, 'Office', 3, 4, true, 1)`
+          )
+          .run(`route-${userId}`, userId);
+      }
+      sqlite
+        .prepare('insert into commute_days (user_id, day) values (?, ?), (?, ?)')
+        .run('custom-days', 'tuesday', 'custom-days', 'thursday');
+
+      sqlite.exec(migration.replaceAll('--> statement-breakpoint', ''));
+
+      expect(
+        sqlite.prepare('select user_id, days from commute_routes order by user_id').all()
+      ).toEqual([
+        { user_id: 'custom-days', days: '["tuesday","thursday"]' },
+        { user_id: 'no-days', days: '[]' }
+      ]);
+    } finally {
+      sqlite.close();
+    }
+  });
+
   test('ships persisted baseline Commute durations for cost-free previews', () => {
     const migration = readFileSync('drizzle/0016_add_commute_preview_duration.sql', 'utf8');
     const journal = JSON.parse(readFileSync('drizzle/meta/_journal.json', 'utf8')) as {
@@ -408,6 +463,100 @@ describe('Daily database schema', () => {
     expect(migration).not.toContain('forecast');
     expect(migration).not.toContain('payload');
     expect(migration).not.toContain('rendered');
+  });
+
+  test('ships the historical shared Saved Locations migration before splitting the lists', () => {
+    const migrationPath = 'drizzle/0020_add_saved_locations.sql';
+    const migration = readFileSync(migrationPath, 'utf8');
+    const journal = JSON.parse(readFileSync('drizzle/meta/_journal.json', 'utf8')) as {
+      entries: Array<{ idx: number; tag: string }>;
+    };
+
+    expect(migration).toContain('CREATE TABLE `saved_locations`');
+    expect(migration).toContain('`label` text NOT NULL');
+    expect(migration).toContain('`latitude` real NOT NULL');
+    expect(migration).toContain('`longitude` real NOT NULL');
+    expect(migration).toContain('`position` integer NOT NULL');
+    expect(migration).toContain('REFERENCES `users`(`id`)');
+    expect(journal.entries.find(({ idx }) => idx === 20)).toMatchObject({
+      idx: 20,
+      tag: '0020_add_saved_locations'
+    });
+  });
+
+  test('splits Saved Weather Cities from Saved Commute Addresses in an upgrade migration', () => {
+    const migrationPath = 'drizzle/0021_split_saved_locations.sql';
+    const migration = readFileSync(migrationPath, 'utf8');
+    const journal = JSON.parse(readFileSync('drizzle/meta/_journal.json', 'utf8')) as {
+      entries: Array<{ idx: number; tag: string }>;
+    };
+
+    expect(migration).toContain('CREATE TABLE `saved_weather_cities`');
+    expect(migration).toContain('CREATE TABLE `saved_commute_addresses`');
+    expect(migration).toContain('CREATE UNIQUE INDEX `saved_weather_cities_user_position_idx`');
+    expect(migration).toContain('CREATE UNIQUE INDEX `saved_commute_addresses_user_position_idx`');
+    expect(migration).toContain('INSERT INTO `saved_commute_addresses`');
+    expect(migration).toContain('INSERT INTO `saved_weather_cities`');
+    expect(journal.entries.find(({ idx }) => idx === 21)).toMatchObject({
+      idx: 21,
+      tag: '0021_split_saved_locations'
+    });
+  });
+
+  test('moves legacy saved route endpoints into Saved Commute Addresses and the rest into Saved Weather Cities', () => {
+    const sqlite = new Database(':memory:');
+    try {
+      sqlite.pragma('foreign_keys = ON');
+      sqlite.exec(readFileSync('drizzle/0000_bootstrap_daily.sql', 'utf8'));
+      sqlite.exec(readFileSync('drizzle/0010_add_commute_setup.sql', 'utf8'));
+      sqlite.exec(readFileSync('drizzle/0020_add_saved_locations.sql', 'utf8'));
+      sqlite
+        .prepare(
+          'insert into users (id, google_subject, email, created_at, updated_at) values (?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)'
+        )
+        .run('user-1', 'google-user-1', 'user-1@example.com');
+      sqlite
+        .prepare(
+          `insert into commute_routes (
+            id, user_id, name, origin_label, origin_latitude, origin_longitude,
+            destination_label, destination_latitude, destination_longitude, enabled, position
+          ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        )
+        .run(
+          'route-1',
+          'user-1',
+          'Office',
+          'Home',
+          52.2297,
+          21.0122,
+          'Office',
+          52.2318,
+          21.0067,
+          1,
+          1
+        );
+      sqlite
+        .prepare(
+          'insert into saved_locations (id, user_id, label, latitude, longitude, position) values (?, ?, ?, ?, ?, ?)'
+        )
+        .run('city-1', 'user-1', 'Warsaw, Poland', 52.23, 21.01, 1);
+      sqlite
+        .prepare(
+          'insert into saved_locations (id, user_id, label, latitude, longitude, position) values (?, ?, ?, ?, ?, ?)'
+        )
+        .run('address-1', 'user-1', 'Home entrance', 52.2297, 21.0122, 2);
+
+      sqlite.exec(readFileSync('drizzle/0021_split_saved_locations.sql', 'utf8'));
+
+      expect(
+        sqlite.prepare('select label from saved_weather_cities order by position').all()
+      ).toEqual([{ label: 'Warsaw, Poland' }]);
+      expect(
+        sqlite.prepare('select label from saved_commute_addresses order by position').all()
+      ).toEqual([{ label: 'Home entrance' }]);
+    } finally {
+      sqlite.close();
+    }
   });
 
   test('ships Calendar Connections and Selected Calendars in an upgrade migration', () => {

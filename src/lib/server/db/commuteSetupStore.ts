@@ -1,11 +1,24 @@
 import { randomUUID } from 'node:crypto';
 import { and, asc, eq, sql } from 'drizzle-orm';
-import { defaultCommuteDays, type CommuteDay, type CommuteRoute } from '$lib/commuteRoute';
+import {
+  commuteDaysSchema,
+  defaultCommuteDays,
+  type CommuteDay,
+  type CommuteRoute
+} from '$lib/commuteRoute';
 import type { UserCommuteSetupStore } from '$lib/server/commuteSetupPersistence';
 import { db } from '$lib/server/db';
 import { commuteDays, commuteRoutes } from './schema';
 
 type CommuteSetupDatabase = typeof db;
+
+const routeDaysFromJson = (value: string): CommuteDay[] => {
+  try {
+    return commuteDaysSchema.catch([...defaultCommuteDays]).parse(JSON.parse(value));
+  } catch {
+    return [...defaultCommuteDays];
+  }
+};
 
 const routeFromRow = (row: typeof commuteRoutes.$inferSelect): CommuteRoute => ({
   id: row.id,
@@ -20,6 +33,7 @@ const routeFromRow = (row: typeof commuteRoutes.$inferSelect): CommuteRoute => (
     latitude: row.destinationLatitude,
     longitude: row.destinationLongitude
   },
+  days: routeDaysFromJson(row.days),
   previewDurationMinutes: row.previewDurationMinutes,
   enabled: row.enabled
 });
@@ -32,6 +46,7 @@ const routeValues = (route: Omit<CommuteRoute, 'id'>) => ({
   destinationLabel: route.destination.label,
   destinationLatitude: route.destination.latitude,
   destinationLongitude: route.destination.longitude,
+  days: JSON.stringify(route.days),
   enabled: route.enabled
 });
 

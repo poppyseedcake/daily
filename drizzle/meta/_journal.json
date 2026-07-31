@@ -134,6 +134,27 @@
       "when": 1784502000000,
       "tag": "0018_split_google_api_person_limits",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "6",
+      "when": 1785428610432,
+      "tag": "0019_add_commute_route_days",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "6",
+      "when": 1785446400000,
+      "tag": "0020_add_saved_locations",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "6",
+      "when": 1785446400001,
+      "tag": "0021_split_saved_locations",
+      "breakpoints": true
     }
   ]
 }

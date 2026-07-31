@@ -41,9 +41,9 @@ const todoTasks: TodoTask[] = [
 describe('Daily Summary preview input', () => {
   test('renders saved baseline estimates without provider requests on the local Commute Day', async () => {
     const routes: CommuteRoute[] = [
-      { id: 'office', name: 'Office', enabled: true, previewDurationMinutes: 31, origin: { label: 'Home', latitude: 40.1, longitude: -73.9 }, destination: { label: 'Office', latitude: 40.7, longitude: -74 } },
-      { id: 'gym', name: 'Gym', enabled: false, origin: { label: 'Home', latitude: 40.1, longitude: -73.9 }, destination: { label: 'Gym', latitude: 40.5, longitude: -73.8 } },
-      { id: 'school', name: 'School run', enabled: true, previewDurationMinutes: 14, origin: { label: 'Home', latitude: 40.1, longitude: -73.9 }, destination: { label: 'School', latitude: 40.6, longitude: -73.7 } }
+      { id: 'office', name: 'Office', days: ['wednesday'], enabled: true, previewDurationMinutes: 31, origin: { label: 'Home', latitude: 40.1, longitude: -73.9 }, destination: { label: 'Office', latitude: 40.7, longitude: -74 } },
+      { id: 'gym', name: 'Gym', days: ['wednesday'], enabled: false, origin: { label: 'Home', latitude: 40.1, longitude: -73.9 }, destination: { label: 'Gym', latitude: 40.5, longitude: -73.8 } },
+      { id: 'school', name: 'School run', days: ['wednesday'], enabled: true, previewDurationMinutes: 14, origin: { label: 'Home', latitude: 40.1, longitude: -73.9 }, destination: { label: 'School', latitude: 40.6, longitude: -73.7 } }
     ];
     const commuteEstimateProvider = {
       estimateCommute: vi.fn().mockRejectedValue(new Error('preview must not call Routes API'))
@@ -67,12 +67,48 @@ describe('Daily Summary preview input', () => {
     expect(rendered.text).not.toContain('Gym');
   });
 
+  test('includes only enabled Commute Routes scheduled for the local weekday', async () => {
+    const routes: CommuteRoute[] = [
+      {
+        id: 'route-wednesday',
+        name: 'Office',
+        origin: { label: 'Home', latitude: 52.1, longitude: 21.1 },
+        destination: { label: 'Office', latitude: 52.2, longitude: 21.2 },
+        days: ['wednesday'],
+        enabled: true,
+        previewDurationMinutes: 24
+      },
+      {
+        id: 'route-friday',
+        name: 'Gym',
+        origin: { label: 'Home', latitude: 52.1, longitude: 21.1 },
+        destination: { label: 'Gym', latitude: 52.3, longitude: 21.3 },
+        days: ['friday'],
+        enabled: true,
+        previewDurationMinutes: 18
+      }
+    ];
+
+    const input = await buildDailySummaryInput({
+      configuration: { ...configuration, userTimeZone: 'UTC' },
+      todoCategories: [],
+      todoTasks: [],
+      commuteRoutes: routes,
+      commuteDays: ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'],
+      now: new Date('2026-07-29T06:00:00.000Z')
+    });
+
+    expect(input.commuteSection?.estimates).toEqual([
+      expect.objectContaining({ routeName: 'Office' })
+    ]);
+  });
+
   test.each(['light', 'dark'] as const)('keeps route-labeled Commute in fixed HTML and text order for the %s theme', async (summaryTheme) => {
     const preview = await buildDailySummaryInput({
       configuration: { ...configuration, summaryTheme },
       todoCategories,
       todoTasks,
-      commuteRoutes: [{ id: 'office', name: 'Office', enabled: true, origin: { label: 'Home', latitude: 40.1, longitude: -73.9 }, destination: { label: 'Office', latitude: 40.7, longitude: -74 } }],
+      commuteRoutes: [{ id: 'office', name: 'Office', days: ['wednesday'], enabled: true, origin: { label: 'Home', latitude: 40.1, longitude: -73.9 }, destination: { label: 'Office', latitude: 40.7, longitude: -74 } }],
       commuteDays: ['wednesday'],
       commuteEstimateMode: 'live',
       commuteEstimateProvider: { estimateCommute: vi.fn().mockResolvedValue({ outcome: 'available', estimate: { durationMinutes: 24 } }) },
@@ -97,8 +133,8 @@ describe('Daily Summary preview input', () => {
         .mockResolvedValueOnce({ outcome: 'available', estimate: { durationMinutes: 11 } } as const)
     };
     const routes: CommuteRoute[] = [
-      { id: 'office', name: 'Office', enabled: true, origin: { label: 'Home', latitude: 40.1, longitude: -73.9 }, destination: { label: 'Office', latitude: 40.7, longitude: -74 } },
-      { id: 'school', name: 'School run', enabled: true, origin: { label: 'Home', latitude: 40.1, longitude: -73.9 }, destination: { label: 'School', latitude: 40.6, longitude: -73.7 } }
+      { id: 'office', name: 'Office', days: ['wednesday'], enabled: true, origin: { label: 'Home', latitude: 40.1, longitude: -73.9 }, destination: { label: 'Office', latitude: 40.7, longitude: -74 } },
+      { id: 'school', name: 'School run', days: ['wednesday'], enabled: true, origin: { label: 'Home', latitude: 40.1, longitude: -73.9 }, destination: { label: 'School', latitude: 40.6, longitude: -73.7 } }
     ];
 
     const preview = await buildDailySummaryInput({
@@ -128,7 +164,7 @@ describe('Daily Summary preview input', () => {
       configuration: { ...configuration, ...configurationPatch },
       todoCategories,
       todoTasks,
-      commuteRoutes: [{ id: 'office', name: 'Office', enabled: true, origin: { label: 'Home', latitude: 40.1, longitude: -73.9 }, destination: { label: 'Office', latitude: 40.7, longitude: -74 } }],
+      commuteRoutes: [{ id: 'office', name: 'Office', days: [...commuteDays], enabled: true, origin: { label: 'Home', latitude: 40.1, longitude: -73.9 }, destination: { label: 'Office', latitude: 40.7, longitude: -74 } }],
       commuteDays,
       commuteEstimateProvider,
       now: new Date('2026-07-09T02:30:00.000Z')
@@ -143,7 +179,7 @@ describe('Daily Summary preview input', () => {
       configuration,
       todoCategories,
       todoTasks,
-      commuteRoutes: [{ id: 'office', name: 'Office', enabled: true, origin: { label: 'Home', latitude: 40.1, longitude: -73.9 }, destination: { label: 'Office', latitude: 40.7, longitude: -74 } }],
+      commuteRoutes: [{ id: 'office', name: 'Office', days: ['wednesday'], enabled: true, origin: { label: 'Home', latitude: 40.1, longitude: -73.9 }, destination: { label: 'Office', latitude: 40.7, longitude: -74 } }],
       commuteDays: ['wednesday'],
       commuteEstimateMode: 'live',
       commuteEstimateProvider: { estimateCommute: vi.fn().mockResolvedValue({ outcome: 'unavailable', reason: 'global-daily-cap' }) },

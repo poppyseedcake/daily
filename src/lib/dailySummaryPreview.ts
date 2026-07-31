@@ -115,9 +115,11 @@ const buildCommuteGenerationResult = async ({ configuration, routes, days, provi
     Temporal.Instant.fromEpochMilliseconds(now.getTime())
       .toZonedDateTimeISO(configuration.userTimeZone).dayOfWeek - 1
   ];
-  const enabledRoutes = routes.filter((route) => route.enabled);
+  const enabledRoutes = routes.filter(
+    (route) => route.enabled && route.days.includes(localDay)
+  );
 
-  if (!configuration.sections.commute || !days.includes(localDay) || enabledRoutes.length === 0) {
+  if (!configuration.sections.commute || enabledRoutes.length === 0) {
     return { commuteSection: null, sectionState: { status: 'available', label: 'Commute', detail: '' } };
   }
 

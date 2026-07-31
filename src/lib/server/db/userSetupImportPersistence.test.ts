@@ -57,6 +57,26 @@ const validDraft = (): UserSetupImportDraft => ({
     latitude: 52.2297,
     longitude: 21.0122
   },
+  savedWeatherCities: [
+    {
+      id: 'saved-weather-city-1',
+      userId: 'user-1',
+      label: 'Warsaw, Poland',
+      latitude: 52.2297,
+      longitude: 21.0122,
+      position: 1
+    }
+  ],
+  savedCommuteAddresses: [
+    {
+      id: 'saved-commute-address-1',
+      userId: 'user-1',
+      label: 'Home',
+      latitude: 52.2297,
+      longitude: 21.0122,
+      position: 1
+    }
+  ],
   commuteRoutes: [
     {
       id: 'commute-route-1',
@@ -69,6 +89,7 @@ const validDraft = (): UserSetupImportDraft => ({
       destinationLatitude: 52.2318,
       destinationLongitude: 21.0067,
       previewDurationMinutes: 18,
+      days: ['monday', 'wednesday'],
       enabled: false,
       position: 1
     }
@@ -90,6 +111,8 @@ const createStore = ({
     todoCategories: UserSetupImportDraft['todoCategories'];
     todoTasks: UserSetupImportDraft['todoTasks'];
     weatherLocations: NonNullable<UserSetupImportDraft['weatherLocation']>[];
+    savedWeatherCities: UserSetupImportDraft['savedWeatherCities'];
+    savedCommuteAddresses: UserSetupImportDraft['savedCommuteAddresses'];
     commuteRoutes: UserSetupImportDraft['commuteRoutes'];
     commuteDays: UserSetupImportDraft['commuteDays'];
   };
@@ -99,6 +122,8 @@ const createStore = ({
     todoCategories: [] as UserSetupImportDraft['todoCategories'],
     todoTasks: [] as UserSetupImportDraft['todoTasks'],
     weatherLocations: [] as NonNullable<UserSetupImportDraft['weatherLocation']>[],
+    savedWeatherCities: [] as UserSetupImportDraft['savedWeatherCities'],
+    savedCommuteAddresses: [] as UserSetupImportDraft['savedCommuteAddresses'],
     commuteRoutes: [] as UserSetupImportDraft['commuteRoutes'],
     commuteDays: [] as UserSetupImportDraft['commuteDays']
   };
@@ -114,6 +139,8 @@ const createStore = ({
         todoCategories: [...saved.todoCategories],
         todoTasks: [...saved.todoTasks],
         weatherLocations: [...saved.weatherLocations],
+        savedWeatherCities: [...saved.savedWeatherCities],
+        savedCommuteAddresses: [...saved.savedCommuteAddresses],
         commuteRoutes: [...saved.commuteRoutes],
         commuteDays: [...saved.commuteDays]
       };
@@ -148,6 +175,12 @@ const createStore = ({
             staged.weatherLocations.push(weatherLocation);
           }
         },
+        saveSavedWeatherCities(cities) {
+          staged.savedWeatherCities.push(...cities);
+        },
+        saveSavedCommuteAddresses(addresses) {
+          staged.savedCommuteAddresses.push(...addresses);
+        },
         saveCommuteRoutes(routes) {
           staged.commuteRoutes.push(...routes);
           failIfNeeded('commuteRoutes');
@@ -161,6 +194,8 @@ const createStore = ({
       saved.todoCategories = staged.todoCategories;
       saved.todoTasks = staged.todoTasks;
       saved.weatherLocations = staged.weatherLocations;
+      saved.savedWeatherCities = staged.savedWeatherCities;
+      saved.savedCommuteAddresses = staged.savedCommuteAddresses;
       saved.commuteRoutes = staged.commuteRoutes;
       saved.commuteDays = staged.commuteDays;
 
@@ -181,6 +216,8 @@ describe('User Setup import persistence', () => {
     expect(store.saved.todoCategories).toEqual(draft.todoCategories);
     expect(store.saved.todoTasks).toEqual(draft.todoTasks);
     expect(store.saved.weatherLocations).toEqual([draft.weatherLocation]);
+    expect(store.saved.savedWeatherCities).toEqual(draft.savedWeatherCities);
+    expect(store.saved.savedCommuteAddresses).toEqual(draft.savedCommuteAddresses);
     expect(store.saved.commuteRoutes).toEqual(draft.commuteRoutes);
     expect(store.saved.commuteDays).toEqual(draft.commuteDays);
   });
@@ -211,6 +248,7 @@ describe('User Setup import persistence', () => {
         destinationLatitude: 52.2318,
         destinationLongitude: 21.0067,
         previewDurationMinutes: 18,
+        days: ['monday', 'wednesday'],
         enabled: true,
         position: 1
       }

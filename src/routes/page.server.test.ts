@@ -164,6 +164,7 @@ const commuteRoute = (id: string, name: string, enabled = true, previewDurationM
   name,
   origin: { label: `${name} origin`, latitude: 52.1, longitude: 21.1 },
   destination: { label: `${name} destination`, latitude: 52.2, longitude: 21.2 },
+  days: savedCommuteSetup.days,
   previewDurationMinutes,
   enabled
 });
@@ -253,6 +254,23 @@ vi.mock('$lib/server/db/commuteSetupStore', () => ({
     async updateRoute() { throw new Error('not implemented'); },
     async deleteRoute() { return false; },
     async saveDays() {}
+  }
+}));
+
+vi.mock('$lib/server/db/savedLocationStore', () => ({
+  userSavedWeatherCityStore: {
+    async load() {
+      if (loadFailure.enabled) throw new Error('store unavailable');
+      return [];
+    },
+    async replace() {}
+  },
+  userSavedCommuteAddressStore: {
+    async load() {
+      if (loadFailure.enabled) throw new Error('store unavailable');
+      return [];
+    },
+    async replace() {}
   }
 }));
 
@@ -587,9 +605,12 @@ describe('Daily page server load', () => {
       },
       weatherLocation: null,
       commuteSetup: null,
+      savedWeatherCities: [],
+      savedCommuteAddresses: [],
       deliveryRecords: [],
       selectedCalendarConfiguration: null,
-      renderedSummaryHtml: null
+      renderedSummaryHtml: null,
+      calendarSection: null
     });
   });
 
@@ -664,7 +685,14 @@ describe('Daily page server load', () => {
 
     await expect(loadPage()).resolves.toEqual(
       expect.objectContaining({
-        renderedSummaryHtml: expect.stringContaining('Planning')
+        renderedSummaryHtml: expect.stringContaining('Planning'),
+        calendarSection: expect.objectContaining({
+          today: expect.objectContaining({
+            timedEvents: expect.arrayContaining([
+              expect.objectContaining({ title: 'Planning' })
+            ])
+          })
+        })
       })
     );
     expect(sentCalendarEventRequests).toEqual([
@@ -676,6 +704,40 @@ describe('Daily page server load', () => {
       }
     ]);
     expect(loadedGoogleCalendarAccessTokens).toEqual(['user-1']);
+  });
+
+  test('loads the Calendar agenda when Calendar is excluded from the email summary', async () => {
+    getSession.mockResolvedValue({
+      user: { id: 'user-1', email: 'user@example.com', emailVerified: true }
+    });
+    savedConfiguration.sections.calendar = false;
+    savedCalendarConnection.status = 'connected';
+    savedSelectedCalendars.push({
+      id: 'work',
+      summary: 'Work',
+      backgroundColor: '#0b8043',
+      primary: false
+    });
+    providerCalendars.push({
+      id: 'work',
+      summary: 'Work',
+      backgroundColor: '#0b8043',
+      primary: false
+    });
+
+    await expect(loadPage()).resolves.toEqual(
+      expect.objectContaining({
+        renderedSummaryHtml: expect.not.stringContaining('Planning'),
+        calendarSection: expect.objectContaining({
+          today: expect.objectContaining({
+            timedEvents: expect.arrayContaining([
+              expect.objectContaining({ title: 'Planning' })
+            ])
+          })
+        })
+      })
+    );
+    expect(sentCalendarEventRequests).toHaveLength(1);
   });
 
   test('guides a connected User to reconnect when Calendar credentials are unusable', async () => {
@@ -813,13 +875,17 @@ describe('Daily page server load', () => {
       },
       isAdministrator: false,
       calendarReadiness: userCalendarReadiness,
+      hasSavedSummaryConfiguration: true,
       summaryConfiguration: savedConfiguration,
       todoState: savedTodoState,
       weatherLocation: savedWeatherLocation,
       commuteSetup: savedCommuteSetup,
+      savedWeatherCities: [],
+      savedCommuteAddresses: [],
       deliveryRecords: savedDeliveryRecords,
       selectedCalendarConfiguration: null,
-      renderedSummaryHtml: expect.any(String)
+      renderedSummaryHtml: expect.any(String),
+      calendarSection: null
     });
   });
 
@@ -935,6 +1001,7 @@ describe('Daily page server load', () => {
       },
       isAdministrator: false,
       calendarReadiness: userCalendarReadiness,
+      hasSavedSummaryConfiguration: false,
       summaryConfiguration: defaultSummaryConfiguration,
       todoState: {
         todoCategories: [],
@@ -946,9 +1013,12 @@ describe('Daily page server load', () => {
         routes: [],
         days: ['monday', 'tuesday', 'wednesday', 'thursday', 'friday']
       },
+      savedWeatherCities: [],
+      savedCommuteAddresses: [],
       deliveryRecords: [],
       selectedCalendarConfiguration: null,
-      renderedSummaryHtml: expect.any(String)
+      renderedSummaryHtml: expect.any(String),
+      calendarSection: null
     });
   });
 
@@ -977,9 +1047,12 @@ describe('Daily page server load', () => {
         routes: [],
         days: ['monday', 'tuesday', 'wednesday', 'thursday', 'friday']
       },
+      savedWeatherCities: [],
+      savedCommuteAddresses: [],
       deliveryRecords: [],
       selectedCalendarConfiguration: null,
-      renderedSummaryHtml: null
+      renderedSummaryHtml: null,
+      calendarSection: null
     });
     expect(console.warn).toHaveBeenCalledWith(
       'Failed to load User Summary Configuration.',
@@ -1000,6 +1073,7 @@ describe('Daily page server load', () => {
       },
       isAdministrator: true,
       calendarReadiness: userCalendarReadiness,
+      hasSavedSummaryConfiguration: false,
       summaryConfiguration: defaultSummaryConfiguration,
       todoState: {
         todoCategories: [],
@@ -1011,9 +1085,12 @@ describe('Daily page server load', () => {
         routes: [],
         days: ['monday', 'tuesday', 'wednesday', 'thursday', 'friday']
       },
+      savedWeatherCities: [],
+      savedCommuteAddresses: [],
       deliveryRecords: [],
       selectedCalendarConfiguration: null,
-      renderedSummaryHtml: expect.any(String)
+      renderedSummaryHtml: expect.any(String),
+      calendarSection: null
     });
   });
 

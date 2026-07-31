@@ -4,6 +4,8 @@ import {
   commuteDays,
   commuteRoutes,
   summaryConfigurations,
+  savedCommuteAddresses,
+  savedWeatherCities,
   todoCategories,
   todoTasks,
   users,
@@ -34,6 +36,16 @@ const hasExistingNonCommuteUserSetup = (database: Pick<SetupImportDatabase, 'sel
         .select({ id: weatherLocations.id })
         .from(weatherLocations)
         .where(eq(weatherLocations.userId, userId))
+        .get() ||
+      database
+        .select({ id: savedWeatherCities.id })
+        .from(savedWeatherCities)
+        .where(eq(savedWeatherCities.userId, userId))
+        .get() ||
+      database
+        .select({ id: savedCommuteAddresses.id })
+        .from(savedCommuteAddresses)
+        .where(eq(savedCommuteAddresses.userId, userId))
         .get()
   );
 
@@ -102,10 +114,25 @@ export const createUserSetupImportStore = (
             transaction.insert(weatherLocations).values(weatherLocation).run();
           }
         },
+        saveSavedWeatherCities(cities) {
+          if (cities[0] && !isActiveUser(transaction, cities[0].userId)) return;
+          if (cities.length > 0) {
+            transaction.insert(savedWeatherCities).values(cities).run();
+          }
+        },
+        saveSavedCommuteAddresses(addresses) {
+          if (addresses[0] && !isActiveUser(transaction, addresses[0].userId)) return;
+          if (addresses.length > 0) {
+            transaction.insert(savedCommuteAddresses).values(addresses).run();
+          }
+        },
         saveCommuteRoutes(routes) {
           if (routes[0] && !isActiveUser(transaction, routes[0].userId)) return;
           if (routes.length > 0) {
-            transaction.insert(commuteRoutes).values(routes).run();
+            transaction
+              .insert(commuteRoutes)
+              .values(routes.map((route) => ({ ...route, days: JSON.stringify(route.days) })))
+              .run();
           }
         },
         saveCommuteDays(userId, days) {
