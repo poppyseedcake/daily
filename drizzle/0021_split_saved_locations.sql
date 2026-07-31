@@ -49,3 +49,5 @@ WHERE NOT EXISTS (
         AND `commute_routes`.`destination_longitude` = `saved_locations`.`longitude`)
     )
 );
+--> statement-breakpoint
+DROP TABLE `saved_locations`;

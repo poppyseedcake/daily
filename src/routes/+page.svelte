@@ -200,6 +200,8 @@
   let savedCommuteAddresses = $state<SavedCommuteAddress[]>(initialSavedCommuteAddresses);
   let savedWeatherCitySaveVersion = 0;
   let savedCommuteAddressSaveVersion = 0;
+  let savedWeatherCitySaveQueue = Promise.resolve();
+  let savedCommuteAddressSaveQueue = Promise.resolve();
   let weatherLocationSearchQuery = $state('');
   let weatherLocationSearchResults = $state<WeatherLocation[]>([]);
   let activeWeatherLocationSuggestion = $state(-1);
@@ -660,7 +662,7 @@
       : 'No Saved Weather Cities yet. Search for a city to add one.';
     weatherLocationStatusTone = 'neutral';
   };
-  const persistSavedWeatherCities = async (
+  const persistSavedWeatherCities = (
     nextCities: SavedWeatherCity[],
     previousCities: SavedWeatherCity[]
   ) => {
@@ -669,35 +671,39 @@
     const requestVersion = ++savedWeatherCitySaveVersion;
     const requestedSnapshot = JSON.stringify(nextCities);
 
-    try {
-      const response = await fetch('/saved-weather-cities', {
-        method: 'PUT',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ cities: nextCities })
-      });
+    savedWeatherCitySaveQueue = savedWeatherCitySaveQueue.then(async () => {
+      try {
+        const response = await fetch('/saved-weather-cities', {
+          method: 'PUT',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ cities: nextCities })
+        });
 
-      if (response.ok) return;
-      if (requestVersion !== savedWeatherCitySaveVersion) return;
+        if (response.ok) return;
+        if (requestVersion !== savedWeatherCitySaveVersion) return;
 
-      if (JSON.stringify(savedWeatherCities) === requestedSnapshot) {
-        savedWeatherCities = previousCities;
+        if (JSON.stringify(savedWeatherCities) === requestedSnapshot) {
+          savedWeatherCities = previousCities;
+        }
+        const message = response.status === 400
+          ? 'Saved Weather Cities could not be updated.'
+          : 'Saved Weather Cities are temporarily unavailable.';
+        weatherLocationStatus = message;
+        weatherLocationStatusTone = response.status === 400 ? 'warning' : 'error';
+      } catch {
+        if (requestVersion !== savedWeatherCitySaveVersion) return;
+
+        if (JSON.stringify(savedWeatherCities) === requestedSnapshot) {
+          savedWeatherCities = previousCities;
+        }
+        weatherLocationStatus = 'Saved Weather Cities could not be updated. Try again.';
+        weatherLocationStatusTone = 'error';
       }
-      const message = response.status === 400
-        ? 'Saved Weather Cities could not be updated.'
-        : 'Saved Weather Cities are temporarily unavailable.';
-      weatherLocationStatus = message;
-      weatherLocationStatusTone = response.status === 400 ? 'warning' : 'error';
-    } catch {
-      if (requestVersion !== savedWeatherCitySaveVersion) return;
+    });
 
-      if (JSON.stringify(savedWeatherCities) === requestedSnapshot) {
-        savedWeatherCities = previousCities;
-      }
-      weatherLocationStatus = 'Saved Weather Cities could not be updated. Try again.';
-      weatherLocationStatusTone = 'error';
-    }
+    return savedWeatherCitySaveQueue;
   };
-  const persistSavedCommuteAddresses = async (
+  const persistSavedCommuteAddresses = (
     nextAddresses: SavedCommuteAddress[],
     previousAddresses: SavedCommuteAddress[]
   ) => {
@@ -706,32 +712,36 @@
     const requestVersion = ++savedCommuteAddressSaveVersion;
     const requestedSnapshot = JSON.stringify(nextAddresses);
 
-    try {
-      const response = await fetch('/saved-commute-addresses', {
-        method: 'PUT',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ addresses: nextAddresses })
-      });
+    savedCommuteAddressSaveQueue = savedCommuteAddressSaveQueue.then(async () => {
+      try {
+        const response = await fetch('/saved-commute-addresses', {
+          method: 'PUT',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ addresses: nextAddresses })
+        });
 
-      if (response.ok) return;
-      if (requestVersion !== savedCommuteAddressSaveVersion) return;
+        if (response.ok) return;
+        if (requestVersion !== savedCommuteAddressSaveVersion) return;
 
-      if (JSON.stringify(savedCommuteAddresses) === requestedSnapshot) {
-        savedCommuteAddresses = previousAddresses;
+        if (JSON.stringify(savedCommuteAddresses) === requestedSnapshot) {
+          savedCommuteAddresses = previousAddresses;
+        }
+        commuteRouteStatus = response.status === 400
+          ? 'Saved Commute Addresses could not be updated.'
+          : 'Saved Commute Addresses are temporarily unavailable.';
+        commuteRouteStatusTone = response.status === 400 ? 'warning' : 'error';
+      } catch {
+        if (requestVersion !== savedCommuteAddressSaveVersion) return;
+
+        if (JSON.stringify(savedCommuteAddresses) === requestedSnapshot) {
+          savedCommuteAddresses = previousAddresses;
+        }
+        commuteRouteStatus = 'Saved Commute Addresses could not be updated. Try again.';
+        commuteRouteStatusTone = 'error';
       }
-      commuteRouteStatus = response.status === 400
-        ? 'Saved Commute Addresses could not be updated.'
-        : 'Saved Commute Addresses are temporarily unavailable.';
-      commuteRouteStatusTone = response.status === 400 ? 'warning' : 'error';
-    } catch {
-      if (requestVersion !== savedCommuteAddressSaveVersion) return;
+    });
 
-      if (JSON.stringify(savedCommuteAddresses) === requestedSnapshot) {
-        savedCommuteAddresses = previousAddresses;
-      }
-      commuteRouteStatus = 'Saved Commute Addresses could not be updated. Try again.';
-      commuteRouteStatusTone = 'error';
-    }
+    return savedCommuteAddressSaveQueue;
   };
   const toggleSavedWeatherCity = async (city: SavedWeatherCity) => {
     const normalizedCity = savedWeatherCitySchema.parse(city);
