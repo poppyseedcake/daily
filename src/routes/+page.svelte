@@ -24,6 +24,7 @@
     Send,
     Settings,
     ShieldCheck,
+    Star,
     Trash2,
     X
   } from '@lucide/svelte';
@@ -72,6 +73,13 @@
   } from '$lib/todo';
   import { weatherLocationSchema, type WeatherLocation } from '$lib/weatherLocation';
   import {
+    sameSavedLocationCoordinates,
+    savedCommuteAddressSchema,
+    savedWeatherCitySchema,
+    type SavedCommuteAddress,
+    type SavedWeatherCity
+  } from '$lib/savedLocation';
+  import {
     commuteDayValues,
     commuteRouteDraftSchema,
     defaultCommuteDays,
@@ -81,6 +89,7 @@
   } from '$lib/commuteRoute';
   import type { SelectedCalendarConfiguration, SelectedCalendarOption } from '$lib/selectedCalendars';
   import { accountDeletionConfirmation } from '$lib/accountDeletion';
+  import DailyLogo from '$lib/components/DailyLogo.svelte';
 
   const visitorAuthState = { mode: 'visitor' } as const;
   type CommuteAddressSuggestion = { placeId: string; label: string };
@@ -117,6 +126,12 @@
   const initialWeatherLocation = data?.weatherLocation
     ? weatherLocationSchema.parse(data.weatherLocation)
     : null;
+  const initialSavedWeatherCities = (data?.savedWeatherCities ?? []).map((city) =>
+    savedWeatherCitySchema.parse(city)
+  );
+  const initialSavedCommuteAddresses = (data?.savedCommuteAddresses ?? []).map((address) =>
+    savedCommuteAddressSchema.parse(address)
+  );
   const initialCommuteSetup = data?.commuteSetup ?? {
     routes: [] as CommuteRoute[],
     days: [...defaultCommuteDays] as CommuteDay[]
@@ -181,6 +196,10 @@
   let userTodoStateStatus = $state('Todo state saved to your account.');
   let userTodoStateStatusTone = $state<'success' | 'warning' | 'error' | 'neutral'>('success');
   let weatherLocation = $state<WeatherLocation | null>(initialWeatherLocation);
+  let savedWeatherCities = $state<SavedWeatherCity[]>(initialSavedWeatherCities);
+  let savedCommuteAddresses = $state<SavedCommuteAddress[]>(initialSavedCommuteAddresses);
+  let savedWeatherCitySaveVersion = 0;
+  let savedCommuteAddressSaveVersion = 0;
   let weatherLocationSearchQuery = $state('');
   let weatherLocationSearchResults = $state<WeatherLocation[]>([]);
   let activeWeatherLocationSuggestion = $state(-1);
@@ -202,6 +221,7 @@
   let commuteSearchQueries = $state({ origin: '', destination: '' });
   let commuteSearchResults = $state({ origin: [] as CommuteAddressSuggestion[], destination: [] as CommuteAddressSuggestion[] });
   let activeCommuteSuggestion = $state({ origin: -1, destination: -1 });
+  let activeCommuteSearchField = $state<'origin' | 'destination' | null>(null);
   let commuteSearchSessionTokens = { origin: '', destination: '' };
   let commuteSearchTimers: { origin?: ReturnType<typeof setTimeout>; destination?: ReturnType<typeof setTimeout> } = {};
   let commuteSearchRequests = { origin: 0, destination: 0 };
@@ -406,6 +426,8 @@
   const applyLocalSetup = (setup: LocalSetup) => {
     updateSummaryConfiguration(setup.summaryConfiguration);
     weatherLocation = setup.weatherLocation;
+    savedWeatherCities = setup.savedWeatherCities;
+    savedCommuteAddresses = setup.savedCommuteAddresses;
     commuteRoutes = setup.commuteRoutes;
     commuteDays = setup.commuteDays;
     editingCommuteRouteId = null;
@@ -428,6 +450,8 @@
     ...createDefaultLocalSetup(),
     summaryConfiguration: currentSummaryConfiguration(),
     weatherLocation,
+    savedWeatherCities,
+    savedCommuteAddresses,
     commuteRoutes,
     commuteDays,
     todoCategories,
@@ -615,6 +639,141 @@
     weatherLocationSearchTimer = undefined;
     weatherLocationSearchRequest += 1;
   };
+  const isSavedWeatherCity = (city: SavedWeatherCity) =>
+    savedWeatherCities.some((candidate) => sameSavedLocationCoordinates(candidate, city));
+  const isSavedCommuteAddress = (address: SavedCommuteAddress) =>
+    savedCommuteAddresses.some((candidate) => sameSavedLocationCoordinates(candidate, address));
+  const savedWeatherCityButtonLabel = (city: SavedWeatherCity) =>
+    `${isSavedWeatherCity(city) ? 'Remove' : 'Add'} ${city.label} ${
+      isSavedWeatherCity(city) ? 'from' : 'to'
+    } Saved Weather Cities`;
+  const savedCommuteAddressButtonLabel = (address: SavedCommuteAddress) =>
+    `${isSavedCommuteAddress(address) ? 'Remove' : 'Add'} ${address.label} ${
+      isSavedCommuteAddress(address) ? 'from' : 'to'
+    } Saved Commute Addresses`;
+  const showSavedWeatherLocations = () => {
+    cancelPendingWeatherLocationSearch();
+    weatherLocationSearchResults = [...savedWeatherCities];
+    activeWeatherLocationSuggestion = savedWeatherCities.length > 0 ? 0 : -1;
+    weatherLocationStatus = savedWeatherCities.length
+      ? 'Choose a Saved Weather City or search for a city.'
+      : 'No Saved Weather Cities yet. Search for a city to add one.';
+    weatherLocationStatusTone = 'neutral';
+  };
+  const persistSavedWeatherCities = async (
+    nextCities: SavedWeatherCity[],
+    previousCities: SavedWeatherCity[]
+  ) => {
+    if (authState.mode !== 'user') return;
+
+    const requestVersion = ++savedWeatherCitySaveVersion;
+    const requestedSnapshot = JSON.stringify(nextCities);
+
+    try {
+      const response = await fetch('/saved-weather-cities', {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ cities: nextCities })
+      });
+
+      if (response.ok) return;
+      if (requestVersion !== savedWeatherCitySaveVersion) return;
+
+      if (JSON.stringify(savedWeatherCities) === requestedSnapshot) {
+        savedWeatherCities = previousCities;
+      }
+      const message = response.status === 400
+        ? 'Saved Weather Cities could not be updated.'
+        : 'Saved Weather Cities are temporarily unavailable.';
+      weatherLocationStatus = message;
+      weatherLocationStatusTone = response.status === 400 ? 'warning' : 'error';
+    } catch {
+      if (requestVersion !== savedWeatherCitySaveVersion) return;
+
+      if (JSON.stringify(savedWeatherCities) === requestedSnapshot) {
+        savedWeatherCities = previousCities;
+      }
+      weatherLocationStatus = 'Saved Weather Cities could not be updated. Try again.';
+      weatherLocationStatusTone = 'error';
+    }
+  };
+  const persistSavedCommuteAddresses = async (
+    nextAddresses: SavedCommuteAddress[],
+    previousAddresses: SavedCommuteAddress[]
+  ) => {
+    if (authState.mode !== 'user') return;
+
+    const requestVersion = ++savedCommuteAddressSaveVersion;
+    const requestedSnapshot = JSON.stringify(nextAddresses);
+
+    try {
+      const response = await fetch('/saved-commute-addresses', {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ addresses: nextAddresses })
+      });
+
+      if (response.ok) return;
+      if (requestVersion !== savedCommuteAddressSaveVersion) return;
+
+      if (JSON.stringify(savedCommuteAddresses) === requestedSnapshot) {
+        savedCommuteAddresses = previousAddresses;
+      }
+      commuteRouteStatus = response.status === 400
+        ? 'Saved Commute Addresses could not be updated.'
+        : 'Saved Commute Addresses are temporarily unavailable.';
+      commuteRouteStatusTone = response.status === 400 ? 'warning' : 'error';
+    } catch {
+      if (requestVersion !== savedCommuteAddressSaveVersion) return;
+
+      if (JSON.stringify(savedCommuteAddresses) === requestedSnapshot) {
+        savedCommuteAddresses = previousAddresses;
+      }
+      commuteRouteStatus = 'Saved Commute Addresses could not be updated. Try again.';
+      commuteRouteStatusTone = 'error';
+    }
+  };
+  const toggleSavedWeatherCity = async (city: SavedWeatherCity) => {
+    const normalizedCity = savedWeatherCitySchema.parse(city);
+    const previousCities = savedWeatherCities;
+    const nextCities = isSavedWeatherCity(normalizedCity)
+      ? savedWeatherCities.filter(
+          (candidate) => !sameSavedLocationCoordinates(candidate, normalizedCity)
+        )
+      : [...savedWeatherCities, normalizedCity];
+
+    if (nextCities.length > 20) {
+      weatherLocationStatus = 'You can save up to 20 Saved Weather Cities.';
+      weatherLocationStatusTone = 'warning';
+      return;
+    }
+
+    savedWeatherCities = nextCities;
+    if (weatherLocationSearchQuery.trim().length === 0) {
+      showSavedWeatherLocations();
+    }
+    if (authState.mode === 'visitor') return;
+    await persistSavedWeatherCities(nextCities, previousCities);
+  };
+  const toggleSavedCommuteAddress = async (address: SavedCommuteAddress) => {
+    const normalizedAddress = savedCommuteAddressSchema.parse(address);
+    const previousAddresses = savedCommuteAddresses;
+    const nextAddresses = isSavedCommuteAddress(normalizedAddress)
+      ? savedCommuteAddresses.filter(
+          (candidate) => !sameSavedLocationCoordinates(candidate, normalizedAddress)
+        )
+      : [...savedCommuteAddresses, normalizedAddress];
+
+    if (nextAddresses.length > 20) {
+      commuteRouteStatus = 'You can save up to 20 Saved Commute Addresses.';
+      commuteRouteStatusTone = 'warning';
+      return;
+    }
+
+    savedCommuteAddresses = nextAddresses;
+    if (authState.mode === 'visitor') return;
+    await persistSavedCommuteAddresses(nextAddresses, previousAddresses);
+  };
   const searchWeatherLocation = async () => {
     cancelPendingWeatherLocationSearch();
     const searchInput = globalThis.document?.getElementById('weather-location-search');
@@ -670,7 +829,13 @@
     weatherLocationSearchResults = [];
     activeWeatherLocationSuggestion = -1;
 
-    if (weatherLocationSearchQuery.trim().length < 2) {
+    const query = weatherLocationSearchQuery.trim();
+    if (query.length === 0) {
+      showSavedWeatherLocations();
+      return;
+    }
+
+    if (query.length < 2) {
       weatherLocationStatus = 'Type at least 2 characters to see city suggestions.';
       weatherLocationStatusTone = 'neutral';
       return;
@@ -723,12 +888,36 @@
       weatherLocationStatusTone = 'error';
     }
   };
+  const showSavedCommuteLocations = (kind: 'origin' | 'destination') => {
+    clearTimeout(commuteSearchTimers[kind]);
+    commuteSearchRequests[kind] += 1;
+    commuteSearchResults[kind] = [];
+    activeCommuteSuggestion[kind] = savedCommuteAddresses.length > 0 ? 0 : -1;
+  };
+  const selectSavedCommuteLocation = (
+    kind: 'origin' | 'destination',
+    location: SavedCommuteAddress
+  ) => {
+    commuteSearchQueries[kind] = location.label;
+    if (kind === 'origin') commuteOrigin = location;
+    else commuteDestination = location;
+    commuteSearchResults[kind] = [];
+    commuteSearchSessionTokens[kind] = '';
+    activeCommuteSuggestion[kind] = -1;
+    commuteRouteStatus = `Commute ${kind === 'origin' ? 'Origin' : 'Destination'} selected from Saved Commute Addresses.`;
+    commuteRouteStatusTone = 'success';
+  };
   const suggestCommutePoints = (kind: 'origin' | 'destination') => {
     clearTimeout(commuteSearchTimers[kind]);
     commuteSearchRequests[kind] += 1;
     commuteSearchResults[kind] = [];
     activeCommuteSuggestion[kind] = -1;
-    if (commuteSearchQueries[kind].trim().length < 3) return;
+    const query = commuteSearchQueries[kind].trim();
+    if (query.length === 0) {
+      showSavedCommuteLocations(kind);
+      return;
+    }
+    if (query.length < 3) return;
     commuteSearchSessionTokens[kind] ||= crypto.randomUUID();
     const request = commuteSearchRequests[kind];
     commuteSearchTimers[kind] = setTimeout(async () => {
@@ -757,6 +946,27 @@
     event: KeyboardEvent,
     kind: 'origin' | 'destination'
   ) => {
+    if (commuteSearchQueries[kind].trim().length === 0) {
+      const savedAddressSuggestions = savedCommuteAddresses;
+      if (event.key === 'ArrowDown' && savedAddressSuggestions.length) {
+        event.preventDefault();
+        activeCommuteSuggestion[kind] =
+          (activeCommuteSuggestion[kind] + 1) % savedAddressSuggestions.length;
+      } else if (event.key === 'ArrowUp' && savedAddressSuggestions.length) {
+        event.preventDefault();
+        activeCommuteSuggestion[kind] =
+          (activeCommuteSuggestion[kind] - 1 + savedAddressSuggestions.length) %
+          savedAddressSuggestions.length;
+      } else if (event.key === 'Enter' && savedAddressSuggestions[activeCommuteSuggestion[kind]]) {
+        event.preventDefault();
+        selectSavedCommuteLocation(kind, savedAddressSuggestions[activeCommuteSuggestion[kind]]);
+      } else if (event.key === 'Escape') {
+        commuteSearchResults[kind] = [];
+        activeCommuteSuggestion[kind] = -1;
+      }
+      return;
+    }
+
     const suggestions = commuteSearchResults[kind];
     if (event.key === 'ArrowDown' && suggestions.length) {
       event.preventDefault();
@@ -818,6 +1028,8 @@
       commuteSearchRequests[kind] += 1;
     }
     commuteSearchResults = { origin: [], destination: [] };
+    activeCommuteSuggestion = { origin: -1, destination: -1 };
+    activeCommuteSearchField = null;
     commuteRouteName = '';
     commuteRouteDays = [...defaultCommuteDays];
     commuteOrigin = null;
@@ -1317,7 +1529,11 @@
   const showDialog = async (
     kind: 'weather' | 'commute' | 'calendar' | 'calendar-settings'
   ) => {
-    if (kind === 'weather') weatherDialogOpen = true;
+    if (kind === 'weather') {
+      weatherDialogOpen = true;
+      weatherLocationSearchQuery = '';
+      showSavedWeatherLocations();
+    }
     if (kind === 'commute') commuteDialogOpen = true;
     if (kind === 'calendar') calendarDialogOpen = true;
     if (kind === 'calendar-settings') calendarSettingsOpen = true;
@@ -1869,14 +2085,13 @@
 
 <main class="daily-board-shell">
   <aside class="daily-rail" aria-label="Primary navigation">
-    <a class="daily-brand" href="/" aria-label="Daily home"><span>D<i>•</i></span></a>
-    <nav>
-      <a class="is-active" href="#task-board" aria-label="Tasks"><ListTodo size={20} /></a>
-      <a href="#daily-context" aria-label="Daily context"><CalendarDays size={20} /></a>
-    </nav>
+    <a class="daily-brand" href="/" aria-label="Daily home"><DailyLogo compact /></a>
     <nav class="daily-rail-bottom">
       {#if authState.mode === 'user'}
         <button type="button" aria-label="Open delivery history" onclick={() => void openSecondaryPanel('history')}><History size={20} /></button>
+      {/if}
+      {#if isAdministrator}
+        <a href="/admin" aria-label="Open Admin Panel" title="Open Admin Panel"><ShieldCheck size={20} /></a>
       {/if}
       <button
         type="button"
@@ -1904,9 +2119,12 @@
     {/if}
 
     <header class="daily-board-header">
-      <div>
-        <span>DAILY / {boardDateLabel}</span>
-        <h1>Task board</h1>
+      <div class="daily-board-heading">
+        <a class="daily-mobile-brand" href="/" aria-label="Daily home"><DailyLogo /></a>
+        <div>
+          <span>DAILY / {boardDateLabel}</span>
+          <h1 class="sr-only">Daily</h1>
+        </div>
       </div>
       <div class="daily-header-actions">
         {#if authState.mode === 'visitor'}
@@ -1968,7 +2186,7 @@
             <small id="weather-section-status">Weather · {enabledSections.weather ? 'Active' : 'Paused'}</small>
             <strong>{weatherLocation?.label ?? 'Choose a city'}</strong>
           </span>
-          <ChevronRight size={15} aria-hidden="true" />
+          <span class="daily-context-tile__arrow" aria-hidden="true"><ChevronRight size={15} /></span>
         </button>
         {@render SummarySectionToggle('weather', 'weather-section-status')}
       </div>
@@ -1990,7 +2208,7 @@
             <small id="commute-section-status">Commute · {enabledSections.commute ? 'Active' : 'Paused'}</small>
             <strong>{commuteRoutes.length === 0 ? 'Add a route' : `${commuteRoutes.length} ${commuteRoutes.length === 1 ? 'route' : 'routes'}`}</strong>
           </span>
-          <ChevronRight size={15} aria-hidden="true" />
+          <span class="daily-context-tile__arrow" aria-hidden="true"><ChevronRight size={15} /></span>
         </button>
         {@render SummarySectionToggle('commute', 'commute-section-status')}
       </div>
@@ -2016,7 +2234,7 @@
                 : 'Connect Google Calendar'}
             </strong>
           </span>
-          <ChevronRight size={15} aria-hidden="true" />
+          <span class="daily-context-tile__arrow" aria-hidden="true"><ChevronRight size={15} /></span>
         </button>
         {@render SummarySectionToggle('calendar', 'calendar-section-status')}
       </div>
@@ -2037,7 +2255,7 @@
             <small id="todo-section-status">Todo · {enabledSections.todo ? 'Active' : 'Paused'}</small>
             <strong>Open task list</strong>
           </span>
-          <ChevronRight size={15} aria-hidden="true" />
+          <span class="daily-context-tile__arrow" aria-hidden="true"><ChevronRight size={15} /></span>
         </button>
         {@render SummarySectionToggle('todo', 'todo-section-status')}
       </div>
@@ -2213,6 +2431,13 @@
     outline-offset: 2px;
   }
 
+  /* Composite fields own the focus ring so the control reads as one surface. */
+  .daily-capture input:focus-visible,
+  .daily-search-field input:focus-visible,
+  .daily-route-editor input:focus-visible {
+    outline: 0;
+  }
+
   .daily-rail {
     position: sticky;
     top: 0;
@@ -2231,26 +2456,13 @@
     height: 42px;
     display: grid;
     place-items: center;
-    border: 1px solid #d9ded5;
-    border-radius: 10px;
-    color: #181a17;
     text-decoration: none;
   }
 
-  .daily-brand > span {
-    position: relative;
-    font-size: 20px;
-    font-weight: 760;
-    letter-spacing: -0.04em;
-  }
-
-  .daily-brand i {
-    position: absolute;
-    top: -5px;
-    right: -7px;
-    color: #617d49;
-    font-size: 13px;
-    font-style: normal;
+  .daily-mobile-brand {
+    display: none;
+    flex-shrink: 0;
+    text-decoration: none;
   }
 
   .daily-rail nav {
@@ -2273,8 +2485,7 @@
   }
 
   .daily-rail nav a:hover,
-  .daily-rail nav button:hover,
-  .daily-rail nav .is-active {
+  .daily-rail nav button:hover {
     border-color: #dfe4da;
     background: #f2f4ec;
     color: #4e6b38;
@@ -2319,18 +2530,17 @@
     margin-bottom: 22px;
   }
 
-  .daily-board-header > div:first-child > span {
+  .daily-board-heading {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+  }
+
+  .daily-board-heading > div > span {
     color: #71776e;
     font-size: 10px;
     font-weight: 650;
     letter-spacing: 0.06em;
-  }
-
-  .daily-board-header h1 {
-    margin: 4px 0 0;
-    font-size: clamp(30px, 3.5vw, 42px);
-    font-weight: 730;
-    letter-spacing: -0.038em;
   }
 
   .daily-header-actions {
@@ -2497,10 +2707,12 @@
   }
 
   .daily-context-tile {
+    --daily-context-toggle-offset: 40px;
+    position: relative;
     min-width: 0;
     min-height: 70px;
     display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-columns: minmax(0, 1fr);
     align-items: center;
     border: 0;
     border-right: 1px solid #e3e6e0;
@@ -2511,6 +2723,7 @@
   }
 
   .daily-context-tile__main {
+    width: 100%;
     min-width: 0;
     min-height: 70px;
     display: grid;
@@ -2525,6 +2738,14 @@
     cursor: pointer;
   }
 
+  .daily-context-tile__arrow {
+    display: inline-grid;
+    place-items: center;
+    line-height: 0;
+    transform: translateX(0);
+    transition: transform 150ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
   .daily-context-tile__main:hover {
     color: #496238;
   }
@@ -2535,6 +2756,9 @@
   }
 
   .daily-context-tile__toggle {
+    position: absolute;
+    top: 50%;
+    right: 10px;
     width: 32px;
     height: 32px;
     display: grid;
@@ -2547,23 +2771,25 @@
     cursor: pointer;
     opacity: 0;
     pointer-events: none;
-    transform: translateY(2px);
+    transform: translateY(-50%) translateX(4px);
     transition: opacity 150ms ease, transform 150ms cubic-bezier(0.16, 1, 0.3, 1), background 150ms ease, border-color 150ms ease, color 150ms ease;
   }
 
+  .daily-context-tile:hover .daily-context-tile__arrow,
+  .daily-context-tile:has(.daily-context-tile__toggle:focus-visible) .daily-context-tile__arrow {
+    transform: translateX(calc(-1 * var(--daily-context-toggle-offset)));
+  }
+
   .daily-context-tile:hover .daily-context-tile__toggle,
-  .daily-context-tile:focus-within .daily-context-tile__toggle,
   .daily-context-tile__toggle:focus-visible {
     opacity: 1;
     pointer-events: auto;
-    transform: none;
+    transform: translateY(-50%) translateX(0);
   }
 
   @media (hover: none) {
     .daily-context-tile__toggle {
-      opacity: 1;
-      pointer-events: auto;
-      transform: none;
+      display: none;
     }
   }
 
@@ -3527,8 +3753,8 @@
   }
 
   .daily-search-field:focus-within {
-    border-color: #6b8556;
-    box-shadow: 0 0 0 2px rgb(92 120 69 / 0.14);
+    border-color: #789464;
+    box-shadow: 0 0 0 3px rgb(97 125 73 / 0.14);
   }
 
   .daily-search-field input {
@@ -3548,25 +3774,73 @@
     overflow-y: auto;
   }
 
-  .daily-city-results > button {
-    min-height: 54px;
+  .daily-suggestions-label {
+    margin: 12px 0 3px;
+    color: #687064;
+    font-size: 9px;
+    font-weight: 750;
+  }
+
+  .daily-location-suggestion {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 34px;
+    align-items: stretch;
+    gap: 3px;
+    border: 1px solid transparent;
+    border-radius: 9px;
+  }
+
+  .daily-location-suggestion:is(:hover, .is-highlighted) {
+    border-color: #d9ded5;
+    background: #f0f3eb;
+  }
+
+  .daily-location-pick {
+    min-width: 0;
     display: grid;
     grid-template-columns: auto minmax(0, 1fr) auto;
     align-items: center;
     gap: 10px;
-    border: 1px solid transparent;
-    border-radius: 9px;
+    border: 0;
+    border-radius: 8px;
     background: transparent;
     color: #4b5148;
-    padding: 8px 10px;
+    padding: 8px 7px 8px 10px;
     text-align: left;
   }
 
-  .daily-city-results > button:hover,
-  .daily-city-results > button.is-highlighted {
-    border-color: #d9ded5;
-    background: #f0f3eb;
+  .daily-location-pick:hover,
+  .daily-location-suggestion.is-highlighted .daily-location-pick {
     color: #3f5730;
+  }
+
+  .daily-location-favorite,
+  .daily-inline-favorite {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    border: 0;
+    border-radius: 7px;
+    background: transparent;
+    color: #9aa196;
+  }
+
+  .daily-location-favorite {
+    width: 34px;
+  }
+
+  .daily-location-favorite:hover,
+  .daily-location-favorite:focus-visible,
+  .daily-inline-favorite:hover,
+  .daily-inline-favorite:focus-visible,
+  .daily-location-favorite.is-saved,
+  .daily-inline-favorite.is-saved {
+    color: #607d49;
+  }
+
+  .daily-saved-location-empty {
+    min-height: 112px;
   }
 
   .daily-city-results strong,
@@ -3765,6 +4039,29 @@
     margin-top: 4px;
     color: #587542;
     font-size: 8px;
+  }
+
+  .daily-selected-location {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 9px;
+    margin-top: 4px;
+  }
+
+  .daily-selected-location small {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .daily-inline-favorite {
+    flex-shrink: 0;
+    min-height: 26px;
+    padding: 0 7px;
+    font-size: 8px;
+    font-weight: 750;
   }
 
   .daily-route-suggestions {
@@ -4339,6 +4636,10 @@
       display: none;
     }
 
+    .daily-mobile-brand {
+      display: inline-flex;
+    }
+
     .daily-rail nav,
     .daily-rail .daily-rail-bottom {
       display: flex;
@@ -4359,6 +4660,10 @@
       align-items: flex-start;
       flex-direction: column;
       gap: 15px;
+    }
+
+    .daily-board-heading {
+      gap: 12px;
     }
 
     .daily-header-actions {
@@ -4429,10 +4734,6 @@
   }
 
   @media (max-width: 500px) {
-    .daily-board-header h1 {
-      font-size: 30px;
-    }
-
     .daily-header-actions {
       align-items: stretch;
       flex-direction: column;
@@ -4715,22 +5016,46 @@
         }}
       />
     </label>
+    {#if weatherLocationSearchQuery.trim().length === 0 && savedWeatherCities.length > 0}
+      <p class="daily-suggestions-label">Saved Weather Cities</p>
+    {:else if weatherLocationSearchQuery.trim().length > 0 && weatherLocationSearchResults.length > 0}
+      <p class="daily-suggestions-label">Search results</p>
+    {/if}
     <div class="daily-city-results" id="weather-location-suggestions" role="listbox" aria-label="Weather Location search results">
       {#each weatherLocationSearchResults as result, index}
-        <button
-          id={`weather-location-option-${index}`}
-          class:is-highlighted={index === activeWeatherLocationSuggestion}
-          type="button"
-          role="option"
-          aria-selected={weatherLocation?.label === result.label}
-          onclick={() => void saveWeatherLocation(result)}
-        >
-          <MapPin size={16} />
-          <span><strong>{result.label}</strong><small>{result.latitude.toFixed(4)}, {result.longitude.toFixed(4)}</small></span>
-          {#if weatherLocation?.label === result.label}<Check size={16} />{/if}
-        </button>
+        <div class="daily-location-suggestion" class:is-highlighted={index === activeWeatherLocationSuggestion}>
+          <button
+            id={`weather-location-option-${index}`}
+            class="daily-location-pick"
+            type="button"
+            role="option"
+            aria-selected={weatherLocation?.label === result.label}
+            onclick={() => void saveWeatherLocation(result)}
+          >
+            <MapPin size={16} />
+            <span>
+              <strong>{result.label}</strong>
+              {#if weatherLocationSearchQuery.trim().length > 0}
+                <small>{result.latitude.toFixed(4)}, {result.longitude.toFixed(4)}</small>
+              {/if}
+            </span>
+            {#if weatherLocation?.label === result.label}<Check size={16} />{/if}
+          </button>
+          <button
+            class="daily-location-favorite"
+            class:is-saved={isSavedWeatherCity(result)}
+            type="button"
+            aria-label={savedWeatherCityButtonLabel(result)}
+            aria-pressed={isSavedWeatherCity(result)}
+            title={savedWeatherCityButtonLabel(result)}
+            onclick={() => void toggleSavedWeatherCity(result)}
+          ><Star size={15} fill={isSavedWeatherCity(result) ? 'currentColor' : 'none'} /></button>
+        </div>
       {/each}
     </div>
+    {#if weatherLocationSearchQuery.trim().length === 0 && savedWeatherCities.length === 0}
+      <div class="daily-dialog-empty daily-saved-location-empty"><Star size={20} /><strong>No Saved Weather Cities yet</strong><span>Choose a city, then save it with the star.</span></div>
+    {/if}
     {#if weatherLocationStatusTone === 'error' || weatherLocationStatusTone === 'warning'}
       <p class="daily-dialog-status" role="alert">{weatherLocationStatus}</p>
     {/if}
@@ -4793,27 +5118,85 @@
           { kind: 'destination' as const, label: 'Commute Destination' }
         ] as selection}
           {@const selectedPoint = selection.kind === 'origin' ? commuteOrigin : commuteDestination}
-          <label class="daily-route-point">
-            <span>{selection.label}</span>
-            <input
-              aria-label={`${selection.label} Search`}
-              value={commuteSearchQueries[selection.kind]}
-              role="combobox"
-              aria-autocomplete="list"
-              aria-controls={`commute-${selection.kind}-suggestions`}
-              aria-expanded={commuteSearchResults[selection.kind].length > 0}
-              aria-activedescendant={activeCommuteSuggestion[selection.kind] >= 0
-                ? `commute-${selection.kind}-option-${activeCommuteSuggestion[selection.kind]}`
-                : undefined}
-              placeholder={selection.kind === 'origin' ? 'Enter starting point' : 'Enter destination'}
-              oninput={(event) => {
-                commuteSearchQueries[selection.kind] = readInputValue(event);
-                suggestCommutePoints(selection.kind);
-              }}
-              onkeydown={(event) => handleCommuteSearchKeydown(event, selection.kind)}
-            />
-            {#if selectedPoint}<small>{selectedPoint.label}</small>{/if}
-          </label>
+          <div class="daily-route-point">
+            <label>
+              <span>{selection.label}</span>
+              <input
+                aria-label={`${selection.label} Search`}
+                value={commuteSearchQueries[selection.kind]}
+                role="combobox"
+                aria-autocomplete="list"
+                aria-controls={`commute-${selection.kind}-suggestions`}
+                aria-expanded={activeCommuteSearchField === selection.kind && (commuteSearchResults[selection.kind].length > 0 || (commuteSearchQueries[selection.kind].trim().length === 0 && savedCommuteAddresses.length > 0))}
+                aria-activedescendant={activeCommuteSuggestion[selection.kind] >= 0
+                  ? commuteSearchQueries[selection.kind].trim().length === 0
+                    ? `commute-${selection.kind}-saved-option-${activeCommuteSuggestion[selection.kind]}`
+                    : `commute-${selection.kind}-option-${activeCommuteSuggestion[selection.kind]}`
+                  : undefined}
+                placeholder={selection.kind === 'origin' ? 'Enter starting point' : 'Enter destination'}
+                onfocus={() => {
+                  activeCommuteSearchField = selection.kind;
+                  if (commuteSearchQueries[selection.kind].trim().length === 0) {
+                    showSavedCommuteLocations(selection.kind);
+                  }
+                }}
+                oninput={(event) => {
+                  commuteSearchQueries[selection.kind] = readInputValue(event);
+                  suggestCommutePoints(selection.kind);
+                }}
+                onkeydown={(event) => handleCommuteSearchKeydown(event, selection.kind)}
+              />
+            </label>
+            {#if selectedPoint}
+              <div class="daily-selected-location">
+                <small>{selectedPoint.label}</small>
+                <button
+                  class="daily-inline-favorite"
+                  class:is-saved={isSavedCommuteAddress(selectedPoint)}
+                  type="button"
+                  aria-label={savedCommuteAddressButtonLabel(selectedPoint)}
+                  aria-pressed={isSavedCommuteAddress(selectedPoint)}
+                  title={savedCommuteAddressButtonLabel(selectedPoint)}
+                  onclick={() => void toggleSavedCommuteAddress(selectedPoint)}
+                ><Star size={13} fill={isSavedCommuteAddress(selectedPoint) ? 'currentColor' : 'none'} />{isSavedCommuteAddress(selectedPoint) ? 'Saved' : 'Save address'}</button>
+              </div>
+            {/if}
+          </div>
+          {#if activeCommuteSearchField === selection.kind && commuteSearchQueries[selection.kind].trim().length === 0 && savedCommuteAddresses.length > 0}
+            <p class="daily-suggestions-label">Saved Commute Addresses</p>
+            <div
+              id={`commute-${selection.kind}-suggestions`}
+              class="daily-city-results"
+              role="listbox"
+              aria-label={`${selection.label} Saved Commute Addresses`}
+            >
+              {#each savedCommuteAddresses as location, index}
+                <div class="daily-location-suggestion" class:is-highlighted={index === activeCommuteSuggestion[selection.kind]}>
+                  <button
+                    id={`commute-${selection.kind}-saved-option-${index}`}
+                    class="daily-location-pick"
+                    type="button"
+                    role="option"
+                    aria-label={`${location.label} Saved Commute Address`}
+                    aria-selected={index === activeCommuteSuggestion[selection.kind]}
+                    onclick={() => selectSavedCommuteLocation(selection.kind, location)}
+                  >
+                    <MapPin size={16} />
+                    <span><strong>{location.label}</strong></span>
+                  </button>
+                  <button
+                    class="daily-location-favorite"
+                    class:is-saved={isSavedCommuteAddress(location)}
+                    type="button"
+                    aria-label={savedCommuteAddressButtonLabel(location)}
+                    aria-pressed="true"
+                    title={savedCommuteAddressButtonLabel(location)}
+                    onclick={() => void toggleSavedCommuteAddress(location)}
+                  ><Star size={14} fill="currentColor" /></button>
+                </div>
+              {/each}
+            </div>
+          {/if}
           {#if commuteSearchResults[selection.kind].length}
             <div
               id={`commute-${selection.kind}-suggestions`}
@@ -5071,7 +5454,6 @@
           <h3>Account</h3>
           <p>Summary Recipient: {authState.summaryRecipient}</p>
           <form method="POST" action="/auth/sign-out"><button type="submit">Sign out</button></form>
-          {#if isAdministrator}<a href="/admin"><ShieldCheck size={17} />Admin Panel</a>{/if}
           <form class="daily-delete-account" method="POST" action="?/deleteAccount">
             <h4>Delete Daily account</h4>
             <p>This is irreversible.</p>

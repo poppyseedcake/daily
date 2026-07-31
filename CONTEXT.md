@@ -88,6 +88,10 @@ _Avoid_: Task widget
 The User-chosen city used only for the Weather Section.
 _Avoid_: Home, commute origin, user location
 
+**Saved Weather City**:
+A city a User or Visitor keeps for quick selection as a Weather Location. Saved Weather Cities are independent from Saved Commute Addresses.
+_Avoid_: Saved Location, commute address, route point
+
 **Commute Route**:
 A User-named driving route with an origin, destination, enabled state, and its own Commute Days that can appear in the Commute Section. A User can keep up to five Commute Routes; every enabled route scheduled for the current weekday appears in the summary.
 _Avoid_: Commute rule, work location
@@ -99,6 +103,10 @@ _Avoid_: Weather Location, home
 **Commute Destination**:
 The specific map point where a Commute Route ends.
 _Avoid_: Weather Location, work
+
+**Saved Commute Address**:
+An exact map point a User or Visitor keeps for quick selection as a Commute Origin or Commute Destination. Saved Commute Addresses are independent from Saved Weather Cities.
+_Avoid_: Saved Location, saved city, Weather Location
 
 **Commute Estimate**:
 The estimated travel time for a Commute Route at the moment the Daily Summary is generated, including current traffic conditions when available.

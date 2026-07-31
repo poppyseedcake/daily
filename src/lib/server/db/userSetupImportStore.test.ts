@@ -29,6 +29,8 @@ const createTestDatabase = () => {
   sqlite.exec(readFileSync('drizzle/0019_add_commute_route_days.sql', 'utf8'));
   sqlite.exec(readFileSync('drizzle/0011_add_next_summary_at.sql', 'utf8'));
   sqlite.exec(readFileSync('drizzle/0015_add_user_lifecycle.sql', 'utf8'));
+  sqlite.exec(readFileSync('drizzle/0020_add_saved_locations.sql', 'utf8'));
+  sqlite.exec(readFileSync('drizzle/0021_split_saved_locations.sql', 'utf8'));
 
   return {
     sqlite,
@@ -85,6 +87,26 @@ const validDraft = (): UserSetupImportDraft => ({
     latitude: 52.2297,
     longitude: 21.0122
   },
+  savedWeatherCities: [
+    {
+      id: 'saved-weather-city-1',
+      userId: 'user-1',
+      label: 'Warsaw, Poland',
+      latitude: 52.2297,
+      longitude: 21.0122,
+      position: 1
+    }
+  ],
+  savedCommuteAddresses: [
+    {
+      id: 'saved-commute-address-1',
+      userId: 'user-1',
+      label: 'Home',
+      latitude: 52.2297,
+      longitude: 21.0122,
+      position: 1
+    }
+  ],
   commuteRoutes: [
     {
       id: 'commute-route-1',
@@ -145,6 +167,8 @@ describe('SQLite User Setup import store', () => {
       transaction.saveTodoCategories(draft.todoCategories);
       transaction.saveTodoTasks(draft.todoTasks);
       transaction.saveWeatherLocation(draft.weatherLocation);
+      transaction.saveSavedWeatherCities(draft.savedWeatherCities);
+      transaction.saveSavedCommuteAddresses(draft.savedCommuteAddresses);
       transaction.saveCommuteRoutes(draft.commuteRoutes);
       transaction.saveCommuteDays('user-1', draft.commuteDays);
     });
@@ -162,6 +186,12 @@ describe('SQLite User Setup import store', () => {
     ]);
     expect(sqlite.prepare('select label, latitude, longitude from weather_locations').all()).toEqual([
       { label: 'Warsaw, Poland', latitude: 52.2297, longitude: 21.0122 }
+    ]);
+    expect(sqlite.prepare('select label, latitude, longitude, position from saved_weather_cities').all()).toEqual([
+      { label: 'Warsaw, Poland', latitude: 52.2297, longitude: 21.0122, position: 1 }
+    ]);
+    expect(sqlite.prepare('select label, latitude, longitude, position from saved_commute_addresses').all()).toEqual([
+      { label: 'Home', latitude: 52.2297, longitude: 21.0122, position: 1 }
     ]);
     expect(sqlite.prepare(`
       select name, origin_label, origin_latitude, origin_longitude,

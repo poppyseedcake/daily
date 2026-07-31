@@ -10,10 +10,16 @@ test.beforeEach(async ({ page }) => {
   await page.reload();
 });
 
-test('Visitor lands on the production Task Board without the email preview in the main view', async ({
+test('Visitor lands on the production Daily workspace without the email preview in the main view', async ({
   page
 }) => {
-  await expect(page.getByRole('heading', { name: 'Task board' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Task board' })).toHaveCount(0);
+  await expect(page.locator('.daily-brand')).toBeVisible();
+  await expect(page.getByRole('complementary', { name: 'Primary navigation' }).getByLabel('Tasks'))
+    .toHaveCount(0);
+  await expect(
+    page.getByRole('complementary', { name: 'Primary navigation' }).getByLabel('Daily context')
+  ).toHaveCount(0);
   await expect(page.locator('.daily-visitor')).toHaveText('Visitor preview');
   await expect(page.getByRole('complementary', { name: 'Visitor preview' })).toContainText(
     'Sign in with Google to receive Daily Summaries by email.'
@@ -43,12 +49,26 @@ test('Visitor assigns a captured task to a group and urgency with the keyboard',
 test('Visitor opens focused Weather and Commute configuration from their context tiles', async ({
   page
 }) => {
-  await page.getByRole('button', { name: /Weather/ }).click();
-  await expect(page.getByRole('dialog', { name: 'Choose a city' })).toBeVisible();
-  await page.keyboard.press('Escape');
+  const weatherTile = page.locator('[data-summary-section="weather"]');
+  const weatherToggle = weatherTile.getByRole('button', { name: 'Pause section' });
+  await weatherTile.getByRole('button', { name: /Weather/ }).click();
+  const weatherDialog = page.getByRole('dialog', { name: 'Choose a city' });
+  await expect(weatherDialog).toBeVisible();
+  await weatherDialog.getByRole('button', { name: 'Close city picker' }).click();
+  await expect(weatherDialog).not.toBeVisible();
+  await expect(weatherToggle).toHaveCSS('opacity', '0');
 
   await page.getByRole('button', { name: /Commute/ }).click();
   await expect(page.getByRole('dialog', { name: 'Your routes' })).toBeVisible();
+});
+
+test.describe('mobile context tiles', () => {
+  test.use({ viewport: { width: 390, height: 844 }, hasTouch: true });
+
+  test('keep section pausing in Settings', async ({ page }) => {
+    const weatherTile = page.locator('[data-summary-section="weather"]');
+    await expect(weatherTile.locator('.daily-context-tile__toggle')).toHaveCSS('display', 'none');
+  });
 });
 
 test('Visitor can pause and resume a Summary Section from its context tile', async ({ page }) => {
@@ -61,8 +81,13 @@ test('Visitor can pause and resume a Summary Section from its context tile', asy
 
   for (const section of sections) {
     const tile = page.locator(`[data-summary-section="${section.key}"]`);
+    const arrow = tile.locator('.daily-context-tile__arrow');
     await expect(tile).toContainText(`${section.label} · Active`);
+    await expect.poll(() => arrow.evaluate((element) => getComputedStyle(element).transform))
+      .toBe('matrix(1, 0, 0, 1, 0, 0)');
     await tile.hover();
+    await expect.poll(() => arrow.evaluate((element) => getComputedStyle(element).transform))
+      .toBe('matrix(1, 0, 0, 1, -40, 0)');
     await tile.getByRole('button', { name: 'Pause section' }).click();
     await expect(tile).toContainText(`${section.label} · Paused`);
     await expect(tile.getByRole('button', { name: 'Resume section' }))
@@ -70,7 +95,7 @@ test('Visitor can pause and resume a Summary Section from its context tile', asy
   }
 
   await expect.poll(() => page.evaluate(() => {
-    const storedSetup = localStorage.getItem('daily.visitorLocalSetup.v1');
+    const storedSetup = localStorage.getItem('daily.visitorLocalSetup.v2');
     return storedSetup ? JSON.parse(storedSetup).summaryConfiguration.sections : null;
   })).toEqual({ weather: false, commute: false, calendar: false, todo: false });
 

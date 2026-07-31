@@ -80,6 +80,109 @@ test('Visitor chooses a Weather Location in the focused city dialog and keeps it
   ).toBeVisible();
 });
 
+test('Visitor keeps saved Weather Cities separate from saved Commute Addresses', async ({
+  page
+}) => {
+  await page.route('/weather-location-search?**', async (route) => {
+    await route.fulfill({
+      json: {
+        outcome: 'found',
+        locations: [
+          {
+            label: 'Warsaw, Masovian Voivodeship, Poland',
+            latitude: 52.2297,
+            longitude: 21.0122
+          }
+        ]
+      }
+    });
+  });
+  await page.route('/commute-point-search?**', async (route) => {
+    await route.fulfill({
+      json: {
+        outcome: 'available',
+        suggestions: [{ placeId: 'origin-place', label: 'Origin point' }]
+      }
+    });
+  });
+  await page.route('/commute-point-selection', async (route) => {
+    await route.fulfill({
+      json: {
+        outcome: 'available',
+        point: { label: 'Origin point', latitude: 52.2285, longitude: 21.0037 }
+      }
+    });
+  });
+
+  await page.getByRole('button', { name: 'Weather. Choose a city' }).click();
+  await page.getByLabel('City Search').fill('Warsaw');
+  await expect(
+    page.getByRole('button', {
+      name: 'Add Warsaw, Masovian Voivodeship, Poland to Saved Weather Cities'
+    })
+  ).toBeVisible();
+  await page
+    .getByRole('button', {
+      name: 'Add Warsaw, Masovian Voivodeship, Poland to Saved Weather Cities'
+    })
+    .click();
+  await expect.poll(() => page.evaluate(() => {
+    const setup = localStorage.getItem('daily.visitorLocalSetup.v2');
+    return setup
+      ? {
+          savedWeatherCities: JSON.parse(setup).savedWeatherCities,
+          savedCommuteAddresses: JSON.parse(setup).savedCommuteAddresses
+        }
+      : null;
+  })).toEqual({
+    savedWeatherCities: [
+      {
+        label: 'Warsaw, Masovian Voivodeship, Poland',
+        latitude: 52.2297,
+        longitude: 21.0122
+      }
+    ],
+    savedCommuteAddresses: []
+  });
+  await page.getByLabel('City Search').fill('');
+  const savedWeatherOption = page
+    .getByRole('listbox', { name: 'Weather Location search results' })
+    .getByRole('option');
+  await expect(savedWeatherOption).toHaveText('Warsaw, Masovian Voivodeship, Poland');
+  await expect(savedWeatherOption).not.toContainText('52.2297, 21.0122');
+  await page.keyboard.press('Escape');
+
+  await page.getByRole('button', { name: 'Commute. 0 routes' }).click();
+  await page.getByRole('button', { name: 'Add route' }).click();
+  await page.getByLabel('Commute Origin Search').focus();
+  await expect(
+    page.getByRole('option', {
+      name: /Warsaw, Masovian Voivodeship, Poland Saved Commute Address/
+    })
+  ).toHaveCount(0);
+
+  await page.getByLabel('Commute Origin Search').fill('Origin address');
+  await expect(page.getByRole('option', { name: 'Select Origin point' })).toBeVisible();
+  await page.getByLabel('Commute Origin Search').press('Enter');
+  await expect(
+    page.getByRole('button', { name: 'Add Origin point to Saved Commute Addresses' })
+  ).toBeVisible();
+  await page
+    .getByRole('button', { name: 'Add Origin point to Saved Commute Addresses' })
+    .click();
+  await expect.poll(() => page.evaluate(() => {
+    const setup = localStorage.getItem('daily.visitorLocalSetup.v2');
+    return setup ? JSON.parse(setup).savedCommuteAddresses : null;
+  })).toEqual([
+    { label: 'Origin point', latitude: 52.2285, longitude: 21.0037 }
+  ]);
+
+  await page.getByLabel('Commute Destination Search').focus();
+  await expect(
+    page.getByRole('option', { name: 'Origin point Saved Commute Address' })
+  ).toBeVisible();
+});
+
 test('Visitor creates and keeps a Commute Route from the minimalist route dialog', async ({
   page
 }) => {

@@ -257,6 +257,23 @@ vi.mock('$lib/server/db/commuteSetupStore', () => ({
   }
 }));
 
+vi.mock('$lib/server/db/savedLocationStore', () => ({
+  userSavedWeatherCityStore: {
+    async load() {
+      if (loadFailure.enabled) throw new Error('store unavailable');
+      return [];
+    },
+    async replace() {}
+  },
+  userSavedCommuteAddressStore: {
+    async load() {
+      if (loadFailure.enabled) throw new Error('store unavailable');
+      return [];
+    },
+    async replace() {}
+  }
+}));
+
 vi.mock('$lib/server/db/calendarConnectionStore', () => ({
   userCalendarConnectionStore: {
     async load(userId: string) {
@@ -588,6 +605,8 @@ describe('Daily page server load', () => {
       },
       weatherLocation: null,
       commuteSetup: null,
+      savedWeatherCities: [],
+      savedCommuteAddresses: [],
       deliveryRecords: [],
       selectedCalendarConfiguration: null,
       renderedSummaryHtml: null,
@@ -861,6 +880,8 @@ describe('Daily page server load', () => {
       todoState: savedTodoState,
       weatherLocation: savedWeatherLocation,
       commuteSetup: savedCommuteSetup,
+      savedWeatherCities: [],
+      savedCommuteAddresses: [],
       deliveryRecords: savedDeliveryRecords,
       selectedCalendarConfiguration: null,
       renderedSummaryHtml: expect.any(String),
@@ -992,6 +1013,8 @@ describe('Daily page server load', () => {
         routes: [],
         days: ['monday', 'tuesday', 'wednesday', 'thursday', 'friday']
       },
+      savedWeatherCities: [],
+      savedCommuteAddresses: [],
       deliveryRecords: [],
       selectedCalendarConfiguration: null,
       renderedSummaryHtml: expect.any(String),
@@ -1024,6 +1047,8 @@ describe('Daily page server load', () => {
         routes: [],
         days: ['monday', 'tuesday', 'wednesday', 'thursday', 'friday']
       },
+      savedWeatherCities: [],
+      savedCommuteAddresses: [],
       deliveryRecords: [],
       selectedCalendarConfiguration: null,
       renderedSummaryHtml: null,
@@ -1060,6 +1085,8 @@ describe('Daily page server load', () => {
         routes: [],
         days: ['monday', 'tuesday', 'wednesday', 'thursday', 'friday']
       },
+      savedWeatherCities: [],
+      savedCommuteAddresses: [],
       deliveryRecords: [],
       selectedCalendarConfiguration: null,
       renderedSummaryHtml: expect.any(String),

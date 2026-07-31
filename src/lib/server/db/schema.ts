@@ -81,6 +81,43 @@ export const weatherLocations = sqliteTable('weather_locations', {
   longitude: real('longitude').notNull()
 });
 
+export const savedWeatherCities = sqliteTable(
+  'saved_weather_cities',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    label: text('label').notNull(),
+    latitude: real('latitude').notNull(),
+    longitude: real('longitude').notNull(),
+    position: integer('position').notNull()
+  },
+  (table) => ({
+    userPositionIdx: uniqueIndex('saved_weather_cities_user_position_idx').on(table.userId, table.position)
+  })
+);
+
+export const savedCommuteAddresses = sqliteTable(
+  'saved_commute_addresses',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    label: text('label').notNull(),
+    latitude: real('latitude').notNull(),
+    longitude: real('longitude').notNull(),
+    position: integer('position').notNull()
+  },
+  (table) => ({
+    userPositionIdx: uniqueIndex('saved_commute_addresses_user_position_idx').on(
+      table.userId,
+      table.position
+    )
+  })
+);
+
 export const commuteRoutes = sqliteTable(
   'commute_routes',
   {
@@ -397,6 +434,8 @@ export const usersRelations = relations(users, ({ one, many }) => ({
   todoCategories: many(todoCategories),
   todoTasks: many(todoTasks),
   weatherLocation: one(weatherLocations),
+  savedWeatherCities: many(savedWeatherCities),
+  savedCommuteAddresses: many(savedCommuteAddresses),
   commuteRoutes: many(commuteRoutes),
   commuteDays: many(commuteDays),
   calendarConnection: one(calendarConnections),
@@ -433,6 +472,20 @@ export const todoTasksRelations = relations(todoTasks, ({ one }) => ({
 export const weatherLocationsRelations = relations(weatherLocations, ({ one }) => ({
   user: one(users, {
     fields: [weatherLocations.userId],
+    references: [users.id]
+  })
+}));
+
+export const savedWeatherCitiesRelations = relations(savedWeatherCities, ({ one }) => ({
+  user: one(users, {
+    fields: [savedWeatherCities.userId],
+    references: [users.id]
+  })
+}));
+
+export const savedCommuteAddressesRelations = relations(savedCommuteAddresses, ({ one }) => ({
+  user: one(users, {
+    fields: [savedCommuteAddresses.userId],
     references: [users.id]
   })
 }));

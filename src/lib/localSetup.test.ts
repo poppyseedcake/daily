@@ -12,6 +12,7 @@ import {
 import {
   createDefaultLocalSetup,
   createUserSetupImportDraftFromLocalSetup,
+  legacyLocalSetupStorageKey,
   loadLocalSetup,
   localSetupStorageKey,
   localSetupVersion,
@@ -24,7 +25,7 @@ import {
 const memoryStorage = (initialValue: string | null = null): LocalSetupStorageAdapter & { stored: string | null } => ({
   stored: initialValue,
   getItem(key) {
-    expect(key).toBe(localSetupStorageKey);
+    expect([localSetupStorageKey, 'daily.visitorLocalSetup.v1']).toContain(key);
     return this.stored;
   },
   setItem(key, value) {
@@ -37,8 +38,8 @@ describe('Visitor Local Setup module', () => {
   test('loads a valid default Local Setup from empty storage', () => {
     const result = loadLocalSetup(memoryStorage());
 
-    expect(localSetupVersion).toBe(1);
-    expect(localSetupStorageKey).toBe('daily.visitorLocalSetup.v1');
+    expect(localSetupVersion).toBe(2);
+    expect(localSetupStorageKey).toBe('daily.visitorLocalSetup.v2');
     expect(result.outcome).toBe('empty');
     expect(result.setup).toEqual(createDefaultLocalSetup());
     expect(result.setup.summaryConfiguration).toEqual(defaultSummaryConfiguration);
@@ -59,6 +60,13 @@ describe('Visitor Local Setup module', () => {
         latitude: 52.2297,
         longitude: 21.0122
       },
+      savedLocations: [
+        {
+          label: 'Warsaw, Poland',
+          latitude: 52.2297,
+          longitude: 21.0122
+        }
+      ],
       commuteRoutes: [
         {
           id: 'visitor-route-1',
@@ -100,6 +108,60 @@ describe('Visitor Local Setup module', () => {
     expect(result.setup).not.toHaveProperty('mockCommute');
     expect(result.setup.commuteRoutes[0]?.days).toEqual(storedSetup.commuteDays);
     expect(result.setup.todoTasks[0]?.completed).toBe(false);
+  });
+
+  test('splits legacy shared favorites into Weather Cities and Commute Addresses', () => {
+    const legacySetup = {
+      ...createDefaultLocalSetup(),
+      version: 1,
+      savedLocations: [
+        { label: 'Warsaw, Poland', latitude: 52.2297, longitude: 21.0122 },
+        { label: 'Home entrance', latitude: 52.2318, longitude: 21.0067 }
+      ],
+      commuteRoutes: [
+        {
+          id: 'route-1',
+          name: 'Office',
+          origin: { label: 'Home', latitude: 52.2318, longitude: 21.0067 },
+          destination: { label: 'Office', latitude: 52.24, longitude: 21.03 },
+          days: ['monday'],
+          enabled: true
+        }
+      ]
+    };
+
+    const result = loadLocalSetup(memoryStorage(JSON.stringify(legacySetup)));
+
+    expect(result.outcome).toBe('loaded');
+    expect(result.setup.savedWeatherCities).toEqual([
+      { label: 'Warsaw, Poland', latitude: 52.2297, longitude: 21.0122 }
+    ]);
+    expect(result.setup.savedCommuteAddresses).toEqual([
+      { label: 'Home entrance', latitude: 52.2318, longitude: 21.0067 }
+    ]);
+  });
+
+  test('loads version 1 Local Setup from its previous browser storage key', () => {
+    const legacySetup = JSON.stringify({
+      ...createDefaultLocalSetup(),
+      version: 1,
+      savedLocations: [{ label: 'Warsaw, Poland', latitude: 52.2297, longitude: 21.0122 }]
+    });
+    const readKeys: string[] = [];
+
+    const result = loadLocalSetup({
+      getItem(key) {
+        readKeys.push(key);
+        return key === legacyLocalSetupStorageKey ? legacySetup : null;
+      },
+      setItem() {}
+    });
+
+    expect(readKeys).toEqual([localSetupStorageKey, legacyLocalSetupStorageKey]);
+    expect(result.outcome).toBe('loaded');
+    expect(result.setup.savedWeatherCities).toEqual([
+      { label: 'Warsaw, Poland', latitude: 52.2297, longitude: 21.0122 }
+    ]);
   });
 
   test.each([
@@ -182,6 +244,8 @@ describe('Visitor Local Setup module', () => {
       version: setup.version,
       summaryConfiguration: setup.summaryConfiguration,
       weatherLocation: null,
+      savedWeatherCities: [],
+      savedCommuteAddresses: [],
       commuteRoutes: [],
       commuteDays: ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'],
       todoCategories: setup.todoCategories,
@@ -314,6 +378,13 @@ describe('Visitor Local Setup module', () => {
         latitude: 52.2297,
         longitude: 21.0122
       },
+      savedCommuteAddresses: [
+        {
+          label: 'Warsaw Central Station, Warsaw, Poland',
+          latitude: 52.2285,
+          longitude: 21.0037
+        }
+      ],
       commuteRoutes: [
         {
           id: 'route-1',
@@ -423,6 +494,20 @@ describe('Visitor Local Setup module', () => {
         latitude: 52.2297,
         longitude: 21.0122
       },
+      savedWeatherCities: [
+        {
+          label: 'Warsaw, Poland',
+          latitude: 52.2297,
+          longitude: 21.0122
+        }
+      ],
+      savedCommuteAddresses: [
+        {
+          label: 'Warsaw Central Station, Warsaw, Poland',
+          latitude: 52.2285,
+          longitude: 21.0037
+        }
+      ],
       commuteRoutes: [
         {
           id: 'visitor-route-1',
@@ -557,6 +642,26 @@ describe('Visitor Local Setup module', () => {
         latitude: 52.2297,
         longitude: 21.0122
       },
+      savedWeatherCities: [
+        {
+          id: 'saved-weather-city-1',
+          userId: 'user-1',
+          label: 'Warsaw, Poland',
+          latitude: 52.2297,
+          longitude: 21.0122,
+          position: 1
+        }
+      ],
+      savedCommuteAddresses: [
+        {
+          id: 'saved-commute-address-1',
+          userId: 'user-1',
+          label: 'Warsaw Central Station, Warsaw, Poland',
+          latitude: 52.2285,
+          longitude: 21.0037,
+          position: 1
+        }
+      ],
       commuteRoutes: [
         {
           id: 'visitor-route-1',

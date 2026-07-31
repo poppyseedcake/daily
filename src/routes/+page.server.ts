@@ -7,6 +7,10 @@ import { userTodoStore } from '$lib/server/db/todoStore';
 import { userWeatherLocationStore } from '$lib/server/db/weatherLocationStore';
 import { userCommuteSetupStore } from '$lib/server/db/commuteSetupStore';
 import {
+  userSavedCommuteAddressStore,
+  userSavedWeatherCityStore
+} from '$lib/server/db/savedLocationStore';
+import {
   userCalendarConnectionStore,
   type CalendarConnection
 } from '$lib/server/db/calendarConnectionStore';
@@ -239,6 +243,28 @@ export const load = async ({ request }) => {
           return { routes: [], days: ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'] as const };
         })
       : null;
+  const savedWeatherCities =
+    authState.mode === 'user'
+      ? await userSavedWeatherCityStore.load(authState.userId).catch((error: unknown) => {
+          console.warn('Failed to load User Saved Weather Cities.', {
+            userId: authState.userId,
+            error
+          });
+
+          return [];
+        })
+      : [];
+  const savedCommuteAddresses =
+    authState.mode === 'user'
+      ? await userSavedCommuteAddressStore.load(authState.userId).catch((error: unknown) => {
+          console.warn('Failed to load User Saved Commute Addresses.', {
+            userId: authState.userId,
+            error
+          });
+
+          return [];
+        })
+      : [];
   const calendarConnection =
     authState.mode === 'user'
       ? await userCalendarConnectionStore.load(authState.userId).catch((error: unknown) => {
@@ -378,6 +404,8 @@ export const load = async ({ request }) => {
     todoState,
     weatherLocation,
     commuteSetup,
+    savedWeatherCities,
+    savedCommuteAddresses,
     deliveryRecords,
     selectedCalendarConfiguration,
     renderedSummaryHtml: renderedSummary?.html ?? null,
