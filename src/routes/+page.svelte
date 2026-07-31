@@ -2854,6 +2854,7 @@
   .daily-context-summary {
     grid-template-columns: auto minmax(0, 1fr) auto;
     min-height: 70px;
+    gap: 10px;
     padding: 12px 16px;
     cursor: pointer;
   }
