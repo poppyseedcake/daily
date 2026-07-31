@@ -51,6 +51,28 @@ test('Visitor opens focused Weather and Commute configuration from their context
   await expect(page.getByRole('dialog', { name: 'Your routes' })).toBeVisible();
 });
 
+test('Visitor can pause and resume a Summary Section from its context tile', async ({ page }) => {
+  const weatherTile = page.locator('[data-summary-section="weather"]');
+
+  await expect(weatherTile).toContainText('Weather · Active');
+  await expect(weatherTile.getByRole('button', { name: 'Pause section' }))
+    .toHaveAttribute('aria-pressed', 'true');
+
+  await weatherTile.getByRole('button', { name: 'Pause section' }).click();
+
+  await expect(weatherTile).toContainText('Weather · Paused');
+  await expect(weatherTile.getByRole('button', { name: 'Resume section' }))
+    .toHaveAttribute('aria-pressed', 'false');
+
+  await page.getByRole('button', { name: 'Open settings' }).click();
+  const settings = page.getByRole('dialog', { name: 'Settings' });
+  await expect(settings.locator('#weather-section-board')).not.toBeChecked();
+  await settings.getByRole('button', { name: 'Close panel' }).click();
+
+  await weatherTile.getByRole('button', { name: 'Resume section' }).click();
+  await expect(weatherTile).toContainText('Weather · Active');
+});
+
 test('secondary destinations stay outside the main view until requested', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'Settings' })).toHaveCount(0);
   await expect(page.getByRole('heading', { name: 'Delivery history' })).toHaveCount(0);

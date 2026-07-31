@@ -18,6 +18,7 @@
     MapPin,
     Pause,
     Pencil,
+    Play,
     Plus,
     Search,
     Send,
@@ -96,6 +97,8 @@
     { key: 'calendar', label: 'Calendar' },
     { key: 'todo', label: 'Todo' }
   ];
+  const summarySectionLabel = (section: SummarySection) =>
+    summarySections.find((candidate) => candidate.key === section)?.label ?? 'Summary';
   const initialSummaryConfiguration = summaryConfigurationSchema.parse(
     data?.summaryConfiguration ?? defaultSummaryConfiguration
   );
@@ -1750,6 +1753,21 @@
   />
 </svelte:head>
 
+{#snippet SummarySectionToggle(section: SummarySection, statusId: string)}
+  <button
+    class="daily-context-tile__toggle"
+    type="button"
+    disabled={!localSetupHydrated}
+    aria-label={enabledSections[section] ? 'Pause section' : 'Resume section'}
+    aria-describedby={statusId}
+    aria-pressed={enabledSections[section]}
+    title={enabledSections[section] ? `Pause ${summarySectionLabel(section)} section` : `Resume ${summarySectionLabel(section)} section`}
+    onclick={() => toggleSection(section, !enabledSections[section])}
+  >
+    {#if enabledSections[section]}<Pause size={14} aria-hidden="true" />{:else}<Play size={14} aria-hidden="true" />{/if}
+  </button>
+{/snippet}
+
 {#snippet TodoTaskRow(task: TodoTask)}
   <li
     class:daily-task--editing={editingTaskId === task.id}
@@ -1931,53 +1949,98 @@
       </aside>
     {/if}
 
-    <section class="daily-context-ribbon" id="daily-context" aria-label="Daily Summary context">
-      <button
+    <section class="daily-context-ribbon" id="daily-context" aria-label="Daily Summary sections and delivery">
+      <div
+        class:daily-context-tile--paused={!enabledSections.weather}
         class="daily-context-tile"
-        type="button"
-        disabled={!localSetupHydrated}
-        aria-label={`Weather. ${weatherLocation?.label ?? 'Choose a city'}`}
-        aria-haspopup="dialog"
-        onclick={() => void showDialog('weather')}
+        data-summary-section="weather"
       >
-        <CloudSun size={18} />
-        <span><small>Weather</small><strong>{weatherLocation?.label ?? 'Choose a city'}</strong></span>
-        <ChevronRight size={15} />
-      </button>
-      <button
+        <button
+          class="daily-context-tile__main"
+          type="button"
+          disabled={!localSetupHydrated}
+          aria-label={`Weather. ${weatherLocation?.label ?? 'Choose a city'}`}
+          aria-haspopup="dialog"
+          onclick={() => void showDialog('weather')}
+        >
+          <CloudSun size={18} aria-hidden="true" />
+          <span>
+            <small id="weather-section-status">Weather · {enabledSections.weather ? 'Active' : 'Paused'}</small>
+            <strong>{weatherLocation?.label ?? 'Choose a city'}</strong>
+          </span>
+          <ChevronRight size={15} aria-hidden="true" />
+        </button>
+        {@render SummarySectionToggle('weather', 'weather-section-status')}
+      </div>
+      <div
+        class:daily-context-tile--paused={!enabledSections.commute}
         class="daily-context-tile"
-        type="button"
-        disabled={!localSetupHydrated}
-        aria-label={`Commute. ${commuteRoutes.length} ${commuteRoutes.length === 1 ? 'route' : 'routes'}`}
-        aria-haspopup="dialog"
-        onclick={() => void showDialog('commute')}
+        data-summary-section="commute"
       >
-        <MapPin size={18} />
-        <span>
-          <small>Commute</small>
-          <strong>{commuteRoutes.length === 0 ? 'Add a route' : `${commuteRoutes.length} ${commuteRoutes.length === 1 ? 'route' : 'routes'}`}</strong>
-        </span>
-        <ChevronRight size={15} />
-      </button>
-      <button
+        <button
+          class="daily-context-tile__main"
+          type="button"
+          disabled={!localSetupHydrated}
+          aria-label={`Commute. ${commuteRoutes.length} ${commuteRoutes.length === 1 ? 'route' : 'routes'}`}
+          aria-haspopup="dialog"
+          onclick={() => void showDialog('commute')}
+        >
+          <MapPin size={18} aria-hidden="true" />
+          <span>
+            <small id="commute-section-status">Commute · {enabledSections.commute ? 'Active' : 'Paused'}</small>
+            <strong>{commuteRoutes.length === 0 ? 'Add a route' : `${commuteRoutes.length} ${commuteRoutes.length === 1 ? 'route' : 'routes'}`}</strong>
+          </span>
+          <ChevronRight size={15} aria-hidden="true" />
+        </button>
+        {@render SummarySectionToggle('commute', 'commute-section-status')}
+      </div>
+      <div
+        class:daily-context-tile--paused={!enabledSections.calendar}
         class="daily-context-tile"
-        type="button"
-        disabled={!localSetupHydrated}
-        aria-label={`Calendar. ${calendarReadiness.status === 'connected' ? `${calendarEventCount} events` : 'Connect Google Calendar'}`}
-        aria-haspopup="dialog"
-        onclick={() => void showDialog('calendar')}
+        data-summary-section="calendar"
       >
-        <CalendarDays size={18} />
-        <span>
-          <small>Calendar{calendarReadiness.status === 'connected' ? ' · Google' : ' · Not connected'}</small>
-          <strong>
-            {calendarReadiness.status === 'connected'
-              ? `${calendarEventCount} events this week`
-              : 'Connect Google Calendar'}
-          </strong>
-        </span>
-        <ChevronRight size={15} />
-      </button>
+        <button
+          class="daily-context-tile__main"
+          type="button"
+          disabled={!localSetupHydrated}
+          aria-label={`Calendar. ${calendarReadiness.status === 'connected' ? `${calendarEventCount} events` : 'Connect Google Calendar'}`}
+          aria-haspopup="dialog"
+          onclick={() => void showDialog('calendar')}
+        >
+          <CalendarDays size={18} aria-hidden="true" />
+          <span>
+            <small id="calendar-section-status">Calendar · {enabledSections.calendar ? 'Active' : 'Paused'}{calendarReadiness.status === 'connected' ? ' · Google' : ' · Not connected'}</small>
+            <strong>
+              {calendarReadiness.status === 'connected'
+                ? `${calendarEventCount} events this week`
+                : 'Connect Google Calendar'}
+            </strong>
+          </span>
+          <ChevronRight size={15} aria-hidden="true" />
+        </button>
+        {@render SummarySectionToggle('calendar', 'calendar-section-status')}
+      </div>
+      <div
+        class:daily-context-tile--paused={!enabledSections.todo}
+        class="daily-context-tile"
+        data-summary-section="todo"
+      >
+        <button
+          class="daily-context-tile__main"
+          type="button"
+          disabled={!localSetupHydrated}
+          aria-label="Todo. Open task list"
+          onclick={() => document.getElementById('todo-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+        >
+          <ListTodo size={18} aria-hidden="true" />
+          <span>
+            <small id="todo-section-status">Todo · {enabledSections.todo ? 'Active' : 'Paused'}</small>
+            <strong>Open task list</strong>
+          </span>
+          <ChevronRight size={15} aria-hidden="true" />
+        </button>
+        {@render SummarySectionToggle('todo', 'todo-section-status')}
+      </div>
       <button
         class="daily-context-tile daily-context-summary"
         type="button"
@@ -2018,7 +2081,7 @@
       <button type="submit" aria-label="Add Todo Task" disabled={!newTodoTitle.trim()}>Continue</button>
     </form>
 
-    <div class="daily-groups-toolbar">
+    <div class="daily-groups-toolbar" id="todo-section">
       <div><h2>Groups</h2><span>{todoCategories.length} active</span></div>
       {#if !categoryComposerOpen}
         <button type="button" onclick={() => void openCategoryComposer()}><Plus size={15} />New group</button>
@@ -2426,7 +2489,7 @@
 
   .daily-context-ribbon {
     display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(5, minmax(0, 1fr));
     border: 1px solid #dfe3dc;
     border-radius: 10px;
     overflow: hidden;
@@ -2437,24 +2500,73 @@
     min-width: 0;
     min-height: 70px;
     display: grid;
-    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
-    gap: 10px;
     border: 0;
     border-right: 1px solid #e3e6e0;
     background: transparent;
     color: #586053;
-    padding: 12px 16px;
+    padding: 0 10px 0 16px;
     text-align: left;
   }
 
-  button.daily-context-tile {
+  .daily-context-tile__main {
+    min-width: 0;
+    min-height: 70px;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 10px;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    padding: 12px 0;
+    text-align: left;
     cursor: pointer;
   }
 
-  button.daily-context-tile:hover {
-    background: #f3f5f0;
+  .daily-context-tile__main:hover {
     color: #496238;
+  }
+
+  .daily-context-tile__main:disabled,
+  .daily-context-tile__toggle:disabled {
+    cursor: not-allowed;
+  }
+
+  .daily-context-tile__toggle {
+    width: 32px;
+    height: 32px;
+    display: grid;
+    place-items: center;
+    border: 1px solid #d8ddd4;
+    border-radius: 8px;
+    background: #f7f8f5;
+    color: #617d49;
+    padding: 0;
+    cursor: pointer;
+    transition: background 150ms ease, border-color 150ms ease, color 150ms ease;
+  }
+
+  .daily-context-tile__toggle:hover {
+    border-color: #b9c9ad;
+    background: #eef3ea;
+    color: #496238;
+  }
+
+  .daily-context-tile--paused {
+    background: #faf9f6;
+    color: #888d84;
+  }
+
+  .daily-context-tile--paused .daily-context-tile__main strong {
+    color: #70766d;
+  }
+
+  .daily-context-tile--paused .daily-context-tile__toggle {
+    border-color: #e2d5c2;
+    background: #fffaf2;
+    color: #8b6b47;
   }
 
   .daily-context-tile:last-child {
@@ -2486,6 +2598,14 @@
 
   .daily-context-summary {
     grid-template-columns: auto minmax(0, 1fr) auto;
+    min-height: 70px;
+    padding: 12px 16px;
+    cursor: pointer;
+  }
+
+  button.daily-context-summary:hover {
+    background: #f3f5f0;
+    color: #496238;
   }
 
   .daily-capture {
@@ -4169,11 +4289,11 @@
       grid-template-columns: repeat(2, 1fr);
     }
 
-    .daily-context-tile:nth-child(2) {
+    .daily-context-tile:nth-child(even) {
       border-right: 0;
     }
 
-    .daily-context-tile:nth-child(-n + 2) {
+    .daily-context-tile:nth-child(-n + 4) {
       border-bottom: 1px solid #e3e6e0;
     }
   }
