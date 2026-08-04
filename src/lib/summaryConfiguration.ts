@@ -13,7 +13,8 @@ export type {
   DailySummaryAppearance,
   SummarySectionPresentation,
   SummarySectionPresentationSection,
-  SummarySectionPresentationState
+  SummarySectionPresentationState,
+  UnpausedSummarySectionPresentationState
 } from './summarySectionPresentation';
 
 export const summaryTimeSchema = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/);

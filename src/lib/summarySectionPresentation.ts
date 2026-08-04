@@ -18,6 +18,10 @@ export const summarySectionPresentationStateSchema = z.enum(
 export type SummarySectionPresentationState = z.infer<
   typeof summarySectionPresentationStateSchema
 >;
+export type UnpausedSummarySectionPresentationState = Exclude<
+  SummarySectionPresentationState,
+  'paused'
+>;
 
 export const summarySectionPresentationStateSchemas = {
   weather: z.enum(['active', 'paused', 'unconfigured', 'unavailable']),
@@ -37,11 +41,17 @@ export type SummarySectionPresentationSection = keyof SummarySectionPresentation
 export const resolveSummarySectionPresentationState = (
   section: SummarySectionPresentationSection,
   paused: boolean,
-  unpausedState: SummarySectionPresentationState
+  unpausedState: UnpausedSummarySectionPresentationState
 ): SummarySectionPresentationState => {
   if (paused) return 'paused';
 
-  const result = summarySectionPresentationStateSchemas[section].safeParse(unpausedState);
+  const candidate = unpausedState as SummarySectionPresentationState;
+
+  if (candidate === 'paused') {
+    throw new Error('Paused Summary Section state requires an explicit pause choice.');
+  }
+
+  const result = summarySectionPresentationStateSchemas[section].safeParse(candidate);
 
   if (!result.success) {
     throw new Error(`Invalid ${section} Summary Section presentation state.`);

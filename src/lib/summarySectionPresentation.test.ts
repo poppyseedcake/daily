@@ -2,7 +2,8 @@ import { describe, expect, test } from 'vitest';
 import {
   dailySummaryAppearanceSchema,
   resolveSummarySectionPresentationState,
-  summarySectionPresentationSchema
+  summarySectionPresentationSchema,
+  type UnpausedSummarySectionPresentationState
 } from './summarySectionPresentation';
 
 describe('Summary Section presentation contract', () => {
@@ -41,6 +42,13 @@ describe('Summary Section presentation contract', () => {
     expect(resolveSummarySectionPresentationState('weather', true, 'unconfigured')).toBe('paused');
     expect(resolveSummarySectionPresentationState('todo', true, 'empty')).toBe('paused');
     expect(resolveSummarySectionPresentationState('calendar', false, 'empty')).toBe('empty');
+    expect(() =>
+      resolveSummarySectionPresentationState(
+        'weather',
+        false,
+        'paused' as unknown as UnpausedSummarySectionPresentationState
+      )
+    ).toThrow('Paused Summary Section state requires an explicit pause choice.');
   });
 
   test('pins the product to one Daily Summary Appearance', () => {
