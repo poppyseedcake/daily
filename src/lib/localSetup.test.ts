@@ -591,7 +591,11 @@ describe('Visitor Local Setup module', () => {
         weatherSectionEnabled: true,
         commuteSectionEnabled: false,
         calendarSectionEnabled: true,
-        todoSectionEnabled: true
+        todoSectionEnabled: true,
+        weatherSectionPaused: false,
+        commuteSectionPaused: false,
+        calendarSectionPaused: false,
+        todoSectionPaused: false
       },
       todoCategories: [
         { id: 'user-visitor-category-home', userId: 'user-1', name: 'Home', position: 1 },

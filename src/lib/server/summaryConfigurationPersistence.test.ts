@@ -7,6 +7,7 @@ import {
 import {
   loadUserSummaryConfiguration,
   saveUserSummaryConfiguration,
+  summaryConfigurationFromFlat,
   type UserSummaryConfigurationStore
 } from './summaryConfigurationPersistence';
 
@@ -51,6 +52,12 @@ describe('User Summary Configuration persistence', () => {
         commute: true,
         calendar: true,
         todo: false
+      },
+      sectionPauses: {
+        weather: true,
+        commute: false,
+        calendar: true,
+        todo: false
       }
     };
 
@@ -67,6 +74,50 @@ describe('User Summary Configuration persistence', () => {
       defaultSummaryConfiguration
     );
     expect(store.schedules.get('user-1')).toBeNull();
+  });
+
+  test('defaults pause settings when loading the legacy flat persistence shape', () => {
+    expect(
+      summaryConfigurationFromFlat({
+        summaryTime: '07:00',
+        userTimeZone: 'UTC',
+        summaryTheme: 'light',
+        summaryDeliveryEnabled: true,
+        weatherSectionEnabled: true,
+        commuteSectionEnabled: true,
+        calendarSectionEnabled: true,
+        todoSectionEnabled: true
+      })
+    ).toEqual(defaultSummaryConfiguration);
+  });
+
+  test('round-trips explicit pause settings through the flat persistence boundary', () => {
+    const configuration = {
+      ...defaultSummaryConfiguration,
+      sectionPauses: {
+        weather: true,
+        commute: false,
+        calendar: true,
+        todo: false
+      }
+    };
+
+    expect(
+      summaryConfigurationFromFlat({
+        summaryTime: configuration.summaryTime,
+        userTimeZone: configuration.userTimeZone,
+        summaryTheme: configuration.summaryTheme,
+        summaryDeliveryEnabled: configuration.summaryDeliveryEnabled,
+        weatherSectionEnabled: configuration.sections.weather,
+        commuteSectionEnabled: configuration.sections.commute,
+        calendarSectionEnabled: configuration.sections.calendar,
+        todoSectionEnabled: configuration.sections.todo,
+        weatherSectionPaused: configuration.sectionPauses.weather,
+        commuteSectionPaused: configuration.sectionPauses.commute,
+        calendarSectionPaused: configuration.sectionPauses.calendar,
+        todoSectionPaused: configuration.sectionPauses.todo
+      })
+    ).toEqual(configuration);
   });
 
   test('rejects invalid Summary Configuration changes before writing', async () => {

@@ -20,6 +20,27 @@ describe('summary configuration validation', () => {
     expect(defaultSummaryConfiguration.userTimeZone).toBe('UTC');
   });
 
+  test('defaults every Summary Section pause setting to not paused', () => {
+    expect(defaultSummaryConfiguration.sectionPauses).toEqual({
+      weather: false,
+      commute: false,
+      calendar: false,
+      todo: false
+    });
+  });
+
+  test('adds pause defaults when parsing the legacy Summary Configuration shape', () => {
+    const { sectionPauses, ...legacyConfiguration } = defaultSummaryConfiguration;
+
+    expect(summaryConfigurationSchema.parse(legacyConfiguration)).toEqual(defaultSummaryConfiguration);
+    expect(sectionPauses).toEqual({
+      weather: false,
+      commute: false,
+      calendar: false,
+      todo: false
+    });
+  });
+
   test('accepts editable Summary Configuration controls', () => {
     const configuration = summaryConfigurationSchema.parse({
       summaryTime: '18:45',
@@ -31,6 +52,12 @@ describe('summary configuration validation', () => {
         commute: true,
         calendar: true,
         todo: false
+      },
+      sectionPauses: {
+        weather: true,
+        commute: false,
+        calendar: true,
+        todo: false
       }
     });
 
@@ -38,6 +65,7 @@ describe('summary configuration validation', () => {
     expect(configuration.userTimeZone).toBe('America/New_York');
     expect(configuration.sections.weather).toBe(false);
     expect(configuration.sections.todo).toBe(false);
+    expect(configuration.sectionPauses.weather).toBe(true);
   });
 
   test('accepts any valid IANA time zone and rejects unknown zones', () => {
@@ -66,6 +94,12 @@ describe('summary configuration validation', () => {
         commute: true,
         calendar: true,
         todo: true
+      },
+      sectionPauses: {
+        weather: 'sometimes',
+        commute: false,
+        calendar: false,
+        todo: false
       }
     });
 
@@ -76,6 +110,7 @@ describe('summary configuration validation', () => {
       expect(errorPaths).toContain('summaryTime');
       expect(errorPaths).toContain('userTimeZone');
       expect(errorPaths).toContain('summaryTheme');
+      expect(errorPaths).toContain('sectionPauses.weather');
     }
   });
 });

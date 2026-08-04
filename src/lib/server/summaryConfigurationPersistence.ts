@@ -26,6 +26,10 @@ export type FlatSummaryConfiguration = {
   commuteSectionEnabled: boolean;
   calendarSectionEnabled: boolean;
   todoSectionEnabled: boolean;
+  weatherSectionPaused?: boolean;
+  commuteSectionPaused?: boolean;
+  calendarSectionPaused?: boolean;
+  todoSectionPaused?: boolean;
 };
 
 export const summaryConfigurationFromFlat = (
@@ -41,6 +45,12 @@ export const summaryConfigurationFromFlat = (
       commute: configuration.commuteSectionEnabled,
       calendar: configuration.calendarSectionEnabled,
       todo: configuration.todoSectionEnabled
+    },
+    sectionPauses: {
+      weather: configuration.weatherSectionPaused ?? false,
+      commute: configuration.commuteSectionPaused ?? false,
+      calendar: configuration.calendarSectionPaused ?? false,
+      todo: configuration.todoSectionPaused ?? false
     }
   });
 

@@ -12,7 +12,8 @@ const configuration: SummaryConfiguration = {
   userTimeZone: 'Europe/Warsaw',
   summaryTheme: 'dark',
   summaryDeliveryEnabled: true,
-  sections: { weather: true, commute: true, calendar: true, todo: true }
+  sections: { weather: true, commute: true, calendar: true, todo: true },
+  sectionPauses: { weather: false, commute: false, calendar: false, todo: false }
 };
 
 const usefulTodoState = {

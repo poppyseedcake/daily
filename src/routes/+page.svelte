@@ -166,6 +166,7 @@
   let enabledSections = $state<Record<SummarySection, boolean>>({
     ...initialSummaryConfiguration.sections
   });
+  let sectionPauses = $state({ ...initialSummaryConfiguration.sectionPauses });
   let todoTasks = $state<TodoTask[]>(initialTodoState.todoTasks);
   let todoDragTaskLists = $state<Record<string, TodoTask[]>>({});
   let todoDragCategories = $state<TodoCategory[] | null>(null);
@@ -323,7 +324,8 @@
     userTimeZone,
     summaryTheme,
     summaryDeliveryEnabled,
-    sections: { ...enabledSections }
+    sections: { ...enabledSections },
+    sectionPauses: { ...sectionPauses }
   });
 
   const updateSummaryConfiguration = (nextConfiguration: SummaryConfiguration) => {
@@ -339,6 +341,7 @@
     summaryTheme = result.data.summaryTheme;
     summaryDeliveryEnabled = result.data.summaryDeliveryEnabled;
     enabledSections = { ...result.data.sections };
+    sectionPauses = { ...result.data.sectionPauses };
   };
 
   const patchSummaryConfiguration = (patch: Partial<SummaryConfiguration>) => {
@@ -1902,7 +1905,8 @@
       commute: enabledSections.commute,
       calendar: enabledSections.calendar,
       todo: enabledSections.todo
-    }
+    },
+    sectionPauses: { ...sectionPauses }
   });
   let renderedSummaryHtml = $state('');
   let previewRenderVersion = 0;

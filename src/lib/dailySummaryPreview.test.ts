@@ -15,6 +15,12 @@ const configuration: SummaryConfiguration = {
     commute: true,
     calendar: true,
     todo: true
+  },
+  sectionPauses: {
+    weather: false,
+    commute: false,
+    calendar: false,
+    todo: false
   }
 };
 

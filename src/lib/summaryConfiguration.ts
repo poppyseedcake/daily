@@ -1,5 +1,21 @@
 import { z } from 'zod';
 
+export {
+  dailySummaryAppearance,
+  dailySummaryAppearanceSchema,
+  resolveSummarySectionPresentationState,
+  summarySectionPresentationSchema,
+  summarySectionPresentationStateSchema,
+  summarySectionPresentationStateSchemas,
+  summarySectionPresentationStates
+} from './summarySectionPresentation';
+export type {
+  DailySummaryAppearance,
+  SummarySectionPresentation,
+  SummarySectionPresentationSection,
+  SummarySectionPresentationState
+} from './summarySectionPresentation';
+
 export const summaryTimeSchema = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/);
 
 export const userTimeZoneSchema = z
@@ -23,12 +39,24 @@ export const summarySectionSchema = z.object({
   todo: z.boolean()
 });
 
+export const summarySectionPauseSettingsSchema = z.object({
+  weather: z.boolean().default(false),
+  commute: z.boolean().default(false),
+  calendar: z.boolean().default(false),
+  todo: z.boolean().default(false)
+});
+
+export type SummarySectionPauseSettings = z.infer<typeof summarySectionPauseSettingsSchema>;
+
+export const defaultSummarySectionPauseSettings = summarySectionPauseSettingsSchema.parse({});
+
 export const summaryConfigurationSchema = z.object({
   summaryTime: summaryTimeSchema,
   userTimeZone: userTimeZoneSchema,
   summaryTheme: z.enum(['light', 'dark']),
   summaryDeliveryEnabled: z.boolean(),
-  sections: summarySectionSchema
+  sections: summarySectionSchema,
+  sectionPauses: summarySectionPauseSettingsSchema.default(defaultSummarySectionPauseSettings)
 });
 
 export type SummaryConfiguration = z.infer<typeof summaryConfigurationSchema>;
@@ -46,7 +74,8 @@ export const defaultSummaryConfiguration = summaryConfigurationSchema.parse({
     commute: true,
     calendar: true,
     todo: true
-  }
+  },
+  sectionPauses: defaultSummarySectionPauseSettings
 });
 
 export const canPreviewDailySummary = (configuration: SummaryConfiguration) =>

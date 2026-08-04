@@ -46,7 +46,19 @@ export const summaryConfigurations = sqliteTable('summary_configurations', {
   calendarSectionEnabled: integer('calendar_section_enabled', { mode: 'boolean' })
     .notNull()
     .default(true),
-  todoSectionEnabled: integer('todo_section_enabled', { mode: 'boolean' }).notNull().default(true)
+  todoSectionEnabled: integer('todo_section_enabled', { mode: 'boolean' }).notNull().default(true),
+  weatherSectionPaused: integer('weather_section_paused', { mode: 'boolean' })
+    .notNull()
+    .default(false),
+  commuteSectionPaused: integer('commute_section_paused', { mode: 'boolean' })
+    .notNull()
+    .default(false),
+  calendarSectionPaused: integer('calendar_section_paused', { mode: 'boolean' })
+    .notNull()
+    .default(false),
+  todoSectionPaused: integer('todo_section_paused', { mode: 'boolean' })
+    .notNull()
+    .default(false)
 });
 
 export const todoCategories = sqliteTable('todo_categories', {

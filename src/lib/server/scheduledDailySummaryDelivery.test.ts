@@ -30,7 +30,8 @@ const applyMigrations = (sqlite: Database.Database) => {
     '0019_add_commute_route_days.sql',
     '0011_add_next_summary_at.sql',
     '0012_add_scheduled_delivery_claims.sql',
-    '0015_add_user_lifecycle.sql'
+    '0015_add_user_lifecycle.sql',
+    '0022_add_summary_section_pause_settings.sql'
   ]) {
     sqlite.exec(readFileSync(`drizzle/${migration}`, 'utf8'));
   }

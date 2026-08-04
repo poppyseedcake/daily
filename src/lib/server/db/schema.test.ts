@@ -415,6 +415,36 @@ describe('Daily database schema', () => {
     });
   });
 
+  test('ships additive per-section pause settings with false defaults', () => {
+    const migration = readFileSync(
+      'drizzle/0022_add_summary_section_pause_settings.sql',
+      'utf8'
+    );
+    const journal = JSON.parse(readFileSync('drizzle/meta/_journal.json', 'utf8')) as {
+      entries: Array<{ idx: number; tag: string }>;
+    };
+
+    expect(Object.keys(getTableColumns(summaryConfigurations))).toEqual(
+      expect.arrayContaining([
+        'weatherSectionPaused',
+        'commuteSectionPaused',
+        'calendarSectionPaused',
+        'todoSectionPaused'
+      ])
+    );
+    expect(migration).toContain(
+      'ALTER TABLE `summary_configurations` ADD `weather_section_paused` integer DEFAULT false NOT NULL'
+    );
+    expect(migration).toContain(
+      'ALTER TABLE `summary_configurations` ADD `todo_section_paused` integer DEFAULT false NOT NULL'
+    );
+    expect(migration).not.toMatch(/DROP TABLE|DROP COLUMN|UPDATE `summary_configurations`/i);
+    expect(journal.entries.find(({ idx }) => idx === 22)).toMatchObject({
+      idx: 22,
+      tag: '0022_add_summary_section_pause_settings'
+    });
+  });
+
   test('ships unique Scheduled Delivery occurrence claims in an upgrade migration', () => {
     const migration = readFileSync('drizzle/0012_add_scheduled_delivery_claims.sql', 'utf8');
     const journal = JSON.parse(readFileSync('drizzle/meta/_journal.json', 'utf8')) as {

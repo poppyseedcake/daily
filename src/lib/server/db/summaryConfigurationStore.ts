@@ -24,7 +24,11 @@ const toSummaryConfigurationRow = (
   weatherSectionEnabled: configuration.sections.weather,
   commuteSectionEnabled: configuration.sections.commute,
   calendarSectionEnabled: configuration.sections.calendar,
-  todoSectionEnabled: configuration.sections.todo
+  todoSectionEnabled: configuration.sections.todo,
+  weatherSectionPaused: configuration.sectionPauses.weather,
+  commuteSectionPaused: configuration.sectionPauses.commute,
+  calendarSectionPaused: configuration.sectionPauses.calendar,
+  todoSectionPaused: configuration.sectionPauses.todo
 });
 
 type SummaryConfigurationDatabase = typeof db;
