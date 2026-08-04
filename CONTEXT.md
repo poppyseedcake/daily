@@ -29,39 +29,55 @@ Clearly labeled sample Calendar Events shown to a Visitor so they can understand
 _Avoid_: Selected Calendar, imported calendar
 
 **Daily Summary**:
-A single email message generated for a User at their configured local time, containing the information needed to plan that day.
+A single email message generated for a User at their configured local time, containing the four fixed Summary Sections needed to plan that day.
 _Avoid_: Alert, notification, digest, reminder
 
 **Delivery Record**:
 A minimal record that a scheduled or test Daily Summary was attempted or sent, without storing the full email content. Delivery Records are kept for the last 30 days.
 _Avoid_: Email archive, message copy
 
-**Summary Theme**:
-The User-selected visual style for the Daily Summary email. A User can choose either the light theme or the dark theme; the light theme is the default.
-_Avoid_: Custom template, brand theme
+**Cancelled Delivery Record**:
+A Scheduled Delivery Record whose remaining attempts stopped because the User disabled Summary Delivery before it was sent.
+_Avoid_: Failed delivery, deleted record, Stopped Delivery Record
+
+**Daily Summary Appearance**:
+The single visual presentation shared by every User's Daily Summary, using the color palette established by the Daily Grid design.
+_Avoid_: Summary Theme, custom template, light theme, dark theme
 
 **Summary Recipient**:
 The current verified email address from the User's Google account where their Daily Summary is sent.
 _Avoid_: Alternate recipient, forwarding address
 
 **Summary Configuration**:
-The User's optional choices that determine which parts can appear in their Daily Summary. No Daily Summary is sent when the User has not configured and enabled any content part of it, but an enabled part can appear even when it has no items that day unless that part is Todo or Commute.
+The User's optional choices and data that determine whether each fixed Summary Section contains live content or a status explaining why it does not.
 _Avoid_: Required setup, onboarding completion
 
 **Summary Delivery**:
-The User-controlled state that determines whether Daily Summaries are sent at all, independent of the enabled Summary Sections. Summary Delivery is enabled by default.
+The User-controlled state that determines whether Daily Summaries are sent at all, independent of the state of individual Summary Sections. When enabled, a Daily Summary is sent even when every section is paused, unconfigured, empty, or unavailable. Summary Delivery is enabled by default.
 _Avoid_: Section toggle, unsubscribe
 
 **Summary Section**:
-An optional part of the Daily Summary that can be enabled or disabled independently from whether the User has configured data for it. Enabled Summary Sections appear in the fixed order Weather, Commute, Calendar, Todo.
-_Avoid_: Feature, widget, module
+A fixed part of every delivered Daily Summary that can be active or paused independently from whether the User has configured data for it. Summary Sections always appear in the order Weather, Commute, Calendar, Todo and show a status instead of live content when necessary.
+_Avoid_: Optional section, feature, widget, module
 
 **Unavailable Section**:
 An enabled Summary Section that cannot be generated for a specific Daily Summary and is represented by a brief unavailable state instead of blocking the whole message, even when it is the only enabled section.
 _Avoid_: Failed summary, skipped email
 
+**Paused Section**:
+A Summary Section the User has explicitly paused. Its paused status takes precedence over whether it is configured, empty, or temporarily unavailable.
+_Avoid_: Disabled feature, Unavailable Section
+
+**Unconfigured Section**:
+An active Summary Section for which the User has not supplied or connected the data required to generate its content.
+_Avoid_: Empty Section, Unavailable Section
+
+**Empty Section**:
+An active, configured Summary Section that has no items relevant to its time window, such as no scheduled Commute Routes today, no Calendar Events in the Week Ahead, or no active Todo Tasks.
+_Avoid_: Unconfigured Section, Unavailable Section
+
 **Calendar Section**:
-The Summary Section for Calendar Events from the User's selected Google calendars.
+The Summary Section for Calendar Events from the User's selected Google calendars. It always presents the seven dates of the Week Ahead, lists every event without a limit, and remains visible with an empty-week message when no events exist.
 _Avoid_: Schedule widget
 
 **Selected Calendar**:
@@ -69,11 +85,11 @@ A Google calendar chosen by the User to contribute Calendar Events to the Calend
 _Avoid_: Connected calendar, all calendars
 
 **Weather Section**:
-The Summary Section for the weather at the User's chosen weather location, including a short daily description, minimum and maximum temperature, and chance of precipitation.
+The Summary Section for the weather at the User's chosen Weather Location. It presents the current temperature at generation time, an icon representing the day's weather, minimum and maximum temperature, chance of precipitation, wind, and a short summary of today's forecast.
 _Avoid_: Forecast widget
 
 **Commute Section**:
-The Summary Section for the Commute Estimate of each enabled Commute Route scheduled for the current weekday. It is hidden when no enabled Commute Route is scheduled for that day.
+The Summary Section for the Commute Estimate of each enabled Commute Route scheduled for the current weekday. It remains visible with a status when no Commute Route is scheduled for that day.
 _Avoid_: Traffic widget, route widget
 
 **Commute Day**:
@@ -81,7 +97,7 @@ A weekday selected on a Commute Route when that route should appear in the Daily
 _Avoid_: Route day, workday
 
 **Todo Section**:
-The Summary Section for the User's active Todo Tasks. It is hidden from the Daily Summary when the User has no active Todo Tasks.
+The Summary Section for the User's active Todo Tasks. It remains visible with an empty status when the User has no active Todo Tasks.
 _Avoid_: Task widget
 
 **Weather Location**:
@@ -93,15 +109,15 @@ A city a User or Visitor keeps for quick selection as a Weather Location. Saved 
 _Avoid_: Saved Location, commute address, route point
 
 **Commute Route**:
-A User-named driving route with an origin, destination, enabled state, and its own Commute Days that can appear in the Commute Section. A User can keep up to five Commute Routes; every enabled route scheduled for the current weekday appears in the summary.
+A User-named driving route with an origin, destination, enabled state, and its own Commute Days that can appear in the Commute Section. Its name serves as the destination label in the Daily Summary. A User can keep up to five Commute Routes; every enabled route scheduled for the current weekday appears in the summary.
 _Avoid_: Commute rule, work location
 
 **Commute Origin**:
-The specific map point where a Commute Route starts.
-_Avoid_: Weather Location, home
+The specific map point where a Commute Route starts. Each route has its own Commute Origin, while the Daily Summary temporarily presents every origin under the generic label “Home.”
+_Avoid_: Weather Location, shared home address
 
 **Commute Destination**:
-The specific map point where a Commute Route ends.
+The specific map point where a Commute Route ends. The Daily Summary presents the Commute Route name above the selected destination address.
 _Avoid_: Weather Location, work
 
 **Saved Commute Address**:
@@ -109,8 +125,12 @@ An exact map point a User or Visitor keeps for quick selection as a Commute Orig
 _Avoid_: Saved Location, saved city, Weather Location
 
 **Commute Estimate**:
-The estimated travel time for a Commute Route at the moment the Daily Summary is generated, including current traffic conditions when available.
+The estimated travel time for a Commute Route at the moment the Daily Summary is generated, including current traffic conditions, together with the travel time calculated without traffic conditions.
 _Avoid_: Scheduled commute time, planned departure time
+
+**Commute Traffic Level**:
+The green, yellow, or red condition of a Commute Route derived from the relative delay of its traffic-aware travel time against its traffic-free travel time. Green is below 10%, yellow is from 10% to below 25%, and red is 25% or more.
+_Avoid_: Google Maps traffic color, absolute delay
 
 **Summary Time**:
 The local time when a User's Daily Summary is sent. It defaults to 07:00 and can be changed by the User.
