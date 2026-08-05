@@ -37,15 +37,23 @@ export type SummarySectionPresentation = z.infer<
   typeof summarySectionPresentationSchema
 >;
 export type SummarySectionPresentationSection = keyof SummarySectionPresentation;
+export type SummarySectionPresentationStateFor<
+  Section extends SummarySectionPresentationSection
+> = SummarySectionPresentation[Section];
+export type UnpausedSummarySectionPresentationStateFor<
+  Section extends SummarySectionPresentationSection
+> = Exclude<SummarySectionPresentationStateFor<Section>, 'paused'>;
 
-export const resolveSummarySectionPresentationState = (
-  section: SummarySectionPresentationSection,
+export const resolveSummarySectionPresentationState = <
+  Section extends SummarySectionPresentationSection
+>(
+  section: Section,
   paused: boolean,
-  unpausedState: UnpausedSummarySectionPresentationState
-): SummarySectionPresentationState => {
+  unpausedState: UnpausedSummarySectionPresentationStateFor<Section>
+): SummarySectionPresentationStateFor<Section> => {
   if (paused) return 'paused';
 
-  const candidate = unpausedState as SummarySectionPresentationState;
+  const candidate = unpausedState as SummarySectionPresentationStateFor<Section>;
 
   if (candidate === 'paused') {
     throw new Error('Paused Summary Section state requires an explicit pause choice.');
@@ -57,5 +65,5 @@ export const resolveSummarySectionPresentationState = (
     throw new Error(`Invalid ${section} Summary Section presentation state.`);
   }
 
-  return result.data;
+  return result.data as SummarySectionPresentationStateFor<Section>;
 };

@@ -3,7 +3,7 @@ import {
   dailySummaryAppearanceSchema,
   resolveSummarySectionPresentationState,
   summarySectionPresentationSchema,
-  type UnpausedSummarySectionPresentationState
+  type UnpausedSummarySectionPresentationStateFor
 } from './summarySectionPresentation';
 
 describe('Summary Section presentation contract', () => {
@@ -46,9 +46,21 @@ describe('Summary Section presentation contract', () => {
       resolveSummarySectionPresentationState(
         'weather',
         false,
-        'paused' as unknown as UnpausedSummarySectionPresentationState
+        'paused' as unknown as UnpausedSummarySectionPresentationStateFor<'weather'>
       )
     ).toThrow('Paused Summary Section state requires an explicit pause choice.');
+  });
+
+  test('preserves section-specific state types in the resolver', () => {
+    resolveSummarySectionPresentationState('weather', false, 'unconfigured');
+    resolveSummarySectionPresentationState('todo', false, 'empty');
+
+    if (false) {
+      // @ts-expect-error Weather does not support the empty state.
+      resolveSummarySectionPresentationState('weather', false, 'empty');
+      // @ts-expect-error Todo does not support the unconfigured state.
+      resolveSummarySectionPresentationState('todo', false, 'unconfigured');
+    }
   });
 
   test('pins the product to one Daily Summary Appearance', () => {

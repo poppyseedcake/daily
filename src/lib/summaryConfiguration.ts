@@ -14,7 +14,9 @@ export type {
   SummarySectionPresentation,
   SummarySectionPresentationSection,
   SummarySectionPresentationState,
-  UnpausedSummarySectionPresentationState
+  SummarySectionPresentationStateFor,
+  UnpausedSummarySectionPresentationState,
+  UnpausedSummarySectionPresentationStateFor
 } from './summarySectionPresentation';
 
 export const summaryTimeSchema = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/);
