@@ -79,6 +79,10 @@ export type UserSetupImportDraft = {
     commuteSectionEnabled: boolean;
     calendarSectionEnabled: boolean;
     todoSectionEnabled: boolean;
+    weatherSectionPaused?: boolean;
+    commuteSectionPaused?: boolean;
+    calendarSectionPaused?: boolean;
+    todoSectionPaused?: boolean;
   };
   todoCategories: Array<{
     id: string;
@@ -457,7 +461,11 @@ export const createUserSetupImportDraftFromLocalSetup = (
       weatherSectionEnabled: setup.summaryConfiguration.sections.weather,
       commuteSectionEnabled: setup.summaryConfiguration.sections.commute,
       calendarSectionEnabled: setup.summaryConfiguration.sections.calendar,
-      todoSectionEnabled: setup.summaryConfiguration.sections.todo
+      todoSectionEnabled: setup.summaryConfiguration.sections.todo,
+      weatherSectionPaused: setup.summaryConfiguration.sectionPauses.weather,
+      commuteSectionPaused: setup.summaryConfiguration.sectionPauses.commute,
+      calendarSectionPaused: setup.summaryConfiguration.sectionPauses.calendar,
+      todoSectionPaused: setup.summaryConfiguration.sectionPauses.todo
     },
     todoCategories: setup.todoCategories
       .toSorted((first, second) => first.position - second.position)

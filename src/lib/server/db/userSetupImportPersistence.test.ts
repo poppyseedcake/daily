@@ -24,7 +24,11 @@ const validDraft = (): UserSetupImportDraft => ({
     weatherSectionEnabled: false,
     commuteSectionEnabled: true,
     calendarSectionEnabled: true,
-    todoSectionEnabled: true
+    todoSectionEnabled: true,
+    weatherSectionPaused: false,
+    commuteSectionPaused: false,
+    calendarSectionPaused: false,
+    todoSectionPaused: false
   },
   todoCategories: [
     { id: 'category-home', userId: 'user-1', name: 'Home', position: 1 },

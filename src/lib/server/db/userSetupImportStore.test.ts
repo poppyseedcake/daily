@@ -23,6 +23,7 @@ const createTestDatabase = () => {
   const sqlite = new Database(':memory:');
   sqlite.pragma('foreign_keys = ON');
   sqlite.exec(readFileSync('drizzle/0000_bootstrap_daily.sql', 'utf8'));
+  sqlite.exec(readFileSync('drizzle/0022_add_summary_section_pause_settings.sql', 'utf8'));
   sqlite.exec(readFileSync('drizzle/0003_add_weather_locations.sql', 'utf8'));
   sqlite.exec(readFileSync('drizzle/0010_add_commute_setup.sql', 'utf8'));
   sqlite.exec(readFileSync('drizzle/0016_add_commute_preview_duration.sql', 'utf8'));
@@ -57,7 +58,11 @@ const validDraft = (): UserSetupImportDraft => ({
     weatherSectionEnabled: false,
     commuteSectionEnabled: true,
     calendarSectionEnabled: true,
-    todoSectionEnabled: true
+    todoSectionEnabled: true,
+    weatherSectionPaused: false,
+    commuteSectionPaused: false,
+    calendarSectionPaused: false,
+    todoSectionPaused: false
   },
   todoCategories: [{ id: 'category-work', userId: 'user-1', name: 'Work', position: 1 }],
   todoTasks: [

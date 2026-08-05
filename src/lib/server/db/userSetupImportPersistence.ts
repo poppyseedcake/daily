@@ -16,7 +16,11 @@ const persistedSummaryConfigurationSchema = z.object({
   weatherSectionEnabled: z.boolean(),
   commuteSectionEnabled: z.boolean(),
   calendarSectionEnabled: z.boolean(),
-  todoSectionEnabled: z.boolean()
+  todoSectionEnabled: z.boolean(),
+  weatherSectionPaused: z.boolean().default(false),
+  commuteSectionPaused: z.boolean().default(false),
+  calendarSectionPaused: z.boolean().default(false),
+  todoSectionPaused: z.boolean().default(false)
 });
 
 const persistedTodoCategorySchema = z.object({
