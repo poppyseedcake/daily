@@ -8,6 +8,31 @@ const selectedCalendars = [
 ];
 
 describe('Calendar Section', () => {
+  test('retains today and the next six local dates when the Week Ahead is empty', () => {
+    const section = buildCalendarSection({
+      providerEvents: [],
+      selectedCalendars,
+      userTimeZone: 'America/New_York',
+      now: new Date('2026-07-08T10:00:00.000Z')
+    });
+
+    expect(section.today).toEqual({
+      label: 'Today',
+      allDayEvents: [],
+      timedEvents: []
+    });
+    expect(section.weekAhead).toHaveLength(6);
+    expect(section.weekAhead.map((day) => day.label)).toEqual([
+      'Thu, Jul 9',
+      'Fri, Jul 10',
+      'Sat, Jul 11',
+      'Sun, Jul 12',
+      'Mon, Jul 13',
+      'Tue, Jul 14'
+    ]);
+    expect([section.today, ...section.weekAhead]).toHaveLength(7);
+  });
+
   test('keeps a single-day All-Day Event separate from timed events on the configured local day', () => {
     const section = buildCalendarSection({
       providerEvents: [
@@ -83,7 +108,9 @@ describe('Calendar Section', () => {
         calendarColor: '#3f51b5'
       }
     ]);
-    expect(section.weekAhead.map((day) => [day.label, day.allDayEvents])).toEqual([
+    expect(section.weekAhead
+      .filter((day) => day.allDayEvents.length > 0)
+      .map((day) => [day.label, day.allDayEvents])).toEqual([
       [
         'Thu, Jul 9',
         [
@@ -107,6 +134,28 @@ describe('Calendar Section', () => {
         ]
       ]
     ]);
+  });
+
+  test('excludes events that do not belong to a selected Calendar', () => {
+    const section = buildCalendarSection({
+      providerEvents: [
+        {
+          kind: 'timed',
+          id: 'unselected-event',
+          calendarId: 'private',
+          calendarSummary: 'Private',
+          summary: 'Do not show',
+          start: '2026-07-08T12:00:00.000Z',
+          end: '2026-07-08T13:00:00.000Z'
+        }
+      ],
+      selectedCalendars,
+      userTimeZone: 'America/New_York',
+      now: new Date('2026-07-08T10:00:00.000Z')
+    });
+
+    expect(section.today?.timedEvents).toEqual([]);
+    expect(section.weekAhead.every((day) => day.timedEvents.length === 0)).toBe(true);
   });
 
   test('includes an All-Day Event only on its dates inside the Week Ahead boundaries', () => {

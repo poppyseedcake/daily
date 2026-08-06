@@ -189,11 +189,6 @@ export const createScheduledDailySummaryDelivery = ({
         Temporal.Instant.from(processingStartedAtIso)
       )?.toString() ?? null;
 
-    if (!generated.hasQualifyingContent) {
-      await occurrenceStore.advance(occurrence.userId, occurrence.scheduledAt, nextSummaryAt);
-      return { outcome: 'not-qualifying' as const };
-    }
-
     const claim = await deliveryRecordStore.claimScheduledOccurrence(occurrence.userId, {
       scheduledAt: occurrence.scheduledAt,
       claimedAt: processingStartedAtIso,

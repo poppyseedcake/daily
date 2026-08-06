@@ -25,6 +25,7 @@ import { renderDailySummary } from '$lib/dailySummaryRenderer';
 import {
   calendarReadinessForAuthMode,
   calendarReadinessForUnavailableCredentials,
+  calendarReadinessForUnavailableProvider,
   calendarReadinessForUserConnection
 } from '$lib/calendarReadiness';
 import {
@@ -304,7 +305,10 @@ export const load = async ({ request }) => {
       ? await loadCalendarGenerationContext(authState.userId, calendarConnection)
       : null;
   let calendarReadiness =
-    calendarGenerationContext?.readiness ?? calendarReadinessForAuthMode(authState.mode);
+    calendarGenerationContext?.readiness ??
+    (authState.mode === 'user' && calendarConnection
+      ? calendarReadinessForUserConnection(calendarConnection)
+      : calendarReadinessForAuthMode(authState.mode));
   const calendarListAccessToken = calendarGenerationContext?.accessToken;
   const selectedCalendarConfiguration =
     authState.mode === 'user' &&
@@ -400,6 +404,8 @@ export const load = async ({ request }) => {
           const calendarSummaryIsActive =
             validConfiguration.data.sections.calendar &&
             !validConfiguration.data.sectionPauses.calendar;
+          // The dashboard Calendar agenda is independent from the Calendar
+          // Summary Section, so pausing the Summary must not hide page context.
           const calendarAgendaInput = calendarSummaryIsActive
             ? input
             : await buildDailySummaryInput({
@@ -419,9 +425,17 @@ export const load = async ({ request }) => {
                 }
               });
 
+          if (
+            calendarReadiness.status === 'connected' &&
+            (input.sections.calendar.status === 'unavailable' ||
+              calendarAgendaInput?.sections.calendar.status === 'unavailable')
+          ) {
+            calendarReadiness = calendarReadinessForUnavailableProvider();
+          }
+
           return {
             html: renderDailySummary(input).html,
-            calendarSection: calendarAgendaInput.calendarSection ?? null
+            calendarSection: calendarAgendaInput?.calendarSection ?? null
           };
         })()
       : null;

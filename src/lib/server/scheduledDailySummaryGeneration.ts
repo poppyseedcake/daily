@@ -1,4 +1,4 @@
-import type { CalendarEventProvider } from '$lib/calendar';
+import { calendarSectionHasEvents, type CalendarEventProvider } from '$lib/calendar';
 import {
   calendarReadinessForAuthMode,
   calendarReadinessForUnavailableCredentials,
@@ -225,26 +225,42 @@ const loadScheduledCalendarContext = async ({
     return unavailableCalendarContext();
   }
 
-  try {
-    const accessToken = await loadAccessToken(userId);
+  if (selectedCalendars.length === 0) {
+    return {
+      readiness: calendarReadinessForUserConnection(connection),
+      selectedCalendars,
+      provider: undefined
+    };
+  }
 
-    return accessToken
-      ? {
-          readiness: calendarReadinessForUserConnection(connection),
-          selectedCalendars,
-          provider: providerForAccessToken(accessToken)
-        }
-      : {
-          readiness: calendarReadinessForUnavailableCredentials(),
-          selectedCalendars: [],
-          provider: undefined
-        };
+  let accessToken: string | null;
+
+  try {
+    accessToken = await loadAccessToken(userId);
   } catch {
     return {
       readiness: calendarReadinessForUnavailableCredentials(),
       selectedCalendars: [],
       provider: undefined
     };
+  }
+
+  if (!accessToken) {
+    return {
+      readiness: calendarReadinessForUnavailableCredentials(),
+      selectedCalendars: [],
+      provider: undefined
+    };
+  }
+
+  try {
+    return {
+      readiness: calendarReadinessForUserConnection(connection),
+      selectedCalendars,
+      provider: providerForAccessToken(accessToken)
+    };
+  } catch {
+    return unavailableCalendarContext();
   }
 };
 
@@ -303,7 +319,7 @@ const classifyCalendarContent = (input: DailySummaryInput): ScheduledSummarySect
     return 'inapplicable';
   }
   if (!input.calendarSection) return 'empty';
-  return input.calendarSection.today || input.calendarSection.weekAhead.length > 0
+  return calendarSectionHasEvents(input.calendarSection)
     ? 'qualifying'
     : 'empty';
 };

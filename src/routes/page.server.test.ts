@@ -753,7 +753,7 @@ describe('Daily page server load', () => {
     expect(sentCalendarEventRequests).toHaveLength(1);
   });
 
-  test('keeps the Calendar agenda when Calendar is paused in the email summary', async () => {
+  test('keeps the Calendar agenda and Selected Calendar configuration when Calendar is paused', async () => {
     getSession.mockResolvedValue({
       user: { id: 'user-1', email: 'user@example.com', emailVerified: true }
     });
@@ -781,9 +781,40 @@ describe('Daily page server load', () => {
               expect.objectContaining({ title: 'Planning' })
             ])
           })
+        }),
+        selectedCalendarConfiguration: expect.objectContaining({
+          selectedCalendarIds: ['work']
         })
       })
     );
+    expect(loadedGoogleCalendarAccessTokens).toEqual(['user-1']);
+    expect(loadedSelectedCalendars).toEqual(['user-1']);
+    expect(sentCalendarEventRequests).toHaveLength(1);
+  });
+
+  test('marks a Calendar Event provider failure unavailable without exposing provider content', async () => {
+    getSession.mockResolvedValue({
+      user: { id: 'user-1', email: 'user@example.com', emailVerified: true }
+    });
+    savedCalendarConnection.status = 'connected';
+    savedSelectedCalendars.push({
+      id: 'work',
+      summary: 'Work',
+      backgroundColor: '#0b8043',
+      primary: false
+    });
+    calendarEventProviderMode.outcome = 'private-failure';
+
+    const result = await loadPage();
+
+    expect(result.calendarReadiness).toEqual(
+      expect.objectContaining({
+        status: 'unavailable',
+        unavailableReason: 'Live Calendar is unavailable right now.'
+      })
+    );
+    expect(result.renderedSummaryHtml).toContain('Live Calendar is unavailable right now.');
+    expect(result.renderedSummaryHtml).not.toContain('Therapy at 10:00 with secret-provider-token');
     expect(sentCalendarEventRequests).toHaveLength(1);
   });
 
