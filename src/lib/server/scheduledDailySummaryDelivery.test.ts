@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import Database from 'better-sqlite3';
 import { drizzle } from 'drizzle-orm/better-sqlite3';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import type { CalendarEventProvider } from '$lib/calendar';
 import { createUserCalendarConnectionStore } from './db/calendarConnectionStore';
 import { createUserCommuteSetupStore } from './db/commuteSetupStore';
 import { createDeliveryRecordStore } from './db/deliveryRecordStore';
@@ -68,12 +69,16 @@ const createTestDelivery = ({
   database,
   send,
   now,
-  isActive
+  isActive,
+  loadCalendarAccessToken,
+  calendarEventProvider
 }: {
   database: ReturnType<typeof drizzle<typeof schema>>;
   send: DailySummaryDeliveryProvider['send'];
   now: () => Date;
   isActive?: (userId: string) => Promise<boolean>;
+  loadCalendarAccessToken?: (userId: string) => Promise<string | null>;
+  calendarEventProvider?: (accessToken: string) => CalendarEventProvider;
 }) => {
   const persistedLifecycleStore = createUserLifecycleStore(database);
   const generationLifecycleStore = isActive ? { isActive } : persistedLifecycleStore;
@@ -92,8 +97,8 @@ const createTestDelivery = ({
     weatherLocationStore: createUserWeatherLocationStore(database),
     commuteSetupStore: createUserCommuteSetupStore(database),
     calendarConnectionStore: createUserCalendarConnectionStore(database),
-    loadCalendarAccessToken: vi.fn(),
-    calendarEventProvider: vi.fn(),
+    loadCalendarAccessToken: loadCalendarAccessToken ?? vi.fn(),
+    calendarEventProvider: calendarEventProvider ?? vi.fn(),
     weatherProvider: { fetchDailyForecast: vi.fn() },
     commuteEstimateProvider: vi.fn(),
     now
@@ -359,13 +364,17 @@ describe('scheduled Daily Summary delivery', () => {
     });
   });
 
-  test('skips an occurrence with empty enabled content without a Delivery Record', async () => {
+  test('delivers an occurrence with empty enabled content and records the Delivery Record', async () => {
     saveQualifyingUser(sqlite, {
       userId: 'user-1',
       scheduledAt: '2026-10-24T05:00:00Z'
     });
     sqlite.prepare('delete from todo_tasks where user_id = ?').run('user-1');
-    const send = vi.fn();
+    const send = vi.fn().mockResolvedValue({
+      providerName: 'fake-delivery',
+      providerMessageId: 'message-1',
+      providerStatusMetadata: 'accepted'
+    });
     const delivery = createTestDelivery({
       database,
       send,
@@ -373,22 +382,23 @@ describe('scheduled Daily Summary delivery', () => {
     });
 
     await expect(delivery.processOneDueOccurrence()).resolves.toEqual({
-      outcome: 'not-qualifying'
+      outcome: 'sent',
+      occurrenceId: expect.any(String)
     });
     await expect(delivery.processOneDueOccurrence()).resolves.toEqual({
       outcome: 'none-due'
     });
 
-    expect(send).not.toHaveBeenCalled();
+    expect(send).toHaveBeenCalledOnce();
     expect(
       sqlite.prepare('select count(*) as count from delivery_records').get()
-    ).toEqual({ count: 0 });
+    ).toEqual({ count: 1 });
     expect(
       sqlite.prepare('select next_summary_at from users where id = ?').get('user-1')
     ).toEqual({ next_summary_at: '2026-10-25T06:00:00Z' });
   });
 
-  test('skips unavailable-only output without a provider call or Delivery Record', async () => {
+  test('delivers Calendar-only unavailable output and records the Delivery Record', async () => {
     saveQualifyingUser(sqlite, {
       userId: 'user-1',
       scheduledAt: '2026-10-24T05:00:00Z'
@@ -397,26 +407,52 @@ describe('scheduled Daily Summary delivery', () => {
     sqlite
       .prepare(
         `update summary_configurations
-            set weather_section_enabled = 1,
+            set weather_section_enabled = 0,
+                calendar_section_enabled = 1,
                 todo_section_enabled = 0
           where user_id = ?`
       )
       .run('user-1');
-    const send = vi.fn();
+    const calendarStore = createUserCalendarConnectionStore(database);
+    await calendarStore.saveConnected('user-1', {
+      providerAccountId: 'calendar-account',
+      grantedScopes: [],
+      accessTokenAvailable: true,
+      refreshTokenAvailable: true,
+      accessTokenExpiresAt: null
+    });
+    await calendarStore.saveSelectedCalendars('user-1', [
+      { id: 'work', summary: 'Work', backgroundColor: null, primary: true }
+    ]);
+    const send = vi.fn().mockResolvedValue({
+      providerName: 'fake-delivery',
+      providerMessageId: 'message-1',
+      providerStatusMetadata: 'accepted'
+    });
+    const calendarEventProvider = vi.fn().mockReturnValue({
+      fetchEvents: vi.fn().mockRejectedValue(new Error('private Calendar provider failure'))
+    });
     const delivery = createTestDelivery({
       database,
       send,
-      now: () => new Date('2026-10-24T05:00:00.000Z')
+      now: () => new Date('2026-10-24T05:00:00.000Z'),
+      loadCalendarAccessToken: vi.fn().mockResolvedValue('calendar-token'),
+      calendarEventProvider
     });
 
     await expect(delivery.processOneDueOccurrence()).resolves.toEqual({
-      outcome: 'not-qualifying'
+      outcome: 'sent',
+      occurrenceId: expect.any(String)
     });
 
-    expect(send).not.toHaveBeenCalled();
+    expect(send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: expect.stringContaining('Live Calendar is unavailable right now.')
+      })
+    );
     expect(
       sqlite.prepare('select count(*) as count from delivery_records').get()
-    ).toEqual({ count: 0 });
+    ).toEqual({ count: 1 });
     expect(
       sqlite.prepare('select next_summary_at from users where id = ?').get('user-1')
     ).toEqual({ next_summary_at: '2026-10-25T06:00:00Z' });
