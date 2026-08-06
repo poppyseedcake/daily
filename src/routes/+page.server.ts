@@ -280,7 +280,6 @@ export const load = async ({ request }) => {
       : null;
   const calendarGenerationContext =
     authState.mode === 'user' &&
-    !(summaryConfiguration?.sectionPauses?.calendar ?? false) &&
     calendarConnection
       ? await loadCalendarGenerationContext(authState.userId, calendarConnection)
       : null;
@@ -289,7 +288,6 @@ export const load = async ({ request }) => {
   const calendarListAccessToken = calendarGenerationContext?.accessToken;
   const selectedCalendarConfiguration =
     authState.mode === 'user' &&
-    !(summaryConfiguration?.sectionPauses?.calendar ?? false) &&
     calendarConnection?.status === 'connected' &&
     calendarListAccessToken
       ? await (async () => {
@@ -377,7 +375,10 @@ export const load = async ({ request }) => {
             openDailyUrl
           } as const;
           const input = await buildDailySummaryInput(generationSetup);
-          const calendarAgendaInput = validConfiguration.data.sections.calendar
+          const calendarSummaryIsActive =
+            validConfiguration.data.sections.calendar &&
+            !validConfiguration.data.sectionPauses.calendar;
+          const calendarAgendaInput = calendarSummaryIsActive
             ? input
             : await buildDailySummaryInput({
                 ...generationSetup,
@@ -388,6 +389,10 @@ export const load = async ({ request }) => {
                     commute: false,
                     calendar: true,
                     todo: false
+                  },
+                  sectionPauses: {
+                    ...validConfiguration.data.sectionPauses,
+                    calendar: false
                   }
                 }
               });

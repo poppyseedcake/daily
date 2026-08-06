@@ -80,6 +80,12 @@ const {
       commute: true,
       calendar: true,
       todo: true
+    },
+    sectionPauses: {
+      weather: false,
+      commute: false,
+      calendar: false,
+      todo: false
     }
   },
   savedTodoState: {
@@ -563,6 +569,7 @@ describe('Daily page server load', () => {
     calendarListProviderMode.outcome = 'available';
     calendarEventProviderMode.outcome = 'available';
     savedConfiguration.sections.calendar = true;
+    savedConfiguration.sectionPauses.calendar = false;
     savedConfiguration.sections.commute = true;
     savedCommuteSetup.routes.length = 0;
     savedCommuteSetup.days.splice(0, savedCommuteSetup.days.length, 'monday', 'tuesday', 'wednesday', 'thursday', 'friday');
@@ -711,6 +718,40 @@ describe('Daily page server load', () => {
       user: { id: 'user-1', email: 'user@example.com', emailVerified: true }
     });
     savedConfiguration.sections.calendar = false;
+    savedCalendarConnection.status = 'connected';
+    savedSelectedCalendars.push({
+      id: 'work',
+      summary: 'Work',
+      backgroundColor: '#0b8043',
+      primary: false
+    });
+    providerCalendars.push({
+      id: 'work',
+      summary: 'Work',
+      backgroundColor: '#0b8043',
+      primary: false
+    });
+
+    await expect(loadPage()).resolves.toEqual(
+      expect.objectContaining({
+        renderedSummaryHtml: expect.not.stringContaining('Planning'),
+        calendarSection: expect.objectContaining({
+          today: expect.objectContaining({
+            timedEvents: expect.arrayContaining([
+              expect.objectContaining({ title: 'Planning' })
+            ])
+          })
+        })
+      })
+    );
+    expect(sentCalendarEventRequests).toHaveLength(1);
+  });
+
+  test('keeps the Calendar agenda when Calendar is paused in the email summary', async () => {
+    getSession.mockResolvedValue({
+      user: { id: 'user-1', email: 'user@example.com', emailVerified: true }
+    });
+    savedConfiguration.sectionPauses.calendar = true;
     savedCalendarConnection.status = 'connected';
     savedSelectedCalendars.push({
       id: 'work',
@@ -1163,6 +1204,12 @@ describe('Daily page server load', () => {
         commute: true,
         calendar: true,
         todo: true
+      },
+      sectionPauses: {
+        weather: false,
+        commute: false,
+        calendar: false,
+        todo: false
       }
     });
     expect(savedTodoState.todoTasks).toEqual([
