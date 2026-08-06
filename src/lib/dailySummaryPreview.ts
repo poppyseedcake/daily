@@ -16,8 +16,10 @@ import {
 } from './calendarReadiness';
 import {
   buildWeatherSection,
+  buildWeatherDisplayForecast,
   openMeteoWeatherForecastProvider,
-  type WeatherForecastProvider
+  type WeatherForecastProvider,
+  type WeatherSummaryProvider
 } from './weatherForecast';
 import { Temporal } from '@js-temporal/polyfill';
 import type { CommuteDay, CommuteRoute } from './commuteRoute';
@@ -31,6 +33,7 @@ export type DailySummaryGenerationSetup = {
   todoTasks: TodoTask[];
   weatherLocation?: WeatherLocation | null;
   weatherProvider?: WeatherForecastProvider;
+  weatherSummaryProvider?: WeatherSummaryProvider;
   selectedCalendars?: SavedSelectedCalendar[];
   calendarEventProvider?: CalendarEventProvider;
   commuteRoutes?: CommuteRoute[];
@@ -49,6 +52,7 @@ export const buildDailySummaryInput = async ({
   todoTasks,
   weatherLocation = null,
   weatherProvider = openMeteoWeatherForecastProvider,
+  weatherSummaryProvider,
   selectedCalendars = [],
   calendarEventProvider,
   commuteRoutes = [],
@@ -62,6 +66,8 @@ export const buildDailySummaryInput = async ({
     configuration,
     weatherLocation,
     weatherProvider,
+    weatherSummaryProvider,
+    assetOrigin: openDailyUrl,
     now
   });
   const calendarGeneration = await buildCalendarGenerationResult({
@@ -87,13 +93,14 @@ export const buildDailySummaryInput = async ({
     generatedAt: new Date(now),
     openDailyUrl,
     sections: {
-      weather,
+      weather: weather.sectionState,
       commute: commuteGeneration.sectionState,
       calendar: calendarGeneration.sectionState,
       todo: buildTodoGenerationState({ configuration, todoSection })
     },
     calendarSection: calendarGeneration.calendarSection,
     commuteSection: commuteGeneration.commuteSection,
+    weatherSection: weather.weatherSection,
     todoSection
   };
 };
@@ -339,26 +346,39 @@ const buildWeatherGenerationState = async ({
   configuration,
   weatherLocation,
   weatherProvider,
+  weatherSummaryProvider,
+  assetOrigin,
   now
 }: {
   configuration: SummaryConfiguration;
   weatherLocation: WeatherLocation | null;
   weatherProvider: WeatherForecastProvider;
+  weatherSummaryProvider?: WeatherSummaryProvider;
+  assetOrigin: string;
   now: Date;
-}): Promise<DailySummaryInput['sections']['weather']> => {
+}): Promise<{
+  sectionState: DailySummaryInput['sections']['weather'];
+  weatherSection: DailySummaryInput['weatherSection'];
+}> => {
   if (configuration.sectionPauses.weather || !configuration.sections.weather) {
     return {
-      status: 'paused',
-      label: 'Weather',
-      detail: 'Weather is paused.'
+      sectionState: {
+        status: 'paused',
+        label: 'Weather',
+        detail: 'Weather is paused.'
+      },
+      weatherSection: null
     };
   }
 
   if (!weatherLocation) {
     return {
-      status: 'unconfigured',
-      label: 'Weather',
-      detail: 'Choose a Weather Location to include local weather.'
+      sectionState: {
+        status: 'unconfigured',
+        label: 'Weather',
+        detail: 'Choose a Weather Location to include local weather.'
+      },
+      weatherSection: null
     };
   }
 
@@ -366,27 +386,78 @@ const buildWeatherGenerationState = async ({
     const forecastResult = await weatherProvider.fetchDailyForecast({
       latitude: weatherLocation.latitude,
       longitude: weatherLocation.longitude,
-      timeZone: configuration.userTimeZone
+      timeZone: configuration.userTimeZone,
+      targetDate: Temporal.Instant.fromEpochMilliseconds(now.getTime())
+        .toZonedDateTimeISO(configuration.userTimeZone)
+        .toPlainDate()
+        .toString()
     });
 
     if (forecastResult.outcome === 'unavailable') {
       return {
-        status: 'unavailable',
-        label: 'Weather',
-        reason: forecastResult.reason
+        sectionState: {
+          status: 'unavailable',
+          label: 'Weather',
+          reason: forecastResult.reason
+        },
+        weatherSection: null
       };
     }
 
-    return buildWeatherSection({
-      forecast: forecastResult.forecast,
-      userTimeZone: configuration.userTimeZone,
-      now
-    });
+    const weatherSection = forecastResult.forecast.currentTemperatureCelsius === undefined
+      ? null
+      : buildWeatherDisplayForecast({
+          forecast: forecastResult.forecast,
+          userTimeZone: configuration.userTimeZone,
+          now,
+          assetOrigin
+        });
+
+    if (!weatherSection && forecastResult.forecast.currentTemperatureCelsius !== undefined) {
+      return {
+        sectionState: {
+          status: 'unavailable',
+          label: 'Weather',
+          reason: 'Live weather is unavailable right now.'
+        },
+        weatherSection: null
+      };
+    }
+
+    const displayWeatherSection = weatherSection ?? null;
+
+    let summary: string | undefined;
+    if (forecastResult.forecast.summaryInput && weatherSummaryProvider) {
+      try {
+        const summaryResult = await weatherSummaryProvider.summarize(
+          forecastResult.forecast.summaryInput
+        );
+        summary = summaryResult.outcome === 'available' ? summaryResult.sentence : undefined;
+      } catch {
+        summary = undefined;
+      }
+    }
+
+    return {
+      sectionState: buildWeatherSection({
+        forecast: forecastResult.forecast,
+        userTimeZone: configuration.userTimeZone,
+        now,
+        summary,
+        assetOrigin
+      }),
+      weatherSection: summary && displayWeatherSection
+        ? { ...displayWeatherSection, summary }
+        : displayWeatherSection
+    };
   } catch {
     return {
-      status: 'unavailable',
-      label: 'Weather',
-      reason: 'Live weather is unavailable right now.'
+      sectionState: {
+        status: 'unavailable',
+        label: 'Weather',
+        reason: 'Live weather is unavailable right now.'
+      },
+      weatherSection: null
     };
   }
 };

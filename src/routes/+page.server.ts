@@ -52,6 +52,7 @@ import { userLifecycleStore } from '$lib/server/db/userLifecycleStore';
 import { accountDeletionStore } from '$lib/server/db/accountDeletionStore';
 import { accountDeletionConfirmation } from '$lib/accountDeletion';
 import { deleteDailyAccount } from '$lib/server/accountDeletion';
+import { openAiWeatherSummaryProvider } from '$lib/server/weatherSummaryProvider';
 import { env } from '$env/dynamic/private';
 import { fail } from '@sveltejs/kit';
 
@@ -372,6 +373,7 @@ export const load = async ({ request }) => {
             calendarEventProvider: calendarGenerationContext?.accessToken
               ? googleCalendarEventProvider(calendarGenerationContext.accessToken)
               : undefined,
+            weatherSummaryProvider: openAiWeatherSummaryProvider,
             openDailyUrl
           } as const;
           const input = await buildDailySummaryInput(generationSetup);
@@ -523,6 +525,7 @@ export const actions = {
         todoCategories: validTodoState.data.todoCategories,
         todoTasks: validTodoState.data.todoTasks,
         weatherLocation,
+        weatherSummaryProvider: openAiWeatherSummaryProvider,
         commuteRoutes: commuteSetup.routes,
         commuteDays: commuteSetup.days,
         commuteEstimateMode: 'live',

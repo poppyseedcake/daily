@@ -21,7 +21,7 @@ import type { UserWeatherLocationPersistenceStore } from './weatherLocationPersi
 import { loadUserWeatherLocation } from './weatherLocationPersistence';
 import type { UserCommuteSetupStore } from './commuteSetupPersistence';
 import { loadUserCommuteSetup } from './commuteSetupPersistence';
-import type { WeatherForecastProvider } from '$lib/weatherForecast';
+import type { WeatherForecastProvider, WeatherSummaryProvider } from '$lib/weatherForecast';
 import type { GoogleMapsRequestGateway } from './googleMapsRequestGateway';
 
 export type ScheduledSummarySectionContent =
@@ -52,6 +52,7 @@ export type ScheduledDailySummaryGenerationDependencies = {
   loadCalendarAccessToken: (userId: string) => Promise<string | null>;
   calendarEventProvider: (accessToken: string) => CalendarEventProvider;
   weatherProvider: WeatherForecastProvider;
+  weatherSummaryProvider?: WeatherSummaryProvider;
   commuteEstimateProvider: (
     userId: string
   ) => Pick<GoogleMapsRequestGateway, 'estimateCommute'> | undefined;
@@ -69,6 +70,7 @@ export const createScheduledDailySummaryGenerator = ({
   loadCalendarAccessToken,
   calendarEventProvider,
   weatherProvider,
+  weatherSummaryProvider,
   commuteEstimateProvider,
   openDailyUrl = process.env.ORIGIN ?? process.env.BETTER_AUTH_URL ?? 'http://localhost:5174/',
   now = () => new Date()
@@ -100,6 +102,7 @@ export const createScheduledDailySummaryGenerator = ({
       todoTasks: todoState.todoTasks,
       weatherLocation,
       weatherProvider,
+      weatherSummaryProvider,
       commuteRoutes: commuteSetup.routes,
       commuteDays: commuteSetup.days,
       commuteEstimateMode: 'live',

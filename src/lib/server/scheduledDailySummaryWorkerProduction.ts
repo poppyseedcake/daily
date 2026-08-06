@@ -15,6 +15,7 @@ import { userSummaryConfigurationStore } from './db/summaryConfigurationStore';
 import { userTodoStore } from './db/todoStore';
 import { userWeatherLocationStore } from './db/weatherLocationStore';
 import { userLifecycleStore } from './db/userLifecycleStore';
+import { openAiWeatherSummaryProvider } from './weatherSummaryProvider';
 
 export const createProductionScheduledDailySummaryWorkerDependencies = () => {
   const generator = createScheduledDailySummaryGenerator({
@@ -27,6 +28,7 @@ export const createProductionScheduledDailySummaryWorkerDependencies = () => {
     loadCalendarAccessToken: loadGoogleCalendarAccessToken,
     calendarEventProvider: googleCalendarEventProvider,
     weatherProvider: openMeteoWeatherForecastProvider,
+    weatherSummaryProvider: openAiWeatherSummaryProvider,
     commuteEstimateProvider: (userId) =>
       googleMapsOperations.requestGateway({
         mode: 'user',
