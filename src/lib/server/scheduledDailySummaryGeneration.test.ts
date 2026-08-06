@@ -171,18 +171,19 @@ describe('scheduled Daily Summary generation', () => {
       ...second.rendered
     });
 
-    expect(first.rendered.text).toContain('Prepare first update !');
+    expect(first.rendered.text).toContain('Prepare first update — High urgency');
     expect(first.rendered.text).toContain('high 26C');
     expect(first.rendered.text).toContain('Office: 24 minutes');
     expect(first.rendered.text).toContain('First planning');
-    expect(second.rendered.text).toContain('Prepare current update !');
+    expect(second.rendered.text).toContain('Prepare current update — High urgency');
     expect(second.rendered.text).toContain('Clear. Low 17C, high 28C. Chance of precipitation 10%.');
     expect(second.rendered.text).toContain('Office: 31 minutes');
     expect(second.rendered.text).toContain('10:00 Current planning (Work)');
     expect(second.rendered.text.indexOf('Weather')).toBeLessThan(second.rendered.text.indexOf('Commute'));
     expect(second.rendered.text.indexOf('Commute')).toBeLessThan(second.rendered.text.indexOf('Calendar'));
-    expect(second.rendered.text.indexOf('Calendar')).toBeLessThan(second.rendered.text.indexOf('Todo Tasks'));
-    expect(second.rendered.html).toContain('background-color:#111827');
+    expect(second.rendered.text.indexOf('Calendar')).toBeLessThan(second.rendered.text.indexOf('Todo'));
+    expect(second.rendered.html).toContain('max-width:680px');
+    expect(second.rendered.html).not.toContain('background-color:#111827');
     expect(second.hasQualifyingContent).toBe(true);
     expect(second.sectionContent).toEqual({
       weather: 'qualifying',
@@ -226,10 +227,12 @@ describe('scheduled Daily Summary generation', () => {
 
     const result = await generator.generate('user-1');
 
-    expect(result.rendered).toEqual({
-      html: '<article style="background-color:#111827;color:#f9fafb;font-family:Arial,sans-serif;padding:24px"></article>',
-      text: ''
-    });
+    expect(result.rendered.html).toContain('data-summary-section="weather"');
+    expect(result.rendered.html).toContain('data-summary-section="commute"');
+    expect(result.rendered.html).toContain('data-summary-section="calendar"');
+    expect(result.rendered.html).toContain('data-summary-section="todo"');
+    expect(result.rendered.text).toContain('Weather\nPaused\nWeather is paused.');
+    expect(result.rendered.text).toContain('Todo\nPaused\nTodo is paused.');
     expect(result.hasQualifyingContent).toBe(false);
     expect(result.sectionContent).toEqual({
       weather: 'inapplicable',
@@ -444,14 +447,14 @@ describe('scheduled Daily Summary generation', () => {
 
     expect(result.hasQualifyingContent).toBe(false);
     expect(result.sectionContent).toEqual({
-      weather: 'unavailable',
+      weather: 'inapplicable',
       commute: 'inapplicable',
       calendar: 'empty',
       todo: 'empty'
     });
-    expect(result.rendered.text).toContain('Weather\nChoose a Weather Location');
-    expect(result.rendered.text).toContain('Calendar\nNo Calendar Events in the next week.');
-    expect(result.rendered.text).not.toContain('Commute');
-    expect(result.rendered.text).not.toContain('Todo Tasks');
+    expect(result.rendered.text).toContain('Weather\nNot configured\nChoose a Weather Location');
+    expect(result.rendered.text).toContain('Calendar\nNothing scheduled\nNo Calendar Events in the Week Ahead.');
+    expect(result.rendered.text).toContain('Commute');
+    expect(result.rendered.text).toContain('Todo\nNothing scheduled\nThere are no active Todo Tasks.');
   });
 });

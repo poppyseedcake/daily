@@ -1,37 +1,55 @@
-import type { SummaryConfiguration, SummarySection } from './summaryConfiguration';
 import type { CalendarSection } from './calendar';
-import {
-  type TodoSection,
-  type TodoTask,
-  type TodoUrgency
-} from './todo';
+import type { SummaryConfiguration, SummarySection } from './summaryConfiguration';
+import type {
+  SummarySectionPresentationState,
+  SummarySectionPresentationStateFor
+} from './summarySectionPresentation';
+import type { TodoSection, TodoTask, TodoUrgency } from './todo';
 
-export type DailySummarySectionState =
+export const dailySummarySectionOrder = ['weather', 'commute', 'calendar', 'todo'] as const;
+
+export type DailySummarySectionStatus = SummarySectionPresentationState | 'available';
+
+export type DailySummarySectionStateFor<Section extends SummarySection> =
   | {
-      status: 'available';
+      status: Exclude<SummarySectionPresentationStateFor<Section>, 'unavailable'> | 'available';
       label: string;
-      detail: string;
+      detail?: string;
     }
   | {
       status: 'unavailable';
       label: string;
       reason: string;
+      detail?: string;
     };
+
+export type DailySummarySectionState = {
+  [Section in SummarySection]: DailySummarySectionStateFor<Section>;
+}[SummarySection];
 
 export type DailySummaryInput = {
   configuration: SummaryConfiguration;
-  sections: Record<SummarySection, DailySummarySectionState>;
+  generatedAt?: Date;
+  openDailyUrl?: string;
+  sections: {
+    [Section in SummarySection]: DailySummarySectionStateFor<Section>;
+  };
   calendarSection?: CalendarSection | null;
   commuteSection?: CommuteSection | null;
   todoSection: TodoSection | null;
 };
 
+export type CommuteTrafficLevel = 'light' | 'moderate' | 'heavy';
+
 export type CommuteSection = {
   label: 'Commute';
-  estimates: Array<
-    { routeName: string; outcome: 'available'; durationMinutes: number }
-    | { routeName: string; outcome: 'unavailable' }
-  >;
+  estimates: Array<{
+    routeName: string;
+    outcome: 'available' | 'unavailable';
+    durationMinutes?: number;
+    trafficLevel?: CommuteTrafficLevel;
+    trafficDescription?: string;
+  }>;
 };
 
 export type RenderedDailySummary = {
@@ -39,219 +57,417 @@ export type RenderedDailySummary = {
   text: string;
 };
 
-const sectionOrder: SummarySection[] = ['weather', 'commute', 'calendar', 'todo'];
+type RenderedSection = {
+  key: SummarySection;
+  label: string;
+  status: Exclude<DailySummarySectionStatus, 'available'>;
+  detail?: string;
+  reason?: string;
+  calendarSection?: CalendarSection | null;
+  commuteSection?: CommuteSection | null;
+  todoSection?: TodoSection | null;
+};
 
-const themeStyles = {
-  light: {
-    article: 'background-color:#ffffff;color:#1c1917',
-    section: 'border:1px solid #e7e5e4;background-color:#fafaf9'
-  },
-  dark: {
-    article: 'background-color:#111827;color:#f9fafb',
-    section: 'border:1px solid #374151;background-color:#1f2937'
-  }
+const fixedSectionLabels: Record<SummarySection, string> = {
+  weather: 'Weather',
+  commute: 'Commute',
+  calendar: 'Calendar',
+  todo: 'Todo'
+};
+
+const sectionAccentColors: Record<SummarySection, string> = {
+  weather: '#4d733e',
+  commute: '#3568ad',
+  calendar: '#70519a',
+  todo: '#4d733e'
+};
+
+const stateLabels = {
+  paused: 'Paused',
+  unconfigured: 'Not configured',
+  empty: 'Nothing scheduled',
+  unavailable: 'Unavailable'
 } as const;
 
 export const renderDailySummary = (input: DailySummaryInput): RenderedDailySummary => {
-  const visibleSections = sectionOrder
-    .filter((section) => input.configuration.sections[section])
-    .flatMap((section) => buildVisibleSection(input, section));
+  const sections = dailySummarySectionOrder.map((key) => resolveSection(input, key));
+  const generatedAt = input.generatedAt ?? new Date();
+  const generatedTimestamp = formatGeneratedTimestamp(generatedAt, input.configuration.userTimeZone);
+  const openDailyUrl = canonicalOpenDailyUrl(input.openDailyUrl);
 
-  const htmlSections = visibleSections
-    .map((section) => {
-      return `<section style="${themeStyles[input.configuration.summaryTheme].section};padding:16px;margin:0 0 12px;border-radius:8px"><h2>${escapeHtml(section.label)}</h2>${section.html}</section>`;
+  return {
+    html: renderHtml({
+      sections,
+      generatedAt,
+      generatedTimestamp,
+      userTimeZone: input.configuration.userTimeZone,
+      openDailyUrl
+    }),
+    text: renderText({
+      sections,
+      generatedTimestamp,
+      userTimeZone: input.configuration.userTimeZone,
+      openDailyUrl
     })
-    .join('');
-
-  const textSections = visibleSections
-    .map((section) => `${section.label}\n${section.text}`)
-    .join('\n\n');
-
-  return {
-    html: `<article style="${themeStyles[input.configuration.summaryTheme].article};font-family:Arial,sans-serif;padding:24px">${htmlSections}</article>`,
-    text: textSections
   };
 };
 
-type RenderedSection = {
-  label: string;
-  html: string;
-  text: string;
-};
-
-const buildVisibleSection = (
-  input: DailySummaryInput,
-  section: SummarySection
-): RenderedSection[] => {
-  if (section === 'commute' && input.commuteSection !== undefined) {
-    if (input.commuteSection) {
-      return [renderCommuteSection(input.commuteSection)];
-    }
-
-    const sectionState = input.sections.commute;
-    return sectionState.status === 'unavailable'
-      ? [renderUnavailableSection(sectionState.label, sectionState.reason)]
-      : [];
-  }
-
-  if (section === 'todo') {
-    if (input.todoSection) {
-      return [renderTodoSection(input.todoSection)];
-    }
-
-    const sectionState = input.sections.todo;
-
-    if (sectionState.status === 'unavailable') {
-      return [renderUnavailableSection(sectionState.label, sectionState.reason)];
-    }
-
-    return [];
-  }
-
-  if (section === 'calendar' && input.calendarSection && hasCalendarEvents(input.calendarSection)) {
-    return [renderCalendarSection(input.calendarSection)];
-  }
-
-  const sectionState = input.sections[section];
-
-  return sectionState.status === 'available'
-    ? [renderAvailableSection(sectionState.label, sectionState.detail)]
-    : [renderUnavailableSection(sectionState.label, sectionState.reason)];
-};
-
-const renderCommuteSection = (section: CommuteSection): RenderedSection => ({
-  label: section.label,
-  html: `<ul>${section.estimates.map((estimate) => `<li>${escapeHtml(estimate.routeName)}: ${estimate.outcome === 'available' ? `${estimate.durationMinutes} minutes` : 'unavailable'}</li>`).join('')}</ul>`,
-  text: section.estimates
-    .map((estimate) => `${estimate.routeName}: ${estimate.outcome === 'available' ? `${estimate.durationMinutes} minutes` : 'unavailable'}`)
-    .join('\n')
-});
-
-const hasCalendarEvents = (calendarSection: CalendarSection) =>
-  Boolean(calendarSection.today) || calendarSection.weekAhead.length > 0;
-
-const renderCalendarSection = (calendarSection: CalendarSection): RenderedSection => {
-  const today = calendarSection.today ? renderCalendarDay(calendarSection.today) : null;
-  const weekAhead = calendarSection.weekAhead.map(renderCalendarDay);
-  const html = [
-    today?.html,
-    weekAhead.length > 0
-      ? `<h3>Week Ahead</h3>${weekAhead.map((day) => day.html).join('')}`
-      : null
-  ]
-    .filter(Boolean)
-    .join('');
-  const text = [
-    today?.text,
-    weekAhead.length > 0 ? `Week Ahead\n${weekAhead.map((day) => day.text).join('\n\n')}` : null
-  ]
-    .filter(Boolean)
-    .join('\n\n');
+const resolveSection = (input: DailySummaryInput, key: SummarySection): RenderedSection => {
+  const state = input.sections[key];
+  const label = fixedSectionLabels[key];
+  const legacySectionIsDisabled = !input.configuration.sections[key];
+  const explicitlyPaused = input.configuration.sectionPauses?.[key] || legacySectionIsDisabled;
+  const status = explicitlyPaused
+    ? 'paused'
+    : state.status === 'available'
+      ? 'active'
+      : state.status;
+  const detail = explicitlyPaused
+    ? state.status === 'paused'
+      ? state.detail
+      : `${label} is paused.`
+    : state.detail;
 
   return {
-    label: calendarSection.label,
-    html,
-    text
+    key,
+    label,
+    status,
+    detail,
+    ...(!explicitlyPaused && state.status === 'unavailable' ? { reason: state.reason } : {}),
+    ...(key === 'calendar' ? { calendarSection: input.calendarSection } : {}),
+    ...(key === 'commute' ? { commuteSection: input.commuteSection } : {}),
+    ...(key === 'todo' ? { todoSection: input.todoSection } : {})
   };
 };
 
-const renderCalendarDay = (day: CalendarSection['weekAhead'][number]) => {
-  const htmlEvents = [
+const renderHtml = ({
+  sections,
+  generatedAt,
+  generatedTimestamp,
+  userTimeZone,
+  openDailyUrl
+}: {
+  sections: RenderedSection[];
+  generatedAt: Date;
+  generatedTimestamp: string;
+  userTimeZone: string;
+  openDailyUrl: string;
+}) => `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+      @media only screen and (max-width: 620px) {
+        .daily-grid-cell { display: block !important; width: 100% !important; }
+        .daily-grid-cell-inner { min-height: 0 !important; }
+        .daily-summary-shell { width: 100% !important; }
+      }
+      .daily-screen-reader-only {
+        position: absolute !important;
+        width: 1px !important;
+        height: 1px !important;
+        padding: 0 !important;
+        margin: -1px !important;
+        overflow: hidden !important;
+        clip: rect(0, 0, 0, 0) !important;
+        white-space: nowrap !important;
+        border: 0 !important;
+      }
+    </style>
+  </head>
+  <body style="margin:0;padding:0;background-color:#f7f8f5;color:#172019;font-family:Arial,Helvetica,sans-serif;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;border-collapse:collapse;background-color:#f7f8f5;">
+      <tr>
+        <td align="center" style="padding:24px 12px;">
+          <table class="daily-summary-shell" role="presentation" width="680" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:680px;border-collapse:collapse;background-color:#ffffff;border:1px solid #d9ded8;">
+            <tr>
+              <td style="padding:34px 34px 27px;border-bottom:1px solid #d9ded8;background-color:#ffffff;">
+                <p style="margin:0 0 14px;color:#172019;font-size:30px;line-height:1.1;font-weight:700;letter-spacing:-0.03em;">Good morning</p>
+                <p style="margin:0;color:#68756a;font-size:14px;line-height:1.5;">Generated: <time datetime="${escapeHtml(generatedAt.toISOString())}">${escapeHtml(generatedTimestamp)}</time></p>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:0;background-color:#d9ded8;">
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="1" border="0" style="width:100%;border-collapse:separate;background-color:#d9ded8;">
+                  <tr>
+                    ${renderSectionCell(sections[0]!)}
+                    ${renderSectionCell(sections[1]!)}
+                  </tr>
+                  <tr>
+                    ${renderSectionCell(sections[2]!)}
+                    ${renderSectionCell(sections[3]!)}
+                  </tr>
+                </table>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:22px 34px 25px;border-top:1px solid #d9ded8;background-color:#ffffff;color:#68756a;font-size:13px;line-height:1.5;">
+                <p style="margin:0 0 10px;">Daily · ${escapeHtml(userTimeZone)}</p>
+                <p style="margin:0;"><a href="${escapeHtml(openDailyUrl)}" style="color:#356b38;text-decoration:underline;">Open Daily</a></p>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>`;
+
+const renderSectionCell = (section: RenderedSection) => {
+  const accentColor = sectionAccentColors[section.key];
+  const content = renderSectionHtmlContent(section);
+
+  return `<td class="daily-grid-cell" width="50%" valign="top" data-summary-section="${section.key}" style="width:50%;padding:0;background-color:#ffffff;">
+      <div class="daily-grid-cell-inner" role="region" aria-labelledby="daily-${section.key}-heading" style="min-height:250px;padding:25px 24px 24px;background-color:#ffffff;overflow-wrap:anywhere;word-break:break-word;">
+        <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;">
+          <tr>
+            <td aria-hidden="true" valign="top" style="padding:0 10px 0 0;color:${accentColor};font-size:18px;line-height:1;">${sectionGlyph(section.key)}</td>
+            <td valign="top"><h2 id="daily-${section.key}-heading" style="margin:0;color:${accentColor};font-size:18px;line-height:1.2;font-weight:700;">${escapeHtml(section.label)}</h2></td>
+          </tr>
+        </table>
+        <div style="padding-top:22px;color:#172019;font-size:14px;line-height:1.5;">${content}</div>
+      </div>
+    </td>`;
+};
+
+const renderSectionHtmlContent = (section: RenderedSection): string => {
+  if (section.status !== 'active') {
+    return renderStateHtml(section);
+  }
+
+  const detail = section.detail ? `<p style="margin:0 0 13px;color:#68756a;font-size:13px;line-height:1.5;">${escapeHtml(section.detail)}</p>` : '';
+
+  switch (section.key) {
+    case 'weather':
+      return `${detail || '<p style="margin:0;color:#68756a;">Weather facts are ready.</p>'}`;
+    case 'commute':
+      return `${detail}${section.commuteSection ? renderCommuteHtml(section.commuteSection) : '<p style="margin:0;color:#68756a;">Commute facts are ready.</p>'}`;
+    case 'calendar':
+      return `${detail}${section.calendarSection && hasCalendarEvents(section.calendarSection) ? renderCalendarHtml(section.calendarSection) : '<p style="margin:0;color:#68756a;">Calendar facts are ready.</p>'}`;
+    case 'todo':
+      return `${detail}${section.todoSection ? renderTodoHtml(section.todoSection) : '<p style="margin:0;color:#68756a;">Todo facts are ready.</p>'}`;
+  }
+};
+
+const renderStateHtml = (section: RenderedSection) => {
+  if (section.status === 'active') return '';
+
+  const message = section.reason ?? section.detail ?? defaultStateMessage(section.key, section.status);
+
+  return `<p style="margin:0 0 8px;color:#68756a;font-size:11px;line-height:1.3;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;">${escapeHtml(stateLabels[section.status])}</p><p style="margin:0;color:#172019;font-size:14px;line-height:1.5;">${escapeHtml(message)}</p>`;
+};
+
+const renderCommuteHtml = (section: CommuteSection) => {
+  if (section.estimates.length === 0) {
+    return '<p style="margin:0;color:#68756a;">No Commute Estimates.</p>';
+  }
+
+  return `<ul style="margin:0;padding:0 0 0 18px;">${section.estimates.map((estimate) => {
+    const result = estimate.outcome === 'available'
+      ? `${formatMinutes(estimate.durationMinutes)}${trafficDescriptionFor(estimate) ? ` — ${escapeHtml(trafficDescriptionFor(estimate)!)}` : ''}`
+      : 'Commute estimate unavailable.';
+
+    return `<li style="margin:0 0 9px;padding:0;">${escapeHtml(estimate.routeName)}: ${result}</li>`;
+  }).join('')}</ul>`;
+};
+
+const renderCalendarHtml = (section: CalendarSection) => {
+  const today = section.today ? renderCalendarDayHtml(section.today) : '';
+  const weekAhead = section.weekAhead.length > 0
+    ? `<h3 style="margin:0 0 7px;color:#68756a;font-size:12px;line-height:1.3;font-weight:700;">Week Ahead</h3>${section.weekAhead.map(renderCalendarDayHtml).join('')}`
+    : '';
+
+  return `${today}${weekAhead}`;
+};
+
+const renderCalendarDayHtml = (day: NonNullable<CalendarSection['today']>) => {
+  const events = [
     ...day.allDayEvents.map(
-      (event) =>
-        `<li>${renderCalendarColorMarker(event)}All day ${escapeHtml(event.title)}</li>`
+      (event) => `<li style="margin:0 0 4px;">${calendarEventMarkerHtml(event.calendarColor)}All day ${escapeHtml(event.title)} <span style="color:#68756a;">(${escapeHtml(event.calendarLabel)})</span></li>`
     ),
     ...day.timedEvents.map(
-      (event) =>
-        `<li>${renderCalendarColorMarker(event)}<time>${escapeHtml(event.localStartTime)}</time> ${escapeHtml(event.title)}</li>`
+      (event) => `<li style="margin:0 0 4px;">${calendarEventMarkerHtml(event.calendarColor)}<time>${escapeHtml(event.localStartTime)}</time> ${escapeHtml(event.title)} <span style="color:#68756a;">(${escapeHtml(event.calendarLabel)})</span></li>`
     )
   ];
-  const textEvents = [
+
+  return `<div style="margin:0 0 13px;"><h3 style="margin:0 0 5px;color:#68756a;font-size:12px;line-height:1.3;font-weight:700;">${escapeHtml(day.label)}</h3><ul style="margin:0;padding:0 0 0 18px;">${events.join('')}</ul></div>`;
+};
+
+const renderTodoHtml = (section: TodoSection) => {
+  const groups = [
+    ...(section.uncategorizedTasks.length > 0
+      ? [{ label: 'Uncategorized', tasks: section.uncategorizedTasks }]
+      : []),
+    ...section.categoryGroups.map((group) => ({ label: group.category.name, tasks: group.tasks }))
+  ];
+
+  return groups.map((group) => `<div style="margin:0 0 13px;">
+      <h3 style="margin:0 0 5px;color:#68756a;font-size:12px;line-height:1.3;font-weight:700;">${escapeHtml(group.label)}</h3>
+      <ul style="margin:0;padding:0 0 0 18px;">${group.tasks.map((task) => `<li style="margin:0 0 5px;">${escapeHtml(task.title)}${renderUrgencyHtml(task.urgency)}</li>`).join('')}</ul>
+    </div>`).join('');
+};
+
+const renderUrgencyHtml = (urgency: TodoUrgency) =>
+  ` <span aria-hidden="true" style="color:#4d733e;">●</span><span class="daily-screen-reader-only">${escapeHtml(urgencyLabel(urgency))}</span>`;
+
+const renderText = ({
+  sections,
+  generatedTimestamp,
+  userTimeZone,
+  openDailyUrl
+}: {
+  sections: RenderedSection[];
+  generatedTimestamp: string;
+  userTimeZone: string;
+  openDailyUrl: string;
+}) => [
+  'Good morning',
+  `Generated: ${generatedTimestamp} (${userTimeZone})`,
+  '',
+  ...sections.flatMap((section) => [section.label, renderSectionTextContent(section), '']),
+  `Daily · ${userTimeZone}`,
+  `Open Daily: ${openDailyUrl}`
+].join('\n').trim();
+
+const renderSectionTextContent = (section: RenderedSection): string => {
+  if (section.status !== 'active') {
+    return `${stateLabels[section.status]}\n${section.reason ?? section.detail ?? defaultStateMessage(section.key, section.status)}`;
+  }
+
+  const detail = section.detail ? [section.detail] : [];
+
+  switch (section.key) {
+    case 'weather':
+      return detail.join('\n') || 'Weather facts are ready.';
+    case 'commute':
+      return [
+        ...detail,
+        section.commuteSection ? renderCommuteText(section.commuteSection) : 'Commute facts are ready.'
+      ].filter(Boolean).join('\n');
+    case 'calendar':
+      return [
+        ...detail,
+        section.calendarSection && hasCalendarEvents(section.calendarSection)
+          ? renderCalendarText(section.calendarSection)
+          : 'Calendar facts are ready.'
+      ].filter(Boolean).join('\n');
+    case 'todo':
+      return [
+        ...detail,
+        section.todoSection ? renderTodoText(section.todoSection) : 'Todo facts are ready.'
+      ].filter(Boolean).join('\n');
+  }
+};
+
+const renderCommuteText = (section: CommuteSection) => section.estimates
+  .map((estimate) => estimate.outcome === 'available'
+    ? `${estimate.routeName}: ${formatMinutes(estimate.durationMinutes)}${trafficDescriptionFor(estimate) ? ` — ${trafficDescriptionFor(estimate)}` : ''}`
+    : `${estimate.routeName}: Commute estimate unavailable.`)
+  .join('\n');
+
+const renderCalendarText = (section: CalendarSection) => [
+  ...(section.today ? [renderCalendarDayText(section.today)] : []),
+  ...(section.weekAhead.length > 0
+    ? [`Week Ahead\n${section.weekAhead.map(renderCalendarDayText).join('\n\n')}`]
+    : [])
+].join('\n\n');
+
+const renderCalendarDayText = (day: NonNullable<CalendarSection['today']>) => [
+    day.label,
     ...day.allDayEvents.map((event) => `All day ${event.title} (${event.calendarLabel})`),
-    ...day.timedEvents.map(
-      (event) => `${event.localStartTime} ${event.title} (${event.calendarLabel})`
-    )
-  ];
+    ...day.timedEvents.map((event) => `${event.localStartTime} ${event.title} (${event.calendarLabel})`)
+  ].join('\n');
 
-  return {
-    html: `<h4>${escapeHtml(day.label)}</h4><ul>${htmlEvents.join('')}</ul>`,
-    text: `${day.label}\n${textEvents.join('\n')}`
-  };
-};
+const renderTodoText = (section: TodoSection) => [
+  ...(section.uncategorizedTasks.length > 0
+    ? [`Uncategorized\n${section.uncategorizedTasks.map(renderTodoTaskText).join('\n')}`]
+    : []),
+  ...section.categoryGroups.map((group) => `${group.category.name}\n${group.tasks.map(renderTodoTaskText).join('\n')}`)
+].join('\n\n');
 
-const calendarColorPattern = /^#[0-9a-f]{6}$/i;
+const renderTodoTaskText = (task: TodoTask) => `${task.title} — ${urgencyLabel(task.urgency)}`;
 
-const renderCalendarColorMarker = (
-  event: { calendarLabel: string; calendarColor?: string | null }
-) => {
-  if (!event.calendarColor || !calendarColorPattern.test(event.calendarColor)) {
-    return `(${escapeHtml(event.calendarLabel)}) `;
+const hasCalendarEvents = (section: CalendarSection) =>
+  Boolean(section.today) || section.weekAhead.length > 0;
+
+const defaultStateMessage = (section: SummarySection, status: Exclude<DailySummarySectionStatus, 'available' | 'active'>) => {
+  switch (status) {
+    case 'paused':
+      return `${fixedSectionLabels[section]} is paused.`;
+    case 'unconfigured':
+      return section === 'weather'
+        ? 'Choose a Weather Location to include local weather.'
+        : section === 'commute'
+          ? 'Add a Commute Route to include commute estimates.'
+          : 'Connect Google Calendar and select a Calendar to include Calendar Events.';
+    case 'empty':
+      return section === 'commute'
+        ? 'No Commute Routes are scheduled today.'
+        : section === 'calendar'
+          ? 'No Calendar Events are scheduled in the Week Ahead.'
+          : 'There are no active Todo Tasks.';
+    case 'unavailable':
+      return `${fixedSectionLabels[section]} is unavailable right now.`;
   }
-
-  const calendarLabel = escapeHtml(event.calendarLabel);
-  return `<span aria-label="${calendarLabel} calendar" title="${calendarLabel}" style="display:inline-block;width:10px;height:10px;margin-right:6px;border-radius:2px;background-color:${event.calendarColor}"></span>`;
 };
 
-const renderAvailableSection = (label: string, detail: string): RenderedSection => ({
-  label,
-  html: `<p>${escapeHtml(detail)}</p>`,
-  text: detail
-});
+const formatMinutes = (durationMinutes: number | undefined) =>
+  `${Number.isFinite(durationMinutes) ? Math.round(durationMinutes!) : '—'} minutes`;
 
-const renderUnavailableSection = (label: string, reason: string): RenderedSection => ({
-  label,
-  html: `<p>${escapeHtml(reason)}</p>`,
-  text: reason
-});
+const trafficDescriptionFor = (estimate: CommuteSection['estimates'][number]) =>
+  estimate.trafficDescription ?? (estimate.trafficLevel ? trafficDescriptionForLevel(estimate.trafficLevel) : null);
 
-const renderTodoSection = (todoSection: TodoSection): RenderedSection => {
-  const uncategorizedHtml =
-    todoSection.uncategorizedTasks.length > 0
-      ? renderTodoTaskListHtml(todoSection.uncategorizedTasks)
-      : '';
-  const groupedHtml = todoSection.categoryGroups
-    .map(
-      (group) =>
-        `<h3>${escapeHtml(group.category.name)}</h3>${renderTodoTaskListHtml(group.tasks)}`
-    )
-    .join('');
-  const uncategorizedText = todoSection.uncategorizedTasks.map(renderTodoTaskText).join('\n');
-  const groupedText = todoSection.categoryGroups
-    .map(
-      (group) =>
-        `${group.category.name}\n${group.tasks.map(renderTodoTaskText).join('\n')}`
-    )
-    .join('\n\n');
-  const text = [uncategorizedText, groupedText].filter(Boolean).join('\n\n');
-
-  return {
-    label: todoSection.label,
-    html: `${uncategorizedHtml}${groupedHtml}`,
-    text
-  };
-};
-
-const renderTodoTaskListHtml = (tasks: TodoTask[]) =>
-  `<ul>${tasks.map((task) => `<li>${escapeHtml(task.title)}${renderUrgencyMarkHtml(task.urgency)}</li>`).join('')}</ul>`;
-
-const renderUrgencyMarkHtml = (urgency: TodoUrgency) => {
-  const mark = urgencyMark(urgency);
-
-  if (!mark) {
-    return '';
-  }
-
-  return ` <span aria-label="${urgencyLabel(urgency)}">${mark}</span>`;
-};
-
-const renderTodoTaskText = (task: TodoTask) =>
-  [task.title, urgencyMark(task.urgency)].filter(Boolean).join(' ');
+const trafficDescriptionForLevel = (level: CommuteTrafficLevel) =>
+  level === 'light' ? 'Light traffic' : level === 'moderate' ? 'Moderate traffic' : 'Heavy traffic';
 
 const urgencyLabel = (urgency: TodoUrgency) =>
   urgency === 'high' ? 'High urgency' : urgency === 'medium' ? 'Medium urgency' : 'Low urgency';
 
-const urgencyMark = (urgency: TodoUrgency) =>
-  urgency === 'high' ? '!' : urgency === 'medium' ? '!' : '';
+const calendarEventMarkerHtml = (calendarColor: string | null | undefined) => {
+  const color = /^#[0-9a-f]{6}$/i.test(calendarColor ?? '') ? calendarColor : '#d9ded8';
+  return `<span aria-hidden="true" style="display:inline-block;width:8px;height:8px;background-color:${color};"></span> `;
+};
+
+const sectionGlyph = (section: SummarySection) =>
+  section === 'weather' ? '☼' : section === 'commute' ? '→' : section === 'calendar' ? '□' : '○';
+
+const formatGeneratedTimestamp = (date: Date, userTimeZone: string) => {
+  const localDate = new Intl.DateTimeFormat('en-US', {
+    weekday: 'long',
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric',
+    timeZone: userTimeZone
+  }).format(date);
+  const localTime = new Intl.DateTimeFormat('en-GB', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+    timeZone: userTimeZone
+  }).format(date);
+
+  return `${localDate} at ${localTime}`;
+};
+
+const canonicalOpenDailyUrl = (value: string | undefined) => {
+  if (!value) return '/';
+
+  try {
+    const url = new URL(value, 'http://daily.local');
+
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+      return '/';
+    }
+
+    url.pathname = '/';
+    url.search = '';
+    url.hash = '';
+    return value.startsWith('/') ? '/' : url.toString();
+  } catch {
+    return '/';
+  }
+};
 
 const escapeHtml = (value: string) =>
   value

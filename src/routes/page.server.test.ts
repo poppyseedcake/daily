@@ -80,6 +80,12 @@ const {
       commute: true,
       calendar: true,
       todo: true
+    },
+    sectionPauses: {
+      weather: false,
+      commute: false,
+      calendar: false,
+      todo: false
     }
   },
   savedTodoState: {
@@ -563,6 +569,7 @@ describe('Daily page server load', () => {
     calendarListProviderMode.outcome = 'available';
     calendarEventProviderMode.outcome = 'available';
     savedConfiguration.sections.calendar = true;
+    savedConfiguration.sectionPauses.calendar = false;
     savedConfiguration.sections.commute = true;
     savedCommuteSetup.routes.length = 0;
     savedCommuteSetup.days.splice(0, savedCommuteSetup.days.length, 'monday', 'tuesday', 'wednesday', 'thursday', 'friday');
@@ -711,6 +718,40 @@ describe('Daily page server load', () => {
       user: { id: 'user-1', email: 'user@example.com', emailVerified: true }
     });
     savedConfiguration.sections.calendar = false;
+    savedCalendarConnection.status = 'connected';
+    savedSelectedCalendars.push({
+      id: 'work',
+      summary: 'Work',
+      backgroundColor: '#0b8043',
+      primary: false
+    });
+    providerCalendars.push({
+      id: 'work',
+      summary: 'Work',
+      backgroundColor: '#0b8043',
+      primary: false
+    });
+
+    await expect(loadPage()).resolves.toEqual(
+      expect.objectContaining({
+        renderedSummaryHtml: expect.not.stringContaining('Planning'),
+        calendarSection: expect.objectContaining({
+          today: expect.objectContaining({
+            timedEvents: expect.arrayContaining([
+              expect.objectContaining({ title: 'Planning' })
+            ])
+          })
+        })
+      })
+    );
+    expect(sentCalendarEventRequests).toHaveLength(1);
+  });
+
+  test('keeps the Calendar agenda when Calendar is paused in the email summary', async () => {
+    getSession.mockResolvedValue({
+      user: { id: 'user-1', email: 'user@example.com', emailVerified: true }
+    });
+    savedConfiguration.sectionPauses.calendar = true;
     savedCalendarConnection.status = 'connected';
     savedSelectedCalendars.push({
       id: 'work',
@@ -1118,13 +1159,13 @@ describe('Daily page server load', () => {
     );
     expect(sentMessages[0]).toEqual(
       expect.objectContaining({
-        text: expect.not.stringContaining('Commute')
+        text: expect.stringContaining('Commute\nNot configured\nAdd a Commute Route')
       })
     );
     expect(sentMessages[0]).toEqual(
       expect.objectContaining({
         html: expect.stringContaining('Connect Google Calendar to include Calendar Events.'),
-        text: expect.stringContaining('Calendar\nConnect Google Calendar to include Calendar Events.')
+        text: expect.stringContaining('Calendar\nNot configured\nConnect Google Calendar to include Calendar Events.')
       })
     );
     expect(sentMessages[0]).toEqual(
@@ -1163,6 +1204,12 @@ describe('Daily page server load', () => {
         commute: true,
         calendar: true,
         todo: true
+      },
+      sectionPauses: {
+        weather: false,
+        commute: false,
+        calendar: false,
+        todo: false
       }
     });
     expect(savedTodoState.todoTasks).toEqual([
@@ -1207,7 +1254,7 @@ describe('Daily page server load', () => {
     ]);
     expect(sentMessages).toEqual([
       expect.objectContaining({
-        html: expect.stringContaining('<li>Office: 24 minutes</li><li>School: 39 minutes</li>'),
+        html: expect.stringContaining('Office: 24 minutes'),
         text: expect.stringContaining('Commute\nOffice: 24 minutes\nSchool: 39 minutes')
       })
     ]);
@@ -1230,7 +1277,10 @@ describe('Daily page server load', () => {
     expect(sentCommuteEstimateRequests).toEqual([]);
     expect(commuteUsageAdmissions).toEqual([]);
     expect(sentMessages[0]).toEqual(
-      expect.objectContaining({ text: expect.not.stringContaining('Commute') })
+      expect.objectContaining({
+        text: expect.stringContaining('Commute'),
+        html: expect.stringContaining('>Commute</h2>')
+      })
     );
   });
 
@@ -1257,7 +1307,7 @@ describe('Daily page server load', () => {
       expect(sentMessages).toEqual([
         expect.objectContaining({
           html: expect.stringContaining('Live Commute is unavailable right now.'),
-          text: expect.stringContaining('Commute\nLive Commute is unavailable right now.')
+          text: expect.stringContaining('Commute\nUnavailable\nLive Commute is unavailable right now.')
         })
       ]);
       expect(sentMessages[0]).toEqual(
@@ -1358,7 +1408,7 @@ describe('Daily page server load', () => {
     expect(sentMessages).toEqual([
       expect.objectContaining({
         html: expect.stringContaining('Live Calendar is unavailable right now.'),
-        text: expect.stringContaining('Calendar\nLive Calendar is unavailable right now.')
+        text: expect.stringContaining('Calendar\nUnavailable\nLive Calendar is unavailable right now.')
       })
     ]);
     expect(recordedDeliveryRecords).toEqual([
@@ -1469,7 +1519,7 @@ describe('Daily page server load', () => {
     expect(sentMessages).toEqual([
       expect.objectContaining({
         html: expect.stringContaining('Live weather is unavailable right now.'),
-        text: expect.stringContaining('Weather\nLive weather is unavailable right now.')
+        text: expect.stringContaining('Weather\nUnavailable\nLive weather is unavailable right now.')
       })
     ]);
     expect(recordedDeliveryRecords).toEqual([
