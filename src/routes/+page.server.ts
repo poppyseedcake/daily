@@ -53,6 +53,7 @@ import { accountDeletionStore } from '$lib/server/db/accountDeletionStore';
 import { accountDeletionConfirmation } from '$lib/accountDeletion';
 import { deleteDailyAccount } from '$lib/server/accountDeletion';
 import { openAiWeatherSummaryProvider } from '$lib/server/weatherSummaryProvider';
+import { defaultCommuteDays } from '$lib/commuteRoute';
 import { env } from '$env/dynamic/private';
 import { fail } from '@sveltejs/kit';
 
@@ -101,6 +102,28 @@ const commuteEstimateProviderFor = (authState: ReturnType<typeof authStateFromSe
     return googleMapsOperations.requestGateway(authState);
   } catch {
     return undefined;
+  }
+};
+
+type LoadedCommuteSetup = Awaited<ReturnType<typeof loadUserCommuteSetup>>;
+
+const defaultLoadedCommuteSetup: LoadedCommuteSetup = {
+  routes: [],
+  days: [...defaultCommuteDays]
+};
+
+const loadPageCommuteSetup = async (userId: string): Promise<{
+  setup: LoadedCommuteSetup;
+  unavailable: boolean;
+}> => {
+  try {
+    return {
+      setup: await loadUserCommuteSetup(userCommuteSetupStore, userId),
+      unavailable: false
+    };
+  } catch (error: unknown) {
+    console.warn('Failed to load User Commute setup.', { userId, error });
+    return { setup: defaultLoadedCommuteSetup, unavailable: true };
   }
 };
 
@@ -239,13 +262,9 @@ export const load = async ({ request }) => {
           return null;
         })
       : null;
-  const commuteSetup =
-    authState.mode === 'user'
-      ? await loadUserCommuteSetup(userCommuteSetupStore, authState.userId).catch((error: unknown) => {
-          console.warn('Failed to load User Commute setup.', { userId: authState.userId, error });
-          return { routes: [], days: ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'] as const };
-        })
-      : null;
+  const commuteContext =
+    authState.mode === 'user' ? await loadPageCommuteSetup(authState.userId) : null;
+  const commuteSetup = commuteContext?.setup ?? null;
   const savedWeatherCities =
     authState.mode === 'user'
       ? await userSavedWeatherCityStore.load(authState.userId).catch((error: unknown) => {
@@ -368,6 +387,7 @@ export const load = async ({ request }) => {
             weatherLocation,
             commuteRoutes: commuteSetup?.routes ?? [],
             commuteDays: commuteSetup?.days ?? [],
+            commuteSetupUnavailable: commuteContext?.unavailable ?? false,
             calendarReadiness,
             selectedCalendars,
             calendarEventProvider: calendarGenerationContext?.accessToken
@@ -501,7 +521,7 @@ export const actions = {
     );
     const todoState = await loadUserTodoState(userTodoStore, authState.userId);
     const weatherLocation = await loadUserWeatherLocation(userWeatherLocationStore, authState.userId);
-    const commuteSetup = await loadUserCommuteSetup(userCommuteSetupStore, authState.userId);
+    const commuteContext = await loadPageCommuteSetup(authState.userId);
     const validConfiguration = summaryConfigurationSchema.safeParse(configuration);
     const validTodoState = todoStateSchema.safeParse(todoState);
 
@@ -526,8 +546,9 @@ export const actions = {
         todoTasks: validTodoState.data.todoTasks,
         weatherLocation,
         weatherSummaryProvider: openAiWeatherSummaryProvider,
-        commuteRoutes: commuteSetup.routes,
-        commuteDays: commuteSetup.days,
+        commuteRoutes: commuteContext.setup.routes,
+        commuteDays: commuteContext.setup.days,
+        commuteSetupUnavailable: commuteContext.unavailable,
         commuteEstimateMode: 'live',
         commuteEstimateProvider: commuteEstimateProviderFor(authState),
         calendarReadiness: calendarGenerationContext.readiness,

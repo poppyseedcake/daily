@@ -22,7 +22,7 @@ const createProvider = (): GoogleMapsProvider => ({
   selectPoint: vi.fn().mockResolvedValue(origin),
   searchAddresses: vi.fn().mockResolvedValue([{ placeId: 'origin-id', label: origin.label }]),
   resolveAddress: vi.fn().mockResolvedValue(origin),
-  estimateCommute: vi.fn().mockResolvedValue({ durationMinutes: 24 })
+  estimateCommute: vi.fn().mockResolvedValue({ durationMinutes: 24, staticDurationMinutes: 20 })
 });
 
 const createAdmittingGate = (categories: string[]): GoogleMapsUsageGate => ({
@@ -58,7 +58,7 @@ describe('Google Maps request gateway', () => {
     });
     await expect(gateway.estimateCommute({ origin, destination })).resolves.toEqual({
       outcome: 'available',
-      estimate: { durationMinutes: 24 }
+      estimate: { durationMinutes: 24, staticDurationMinutes: 20 }
     });
 
     expect(categories).toEqual(['map-point-selection', 'places-autocomplete', 'places-details', 'commute-estimate']);
@@ -216,6 +216,27 @@ describe('Google Maps request gateway', () => {
     await expect(gateway.estimateCommute({ origin, destination })).resolves.toEqual({
       outcome: 'unavailable',
       reason: 'route-unavailable'
+    });
+  });
+
+  test.each([
+    ['missing static duration', { durationMinutes: 24 }],
+    ['negative duration', { durationMinutes: -1, staticDurationMinutes: 20 }],
+    ['non-finite duration', { durationMinutes: Number.NaN, staticDurationMinutes: 20 }]
+  ])('rejects a %s estimate without exposing provider data', async (_case, estimate) => {
+    const provider = createProvider();
+    vi.mocked(provider.estimateCommute).mockResolvedValue(estimate as never);
+    const gateway = createGoogleMapsRequestGateway({
+      provider,
+      usageGate: createAdmittingGate([]),
+      attribution: { personUsageIdentity: 'test-person' },
+      environmentKillSwitch: false,
+      diagnostics: vi.fn()
+    });
+
+    await expect(gateway.estimateCommute({ origin, destination })).resolves.toEqual({
+      outcome: 'unavailable',
+      reason: 'provider-unavailable'
     });
   });
 

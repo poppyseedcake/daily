@@ -24,6 +24,7 @@ const {
   deliveryProviderMode,
   weatherProviderMode,
   commuteProviderMode,
+  commuteSetupLoadFailure,
   calendarAccessTokenMode,
   calendarListProviderMode,
   calendarEventProviderMode,
@@ -52,6 +53,7 @@ const {
   commuteProviderMode: {
     outcome: 'available' as 'available' | 'provider-unavailable' | 'suspended'
   },
+  commuteSetupLoadFailure: { enabled: false },
   calendarAccessTokenMode: {
     outcome: 'available' as 'available' | 'unavailable'
   },
@@ -253,7 +255,9 @@ vi.mock('$lib/server/db/weatherLocationStore', () => ({
 vi.mock('$lib/server/db/commuteSetupStore', () => ({
   userCommuteSetupStore: {
     async load(userId: string) {
-      if (loadFailure.enabled) throw new Error('store unavailable');
+      if (loadFailure.enabled || commuteSetupLoadFailure.enabled) {
+        throw new Error('store unavailable');
+      }
       return userId === 'user-1' ? savedCommuteSetup : null;
     },
     async createRoute() { throw new Error('not implemented'); },
@@ -481,7 +485,8 @@ vi.mock('$lib/server/googleMapsOperations', async () => {
             }
 
             return {
-              durationMinutes: sentCommuteEstimateRequests.length === 1 ? 24.4 : 38.7
+              durationMinutes: sentCommuteEstimateRequests.length === 1 ? 24.4 : 38.7,
+              staticDurationMinutes: 20
             };
           }
         }
@@ -559,6 +564,7 @@ describe('Daily page server load', () => {
   beforeEach(() => {
     getSession.mockReset();
     loadFailure.enabled = false;
+    commuteSetupLoadFailure.enabled = false;
     lifecycleActive.value = true;
     deletionStart.mockReset().mockResolvedValue('started');
     deletionFinish.mockReset().mockResolvedValue(true);
@@ -943,6 +949,22 @@ describe('Daily page server load', () => {
     expect(sentCommuteEstimateRequests).toEqual([]);
   });
 
+  test('keeps the User preview available when Commute setup cannot be loaded', async () => {
+    getSession.mockResolvedValue({
+      user: { id: 'user-1', email: 'user@example.com', emailVerified: true }
+    });
+    commuteSetupLoadFailure.enabled = true;
+
+    const result = await loadPage();
+
+    expect(result.renderedSummaryHtml).toContain('Live Commute is unavailable right now.');
+    expect(result.renderedSummaryHtml).toContain('Clear. Low 16C, high 23C.');
+    expect(console.warn).toHaveBeenCalledWith(
+      'Failed to load User Commute setup.',
+      expect.objectContaining({ userId: 'user-1' })
+    );
+  });
+
   test('persists successful Calendar consent and reports a connected Calendar state', async () => {
     getSession.mockResolvedValue({
       user: { id: 'user-1', email: 'user@example.com', emailVerified: true }
@@ -1256,7 +1278,7 @@ describe('Daily page server load', () => {
     expect(sentMessages).toEqual([
       expect.objectContaining({
         html: expect.stringContaining('Office: 24 minutes'),
-        text: expect.stringContaining('Commute\nOffice: 24 minutes\nSchool: 39 minutes')
+        text: expect.stringContaining('Commute\nOffice: 24 minutes — Moderate traffic\nSchool: 39 minutes — Heavy traffic')
       })
     ]);
     expect(JSON.stringify(sentMessages)).not.toContain('Disabled route');
@@ -1283,6 +1305,24 @@ describe('Daily page server load', () => {
         html: expect.stringContaining('>Commute</h2>')
       })
     );
+  });
+
+  test('sends a test Daily Summary when Commute setup cannot be loaded', async () => {
+    getSession.mockResolvedValue({
+      user: { id: 'user-1', email: 'user@example.com', emailVerified: true }
+    });
+    commuteSetupLoadFailure.enabled = true;
+
+    await expect(sendTestDailySummary()).resolves.toEqual({ outcome: 'sent' });
+
+    expect(sentMessages[0]).toEqual(expect.objectContaining({
+      text: expect.stringContaining('Commute\nUnavailable\nLive Commute is unavailable right now.'),
+      html: expect.stringContaining('Live Commute is unavailable right now.')
+    }));
+    expect(sentMessages[0]).toEqual(expect.objectContaining({
+      text: expect.stringMatching(/Weather[\s\S]*Clear\. Low 16C, high 23C\.[\s\S]*Draft update/)
+    }));
+    expect(sentCommuteEstimateRequests).toEqual([]);
   });
 
   test.each(['provider-unavailable', 'suspended'] as const)(

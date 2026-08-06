@@ -23,6 +23,10 @@ import {
 } from './weatherForecast';
 import { Temporal } from '@js-temporal/polyfill';
 import type { CommuteDay, CommuteRoute } from './commuteRoute';
+import {
+  classifyCommuteTraffic,
+  commuteTrafficDescription
+} from './commuteTraffic';
 import type { GoogleMapsRequestGateway } from './server/googleMapsRequestGateway';
 
 export type DailySummaryGenerationSetup = {
@@ -38,6 +42,7 @@ export type DailySummaryGenerationSetup = {
   calendarEventProvider?: CalendarEventProvider;
   commuteRoutes?: CommuteRoute[];
   commuteDays?: readonly CommuteDay[];
+  commuteSetupUnavailable?: boolean;
   commuteEstimateProvider?: Pick<GoogleMapsRequestGateway, 'estimateCommute'>;
   commuteEstimateMode?: 'saved' | 'live';
   openDailyUrl?: string;
@@ -57,6 +62,7 @@ export const buildDailySummaryInput = async ({
   calendarEventProvider,
   commuteRoutes = [],
   commuteDays = [],
+  commuteSetupUnavailable = false,
   commuteEstimateProvider,
   commuteEstimateMode = 'saved',
   openDailyUrl = '/',
@@ -81,6 +87,7 @@ export const buildDailySummaryInput = async ({
     configuration,
     routes: commuteRoutes,
     days: commuteDays,
+    setupUnavailable: commuteSetupUnavailable,
     provider: commuteEstimateProvider,
     mode: commuteEstimateMode,
     now
@@ -109,10 +116,17 @@ const commuteDayByIsoDay = [
   'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'
 ] as const;
 
-const buildCommuteGenerationResult = async ({ configuration, routes, days, provider, mode, now }: {
+const commuteRouteLabels = (route: CommuteRoute) => ({
+  routeName: route.name,
+  originLabel: route.origin.label,
+  destinationLabel: route.destination.label
+});
+
+const buildCommuteGenerationResult = async ({ configuration, routes, days, setupUnavailable, provider, mode, now }: {
   configuration: SummaryConfiguration;
   routes: CommuteRoute[];
   days: readonly CommuteDay[];
+  setupUnavailable: boolean;
   provider: Pick<GoogleMapsRequestGateway, 'estimateCommute'> | undefined;
   mode: 'saved' | 'live';
   now: Date;
@@ -132,6 +146,17 @@ const buildCommuteGenerationResult = async ({ configuration, routes, days, provi
     };
   }
 
+  const unavailable = () => ({
+    commuteSection: null,
+    sectionState: {
+      status: 'unavailable' as const,
+      label: 'Commute',
+      reason: 'Live Commute is unavailable right now.'
+    }
+  });
+
+  if (setupUnavailable) return unavailable();
+
   if (routes.length === 0) {
     return {
       commuteSection: null,
@@ -143,7 +168,7 @@ const buildCommuteGenerationResult = async ({ configuration, routes, days, provi
     };
   }
 
-  const enabledRoutes = routes.filter(
+  const enabledRoutes = routes.slice(0, 5).filter(
     (route) => route.enabled && route.days.includes(localDay)
   );
 
@@ -163,7 +188,7 @@ const buildCommuteGenerationResult = async ({ configuration, routes, days, provi
       commuteSection: {
         label: 'Commute',
         estimates: enabledRoutes.map((route) => ({
-          routeName: route.name,
+          ...commuteRouteLabels(route),
           ...(route.previewDurationMinutes == null
             ? { outcome: 'unavailable' as const }
             : { outcome: 'available' as const, durationMinutes: route.previewDurationMinutes })
@@ -173,38 +198,61 @@ const buildCommuteGenerationResult = async ({ configuration, routes, days, provi
     };
   }
 
-  const unavailable = () => ({
-    commuteSection: null,
-    sectionState: {
-      status: 'unavailable' as const,
-      label: 'Commute',
-      reason: 'Live Commute is unavailable right now.'
-    }
-  });
-
   if (!provider) {
     return unavailable();
   }
 
   try {
-    const results = await Promise.all(enabledRoutes.map(async (route) => ({
-      route,
-      result: await provider.estimateCommute({ origin: route.origin, destination: route.destination })
-    })));
+    const settledResults = await Promise.allSettled(enabledRoutes.map(async (route) =>
+      provider.estimateCommute({ origin: route.origin, destination: route.destination })
+    ));
+    const results = settledResults.map((settled, index) => ({
+      route: enabledRoutes[index]!,
+      result: settled.status === 'fulfilled'
+        ? settled.value
+        : { outcome: 'unavailable' as const, reason: 'provider-unavailable' as const }
+    }));
+    const hasSystemicFailure = results.some(({ result }) =>
+      result.outcome === 'unavailable' &&
+      result.reason !== 'route-unavailable' &&
+      result.reason !== 'provider-unavailable'
+    );
+    const hasProviderFailure = results.some(({ result }) =>
+      result.outcome === 'unavailable' && result.reason === 'provider-unavailable'
+    );
+    const estimates = results.map(({ route, result }) => {
+      const routeLabels = commuteRouteLabels(route);
 
-    if (results.some(({ result }) => result.outcome === 'unavailable' && result.reason !== 'route-unavailable')) {
+      if (result.outcome !== 'available') {
+        return { ...routeLabels, outcome: 'unavailable' as const };
+      }
+
+      try {
+        const trafficLevel = classifyCommuteTraffic(result.estimate);
+        return {
+          ...routeLabels,
+          outcome: 'available' as const,
+          durationMinutes: Math.round(result.estimate.durationMinutes),
+          trafficLevel,
+          trafficDescription: commuteTrafficDescription(trafficLevel)
+        };
+      } catch {
+        return { ...routeLabels, outcome: 'unavailable' as const };
+      }
+    });
+    const hasAvailableEstimate = estimates.some((estimate) => estimate.outcome === 'available');
+    const hasMalformedEstimate = results.some(({ result }, index) =>
+      result.outcome === 'available' && estimates[index]?.outcome === 'unavailable'
+    );
+
+    if (!hasAvailableEstimate && (hasSystemicFailure || hasProviderFailure || hasMalformedEstimate)) {
       return unavailable();
     }
 
     return {
       commuteSection: {
         label: 'Commute',
-        estimates: results.map(({ route, result }) => ({
-          routeName: route.name,
-          ...(result.outcome === 'available'
-            ? { outcome: 'available' as const, durationMinutes: Math.round(result.estimate.durationMinutes) }
-            : { outcome: 'unavailable' as const })
-        }))
+        estimates
       },
       sectionState: { status: 'active', label: 'Commute' }
     };

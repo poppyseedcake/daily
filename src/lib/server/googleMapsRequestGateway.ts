@@ -43,6 +43,7 @@ export type GoogleMapsCommuteEstimateRequest = {
 
 export type GoogleMapsCommuteEstimate = {
   durationMinutes: number;
+  staticDurationMinutes: number;
 };
 
 export type GoogleMapsProvider = {
@@ -130,7 +131,8 @@ const googleMapsPointSchema = z.object({
 });
 
 const googleMapsCommuteEstimateSchema = z.object({
-  durationMinutes: z.number().finite().nonnegative()
+  durationMinutes: z.number().finite().nonnegative(),
+  staticDurationMinutes: z.number().finite().nonnegative()
 });
 
 const googlePlacesAddressSuggestionSchema = z.object({
@@ -252,24 +254,26 @@ export const createGoogleMapsRequestGateway = ({
       );
     },
     async estimateCommute(request) {
-      const result = await executeProtectedGoogleMapsRequest(
+      const result = await executeProtectedGoogleMapsRequest<
+        GoogleMapsCommuteEstimate | null,
+        { outcome: 'available'; estimate: GoogleMapsCommuteEstimate | null }
+      >(
         'commute-estimate',
         () => provider.estimateCommute(request),
-        (estimate) => ({ outcome: 'available' as const, estimate })
+        (estimate) => ({
+          outcome: 'available' as const,
+          estimate: estimate === null
+            ? null
+            : googleMapsCommuteEstimateSchema.parse(estimate)
+        })
       );
 
-      if (result.outcome === 'available' && result.estimate === null) {
+      if (result.outcome !== 'available') return result;
+      if (result.estimate === null) {
         return unavailable('commute-estimate', 'route-unavailable');
       }
 
-      if (result.outcome === 'available') {
-        return {
-          outcome: 'available',
-          estimate: googleMapsCommuteEstimateSchema.parse(result.estimate)
-        };
-      }
-
-      return result;
+      return { outcome: 'available', estimate: result.estimate };
     }
   };
 };

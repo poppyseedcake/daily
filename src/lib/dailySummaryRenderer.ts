@@ -1,4 +1,8 @@
 import type { CalendarSection } from './calendar';
+import {
+  commuteTrafficDescription,
+  type CommuteTrafficLevel
+} from './commuteTraffic';
 import type { SummaryConfiguration, SummarySection } from './summaryConfiguration';
 import type { WeatherDisplayForecast } from './weatherForecast';
 import type {
@@ -41,12 +45,14 @@ export type DailySummaryInput = {
   todoSection: TodoSection | null;
 };
 
-export type CommuteTrafficLevel = 'light' | 'moderate' | 'heavy';
+export type { CommuteTrafficLevel } from './commuteTraffic';
 
 export type CommuteSection = {
   label: 'Commute';
   estimates: Array<{
     routeName: string;
+    originLabel?: string;
+    destinationLabel?: string;
     outcome: 'available' | 'unavailable';
     durationMinutes?: number;
     trafficLevel?: CommuteTrafficLevel;
@@ -83,6 +89,12 @@ const sectionAccentColors: Record<SummarySection, string> = {
   commute: '#3568ad',
   calendar: '#70519a',
   todo: '#4d733e'
+};
+
+const commuteTrafficColors: Record<CommuteTrafficLevel, string> = {
+  light: '#4d7a53',
+  moderate: '#c18b24',
+  heavy: '#b24b3f'
 };
 
 const stateLabels = {
@@ -290,13 +302,38 @@ const renderCommuteHtml = (section: CommuteSection) => {
     return '<p style="margin:0;color:#68756a;">No Commute Estimates.</p>';
   }
 
-  return `<ul style="margin:0;padding:0 0 0 18px;">${section.estimates.map((estimate) => {
-    const result = estimate.outcome === 'available'
-      ? `${formatMinutes(estimate.durationMinutes)}${trafficDescriptionFor(estimate) ? ` — ${escapeHtml(trafficDescriptionFor(estimate)!)}` : ''}`
-      : 'Commute estimate unavailable.';
+  const routeHierarchy = section.estimates
+    .filter((estimate) => estimate.originLabel || estimate.destinationLabel)
+    .map(renderCommuteRouteHierarchyHtml)
+    .join('');
+  const estimates = section.estimates.map((estimate) => {
+    if (estimate.outcome !== 'available') {
+      return `<li style="margin:0 0 9px;padding:0;">${escapeHtml(estimate.routeName)}: Commute estimate unavailable.</li>`;
+    }
 
-    return `<li style="margin:0 0 9px;padding:0;">${escapeHtml(estimate.routeName)}: ${result}</li>`;
-  }).join('')}</ul>`;
+    const minutes = formatMinutes(estimate.durationMinutes);
+    const trafficDescription = trafficDescriptionFor(estimate);
+    const trafficLevel = estimate.trafficLevel;
+    const duration = trafficLevel
+      ? `<span style="color:${commuteTrafficColors[trafficLevel]};">${minutes}</span>`
+      : minutes;
+    const accessibleRouteResult = `${estimate.routeName}: ${minutes}`;
+    const hiddenTraffic = trafficDescription
+      ? `<span class="daily-screen-reader-only">${escapeHtml(trafficDescription)}</span>`
+      : '';
+
+    return `<li style="margin:0 0 9px;padding:0;"><span aria-label="${escapeHtml(accessibleRouteResult)}">${escapeHtml(estimate.routeName)}: ${duration}</span>${hiddenTraffic}</li>`;
+  }).join('');
+
+  return `${routeHierarchy}<ul style="margin:0;padding:0 0 0 18px;">${estimates}</ul>`;
+};
+
+const renderCommuteRouteHierarchyHtml = (estimate: CommuteSection['estimates'][number]) => {
+  const originLabel = estimate.originLabel ?? 'Home';
+  const destinationLabel = estimate.destinationLabel ?? estimate.routeName;
+  const routeHierarchyLabel = `Home: ${originLabel} → ${estimate.routeName}: ${destinationLabel}`;
+
+  return `<div role="group" aria-label="${escapeHtml(routeHierarchyLabel)}" style="margin:0 0 12px;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;width:100%;"><tr><td valign="top" style="width:46%;padding:0 10px 0 0;"><p style="margin:0;color:#68756a;font-size:11px;line-height:1.3;font-weight:700;letter-spacing:0.05em;text-transform:uppercase;">Home</p><p style="margin:3px 0 0;color:#172019;font-size:13px;line-height:1.4;">${escapeHtml(originLabel)}</p></td><td aria-hidden="true" valign="middle" style="width:8%;padding:0;color:#68756a;text-align:center;font-size:14px;line-height:1;">→</td><td valign="top" style="width:46%;padding:0 0 0 10px;"><p style="margin:0;color:#68756a;font-size:11px;line-height:1.3;font-weight:700;letter-spacing:0.05em;text-transform:uppercase;">${escapeHtml(estimate.routeName)}</p><p style="margin:3px 0 0;color:#172019;font-size:13px;line-height:1.4;">${escapeHtml(destinationLabel)}</p></td></tr></table></div>`;
 };
 
 const renderCalendarHtml = (section: CalendarSection) => {
@@ -397,11 +434,24 @@ const renderWeatherText = (weather: WeatherDisplayForecast) => [
   ...(weather.summary ? [weather.summary] : [])
 ].join('\n');
 
-const renderCommuteText = (section: CommuteSection) => section.estimates
-  .map((estimate) => estimate.outcome === 'available'
+const renderCommuteText = (section: CommuteSection) => {
+  const estimates = section.estimates.map((estimate) => estimate.outcome === 'available'
     ? `${estimate.routeName}: ${formatMinutes(estimate.durationMinutes)}${trafficDescriptionFor(estimate) ? ` — ${trafficDescriptionFor(estimate)}` : ''}`
-    : `${estimate.routeName}: Commute estimate unavailable.`)
-  .join('\n');
+    : `${estimate.routeName}: Commute estimate unavailable.`);
+  const routeHierarchy = section.estimates
+    .filter((estimate) => estimate.originLabel || estimate.destinationLabel)
+    .map((estimate) => [
+      `Home: ${estimate.originLabel ?? 'Home'}`,
+      '→',
+      estimate.routeName,
+      estimate.destinationLabel ?? estimate.routeName
+    ].join('\n'));
+
+  return [
+    ...estimates,
+    ...(routeHierarchy.length > 0 ? ['', ...routeHierarchy] : [])
+  ].join('\n');
+};
 
 const renderCalendarText = (section: CalendarSection) => [
   ...(section.today ? [renderCalendarDayText(section.today)] : []),
@@ -456,10 +506,7 @@ const formatMetric = (value: number) =>
   Number.isInteger(value) ? value.toString() : value.toFixed(1).replace(/\.0$/, '');
 
 const trafficDescriptionFor = (estimate: CommuteSection['estimates'][number]) =>
-  estimate.trafficDescription ?? (estimate.trafficLevel ? trafficDescriptionForLevel(estimate.trafficLevel) : null);
-
-const trafficDescriptionForLevel = (level: CommuteTrafficLevel) =>
-  level === 'light' ? 'Light traffic' : level === 'moderate' ? 'Moderate traffic' : 'Heavy traffic';
+  estimate.trafficDescription ?? (estimate.trafficLevel ? commuteTrafficDescription(estimate.trafficLevel) : null);
 
 const urgencyLabel = (urgency: TodoUrgency) =>
   urgency === 'high' ? 'High urgency' : urgency === 'medium' ? 'Medium urgency' : 'Low urgency';

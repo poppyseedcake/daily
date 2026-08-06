@@ -948,7 +948,7 @@ describe('Google Maps usage gate', () => {
       },
       async estimateCommute() {
         providerCalls += 1;
-        return { durationMinutes: 15 };
+        return { durationMinutes: 15, staticDurationMinutes: 14 };
       }
     };
     const gateway = createGoogleMapsRequestGateway({
