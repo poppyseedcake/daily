@@ -103,7 +103,7 @@ describe('scheduled Daily Summary generation', () => {
     const commuteEstimateProvider = {
       estimateCommute: vi.fn().mockImplementation(async () => ({
         outcome: 'available',
-        estimate: { durationMinutes: currentCommuteDuration.value }
+        estimate: { durationMinutes: currentCommuteDuration.value, staticDurationMinutes: 20 }
       } as const))
     };
     const deliveryProvider: DailySummaryDeliveryProvider = {
@@ -280,6 +280,33 @@ describe('scheduled Daily Summary generation', () => {
       expect(output).toContain('Useful Todo');
       expect(output).not.toContain('private provider payload');
     }
+  });
+
+  test('contains a Commute setup failure while preserving qualifying unrelated content', async () => {
+    const commuteAndTodoConfiguration: SummaryConfiguration = {
+      ...configuration,
+      sections: { weather: false, commute: true, calendar: false, todo: true }
+    };
+    const generator = createScheduledDailySummaryGenerator(
+      createProviderIsolationDependencies(commuteAndTodoConfiguration, {
+        commuteSetupStore: {
+          load: vi.fn().mockRejectedValue(new Error('private Commute setup failure'))
+        }
+      })
+    );
+
+    const result = await generator.generate('user-1');
+
+    expect(result.hasQualifyingContent).toBe(true);
+    expect(result.sectionContent).toEqual({
+      weather: 'inapplicable',
+      commute: 'unavailable',
+      calendar: 'inapplicable',
+      todo: 'qualifying'
+    });
+    expect(result.rendered.text).toContain('Live Commute is unavailable right now.');
+    expect(result.rendered.text).toContain('Useful Todo');
+    expect(result.rendered.text).not.toContain('private Commute setup failure');
   });
 
   test.each([

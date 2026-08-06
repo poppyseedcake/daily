@@ -27,7 +27,7 @@ describe('User Commute setup persistence', () => {
   const estimateProvider = {
     estimateCommute: vi.fn().mockResolvedValue({
       outcome: 'available' as const,
-      estimate: { durationMinutes: 12 }
+      estimate: { durationMinutes: 12, staticDurationMinutes: 10 }
     })
   };
 
@@ -85,7 +85,7 @@ describe('User Commute setup persistence', () => {
     const provider = {
       estimateCommute: vi.fn().mockImplementation(async () => {
         await firstEstimateCanFinish;
-        return { outcome: 'available' as const, estimate: { durationMinutes: 12 } };
+        return { outcome: 'available' as const, estimate: { durationMinutes: 12, staticDurationMinutes: 10 } };
       })
     };
 
@@ -108,7 +108,7 @@ describe('User Commute setup persistence', () => {
     const provider = {
       estimateCommute: vi.fn().mockResolvedValue({
         outcome: 'available' as const,
-        estimate: { durationMinutes: 19.6 }
+        estimate: { durationMinutes: 19.6, staticDurationMinutes: 18 }
       })
     };
 
@@ -138,7 +138,7 @@ describe('User Commute setup persistence', () => {
     const provider = {
       estimateCommute: vi.fn().mockResolvedValue({
         outcome: 'available' as const,
-        estimate: { durationMinutes: 16 }
+        estimate: { durationMinutes: 16, staticDurationMinutes: 15 }
       })
     };
 

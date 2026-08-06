@@ -198,7 +198,7 @@ describe('Daily Summary preview input', () => {
       commuteRoutes: [{ id: 'office', name: 'Office', days: ['wednesday'], enabled: true, origin: { label: 'Home', latitude: 40.1, longitude: -73.9 }, destination: { label: 'Office', latitude: 40.7, longitude: -74 } }],
       commuteDays: ['wednesday'],
       commuteEstimateMode: 'live',
-      commuteEstimateProvider: { estimateCommute: vi.fn().mockResolvedValue({ outcome: 'available', estimate: { durationMinutes: 24 } }) },
+      commuteEstimateProvider: { estimateCommute: vi.fn().mockResolvedValue({ outcome: 'available', estimate: { durationMinutes: 24, staticDurationMinutes: 20 } }) },
       weatherLocation: { label: 'New York', latitude: 40.7, longitude: -74 },
       weatherProvider: { fetchDailyForecast: vi.fn().mockResolvedValue({ outcome: 'available', forecast: { daily: { time: ['2026-07-08'], weather_code: [0], temperature_2m_min: [18], temperature_2m_max: [27], precipitation_probability_max: [5] } } }) },
       now: new Date('2026-07-09T02:30:00.000Z')
@@ -217,7 +217,7 @@ describe('Daily Summary preview input', () => {
     const commuteEstimateProvider = {
       estimateCommute: vi.fn()
         .mockResolvedValueOnce({ outcome: 'unavailable', reason: 'route-unavailable' } as const)
-        .mockResolvedValueOnce({ outcome: 'available', estimate: { durationMinutes: 11 } } as const)
+        .mockResolvedValueOnce({ outcome: 'available', estimate: { durationMinutes: 11, staticDurationMinutes: 10 } } as const)
     };
     const routes: CommuteRoute[] = [
       { id: 'office', name: 'Office', days: ['wednesday'], enabled: true, origin: { label: 'Home', latitude: 40.1, longitude: -73.9 }, destination: { label: 'Office', latitude: 40.7, longitude: -74 } },
@@ -236,9 +236,188 @@ describe('Daily Summary preview input', () => {
     });
     const rendered = renderDailySummary(preview);
 
-    expect(rendered.text).toContain('Commute\nOffice: Commute estimate unavailable.\nSchool run: 11 minutes');
+    expect(rendered.text).toContain('Commute\nOffice: Commute estimate unavailable.\nSchool run: 11 minutes — Moderate traffic');
     expect(rendered.html).toContain('Office: Commute estimate unavailable.');
     expect(rendered.html).toContain('School run: 11 minutes');
+  });
+
+  test('classifies lossless live durations and preserves saved route hierarchy and order', async () => {
+    const commuteEstimateProvider = {
+      estimateCommute: vi.fn()
+        .mockResolvedValueOnce({
+          outcome: 'available',
+          estimate: { durationMinutes: 25.5, staticDurationMinutes: 20 }
+        } as const)
+        .mockResolvedValueOnce({
+          outcome: 'available',
+          estimate: { durationMinutes: 22, staticDurationMinutes: 20 }
+        } as const)
+    };
+    const routes: CommuteRoute[] = [
+      {
+        id: 'office',
+        name: 'Office',
+        days: ['wednesday'],
+        enabled: true,
+        origin: { label: 'Mokotów', latitude: 52.1, longitude: 21.1 },
+        destination: { label: 'Rondo Daszyńskiego', latitude: 52.2, longitude: 21.2 }
+      },
+      {
+        id: 'school',
+        name: 'School run',
+        days: ['wednesday'],
+        enabled: true,
+        origin: { label: 'Mokotów', latitude: 52.1, longitude: 21.1 },
+        destination: { label: 'Primary school', latitude: 52.3, longitude: 21.3 }
+      }
+    ];
+
+    const input = await buildDailySummaryInput({
+      configuration: { ...configuration, userTimeZone: 'UTC' },
+      todoCategories: [],
+      todoTasks,
+      commuteRoutes: routes,
+      commuteEstimateMode: 'live',
+      commuteEstimateProvider,
+      now: new Date('2026-07-08T06:00:00.000Z')
+    });
+
+    expect(commuteEstimateProvider.estimateCommute).toHaveBeenCalledTimes(2);
+    expect(input.commuteSection?.estimates).toEqual([
+      {
+        routeName: 'Office',
+        originLabel: 'Mokotów',
+        destinationLabel: 'Rondo Daszyńskiego',
+        outcome: 'available',
+        durationMinutes: 26,
+        trafficLevel: 'heavy',
+        trafficDescription: 'Heavy traffic'
+      },
+      {
+        routeName: 'School run',
+        originLabel: 'Mokotów',
+        destinationLabel: 'Primary school',
+        outcome: 'available',
+        durationMinutes: 22,
+        trafficLevel: 'moderate',
+        trafficDescription: 'Moderate traffic'
+      }
+    ]);
+  });
+
+  test.each([
+    [0, 0, 'light'],
+    [12, 0, 'heavy'],
+    [0, 20, 'light'],
+    [20, 20, 'light'],
+    [22, 20, 'moderate'],
+    [25, 20, 'heavy'],
+    [19.999, 20, 'light']
+  ] as const)('applies the Commute Traffic Level rule to %s/%s minutes', async (
+    durationMinutes,
+    staticDurationMinutes,
+    trafficLevel
+  ) => {
+    const input = await buildDailySummaryInput({
+      configuration: { ...configuration, userTimeZone: 'UTC' },
+      todoCategories: [],
+      todoTasks: [],
+      commuteRoutes: [{
+        id: 'office',
+        name: 'Office',
+        days: ['wednesday'],
+        enabled: true,
+        origin: { label: 'Home', latitude: 52.1, longitude: 21.1 },
+        destination: { label: 'Office', latitude: 52.2, longitude: 21.2 }
+      }],
+      commuteEstimateMode: 'live',
+      commuteEstimateProvider: {
+        estimateCommute: vi.fn().mockResolvedValue({
+          outcome: 'available',
+          estimate: { durationMinutes, staticDurationMinutes }
+        })
+      },
+      now: new Date('2026-07-08T06:00:00.000Z')
+    });
+
+    expect(input.commuteSection?.estimates[0]).toEqual(expect.objectContaining({
+      outcome: 'available',
+      durationMinutes: Math.round(durationMinutes),
+      trafficLevel
+    }));
+  });
+
+  test('keeps one route failure local when another live route succeeds', async () => {
+    const input = await buildDailySummaryInput({
+      configuration: { ...configuration, userTimeZone: 'UTC' },
+      todoCategories: [],
+      todoTasks: [],
+      commuteRoutes: [
+        {
+          id: 'office',
+          name: 'Office',
+          days: ['wednesday'],
+          enabled: true,
+          origin: { label: 'Home', latitude: 52.1, longitude: 21.1 },
+          destination: { label: 'Office', latitude: 52.2, longitude: 21.2 }
+        },
+        {
+          id: 'school',
+          name: 'School run',
+          days: ['wednesday'],
+          enabled: true,
+          origin: { label: 'Home', latitude: 52.1, longitude: 21.1 },
+          destination: { label: 'School', latitude: 52.3, longitude: 21.3 }
+        }
+      ],
+      commuteEstimateMode: 'live',
+      commuteEstimateProvider: {
+        estimateCommute: vi.fn()
+          .mockResolvedValueOnce({ outcome: 'unavailable', reason: 'provider-unavailable' } as const)
+          .mockResolvedValueOnce({
+            outcome: 'available',
+            estimate: { durationMinutes: 11, staticDurationMinutes: 10 }
+          } as const)
+      },
+      now: new Date('2026-07-08T06:00:00.000Z')
+    });
+
+    expect(input.sections.commute.status).toBe('active');
+    expect(input.commuteSection?.estimates).toEqual([
+      { routeName: 'Office', originLabel: 'Home', destinationLabel: 'Office', outcome: 'unavailable' },
+      expect.objectContaining({ routeName: 'School run', outcome: 'available', trafficLevel: 'moderate' })
+    ]);
+  });
+
+  test('turns an all-route systemic failure into unavailable Commute', async () => {
+    const input = await buildDailySummaryInput({
+      configuration: { ...configuration, userTimeZone: 'UTC' },
+      todoCategories: [],
+      todoTasks: [],
+      commuteRoutes: [{
+        id: 'office',
+        name: 'Office',
+        days: ['wednesday'],
+        enabled: true,
+        origin: { label: 'Home', latitude: 52.1, longitude: 21.1 },
+        destination: { label: 'Office', latitude: 52.2, longitude: 21.2 }
+      }],
+      commuteEstimateMode: 'live',
+      commuteEstimateProvider: {
+        estimateCommute: vi.fn().mockResolvedValue({
+          outcome: 'unavailable',
+          reason: 'global-daily-cap'
+        } as const)
+      },
+      now: new Date('2026-07-08T06:00:00.000Z')
+    });
+
+    expect(input.sections.commute).toEqual({
+      status: 'unavailable',
+      label: 'Commute',
+      reason: 'Live Commute is unavailable right now.'
+    });
+    expect(input.commuteSection).toBeNull();
   });
 
   test.each([

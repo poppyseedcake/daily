@@ -110,6 +110,29 @@ describe('Daily Grid renderer', () => {
     expect(rendered.html).toContain('Light traffic');
     expect(rendered.text).toContain('Light traffic');
   });
+
+  test('keeps traffic descriptions hidden in HTML while stating them in plain text', () => {
+    const fixture = buildDailySummaryFixture();
+    const rendered = renderDailySummary({
+      ...fixture,
+      commuteSection: {
+        ...fixture.commuteSection!,
+        estimates: [{
+          ...fixture.commuteSection!.estimates[0]!,
+          originLabel: 'Mokotów',
+          destinationLabel: 'Rondo Daszyńskiego'
+        }]
+      }
+    });
+
+    expect(rendered.html).toContain('class="daily-screen-reader-only">Light traffic</span>');
+    expect(rendered.html).toContain('color:#4d7a53');
+    expect(rendered.html).not.toContain(' — Light traffic');
+    expect(rendered.html).toContain('Home: Mokotów');
+    expect(rendered.html).toContain('Office: Rondo Daszyńskiego');
+    expect(rendered.text).toContain('Office: 24 minutes — Light traffic');
+    expect(rendered.text).toContain('Home: Mokotów\n→\nOffice\nRondo Daszyńskiego');
+  });
 });
 
 const sectionLabel = (section: (typeof sectionKeys)[number]) =>

@@ -216,7 +216,7 @@ test('Visitor creates and keeps a Commute Route from the minimalist route dialog
     });
   });
   await page.route('/commute-estimate', async (route) => {
-    await route.fulfill({ json: { outcome: 'available', estimate: { durationMinutes: 26 } } });
+    await route.fulfill({ json: { outcome: 'available', estimate: { durationMinutes: 26, staticDurationMinutes: 24 } } });
   });
 
   await page.getByRole('button', { name: 'Commute. 0 routes' }).click();

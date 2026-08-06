@@ -59,7 +59,7 @@ describe('User Commute endpoints', () => {
 
   test('fetches one baseline estimate and persists it when a User creates a Commute Route', async () => {
     getSession.mockResolvedValue(signedInUser);
-    estimateCommute.mockResolvedValue({ outcome: 'available', estimate: { durationMinutes: 12.4 } });
+    estimateCommute.mockResolvedValue({ outcome: 'available', estimate: { durationMinutes: 12.4, staticDurationMinutes: 11 } });
     createRoute.mockImplementation(async (_userId, draft) => ({ id: 'route-1', ...draft, enabled: true }));
 
     const response = await POST({ request: request('http://localhost/commute-routes', 'POST', route) } as Parameters<typeof POST>[0]);

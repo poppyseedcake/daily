@@ -81,10 +81,14 @@ export const createScheduledDailySummaryGenerator = ({
     }
 
     const configuration = await loadUserSummaryConfiguration(configurationStore, userId);
-    const [todoState, weatherLocation, commuteSetup, calendarContext] = await Promise.all([
+    const [todoState, weatherLocation, commuteContext, calendarContext] = await Promise.all([
       loadUserTodoState(todoStore, userId),
       loadUserWeatherLocation(weatherLocationStore, userId),
-      loadUserCommuteSetup(commuteSetupStore, userId),
+      loadScheduledCommuteContext({
+        userId,
+        commuteEnabled: configuration.sections.commute && !configuration.sectionPauses.commute,
+        setupStore: commuteSetupStore
+      }),
       loadScheduledCalendarContext({
         userId,
         calendarEnabled:
@@ -103,8 +107,9 @@ export const createScheduledDailySummaryGenerator = ({
       weatherLocation,
       weatherProvider,
       weatherSummaryProvider,
-      commuteRoutes: commuteSetup.routes,
-      commuteDays: commuteSetup.days,
+      commuteRoutes: commuteContext.setup.routes,
+      commuteDays: commuteContext.setup.days,
+      commuteSetupUnavailable: commuteContext.unavailable,
       commuteEstimateMode: 'live',
       commuteEstimateProvider:
         configuration.sections.commute && !configuration.sectionPauses.commute
@@ -142,6 +147,36 @@ const safelyLoadCommuteEstimateProvider = (
     return providerForUser(userId);
   } catch {
     return undefined;
+  }
+};
+
+type LoadedCommuteSetup = Awaited<ReturnType<typeof loadUserCommuteSetup>>;
+
+const emptyCommuteSetup: LoadedCommuteSetup = {
+  routes: [],
+  days: []
+};
+
+const loadScheduledCommuteContext = async ({
+  userId,
+  commuteEnabled,
+  setupStore
+}: {
+  userId: string;
+  commuteEnabled: boolean;
+  setupStore: Pick<UserCommuteSetupStore, 'load'>;
+}): Promise<{ setup: LoadedCommuteSetup; unavailable: boolean }> => {
+  if (!commuteEnabled) {
+    return { setup: emptyCommuteSetup, unavailable: false };
+  }
+
+  try {
+    return {
+      setup: await loadUserCommuteSetup(setupStore, userId),
+      unavailable: false
+    };
+  } catch {
+    return { setup: emptyCommuteSetup, unavailable: true };
   }
 };
 
