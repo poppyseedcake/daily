@@ -299,12 +299,9 @@ export const load = async ({ request }) => {
           return { status: 'not-connected' } as const;
         })
       : null;
-  const calendarSummaryIsPaused =
-    authState.mode === 'user' && summaryConfiguration?.sectionPauses.calendar === true;
   const calendarGenerationContext =
     authState.mode === 'user' &&
-    calendarConnection &&
-    !calendarSummaryIsPaused
+    calendarConnection
       ? await loadCalendarGenerationContext(authState.userId, calendarConnection)
       : null;
   let calendarReadiness =
@@ -407,26 +404,26 @@ export const load = async ({ request }) => {
           const calendarSummaryIsActive =
             validConfiguration.data.sections.calendar &&
             !validConfiguration.data.sectionPauses.calendar;
-          const calendarAgendaInput = validConfiguration.data.sectionPauses.calendar
-            ? null
-            : calendarSummaryIsActive
-              ? input
-              : await buildDailySummaryInput({
-                  ...generationSetup,
-                  configuration: {
-                    ...validConfiguration.data,
-                    sections: {
-                      weather: false,
-                      commute: false,
-                      calendar: true,
-                      todo: false
-                    },
-                    sectionPauses: {
-                      ...validConfiguration.data.sectionPauses,
-                      calendar: false
-                    }
+          // The dashboard Calendar agenda is independent from the Calendar
+          // Summary Section, so pausing the Summary must not hide page context.
+          const calendarAgendaInput = calendarSummaryIsActive
+            ? input
+            : await buildDailySummaryInput({
+                ...generationSetup,
+                configuration: {
+                  ...validConfiguration.data,
+                  sections: {
+                    weather: false,
+                    commute: false,
+                    calendar: true,
+                    todo: false
+                  },
+                  sectionPauses: {
+                    ...validConfiguration.data.sectionPauses,
+                    calendar: false
                   }
-                });
+                }
+              });
 
           if (
             calendarReadiness.status === 'connected' &&

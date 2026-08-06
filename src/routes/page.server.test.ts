@@ -753,7 +753,7 @@ describe('Daily page server load', () => {
     expect(sentCalendarEventRequests).toHaveLength(1);
   });
 
-  test('suppresses Calendar provider calls when Calendar is paused', async () => {
+  test('keeps the Calendar agenda and Selected Calendar configuration when Calendar is paused', async () => {
     getSession.mockResolvedValue({
       user: { id: 'user-1', email: 'user@example.com', emailVerified: true }
     });
@@ -775,12 +775,21 @@ describe('Daily page server load', () => {
     await expect(loadPage()).resolves.toEqual(
       expect.objectContaining({
         renderedSummaryHtml: expect.not.stringContaining('Planning'),
-        calendarSection: null
+        calendarSection: expect.objectContaining({
+          today: expect.objectContaining({
+            timedEvents: expect.arrayContaining([
+              expect.objectContaining({ title: 'Planning' })
+            ])
+          })
+        }),
+        selectedCalendarConfiguration: expect.objectContaining({
+          selectedCalendarIds: ['work']
+        })
       })
     );
-    expect(loadedGoogleCalendarAccessTokens).toEqual([]);
-    expect(loadedSelectedCalendars).toEqual([]);
-    expect(sentCalendarEventRequests).toEqual([]);
+    expect(loadedGoogleCalendarAccessTokens).toEqual(['user-1']);
+    expect(loadedSelectedCalendars).toEqual(['user-1']);
+    expect(sentCalendarEventRequests).toHaveLength(1);
   });
 
   test('marks a Calendar Event provider failure unavailable without exposing provider content', async () => {
