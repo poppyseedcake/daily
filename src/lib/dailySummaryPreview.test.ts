@@ -389,6 +389,48 @@ describe('Daily Summary preview input', () => {
     ]);
   });
 
+  test('keeps a successful route when another route hits a systemic suspension', async () => {
+    const input = await buildDailySummaryInput({
+      configuration: { ...configuration, userTimeZone: 'UTC' },
+      todoCategories: [],
+      todoTasks: [],
+      commuteRoutes: [
+        {
+          id: 'office',
+          name: 'Office',
+          days: ['wednesday'],
+          enabled: true,
+          origin: { label: 'Home', latitude: 52.1, longitude: 21.1 },
+          destination: { label: 'Office', latitude: 52.2, longitude: 21.2 }
+        },
+        {
+          id: 'school',
+          name: 'School run',
+          days: ['wednesday'],
+          enabled: true,
+          origin: { label: 'Home', latitude: 52.1, longitude: 21.1 },
+          destination: { label: 'School', latitude: 52.3, longitude: 21.3 }
+        }
+      ],
+      commuteEstimateMode: 'live',
+      commuteEstimateProvider: {
+        estimateCommute: vi.fn()
+          .mockResolvedValueOnce({ outcome: 'unavailable', reason: 'global-daily-cap' } as const)
+          .mockResolvedValueOnce({
+            outcome: 'available',
+            estimate: { durationMinutes: 11, staticDurationMinutes: 10 }
+          } as const)
+      },
+      now: new Date('2026-07-08T06:00:00.000Z')
+    });
+
+    expect(input.sections.commute.status).toBe('active');
+    expect(input.commuteSection?.estimates).toEqual([
+      { routeName: 'Office', originLabel: 'Home', destinationLabel: 'Office', outcome: 'unavailable' },
+      expect.objectContaining({ routeName: 'School run', outcome: 'available', trafficLevel: 'moderate' })
+    ]);
+  });
+
   test('turns an all-route systemic failure into unavailable Commute', async () => {
     const input = await buildDailySummaryInput({
       configuration: { ...configuration, userTimeZone: 'UTC' },

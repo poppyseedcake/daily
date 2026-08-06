@@ -245,7 +245,7 @@ const buildCommuteGenerationResult = async ({ configuration, routes, days, setup
       result.outcome === 'available' && estimates[index]?.outcome === 'unavailable'
     );
 
-    if (hasSystemicFailure || (!hasAvailableEstimate && (hasProviderFailure || hasMalformedEstimate))) {
+    if (!hasAvailableEstimate && (hasSystemicFailure || hasProviderFailure || hasMalformedEstimate)) {
       return unavailable();
     }
 
