@@ -1,4 +1,4 @@
-import type { CalendarSection } from './calendar';
+import { calendarSectionHasEvents, type CalendarSection } from './calendar';
 import {
   commuteTrafficDescription,
   type CommuteTrafficLevel
@@ -251,6 +251,10 @@ const renderSectionCell = (section: RenderedSection) => {
 
 const renderSectionHtmlContent = (section: RenderedSection): string => {
   if (section.status !== 'active') {
+    if (section.key === 'calendar' && section.status === 'empty' && section.calendarSection) {
+      return `${renderStateHtml(section)}${renderCalendarHtml(section.calendarSection)}`;
+    }
+
     return renderStateHtml(section);
   }
 
@@ -264,7 +268,7 @@ const renderSectionHtmlContent = (section: RenderedSection): string => {
     case 'commute':
       return `${detail}${section.commuteSection ? renderCommuteHtml(section.commuteSection) : '<p style="margin:0;color:#68756a;">Commute facts are ready.</p>'}`;
     case 'calendar':
-      return `${detail}${section.calendarSection && hasCalendarEvents(section.calendarSection) ? renderCalendarHtml(section.calendarSection) : '<p style="margin:0;color:#68756a;">Calendar facts are ready.</p>'}`;
+      return `${detail}${section.calendarSection && calendarSectionHasEvents(section.calendarSection) ? renderCalendarHtml(section.calendarSection) : '<p style="margin:0;color:#68756a;">Calendar facts are ready.</p>'}`;
     case 'todo':
       return `${detail}${section.todoSection ? renderTodoHtml(section.todoSection) : '<p style="margin:0;color:#68756a;">Todo facts are ready.</p>'}`;
   }
@@ -396,7 +400,11 @@ const renderText = ({
 
 const renderSectionTextContent = (section: RenderedSection): string => {
   if (section.status !== 'active') {
-    return `${stateLabels[section.status]}\n${section.reason ?? section.detail ?? defaultStateMessage(section.key, section.status)}`;
+    const stateText = renderStateText(section);
+
+    return section.key === 'calendar' && section.status === 'empty' && section.calendarSection
+      ? `${stateText}\n\n${renderCalendarText(section.calendarSection)}`
+      : stateText;
   }
 
   const detail = section.detail ? [section.detail] : [];
@@ -414,7 +422,7 @@ const renderSectionTextContent = (section: RenderedSection): string => {
     case 'calendar':
       return [
         ...detail,
-        section.calendarSection && hasCalendarEvents(section.calendarSection)
+        section.calendarSection && calendarSectionHasEvents(section.calendarSection)
           ? renderCalendarText(section.calendarSection)
           : 'Calendar facts are ready.'
       ].filter(Boolean).join('\n');
@@ -466,6 +474,12 @@ const renderCalendarDayText = (day: NonNullable<CalendarSection['today']>) => [
     ...day.timedEvents.map((event) => `${event.localStartTime} ${event.title} (${event.calendarLabel})`)
   ].join('\n');
 
+const renderStateText = (section: RenderedSection) => {
+  if (section.status === 'active') return '';
+
+  return `${stateLabels[section.status]}\n${section.reason ?? section.detail ?? defaultStateMessage(section.key, section.status)}`;
+};
+
 const renderTodoText = (section: TodoSection) => [
   ...(section.uncategorizedTasks.length > 0
     ? [`Uncategorized\n${section.uncategorizedTasks.map(renderTodoTaskText).join('\n')}`]
@@ -474,9 +488,6 @@ const renderTodoText = (section: TodoSection) => [
 ].join('\n\n');
 
 const renderTodoTaskText = (task: TodoTask) => `${task.title} — ${urgencyLabel(task.urgency)}`;
-
-const hasCalendarEvents = (section: CalendarSection) =>
-  Boolean(section.today) || section.weekAhead.length > 0;
 
 const defaultStateMessage = (section: SummarySection, status: Exclude<DailySummarySectionStatus, 'available' | 'active'>) => {
   switch (status) {

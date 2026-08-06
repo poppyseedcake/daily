@@ -645,6 +645,43 @@ describe('Daily Summary preview input', () => {
     expect(JSON.stringify(preview.todoSection)).not.toContain('Team retro');
   });
 
+  test('keeps the seven-day Calendar structure when selected calendars have no eligible events', async () => {
+    const calendarEventProvider = {
+      fetchEvents: vi.fn().mockResolvedValue({ outcome: 'available', events: [] } as const)
+    };
+
+    const preview = await buildDailySummaryInput({
+      authMode: 'user',
+      configuration,
+      todoCategories,
+      todoTasks,
+      calendarReadiness: {
+        status: 'connected',
+        label: 'Calendar',
+        statusLabel: 'Calendar connected',
+        detail: 'Google Calendar is connected for this User.'
+      },
+      selectedCalendars: [
+        { id: 'work', summary: 'Work', backgroundColor: '#1a73e8', primary: true }
+      ],
+      calendarEventProvider,
+      now: new Date('2026-07-08T10:00:00.000Z')
+    });
+    const rendered = renderDailySummary(preview);
+
+    expect(preview.sections.calendar).toEqual({
+      status: 'empty',
+      label: 'Calendar',
+      detail: 'No Calendar Events in the Week Ahead.'
+    });
+    expect(preview.calendarSection).not.toBeNull();
+    expect([preview.calendarSection?.today, ...(preview.calendarSection?.weekAhead ?? [])]).toHaveLength(7);
+    expect(rendered.text).toContain('Calendar\nNothing scheduled\nNo Calendar Events in the Week Ahead.');
+    for (const label of ['Today', 'Thu, Jul 9', 'Fri, Jul 10', 'Sat, Jul 11', 'Sun, Jul 12', 'Mon, Jul 13', 'Tue, Jul 14']) {
+      expect(rendered.text).toContain(label);
+    }
+  });
+
   test('renders an empty Calendar state without fetching events when no calendars are selected', async () => {
     const calendarEventProvider = {
       fetchEvents: vi.fn().mockResolvedValue({ outcome: 'available', events: [] } as const)
@@ -741,6 +778,36 @@ describe('Daily Summary preview input', () => {
     );
     expect(rendered.text).toContain('Commute');
     expect(rendered.text).toContain('Buy coffee — Medium urgency');
+  });
+
+  test('does not expose an arbitrary Calendar provider failure reason', async () => {
+    const preview = await buildDailySummaryInput({
+      authMode: 'user',
+      configuration,
+      todoCategories,
+      todoTasks,
+      calendarReadiness: {
+        status: 'connected',
+        label: 'Calendar',
+        statusLabel: 'Calendar connected',
+        detail: 'Google Calendar is connected for this User.'
+      },
+      selectedCalendars: [
+        { id: 'work', summary: 'Work', backgroundColor: '#1a73e8', primary: true }
+      ],
+      calendarEventProvider: {
+        fetchEvents: vi.fn().mockResolvedValue({
+          outcome: 'unavailable',
+          reason: 'Private raw provider response with event title'
+        } as const)
+      },
+      now: new Date('2026-07-08T10:00:00.000Z')
+    });
+    const rendered = renderDailySummary(preview);
+
+    expect(rendered.text).toContain('Calendar\nUnavailable\nLive Calendar is unavailable right now.');
+    expect(rendered.text).not.toContain('Private raw provider response with event title');
+    expect(rendered.html).not.toContain('Private raw provider response with event title');
   });
 
   test('keeps signed-in User Calendar paused when the Summary Section is disabled', async () => {

@@ -185,6 +185,7 @@ describe('Google Calendar list provider', () => {
     expect(Object.fromEntries(url.searchParams)).toEqual({
       singleEvents: 'true',
       orderBy: 'startTime',
+      maxResults: '2500',
       timeMin: '2026-07-07T04:00:00Z',
       timeMax: '2026-07-14T04:00:00Z',
       timeZone: 'America/New_York'
@@ -196,6 +197,56 @@ describe('Google Calendar list provider', () => {
     });
     expect(requestInit).not.toHaveProperty('method');
     expect(requestInit).not.toHaveProperty('body');
+  });
+
+  test('loads every Calendar Events page without truncating the Week Ahead', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          items: [{
+            id: 'first-page-event',
+            summary: 'First page',
+            start: { dateTime: '2026-07-08T10:00:00.000Z' },
+            end: { dateTime: '2026-07-08T11:00:00.000Z' }
+          }],
+          nextPageToken: 'page-2'
+        })
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          items: [{
+            id: 'second-page-event',
+            summary: 'Second page',
+            start: { dateTime: '2026-07-09T10:00:00.000Z' },
+            end: { dateTime: '2026-07-09T11:00:00.000Z' }
+          }]
+        })
+      });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      googleCalendarEventProvider('access-token').fetchEvents({
+        calendarIds: ['work'],
+        timeMin: '2026-07-08T04:00:00Z',
+        timeMax: '2026-07-15T04:00:00Z',
+        timeZone: 'America/New_York'
+      })
+    ).resolves.toMatchObject({
+      outcome: 'available',
+      events: [
+        expect.objectContaining({ id: 'first-page-event', summary: 'First page' }),
+        expect.objectContaining({ id: 'second-page-event', summary: 'Second page' })
+      ]
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const firstUrl = new URL(fetchMock.mock.calls[0]![0]);
+    const secondUrl = new URL(fetchMock.mock.calls[1]![0]);
+    expect(firstUrl.searchParams.get('pageToken')).toBeNull();
+    expect(secondUrl.searchParams.get('pageToken')).toBe('page-2');
+    expect(secondUrl.searchParams.get('maxResults')).toBe('2500');
   });
 
   test('maps rejected Calendar credentials to a reconnect-required provider outcome', async () => {

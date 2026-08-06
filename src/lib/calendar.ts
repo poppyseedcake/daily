@@ -107,6 +107,7 @@ export const buildCalendarSection = ({
     userTimeZone
   });
   const weekAhead = buildWeekAhead(today);
+  const weekAheadDateKeys = new Set(weekAhead.map((date) => date.toString()));
   const selectedCalendarMetadata = new Map(
     selectedCalendars.map((calendar) => [
       calendar.id,
@@ -127,7 +128,11 @@ export const buildCalendarSection = ({
     }
 
     const calendarMetadata = selectedCalendarMetadata.get(event.calendarId);
-    const calendarLabel = calendarMetadata?.label ?? event.calendarSummary;
+    if (!calendarMetadata) {
+      continue;
+    }
+
+    const calendarLabel = calendarMetadata.label;
     const calendarColor = calendarMetadata?.color;
 
     if (event.kind === 'timed') {
@@ -136,7 +141,7 @@ export const buildCalendarSection = ({
         .toPlainDate()
         .toString();
 
-      if (!weekAhead.some((date) => date.toString() === localDate)) {
+      if (!weekAheadDateKeys.has(localDate)) {
         continue;
       }
 
@@ -166,30 +171,38 @@ export const buildCalendarSection = ({
     }
   }
 
-  const days = weekAhead.flatMap((date, index): CalendarDay[] => {
+  const days = weekAhead.map((date, index): CalendarDay => {
     const events = eventsByDate.get(date.toString()) ?? { allDayEvents: [], timedEvents: [] };
 
-    if (events.allDayEvents.length === 0 && events.timedEvents.length === 0) {
-      return [];
-    }
-
-    return [
-      {
-        label: index === 0 ? 'Today' : formatDayLabel(date),
-        allDayEvents: events.allDayEvents,
-        timedEvents: events.timedEvents.toSorted((left, right) =>
-          left.localStartTime.localeCompare(right.localStartTime)
-        )
-      }
-    ];
+    return {
+      label: index === 0 ? 'Today' : formatDayLabel(date),
+      allDayEvents: events.allDayEvents.toSorted(compareCalendarEvents),
+      timedEvents: events.timedEvents.toSorted(compareTimedCalendarEvents)
+    };
   });
 
   return {
     label: 'Calendar',
-    today: days.find((day) => day.label === 'Today') ?? null,
-    weekAhead: days.filter((day) => day.label !== 'Today')
+    today: days[0] ?? null,
+    weekAhead: days.slice(1)
   };
 };
+
+const compareCalendarEvents = (
+  left: AllDayCalendarEvent,
+  right: AllDayCalendarEvent
+) =>
+  left.calendarLabel.localeCompare(right.calendarLabel) ||
+  left.title.localeCompare(right.title) ||
+  left.id.localeCompare(right.id);
+
+const compareTimedCalendarEvents = (left: TimedCalendarEvent, right: TimedCalendarEvent) =>
+  left.localStartTime.localeCompare(right.localStartTime) || compareCalendarEvents(left, right);
+
+export const calendarSectionHasEvents = (section: CalendarSection) =>
+  [section.today, ...section.weekAhead].some(
+    (day) => day !== null && (day.allDayEvents.length > 0 || day.timedEvents.length > 0)
+  );
 
 const allDayEventDatesInWindow = (
   event: Extract<CalendarProviderEvent, { kind: 'all-day' }>,

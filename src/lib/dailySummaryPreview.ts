@@ -3,6 +3,7 @@ import type { DailySummaryInput } from './dailySummaryRenderer';
 import {
   buildCalendarEventFetchRequest,
   buildCalendarSection,
+  calendarSectionHasEvents,
   type CalendarEventProvider
 } from './calendar';
 import type { SavedSelectedCalendar } from './selectedCalendars';
@@ -291,7 +292,8 @@ const buildCalendarGenerationResult = async ({
         status: 'active',
         label: 'Calendar',
         detail: buildDemoCalendarSection({
-          userTimeZone: configuration.userTimeZone
+          userTimeZone: configuration.userTimeZone,
+          now
         }).summaryDetail
       }
     };
@@ -358,7 +360,7 @@ const buildCalendarGenerationResult = async ({
         sectionState: {
           status: 'unavailable',
           label: 'Calendar',
-          reason: providerResult.reason
+          reason: safeCalendarProviderReason(providerResult.reason)
         }
       };
     }
@@ -372,7 +374,7 @@ const buildCalendarGenerationResult = async ({
 
     return {
       calendarSection,
-      sectionState: hasCalendarEvents(calendarSection)
+      sectionState: calendarSectionHasEvents(calendarSection)
         ? { status: 'active', label: 'Calendar' }
         : { status: 'empty', label: 'Calendar', detail: 'No Calendar Events in the Week Ahead.' }
     };
@@ -526,5 +528,7 @@ const buildTodoGenerationState = ({
     : { status: 'empty', label: 'Todo', detail: 'There are no active Todo Tasks.' };
 };
 
-const hasCalendarEvents = (section: NonNullable<DailySummaryInput['calendarSection']>) =>
-  Boolean(section.today) || section.weekAhead.length > 0;
+const safeCalendarProviderReason = (reason: string) =>
+  reason === 'Reconnect Google Calendar to include Calendar Events.'
+    ? reason
+    : 'Live Calendar is unavailable right now.';

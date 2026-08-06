@@ -444,6 +444,31 @@ describe('scheduled Daily Summary generation', () => {
     expect(result.rendered.text).not.toContain('private Calendar connection failure');
   });
 
+  test('does not load Calendar credentials or events when no Selected Calendar exists', async () => {
+    const loadCalendarAccessToken = vi.fn();
+    const calendarEventProvider = vi.fn();
+    const generator = createScheduledDailySummaryGenerator(
+      createProviderIsolationDependencies(configuration, {
+        calendarConnectionStore: {
+          load: vi.fn().mockResolvedValue({ status: 'connected' }),
+          loadSelectedCalendars: vi.fn().mockResolvedValue([])
+        },
+        loadCalendarAccessToken,
+        calendarEventProvider
+      })
+    );
+
+    const result = await generator.generate('user-1');
+
+    expect(result.input.sections.calendar).toEqual({
+      status: 'unconfigured',
+      label: 'Calendar',
+      detail: 'Select a Calendar to include Calendar Events.'
+    });
+    expect(loadCalendarAccessToken).not.toHaveBeenCalled();
+    expect(calendarEventProvider).not.toHaveBeenCalled();
+  });
+
   test('reports empty, inapplicable, and unavailable-only output as not qualifying', async () => {
     const mixedConfiguration: SummaryConfiguration = {
       ...configuration,

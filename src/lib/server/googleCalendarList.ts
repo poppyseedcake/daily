@@ -39,6 +39,7 @@ type GoogleCalendarEventsResponse = {
       responseStatus?: string;
     }>;
   }>;
+  nextPageToken?: string;
 };
 
 class GoogleCalendarRequestError extends Error {
@@ -84,70 +85,94 @@ export const googleCalendarEventProvider = (accessToken: string): CalendarEventP
     try {
       const eventLists = await Promise.all(
         calendarIds.map(async (calendarId) => {
-          const params = new URLSearchParams({
-            singleEvents: 'true',
-            orderBy: 'startTime',
-            timeMin,
-            timeMax,
-            timeZone
-          });
-          const response = await fetch(
-            `${googleCalendarApiBaseUrl}/calendars/${encodeURIComponent(calendarId)}/events?${params.toString()}`,
-            {
-              headers: {
-                authorization: `Bearer ${accessToken}`
+          const events: CalendarProviderEvent[] = [];
+          const seenPageTokens = new Set<string>();
+          let pageToken: string | undefined;
+
+          do {
+            if (pageToken && seenPageTokens.has(pageToken)) {
+              throw new Error('Google Calendar Events pagination repeated a page token.');
+            }
+            if (pageToken) {
+              seenPageTokens.add(pageToken);
+            }
+
+            const params = new URLSearchParams({
+              singleEvents: 'true',
+              orderBy: 'startTime',
+              maxResults: '2500',
+              timeMin,
+              timeMax,
+              timeZone
+            });
+            if (pageToken) {
+              params.set('pageToken', pageToken);
+            }
+
+            const response = await fetch(
+              `${googleCalendarApiBaseUrl}/calendars/${encodeURIComponent(calendarId)}/events?${params.toString()}`,
+              {
+                headers: {
+                  authorization: `Bearer ${accessToken}`
+                }
               }
-            }
-          );
+            );
 
-          if (!response.ok) {
-            throw new GoogleCalendarRequestError(response.status, 'events');
-          }
-
-          const payload = (await response.json()) as GoogleCalendarEventsResponse;
-
-          return (payload.items ?? []).flatMap((event): CalendarProviderEvent[] => {
-            if (
-              !event.id ||
-              !event.summary ||
-              event.status === 'cancelled' ||
-              event.attendees?.some(
-                (attendee) => attendee.self === true && attendee.responseStatus === 'declined'
-              )
-            ) {
-              return [];
+            if (!response.ok) {
+              throw new GoogleCalendarRequestError(response.status, 'events');
             }
 
-            if (event.start?.dateTime && event.end?.dateTime) {
-              return [
-                {
-                  kind: 'timed',
-                  id: event.id,
-                  calendarId,
-                  calendarSummary: '',
-                  summary: event.summary,
-                  start: event.start.dateTime,
-                  end: event.end.dateTime
+            const payload = (await response.json()) as GoogleCalendarEventsResponse;
+
+            events.push(
+              ...(payload.items ?? []).flatMap((event): CalendarProviderEvent[] => {
+                if (
+                  !event.id ||
+                  event.status === 'cancelled' ||
+                  event.attendees?.some(
+                    (attendee) => attendee.self === true && attendee.responseStatus === 'declined'
+                  )
+                ) {
+                  return [];
                 }
-              ];
-            }
 
-            if (event.start?.date && event.end?.date) {
-              return [
-                {
-                  kind: 'all-day',
-                  id: event.id,
-                  calendarId,
-                  calendarSummary: '',
-                  summary: event.summary,
-                  startDate: event.start.date,
-                  endDate: event.end.date
+                const summary = event.summary?.trim() || '(No title)';
+
+                if (event.start?.dateTime && event.end?.dateTime) {
+                  return [
+                    {
+                      kind: 'timed',
+                      id: event.id,
+                      calendarId,
+                      calendarSummary: '',
+                      summary,
+                      start: event.start.dateTime,
+                      end: event.end.dateTime
+                    }
+                  ];
                 }
-              ];
-            }
 
-            return [];
-          });
+                if (event.start?.date && event.end?.date) {
+                  return [
+                    {
+                      kind: 'all-day',
+                      id: event.id,
+                      calendarId,
+                      calendarSummary: '',
+                      summary,
+                      startDate: event.start.date,
+                      endDate: event.end.date
+                    }
+                  ];
+                }
+
+                return [];
+              })
+            );
+            pageToken = payload.nextPageToken;
+          } while (pageToken);
+
+          return events;
         })
       );
 

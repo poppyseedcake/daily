@@ -137,7 +137,9 @@ const stateFixture = (states: StateMatrix): DailySummaryInput => {
     ...fixture,
     sections: nextSections,
     commuteSection: states.commute === 'active' ? fixture.commuteSection : null,
-    calendarSection: states.calendar === 'active' ? fixture.calendarSection : null,
+    calendarSection: states.calendar === 'active' || states.calendar === 'empty'
+      ? fixture.calendarSection
+      : null,
     todoSection: states.todo === 'active' ? fixture.todoSection : null
   };
 };
@@ -212,6 +214,11 @@ const fixtureCalendarSection: CalendarSection = {
   },
   weekAhead: [
     {
+      label: 'Sat, Aug 1',
+      allDayEvents: [],
+      timedEvents: []
+    },
+    {
       label: 'Sun, Aug 2',
       allDayEvents: [
         {
@@ -221,6 +228,26 @@ const fixtureCalendarSection: CalendarSection = {
           calendarColor: '#4f6f9f'
         }
       ],
+      timedEvents: []
+    },
+    {
+      label: 'Mon, Aug 3',
+      allDayEvents: [],
+      timedEvents: []
+    },
+    {
+      label: 'Tue, Aug 4',
+      allDayEvents: [],
+      timedEvents: []
+    },
+    {
+      label: 'Wed, Aug 5',
+      allDayEvents: [],
+      timedEvents: []
+    },
+    {
+      label: 'Thu, Aug 6',
+      allDayEvents: [],
       timedEvents: []
     }
   ]
