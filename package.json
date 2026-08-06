@@ -17,6 +17,7 @@
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "test": "vitest run && playwright test",
     "test:unit": "vitest run",
+    "generate:weather-icons": "node scripts/generate-weather-icons.mjs",
     "pretest:e2e": "svelte-kit sync",
     "test:e2e": "playwright test",
     "db:generate": "drizzle-kit generate",

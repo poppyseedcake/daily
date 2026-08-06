@@ -45,6 +45,87 @@ const todoTasks: TodoTask[] = [
 ];
 
 describe('Daily Summary preview input', () => {
+  test('renders validated Weather facts and an optional Luna sentence without leaking location data', async () => {
+    const summaryInput = {
+      units: {
+        temperature: 'celsius' as const,
+        precipitationProbability: 'percent' as const,
+        precipitation: 'millimetres' as const,
+        snowfall: 'centimetres' as const,
+        wind: 'kilometres_per_hour' as const
+      },
+      current: { temperature: 18 },
+      day: {
+        weatherCode: 2,
+        minimumTemperature: 12,
+        maximumTemperature: 22,
+        maximumPrecipitationProbability: 35,
+        maximumWindSpeed: 24,
+        maximumWindGust: 39
+      },
+      remainingHours: [{
+        localTime: '07:00',
+        temperature: 17,
+        precipitationProbability: 5,
+        precipitation: 0,
+        snowfall: 0,
+        weatherCode: 2,
+        windSpeed: 11,
+        windGust: 19
+      }]
+    };
+    const weatherProvider = {
+      fetchDailyForecast: vi.fn().mockResolvedValue({
+        outcome: 'available',
+        forecast: {
+          dates: ['2026-07-08'],
+          weatherCodes: [2],
+          minimumTemperaturesCelsius: [12],
+          maximumTemperaturesCelsius: [22],
+          precipitationProbabilities: [35],
+          currentTemperatureCelsius: 18,
+          observedAtLocal: '2026-07-08T07:15',
+          maximumWindSpeedsKmh: [24],
+          maximumWindGustsKmh: [39],
+          summaryInput
+        }
+      }),
+      weatherSummaryProvider: {
+        summarize: vi.fn().mockResolvedValue({
+          outcome: 'available',
+          sentence: 'Clouds clear by noon.'
+        })
+      }
+    };
+
+    const input = await buildDailySummaryInput({
+      configuration: { ...configuration, userTimeZone: 'UTC' },
+      todoCategories: [],
+      todoTasks: [],
+      weatherLocation: {
+        label: 'Private City',
+        latitude: 52.2297,
+        longitude: 21.0122
+      },
+      weatherProvider,
+      weatherSummaryProvider: weatherProvider.weatherSummaryProvider,
+      now: new Date('2026-07-08T07:15:00.000Z'),
+      openDailyUrl: 'https://daily.example.com/'
+    });
+    const rendered = renderDailySummary(input);
+
+    expect(weatherProvider.weatherSummaryProvider.summarize).toHaveBeenCalledWith(summaryInput);
+    expect(rendered.html).toContain('>18C</p>');
+    expect(rendered.html).toContain('Low 12C, high 22C');
+    expect(rendered.html).toContain('Wind up to 24 km/h');
+    expect(rendered.html).toContain('Clouds clear by noon.');
+    expect(rendered.html).toContain('https://daily.example.com/weather-icons/partly-cloudy.png');
+    expect(rendered.text).toContain('Clouds clear by noon.');
+    expect(rendered.text).toContain('Chance of precipitation 35%.');
+    expect(rendered.html).not.toContain('Private City');
+    expect(rendered.text).not.toContain('Private City');
+  });
+
   test('renders saved baseline estimates without provider requests on the local Commute Day', async () => {
     const routes: CommuteRoute[] = [
       { id: 'office', name: 'Office', days: ['wednesday'], enabled: true, previewDurationMinutes: 31, origin: { label: 'Home', latitude: 40.1, longitude: -73.9 }, destination: { label: 'Office', latitude: 40.7, longitude: -74 } },
@@ -509,7 +590,8 @@ describe('Daily Summary preview input', () => {
     expect(forecastProvider.fetchDailyForecast).toHaveBeenCalledWith({
       latitude: 52.2297,
       longitude: 21.0122,
-      timeZone: 'America/New_York'
+      timeZone: 'America/New_York',
+      targetDate: '2026-07-07'
     });
     expect(rendered.text).toContain('Weather\nRainy. Low 12C, high 19C. Chance of precipitation 80%.');
     expect(rendered.html).toContain('Rainy. Low 12C, high 19C. Chance of precipitation 80%.');
@@ -529,6 +611,9 @@ describe('Daily Summary preview input', () => {
         }
       })
     };
+    const weatherSummaryProvider = {
+      summarize: vi.fn()
+    };
 
     const preview = await buildDailySummaryInput({
       configuration: {
@@ -546,13 +631,38 @@ describe('Daily Summary preview input', () => {
         longitude: 21.0122
       },
       weatherProvider: forecastProvider,
+      weatherSummaryProvider,
       now: new Date('2026-07-07T10:00:00.000Z')
     });
     const rendered = renderDailySummary(preview);
 
     expect(forecastProvider.fetchDailyForecast).not.toHaveBeenCalled();
+    expect(weatherSummaryProvider.summarize).not.toHaveBeenCalled();
     expect(rendered.text).toContain('Weather\nPaused\nWeather is paused.');
     expect(rendered.html).toContain('>Weather</h2>');
+  });
+
+  test('keeps Weather unconfigured and avoids live providers without a location', async () => {
+    const forecastProvider = {
+      fetchDailyForecast: vi.fn()
+    };
+    const weatherSummaryProvider = {
+      summarize: vi.fn()
+    };
+
+    const preview = await buildDailySummaryInput({
+      configuration,
+      todoCategories,
+      todoTasks,
+      weatherProvider: forecastProvider,
+      weatherSummaryProvider,
+      now: new Date('2026-07-07T10:00:00.000Z')
+    });
+    const rendered = renderDailySummary(preview);
+
+    expect(forecastProvider.fetchDailyForecast).not.toHaveBeenCalled();
+    expect(weatherSummaryProvider.summarize).not.toHaveBeenCalled();
+    expect(rendered.text).toContain('Weather\nNot configured\nChoose a Weather Location to include local weather.');
   });
 
   test('renders unavailable Weather from provider failure while keeping other sections visible', async () => {

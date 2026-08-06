@@ -1178,7 +1178,8 @@ describe('Daily page server load', () => {
       {
         latitude: 52.2297,
         longitude: 21.0122,
-        timeZone: 'America/New_York'
+        timeZone: 'America/New_York',
+        targetDate: '2026-07-07'
       }
     ]);
     expect(recordedDeliveryRecords).toEqual([

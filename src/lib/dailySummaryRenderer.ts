@@ -1,5 +1,6 @@
 import type { CalendarSection } from './calendar';
 import type { SummaryConfiguration, SummarySection } from './summaryConfiguration';
+import type { WeatherDisplayForecast } from './weatherForecast';
 import type {
   SummarySectionPresentationState,
   SummarySectionPresentationStateFor
@@ -34,6 +35,7 @@ export type DailySummaryInput = {
   sections: {
     [Section in SummarySection]: DailySummarySectionStateFor<Section>;
   };
+  weatherSection?: WeatherDisplayForecast | null;
   calendarSection?: CalendarSection | null;
   commuteSection?: CommuteSection | null;
   todoSection: TodoSection | null;
@@ -63,6 +65,7 @@ type RenderedSection = {
   status: Exclude<DailySummarySectionStatus, 'available'>;
   detail?: string;
   reason?: string;
+  weatherSection?: WeatherDisplayForecast | null;
   calendarSection?: CalendarSection | null;
   commuteSection?: CommuteSection | null;
   todoSection?: TodoSection | null;
@@ -134,6 +137,9 @@ const resolveSection = (input: DailySummaryInput, key: SummarySection): Rendered
     status,
     detail,
     ...(!explicitlyPaused && state.status === 'unavailable' ? { reason: state.reason } : {}),
+    ...(key === 'weather' && !explicitlyPaused
+      ? { weatherSection: input.weatherSection ?? null }
+      : {}),
     ...(key === 'calendar' ? { calendarSection: input.calendarSection } : {}),
     ...(key === 'commute' ? { commuteSection: input.commuteSection } : {}),
     ...(key === 'todo' ? { todoSection: input.todoSection } : {})
@@ -240,7 +246,9 @@ const renderSectionHtmlContent = (section: RenderedSection): string => {
 
   switch (section.key) {
     case 'weather':
-      return `${detail || '<p style="margin:0;color:#68756a;">Weather facts are ready.</p>'}`;
+      return section.weatherSection
+        ? renderWeatherHtml(section.weatherSection)
+        : `${detail || '<p style="margin:0;color:#68756a;">Weather facts are ready.</p>'}`;
     case 'commute':
       return `${detail}${section.commuteSection ? renderCommuteHtml(section.commuteSection) : '<p style="margin:0;color:#68756a;">Commute facts are ready.</p>'}`;
     case 'calendar':
@@ -249,6 +257,25 @@ const renderSectionHtmlContent = (section: RenderedSection): string => {
       return `${detail}${section.todoSection ? renderTodoHtml(section.todoSection) : '<p style="margin:0;color:#68756a;">Todo facts are ready.</p>'}`;
   }
 };
+
+const renderWeatherHtml = (weather: WeatherDisplayForecast) => `
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;width:100%;">
+        <tr>
+          <td width="68" valign="middle" style="width:68px;padding:0 12px 0 0;">
+            <img src="${escapeHtml(weather.iconUrl)}" alt="" width="56" height="56" style="display:block;width:56px;height:56px;" />
+          </td>
+          <td valign="middle" style="padding:0;">
+            <p style="margin:0;color:#172019;font-size:26px;line-height:1.1;font-weight:700;"><span class="daily-screen-reader-only">Current </span>${escapeHtml(formatMetric(weather.currentTemperatureCelsius))}C</p>
+            <p style="margin:4px 0 0;color:#68756a;font-size:13px;line-height:1.4;">${escapeHtml(weather.conditionText)}</p>
+          </td>
+        </tr>
+        <tr>
+          <td colspan="2" style="padding:17px 0 0;color:#68756a;font-size:13px;line-height:1.5;">
+            Low ${escapeHtml(formatMetric(weather.minimumTemperatureCelsius))}C, high ${escapeHtml(formatMetric(weather.maximumTemperatureCelsius))}C. Chance of precipitation ${escapeHtml(formatMetric(weather.maximumPrecipitationProbabilityPercent))}%. Wind up to ${escapeHtml(formatMetric(weather.maximumWindSpeedKmh))} km/h.
+          </td>
+        </tr>
+        ${weather.summary ? `<tr><td colspan="2" style="padding:13px 0 0;color:#172019;font-size:13px;line-height:1.5;">${escapeHtml(weather.summary)}</td></tr>` : ''}
+      </table>`;
 
 const renderStateHtml = (section: RenderedSection) => {
   if (section.status === 'active') return '';
@@ -339,7 +366,9 @@ const renderSectionTextContent = (section: RenderedSection): string => {
 
   switch (section.key) {
     case 'weather':
-      return detail.join('\n') || 'Weather facts are ready.';
+      return section.weatherSection
+        ? renderWeatherText(section.weatherSection)
+        : detail.join('\n') || 'Weather facts are ready.';
     case 'commute':
       return [
         ...detail,
@@ -359,6 +388,14 @@ const renderSectionTextContent = (section: RenderedSection): string => {
       ].filter(Boolean).join('\n');
   }
 };
+
+const renderWeatherText = (weather: WeatherDisplayForecast) => [
+  `Current ${formatMetric(weather.currentTemperatureCelsius)}C · ${weather.conditionText}`,
+  `Low ${formatMetric(weather.minimumTemperatureCelsius)}C, high ${formatMetric(weather.maximumTemperatureCelsius)}C.`,
+  `Chance of precipitation ${formatMetric(weather.maximumPrecipitationProbabilityPercent)}%.`,
+  `Wind up to ${formatMetric(weather.maximumWindSpeedKmh)} km/h.`,
+  ...(weather.summary ? [weather.summary] : [])
+].join('\n');
 
 const renderCommuteText = (section: CommuteSection) => section.estimates
   .map((estimate) => estimate.outcome === 'available'
@@ -414,6 +451,9 @@ const defaultStateMessage = (section: SummarySection, status: Exclude<DailySumma
 
 const formatMinutes = (durationMinutes: number | undefined) =>
   `${Number.isFinite(durationMinutes) ? Math.round(durationMinutes!) : '—'} minutes`;
+
+const formatMetric = (value: number) =>
+  Number.isInteger(value) ? value.toString() : value.toFixed(1).replace(/\.0$/, '');
 
 const trafficDescriptionFor = (estimate: CommuteSection['estimates'][number]) =>
   estimate.trafficDescription ?? (estimate.trafficLevel ? trafficDescriptionForLevel(estimate.trafficLevel) : null);
