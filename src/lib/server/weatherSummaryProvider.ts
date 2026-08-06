@@ -1,8 +1,10 @@
 import { env } from '$env/dynamic/private';
 import { z } from 'zod';
-import type {
-  NormalizedWeatherSummaryInput,
-  WeatherSummaryProvider as WeatherSummaryProviderContract
+import {
+  weatherConditionCategoryForCode,
+  type WeatherConditionCategory,
+  type NormalizedWeatherSummaryInput,
+  type WeatherSummaryProvider as WeatherSummaryProviderContract
 } from '$lib/weatherForecast';
 import { normalizedWeatherSummaryInputSchema } from '$lib/weatherSummaryContract';
 
@@ -51,6 +53,21 @@ const weatherSummaryDeveloperInstruction = [
 
 const weatherSummaryLeadPattern = /^(?:after|around|at|before|becomes?|by|chance|clear(?:er|ing)?|clouds?|cold|conditions?|cool|drizzle|dry|expect(?:ed)?|fog(?:gy)?|freezing|gusts?|hail|heavy|hot|later|likely|light|mainly|mild|mostly|no|overcast|partly|possible|precipitation|rain(?:y)?|showers?|snow(?:y)?|some|storms?|strong|sun(?:ny)?|temperatures?|thunderstorms?|today|unsettled|variable|visibility|warm|weather|wet|winds?)\b/i;
 const unsupportedSummaryTermsPattern = /\b(?:advised|avoid|bring|carry|coat|grab|jacket|pack|recommend(?:ed)?|should|suggest(?:ed)?|sunscreen|take|umbrella|wear)\b/i;
+
+type WeatherClaimFamily = Exclude<WeatherConditionCategory, 'unknown'>;
+
+const weatherClaimPatterns: ReadonlyArray<{
+  pattern: RegExp;
+  families: readonly WeatherClaimFamily[];
+}> = [
+  { pattern: /\b(?:clear|sun(?:ny|shine)?)\b/i, families: ['clear'] },
+  { pattern: /\b(?:partly(?:[ -]+cloudy)?|mainly clear)\b/i, families: ['partly-cloudy', 'clear'] },
+  { pattern: /\b(?:cloud(?:y|s)?|overcast)\b/i, families: ['partly-cloudy', 'cloudy'] },
+  { pattern: /\b(?:fog|foggy|mist|misty)\b/i, families: ['fog'] },
+  { pattern: /\b(?:drizzle|rain(?:y)?|shower(?:s)?|wet)\b/i, families: ['rain'] },
+  { pattern: /\b(?:flurr(?:y|ies)|snow(?:fall|y)?)\b/i, families: ['snow'] },
+  { pattern: /\b(?:hail|lightning|storm(?:s)?|thunder(?:storm)?s?)\b/i, families: ['thunderstorm'] }
+];
 
 export const createOpenAiWeatherSummaryProvider = ({
   apiKey = env.OPENAI_API_KEY,
@@ -172,7 +189,8 @@ const validateWeatherSummarySentence = (
     !/[.!?]$/.test(sentence) ||
     sentence.split(/[.!?]+(?=\s|$)/).filter(Boolean).length !== 1 ||
     !weatherSummaryLeadPattern.test(sentence) ||
-    unsupportedSummaryTermsPattern.test(sentence)
+    unsupportedSummaryTermsPattern.test(sentence) ||
+    !hasGroundedWeatherClaims(sentence, input)
   ) {
     return null;
   }
@@ -187,6 +205,27 @@ const validateWeatherSummarySentence = (
   }
 
   return sentence;
+};
+
+const hasGroundedWeatherClaims = (
+  sentence: string,
+  input: NormalizedWeatherSummaryInput
+) => {
+  const supportedFamilies = new Set(
+    [input.day.weatherCode, ...input.remainingHours.map((hour) => hour.weatherCode)]
+      .flatMap(weatherClaimFamiliesForCode)
+  );
+
+  return weatherClaimPatterns.every(({ pattern, families }) =>
+    !pattern.test(sentence) || families.some((family) => supportedFamilies.has(family))
+  );
+};
+
+const weatherClaimFamiliesForCode = (code: number): WeatherClaimFamily[] => {
+  if (code === 1) return ['clear'];
+
+  const category = weatherConditionCategoryForCode(code);
+  return category === 'unknown' ? [] : [category];
 };
 
 const sanitizeWeatherSummaryInput = (input: NormalizedWeatherSummaryInput): NormalizedWeatherSummaryInput => ({

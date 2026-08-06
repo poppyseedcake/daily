@@ -71,7 +71,7 @@ describe('OpenAI Weather Summary provider', () => {
             type: 'message',
             content: [{
               type: 'output_text',
-              text: JSON.stringify({ summary: 'Clouds clear by noon.' })
+              text: JSON.stringify({ summary: 'Partly cloudy through the day.' })
             }]
           }]
         })
@@ -84,7 +84,7 @@ describe('OpenAI Weather Summary provider', () => {
 
     await expect(provider.summarize(normalizedInput)).resolves.toEqual({
       outcome: 'available',
-      sentence: 'Clouds clear by noon.'
+      sentence: 'Partly cloudy through the day.'
     });
 
     expect(fetcher).toHaveBeenCalledTimes(1);
@@ -131,7 +131,8 @@ describe('OpenAI Weather Summary provider', () => {
   test.each([
     'This sentence has too many words and should be omitted because it is not safe to send.',
     'Pack an umbrella.',
-    'Warsaw is sunny.'
+    'Warsaw is sunny.',
+    'Heavy rain expected.'
   ])('omits an unsupported sentence instead of exposing it to the renderer', async (summary) => {
     const fetcher = vi.fn().mockResolvedValue(
       new Response(JSON.stringify({
