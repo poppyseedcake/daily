@@ -753,7 +753,7 @@ describe('Daily page server load', () => {
     expect(sentCalendarEventRequests).toHaveLength(1);
   });
 
-  test('keeps the Calendar agenda when Calendar is paused in the email summary', async () => {
+  test('suppresses Calendar provider calls when Calendar is paused', async () => {
     getSession.mockResolvedValue({
       user: { id: 'user-1', email: 'user@example.com', emailVerified: true }
     });
@@ -775,15 +775,37 @@ describe('Daily page server load', () => {
     await expect(loadPage()).resolves.toEqual(
       expect.objectContaining({
         renderedSummaryHtml: expect.not.stringContaining('Planning'),
-        calendarSection: expect.objectContaining({
-          today: expect.objectContaining({
-            timedEvents: expect.arrayContaining([
-              expect.objectContaining({ title: 'Planning' })
-            ])
-          })
-        })
+        calendarSection: null
       })
     );
+    expect(loadedGoogleCalendarAccessTokens).toEqual([]);
+    expect(loadedSelectedCalendars).toEqual([]);
+    expect(sentCalendarEventRequests).toEqual([]);
+  });
+
+  test('marks a Calendar Event provider failure unavailable without exposing provider content', async () => {
+    getSession.mockResolvedValue({
+      user: { id: 'user-1', email: 'user@example.com', emailVerified: true }
+    });
+    savedCalendarConnection.status = 'connected';
+    savedSelectedCalendars.push({
+      id: 'work',
+      summary: 'Work',
+      backgroundColor: '#0b8043',
+      primary: false
+    });
+    calendarEventProviderMode.outcome = 'private-failure';
+
+    const result = await loadPage();
+
+    expect(result.calendarReadiness).toEqual(
+      expect.objectContaining({
+        status: 'unavailable',
+        unavailableReason: 'Live Calendar is unavailable right now.'
+      })
+    );
+    expect(result.renderedSummaryHtml).toContain('Live Calendar is unavailable right now.');
+    expect(result.renderedSummaryHtml).not.toContain('Therapy at 10:00 with secret-provider-token');
     expect(sentCalendarEventRequests).toHaveLength(1);
   });
 

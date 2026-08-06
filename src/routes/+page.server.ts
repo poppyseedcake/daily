@@ -25,6 +25,7 @@ import { renderDailySummary } from '$lib/dailySummaryRenderer';
 import {
   calendarReadinessForAuthMode,
   calendarReadinessForUnavailableCredentials,
+  calendarReadinessForUnavailableProvider,
   calendarReadinessForUserConnection
 } from '$lib/calendarReadiness';
 import {
@@ -298,13 +299,19 @@ export const load = async ({ request }) => {
           return { status: 'not-connected' } as const;
         })
       : null;
+  const calendarSummaryIsPaused =
+    authState.mode === 'user' && summaryConfiguration?.sectionPauses.calendar === true;
   const calendarGenerationContext =
     authState.mode === 'user' &&
-    calendarConnection
+    calendarConnection &&
+    !calendarSummaryIsPaused
       ? await loadCalendarGenerationContext(authState.userId, calendarConnection)
       : null;
   let calendarReadiness =
-    calendarGenerationContext?.readiness ?? calendarReadinessForAuthMode(authState.mode);
+    calendarGenerationContext?.readiness ??
+    (authState.mode === 'user' && calendarConnection
+      ? calendarReadinessForUserConnection(calendarConnection)
+      : calendarReadinessForAuthMode(authState.mode));
   const calendarListAccessToken = calendarGenerationContext?.accessToken;
   const selectedCalendarConfiguration =
     authState.mode === 'user' &&
@@ -400,28 +407,38 @@ export const load = async ({ request }) => {
           const calendarSummaryIsActive =
             validConfiguration.data.sections.calendar &&
             !validConfiguration.data.sectionPauses.calendar;
-          const calendarAgendaInput = calendarSummaryIsActive
-            ? input
-            : await buildDailySummaryInput({
-                ...generationSetup,
-                configuration: {
-                  ...validConfiguration.data,
-                  sections: {
-                    weather: false,
-                    commute: false,
-                    calendar: true,
-                    todo: false
-                  },
-                  sectionPauses: {
-                    ...validConfiguration.data.sectionPauses,
-                    calendar: false
+          const calendarAgendaInput = validConfiguration.data.sectionPauses.calendar
+            ? null
+            : calendarSummaryIsActive
+              ? input
+              : await buildDailySummaryInput({
+                  ...generationSetup,
+                  configuration: {
+                    ...validConfiguration.data,
+                    sections: {
+                      weather: false,
+                      commute: false,
+                      calendar: true,
+                      todo: false
+                    },
+                    sectionPauses: {
+                      ...validConfiguration.data.sectionPauses,
+                      calendar: false
+                    }
                   }
-                }
-              });
+                });
+
+          if (
+            calendarReadiness.status === 'connected' &&
+            (input.sections.calendar.status === 'unavailable' ||
+              calendarAgendaInput?.sections.calendar.status === 'unavailable')
+          ) {
+            calendarReadiness = calendarReadinessForUnavailableProvider();
+          }
 
           return {
             html: renderDailySummary(input).html,
-            calendarSection: calendarAgendaInput.calendarSection ?? null
+            calendarSection: calendarAgendaInput?.calendarSection ?? null
           };
         })()
       : null;
