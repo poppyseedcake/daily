@@ -109,7 +109,7 @@ describe('Daily Summary preview input', () => {
     ]);
   });
 
-  test.each(['light', 'dark'] as const)('keeps route-labeled Commute in fixed HTML and text order for the %s theme', async (summaryTheme) => {
+  test.each(['light', 'dark'] as const)('keeps route-labeled Commute in fixed HTML and text order for the %s legacy theme setting', async (summaryTheme) => {
     const preview = await buildDailySummaryInput({
       configuration: { ...configuration, summaryTheme },
       todoCategories,
@@ -126,8 +126,8 @@ describe('Daily Summary preview input', () => {
 
     for (const output of [rendered.html, rendered.text]) {
       expect(output.indexOf('Weather')).toBeLessThan(output.indexOf('Commute'));
-      expect(output.indexOf('Commute')).toBeLessThan(output.indexOf('Demo Calendar'));
-      expect(output.indexOf('Demo Calendar')).toBeLessThan(output.indexOf('Todo Tasks'));
+      expect(output.indexOf('Commute')).toBeLessThan(output.indexOf('Calendar'));
+      expect(output.indexOf('Calendar')).toBeLessThan(output.indexOf('Todo'));
       expect(output).toContain('Office: 24 minutes');
     }
   });
@@ -155,8 +155,8 @@ describe('Daily Summary preview input', () => {
     });
     const rendered = renderDailySummary(preview);
 
-    expect(rendered.text).toContain('Commute\nOffice: unavailable\nSchool run: 11 minutes');
-    expect(rendered.html).toContain('Office: unavailable');
+    expect(rendered.text).toContain('Commute\nOffice: Commute estimate unavailable.\nSchool run: 11 minutes');
+    expect(rendered.html).toContain('Office: Commute estimate unavailable.');
     expect(rendered.html).toContain('School run: 11 minutes');
   });
 
@@ -164,7 +164,7 @@ describe('Daily Summary preview input', () => {
     ['disabled section', { sections: { ...configuration.sections, commute: false } }, ['wednesday']],
     ['non-Commute Day', {}, ['thursday']],
     ['empty weekday selection', {}, []]
-  ] as const)('omits Commute without estimate requests for %s', async (_case, configurationPatch, commuteDays) => {
+  ] as const)('keeps the Commute state visible without estimate requests for %s', async (_case, configurationPatch, commuteDays) => {
     const commuteEstimateProvider = { estimateCommute: vi.fn() };
     const preview = await buildDailySummaryInput({
       configuration: { ...configuration, ...configurationPatch },
@@ -177,7 +177,8 @@ describe('Daily Summary preview input', () => {
     });
 
     expect(commuteEstimateProvider.estimateCommute).not.toHaveBeenCalled();
-    expect(renderDailySummary(preview).text).not.toContain('Commute');
+    expect(renderDailySummary(preview).text).toContain('\nCommute\n');
+    expect(renderDailySummary(preview).text).not.toContain('Office:');
   });
 
   test('keeps a protected estimate suspension local to the Commute Section', async () => {
@@ -193,9 +194,9 @@ describe('Daily Summary preview input', () => {
     });
     const rendered = renderDailySummary(preview);
 
-    expect(rendered.text).toContain('Commute\nLive Commute is unavailable right now.');
+    expect(rendered.text).toContain('Commute\nUnavailable\nLive Commute is unavailable right now.');
     expect(rendered.text).toContain('Demo Calendar');
-    expect(rendered.text).toContain('Todo Tasks');
+    expect(rendered.text).toContain('Todo\nUncategorized');
   });
   test('renders Visitor setup with Demo Calendar through the Daily Summary input shape', async () => {
     const visitorPreview = await buildDailySummaryInput({
@@ -204,11 +205,11 @@ describe('Daily Summary preview input', () => {
       todoTasks
     });
 
-    expect(renderDailySummary(visitorPreview).text).toContain('Choose a Weather Location to preview live weather.');
-    expect(renderDailySummary(visitorPreview).text).not.toContain('Commute');
+    expect(renderDailySummary(visitorPreview).text).toContain('Weather\nNot configured\nChoose a Weather Location to include local weather.');
+    expect(renderDailySummary(visitorPreview).text).toContain('Commute\nNot configured\nAdd a Commute Route');
     expect(renderDailySummary(visitorPreview).text).toContain('Demo Calendar');
-    expect(renderDailySummary(visitorPreview).text).toContain('Buy coffee !');
-    expect(renderDailySummary(visitorPreview).text).toContain('Work\nDraft update !');
+    expect(renderDailySummary(visitorPreview).text).toContain('Buy coffee — Medium urgency');
+    expect(renderDailySummary(visitorPreview).text).toContain('Work\nDraft update — High urgency');
   });
 
   test('renders signed-in User Calendar as unavailable until Calendar is connected', async () => {
@@ -227,7 +228,7 @@ describe('Daily Summary preview input', () => {
     });
     const rendered = renderDailySummary(preview);
 
-    expect(rendered.text).toContain('Calendar\nConnect Google Calendar to include Calendar Events.');
+    expect(rendered.text).toContain('Calendar\nNot configured\nConnect Google Calendar to include Calendar Events.');
     expect(rendered.html).toContain('Connect Google Calendar to include Calendar Events.');
     expect(rendered.text).not.toContain('Demo Calendar');
     expect(rendered.html).not.toContain('Demo Calendar');
@@ -252,7 +253,7 @@ describe('Daily Summary preview input', () => {
     const rendered = renderDailySummary(preview);
 
     expect(rendered.text).toContain(
-      'Calendar\nCalendar preview is unavailable until Calendar Events can be loaded.'
+      'Calendar\nUnavailable\nCalendar preview is unavailable until Calendar Events can be loaded.'
     );
     expect(rendered.text).not.toContain('Google Calendar is connected for this User.');
     expect(rendered.html).not.toContain('Google Calendar is connected for this User.');
@@ -335,7 +336,7 @@ describe('Daily Summary preview input', () => {
     expect(rendered.html).toContain('Personal');
     expect(rendered.html.indexOf('School drop-off')).toBeLessThan(rendered.html.indexOf('Team retro'));
     expect(rendered.text.indexOf('Weather')).toBeLessThan(rendered.text.indexOf('Calendar'));
-    expect(rendered.text.indexOf('Calendar')).toBeLessThan(rendered.text.indexOf('Todo Tasks'));
+    expect(rendered.text.indexOf('Calendar')).toBeLessThan(rendered.text.indexOf('Todo'));
     expect(JSON.stringify(preview.calendarSection)).toContain('Team retro');
     expect(JSON.stringify(preview.calendarSection)).not.toContain('Draft update');
     expect(JSON.stringify(preview.todoSection)).toContain('Draft update');
@@ -365,8 +366,8 @@ describe('Daily Summary preview input', () => {
     const rendered = renderDailySummary(preview);
 
     expect(calendarEventProvider.fetchEvents).not.toHaveBeenCalled();
-    expect(rendered.text).toContain('Calendar\nNo calendars are selected.');
-    expect(rendered.html).toContain('No calendars are selected.');
+    expect(rendered.text).toContain('Calendar\nNot configured\nSelect a Calendar to include Calendar Events.');
+    expect(rendered.html).toContain('Select a Calendar to include Calendar Events.');
     expect(rendered.text).not.toContain('unavailable');
   });
 
@@ -395,9 +396,9 @@ describe('Daily Summary preview input', () => {
     });
     const rendered = renderDailySummary(preview);
 
-    expect(rendered.text).toContain('Calendar\nLive Calendar is unavailable right now.');
-    expect(rendered.text).not.toContain('Commute');
-    expect(rendered.text).toContain('Buy coffee !');
+    expect(rendered.text).toContain('Calendar\nUnavailable\nLive Calendar is unavailable right now.');
+    expect(rendered.text).toContain('Commute');
+    expect(rendered.text).toContain('Buy coffee — Medium urgency');
     expect(rendered.text).not.toContain('Private planning title');
     expect(warn).toHaveBeenCalledWith(
       'Calendar Event provider failed during Daily Summary generation.'
@@ -434,13 +435,13 @@ describe('Daily Summary preview input', () => {
     const rendered = renderDailySummary(preview);
 
     expect(rendered.text).toContain(
-      'Calendar\nReconnect Google Calendar to include Calendar Events.'
+      'Calendar\nUnavailable\nReconnect Google Calendar to include Calendar Events.'
     );
-    expect(rendered.text).not.toContain('Commute');
-    expect(rendered.text).toContain('Buy coffee !');
+    expect(rendered.text).toContain('Commute');
+    expect(rendered.text).toContain('Buy coffee — Medium urgency');
   });
 
-  test('omits signed-in User Calendar output when the Calendar Summary Section is disabled', async () => {
+  test('keeps signed-in User Calendar paused when the Summary Section is disabled', async () => {
     const calendarEventProvider = {
       fetchEvents: vi.fn().mockResolvedValue({ outcome: 'available', events: [] } as const)
     };
@@ -468,8 +469,8 @@ describe('Daily Summary preview input', () => {
     });
     const rendered = renderDailySummary(preview);
 
-    expect(rendered.text).not.toContain('Calendar');
-    expect(rendered.html).not.toContain('Calendar');
+    expect(rendered.text).toContain('Calendar\nPaused\nCalendar is paused.');
+    expect(rendered.html).toContain('>Calendar</h2>');
     expect(rendered.text).not.toContain('Connect Google Calendar');
     expect(rendered.html).not.toContain('Connect Google Calendar');
     expect(rendered.text).not.toContain('Demo Calendar');
@@ -515,7 +516,7 @@ describe('Daily Summary preview input', () => {
     expect(rendered.text).not.toContain('Mock Weather');
   });
 
-  test('omits disabled Weather and avoids live Weather provider work', async () => {
+  test('keeps disabled Weather paused and avoids live Weather provider work', async () => {
     const forecastProvider = {
       fetchDailyForecast: vi.fn().mockResolvedValue({
         outcome: 'available',
@@ -550,8 +551,8 @@ describe('Daily Summary preview input', () => {
     const rendered = renderDailySummary(preview);
 
     expect(forecastProvider.fetchDailyForecast).not.toHaveBeenCalled();
-    expect(rendered.text).not.toContain('Weather');
-    expect(rendered.html).not.toContain('Weather');
+    expect(rendered.text).toContain('Weather\nPaused\nWeather is paused.');
+    expect(rendered.html).toContain('>Weather</h2>');
   });
 
   test('renders unavailable Weather from provider failure while keeping other sections visible', async () => {
@@ -576,10 +577,10 @@ describe('Daily Summary preview input', () => {
     });
     const rendered = renderDailySummary(preview);
 
-    expect(rendered.text).toContain('Weather\nLive weather is unavailable right now.');
-    expect(rendered.text).not.toContain('Commute');
+    expect(rendered.text).toContain('Weather\nUnavailable\nLive weather is unavailable right now.');
+    expect(rendered.text).toContain('Commute');
     expect(rendered.text).toContain('Demo Calendar');
-    expect(rendered.text).toContain('Buy coffee !');
+    expect(rendered.text).toContain('Buy coffee — Medium urgency');
   });
 
   test('keeps provider placeholders out of the persisted User setup shape', async () => {
@@ -597,14 +598,14 @@ describe('Daily Summary preview input', () => {
     };
 
     expect(preview.sections.commute).toMatchObject({ label: 'Commute' });
-    expect(preview.sections.calendar).toMatchObject({ label: 'Demo Calendar' });
+    expect(preview.sections.calendar).toMatchObject({ label: 'Calendar' });
     expect(persistedUserSetup).not.toHaveProperty('weather');
     expect(persistedUserSetup).not.toHaveProperty('commute');
     expect(persistedUserSetup).not.toHaveProperty('calendar');
     expect(persistedUserSetup).not.toHaveProperty('sections');
   });
 
-  test('omits empty Todo content instead of rendering it as unavailable in preview', async () => {
+  test('renders empty Todo content as an explicit state in preview', async () => {
     const preview = await buildDailySummaryInput({
       configuration: {
         ...configuration,
@@ -621,8 +622,7 @@ describe('Daily Summary preview input', () => {
 
     const rendered = renderDailySummary(preview);
 
-    expect(rendered.html).not.toContain('Todo');
-    expect(rendered.text).not.toContain('Todo');
-    expect(rendered.text).not.toContain('No active Todo Tasks.');
+    expect(rendered.html).toContain('>Todo</h2>');
+    expect(rendered.text).toContain('Todo\nNothing scheduled\nThere are no active Todo Tasks.');
   });
 });

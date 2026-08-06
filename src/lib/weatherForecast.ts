@@ -1,6 +1,6 @@
 import { Temporal } from '@js-temporal/polyfill';
 import { z } from 'zod';
-import type { DailySummarySectionState } from './dailySummaryRenderer';
+import type { DailySummarySectionStateFor } from './dailySummaryRenderer';
 import type { UserTimeZone } from './summaryConfiguration';
 
 export type DailyWeatherForecastRequest = {
@@ -100,7 +100,7 @@ export const buildWeatherSection = ({
   forecast: DailyWeatherForecast;
   userTimeZone: UserTimeZone;
   now?: Date;
-}): DailySummarySectionState => {
+}): DailySummarySectionStateFor<'weather'> => {
   const localDate = Temporal.Instant.from(now.toISOString())
     .toZonedDateTimeISO(userTimeZone)
     .toPlainDate()
@@ -133,7 +133,7 @@ export const buildWeatherSection = ({
   }
 
   return {
-    status: 'available',
+    status: 'active',
     label: 'Weather',
     detail: [
       `${weatherCodeDescription(weatherCode)}. Low ${Math.round(minimumTemperature)}C, high ${Math.round(maximumTemperature)}C.`,

@@ -143,6 +143,8 @@ const loadCalendarGenerationContext = async (
 };
 
 export const load = async ({ request }) => {
+  const requestOrigin = env.ORIGIN ?? env.BETTER_AUTH_URL ?? new URL(request.url).origin;
+  const openDailyUrl = `${requestOrigin}/`;
   const session = await auth.api.getSession({
     headers: request.headers
   });
@@ -277,7 +279,9 @@ export const load = async ({ request }) => {
         })
       : null;
   const calendarGenerationContext =
-    authState.mode === 'user' && calendarConnection
+    authState.mode === 'user' &&
+    !(summaryConfiguration?.sectionPauses?.calendar ?? false) &&
+    calendarConnection
       ? await loadCalendarGenerationContext(authState.userId, calendarConnection)
       : null;
   let calendarReadiness =
@@ -285,6 +289,7 @@ export const load = async ({ request }) => {
   const calendarListAccessToken = calendarGenerationContext?.accessToken;
   const selectedCalendarConfiguration =
     authState.mode === 'user' &&
+    !(summaryConfiguration?.sectionPauses?.calendar ?? false) &&
     calendarConnection?.status === 'connected' &&
     calendarListAccessToken
       ? await (async () => {
@@ -368,7 +373,8 @@ export const load = async ({ request }) => {
             selectedCalendars,
             calendarEventProvider: calendarGenerationContext?.accessToken
               ? googleCalendarEventProvider(calendarGenerationContext.accessToken)
-              : undefined
+              : undefined,
+            openDailyUrl
           } as const;
           const input = await buildDailySummaryInput(generationSetup);
           const calendarAgendaInput = validConfiguration.data.sections.calendar
@@ -462,6 +468,7 @@ export const actions = {
     return { outcome: 'disconnected' };
   },
   sendTestDailySummary: async ({ request }) => {
+    const openDailyUrl = `${env.ORIGIN ?? env.BETTER_AUTH_URL ?? new URL(request.url).origin}/`;
     const session = await auth.api.getSession({
       headers: request.headers
     });
@@ -496,7 +503,8 @@ export const actions = {
     }
 
     const calendarConnection = await userCalendarConnectionStore.load(authState.userId);
-    const calendarGenerationContext = validConfiguration.data.sections.calendar
+    const calendarGenerationContext =
+      validConfiguration.data.sections.calendar && !validConfiguration.data.sectionPauses.calendar
       ? await loadCalendarGenerationContext(authState.userId, calendarConnection)
       : {
           accessToken: null,
@@ -518,7 +526,8 @@ export const actions = {
         selectedCalendars: calendarGenerationContext.selectedCalendars,
         calendarEventProvider: calendarGenerationContext.accessToken
           ? googleCalendarEventProvider(calendarGenerationContext.accessToken)
-          : undefined
+          : undefined,
+        openDailyUrl
       })
     );
     const message = {

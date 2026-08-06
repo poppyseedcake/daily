@@ -30,7 +30,7 @@ describe('Weather forecast mapping', () => {
     });
 
     expect(weather).toEqual({
-      status: 'available',
+      status: 'active',
       label: 'Weather',
       detail: 'Clear. Low 11C, high 21C. Chance of precipitation 5%.'
     });
@@ -70,7 +70,7 @@ describe('Weather forecast mapping', () => {
     });
 
     expect(weather).toEqual({
-      status: 'available',
+      status: 'active',
       label: 'Weather',
       detail: 'Clear. Low 11C, high 21C. Chance of precipitation unavailable.'
     });

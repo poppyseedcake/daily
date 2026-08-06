@@ -37,6 +37,7 @@ export type DailySummaryGenerationSetup = {
   commuteDays?: readonly CommuteDay[];
   commuteEstimateProvider?: Pick<GoogleMapsRequestGateway, 'estimateCommute'>;
   commuteEstimateMode?: 'saved' | 'live';
+  openDailyUrl?: string;
   now?: Date;
 };
 
@@ -54,6 +55,7 @@ export const buildDailySummaryInput = async ({
   commuteDays = [],
   commuteEstimateProvider,
   commuteEstimateMode = 'saved',
+  openDailyUrl = '/',
   now = new Date()
 }: DailySummaryGenerationSetup): Promise<DailySummaryInput> => {
   const weather = await buildWeatherGenerationState({
@@ -78,21 +80,21 @@ export const buildDailySummaryInput = async ({
     now
   });
 
+  const todoSection = buildTodoSection(todoCategories, todoTasks);
+
   return {
     configuration,
+    generatedAt: new Date(now),
+    openDailyUrl,
     sections: {
       weather,
       commute: commuteGeneration.sectionState,
       calendar: calendarGeneration.sectionState,
-      todo: {
-        status: 'available',
-        label: 'Todo',
-        detail: 'No active Todo Tasks.'
-      }
+      todo: buildTodoGenerationState({ configuration, todoSection })
     },
     calendarSection: calendarGeneration.calendarSection,
     commuteSection: commuteGeneration.commuteSection,
-    todoSection: buildTodoSection(todoCategories, todoTasks)
+    todoSection
   };
 };
 
@@ -115,12 +117,38 @@ const buildCommuteGenerationResult = async ({ configuration, routes, days, provi
     Temporal.Instant.fromEpochMilliseconds(now.getTime())
       .toZonedDateTimeISO(configuration.userTimeZone).dayOfWeek - 1
   ];
+
+  if (configuration.sectionPauses.commute || !configuration.sections.commute) {
+    return {
+      commuteSection: null,
+      sectionState: { status: 'paused', label: 'Commute', detail: 'Commute is paused.' }
+    };
+  }
+
+  if (routes.length === 0) {
+    return {
+      commuteSection: null,
+      sectionState: {
+        status: 'unconfigured',
+        label: 'Commute',
+        detail: 'Add a Commute Route to include commute estimates.'
+      }
+    };
+  }
+
   const enabledRoutes = routes.filter(
     (route) => route.enabled && route.days.includes(localDay)
   );
 
-  if (!configuration.sections.commute || enabledRoutes.length === 0) {
-    return { commuteSection: null, sectionState: { status: 'available', label: 'Commute', detail: '' } };
+  if (enabledRoutes.length === 0) {
+    return {
+      commuteSection: null,
+      sectionState: {
+        status: 'empty',
+        label: 'Commute',
+        detail: 'No Commute Routes are scheduled today.'
+      }
+    };
   }
 
   if (mode === 'saved') {
@@ -134,7 +162,7 @@ const buildCommuteGenerationResult = async ({ configuration, routes, days, provi
             : { outcome: 'available' as const, durationMinutes: route.previewDurationMinutes })
         }))
       },
-      sectionState: { status: 'available', label: 'Commute', detail: '' }
+      sectionState: { status: 'active', label: 'Commute' }
     };
   }
 
@@ -171,7 +199,7 @@ const buildCommuteGenerationResult = async ({ configuration, routes, days, provi
             : { outcome: 'unavailable' as const })
         }))
       },
-      sectionState: { status: 'available', label: 'Commute', detail: '' }
+      sectionState: { status: 'active', label: 'Commute' }
     };
   } catch {
     return unavailable();
@@ -194,12 +222,19 @@ const buildCalendarGenerationResult = async ({
   calendarSection: DailySummaryInput['calendarSection'];
   sectionState: DailySummaryInput['sections']['calendar'];
 }> => {
+  if (configuration.sectionPauses.calendar || !configuration.sections.calendar) {
+    return {
+      calendarSection: null,
+      sectionState: { status: 'paused', label: 'Calendar', detail: 'Calendar is paused.' }
+    };
+  }
+
   if (calendarReadiness.status === 'demo') {
     return {
       calendarSection: null,
       sectionState: {
-        status: 'available',
-        label: calendarReadiness.label,
+        status: 'active',
+        label: 'Calendar',
         detail: buildDemoCalendarSection({
           userTimeZone: configuration.userTimeZone
         }).summaryDetail
@@ -208,20 +243,26 @@ const buildCalendarGenerationResult = async ({
   }
 
   if (calendarReadiness.status !== 'connected') {
+    const unavailable = calendarReadiness.status === 'reconnect-required' || calendarReadiness.status === 'unavailable';
+
+    if (unavailable) {
+      return {
+        calendarSection: null,
+        sectionState: {
+          status: 'unavailable',
+          label: 'Calendar',
+          reason: calendarReadiness.unavailableReason
+        }
+      };
+    }
+
     return {
       calendarSection: null,
       sectionState: {
-        status: 'unavailable',
-        label: calendarReadiness.label,
-        reason: calendarReadiness.unavailableReason
+        status: 'unconfigured',
+        label: 'Calendar',
+        detail: calendarReadiness.unavailableReason
       }
-    };
-  }
-
-  if (!configuration.sections.calendar) {
-    return {
-      calendarSection: null,
-      sectionState: { status: 'available', label: 'Calendar', detail: '' }
     };
   }
 
@@ -229,9 +270,9 @@ const buildCalendarGenerationResult = async ({
     return {
       calendarSection: null,
       sectionState: {
-        status: 'available',
+        status: 'unconfigured',
         label: 'Calendar',
-        detail: 'No calendars are selected.'
+        detail: 'Select a Calendar to include Calendar Events.'
       }
     };
   }
@@ -267,18 +308,18 @@ const buildCalendarGenerationResult = async ({
       };
     }
 
+    const calendarSection = buildCalendarSection({
+      providerEvents: providerResult.events,
+      selectedCalendars,
+      userTimeZone: configuration.userTimeZone,
+      now
+    });
+
     return {
-      calendarSection: buildCalendarSection({
-        providerEvents: providerResult.events,
-        selectedCalendars,
-        userTimeZone: configuration.userTimeZone,
-        now
-      }),
-      sectionState: {
-        status: 'available',
-        label: 'Calendar',
-        detail: 'No Calendar Events in the next week.'
-      }
+      calendarSection,
+      sectionState: hasCalendarEvents(calendarSection)
+        ? { status: 'active', label: 'Calendar' }
+        : { status: 'empty', label: 'Calendar', detail: 'No Calendar Events in the Week Ahead.' }
     };
   } catch {
     console.warn('Calendar Event provider failed during Daily Summary generation.');
@@ -305,19 +346,19 @@ const buildWeatherGenerationState = async ({
   weatherProvider: WeatherForecastProvider;
   now: Date;
 }): Promise<DailySummaryInput['sections']['weather']> => {
-  if (!configuration.sections.weather) {
+  if (configuration.sectionPauses.weather || !configuration.sections.weather) {
     return {
-      status: 'available',
+      status: 'paused',
       label: 'Weather',
-      detail: ''
+      detail: 'Weather is paused.'
     };
   }
 
   if (!weatherLocation) {
     return {
-      status: 'unavailable',
+      status: 'unconfigured',
       label: 'Weather',
-      reason: 'Choose a Weather Location to preview live weather.'
+      detail: 'Choose a Weather Location to include local weather.'
     };
   }
 
@@ -349,3 +390,22 @@ const buildWeatherGenerationState = async ({
     };
   }
 };
+
+const buildTodoGenerationState = ({
+  configuration,
+  todoSection
+}: {
+  configuration: SummaryConfiguration;
+  todoSection: DailySummaryInput['todoSection'];
+}): DailySummaryInput['sections']['todo'] => {
+  if (configuration.sectionPauses.todo || !configuration.sections.todo) {
+    return { status: 'paused', label: 'Todo', detail: 'Todo is paused.' };
+  }
+
+  return todoSection
+    ? { status: 'active', label: 'Todo' }
+    : { status: 'empty', label: 'Todo', detail: 'There are no active Todo Tasks.' };
+};
+
+const hasCalendarEvents = (section: NonNullable<DailySummaryInput['calendarSection']>) =>
+  Boolean(section.today) || section.weekAhead.length > 0;

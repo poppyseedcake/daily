@@ -55,6 +55,7 @@ export type ScheduledDailySummaryGenerationDependencies = {
   commuteEstimateProvider: (
     userId: string
   ) => Pick<GoogleMapsRequestGateway, 'estimateCommute'> | undefined;
+  openDailyUrl?: string;
   now?: () => Date;
 };
 
@@ -69,6 +70,7 @@ export const createScheduledDailySummaryGenerator = ({
   calendarEventProvider,
   weatherProvider,
   commuteEstimateProvider,
+  openDailyUrl = process.env.ORIGIN ?? process.env.BETTER_AUTH_URL ?? 'http://localhost:5174/',
   now = () => new Date()
 }: ScheduledDailySummaryGenerationDependencies) => ({
   async generate(userId: string): Promise<ScheduledDailySummaryGenerationResult> {
@@ -83,7 +85,8 @@ export const createScheduledDailySummaryGenerator = ({
       loadUserCommuteSetup(commuteSetupStore, userId),
       loadScheduledCalendarContext({
         userId,
-        calendarEnabled: configuration.sections.calendar,
+        calendarEnabled:
+          configuration.sections.calendar && !configuration.sectionPauses.calendar,
         connectionStore: calendarConnectionStore,
         loadAccessToken: loadCalendarAccessToken,
         providerForAccessToken: calendarEventProvider
@@ -100,13 +103,15 @@ export const createScheduledDailySummaryGenerator = ({
       commuteRoutes: commuteSetup.routes,
       commuteDays: commuteSetup.days,
       commuteEstimateMode: 'live',
-      commuteEstimateProvider: configuration.sections.commute
+      commuteEstimateProvider:
+        configuration.sections.commute && !configuration.sectionPauses.commute
         ? safelyLoadCommuteEstimateProvider(commuteEstimateProvider, userId)
         : undefined,
       calendarReadiness: calendarContext.readiness,
       selectedCalendars: calendarContext.selectedCalendars,
       calendarEventProvider: calendarContext.provider,
-      now: generatedAt
+      now: generatedAt,
+      openDailyUrl
     });
     const sectionContent = classifySectionContent(input);
 
@@ -221,13 +226,30 @@ const classifySectionContent = (
 });
 
 const classifyWeatherContent = (input: DailySummaryInput): ScheduledSummarySectionContent => {
-  if (!input.configuration.sections.weather) return 'inapplicable';
-  return input.sections.weather.status === 'unavailable' ? 'unavailable' : 'qualifying';
+  if (!input.configuration.sections.weather || input.configuration.sectionPauses.weather) {
+    return 'inapplicable';
+  }
+
+  switch (input.sections.weather.status) {
+    case 'unavailable':
+      return 'unavailable';
+    case 'unconfigured':
+    case 'paused':
+      return 'inapplicable';
+    default:
+      return 'qualifying';
+  }
 };
 
 const classifyCommuteContent = (input: DailySummaryInput): ScheduledSummarySectionContent => {
-  if (!input.configuration.sections.commute) return 'inapplicable';
+  if (!input.configuration.sections.commute || input.configuration.sectionPauses.commute) {
+    return 'inapplicable';
+  }
   if (input.sections.commute.status === 'unavailable') return 'unavailable';
+  if (input.sections.commute.status === 'empty') return 'empty';
+  if (input.sections.commute.status === 'unconfigured' || input.sections.commute.status === 'paused') {
+    return 'inapplicable';
+  }
   if (!input.commuteSection) return 'inapplicable';
   return input.commuteSection.estimates.some((estimate) => estimate.outcome === 'available')
     ? 'qualifying'
@@ -235,8 +257,13 @@ const classifyCommuteContent = (input: DailySummaryInput): ScheduledSummarySecti
 };
 
 const classifyCalendarContent = (input: DailySummaryInput): ScheduledSummarySectionContent => {
-  if (!input.configuration.sections.calendar) return 'inapplicable';
+  if (!input.configuration.sections.calendar || input.configuration.sectionPauses.calendar) {
+    return 'inapplicable';
+  }
   if (input.sections.calendar.status === 'unavailable') return 'unavailable';
+  if (input.sections.calendar.status === 'unconfigured' || input.sections.calendar.status === 'paused') {
+    return 'inapplicable';
+  }
   if (!input.calendarSection) return 'empty';
   return input.calendarSection.today || input.calendarSection.weekAhead.length > 0
     ? 'qualifying'
@@ -244,7 +271,10 @@ const classifyCalendarContent = (input: DailySummaryInput): ScheduledSummarySect
 };
 
 const classifyTodoContent = (input: DailySummaryInput): ScheduledSummarySectionContent => {
-  if (!input.configuration.sections.todo) return 'inapplicable';
+  if (!input.configuration.sections.todo || input.configuration.sectionPauses.todo) {
+    return 'inapplicable';
+  }
   if (input.sections.todo.status === 'unavailable') return 'unavailable';
+  if (input.sections.todo.status === 'paused') return 'inapplicable';
   return input.todoSection ? 'qualifying' : 'empty';
 };

@@ -1118,13 +1118,13 @@ describe('Daily page server load', () => {
     );
     expect(sentMessages[0]).toEqual(
       expect.objectContaining({
-        text: expect.not.stringContaining('Commute')
+        text: expect.stringContaining('Commute\nNot configured\nAdd a Commute Route')
       })
     );
     expect(sentMessages[0]).toEqual(
       expect.objectContaining({
         html: expect.stringContaining('Connect Google Calendar to include Calendar Events.'),
-        text: expect.stringContaining('Calendar\nConnect Google Calendar to include Calendar Events.')
+        text: expect.stringContaining('Calendar\nNot configured\nConnect Google Calendar to include Calendar Events.')
       })
     );
     expect(sentMessages[0]).toEqual(
@@ -1207,7 +1207,7 @@ describe('Daily page server load', () => {
     ]);
     expect(sentMessages).toEqual([
       expect.objectContaining({
-        html: expect.stringContaining('<li>Office: 24 minutes</li><li>School: 39 minutes</li>'),
+        html: expect.stringContaining('Office: 24 minutes'),
         text: expect.stringContaining('Commute\nOffice: 24 minutes\nSchool: 39 minutes')
       })
     ]);
@@ -1230,7 +1230,10 @@ describe('Daily page server load', () => {
     expect(sentCommuteEstimateRequests).toEqual([]);
     expect(commuteUsageAdmissions).toEqual([]);
     expect(sentMessages[0]).toEqual(
-      expect.objectContaining({ text: expect.not.stringContaining('Commute') })
+      expect.objectContaining({
+        text: expect.stringContaining('Commute'),
+        html: expect.stringContaining('>Commute</h2>')
+      })
     );
   });
 
@@ -1257,7 +1260,7 @@ describe('Daily page server load', () => {
       expect(sentMessages).toEqual([
         expect.objectContaining({
           html: expect.stringContaining('Live Commute is unavailable right now.'),
-          text: expect.stringContaining('Commute\nLive Commute is unavailable right now.')
+          text: expect.stringContaining('Commute\nUnavailable\nLive Commute is unavailable right now.')
         })
       ]);
       expect(sentMessages[0]).toEqual(
@@ -1358,7 +1361,7 @@ describe('Daily page server load', () => {
     expect(sentMessages).toEqual([
       expect.objectContaining({
         html: expect.stringContaining('Live Calendar is unavailable right now.'),
-        text: expect.stringContaining('Calendar\nLive Calendar is unavailable right now.')
+        text: expect.stringContaining('Calendar\nUnavailable\nLive Calendar is unavailable right now.')
       })
     ]);
     expect(recordedDeliveryRecords).toEqual([
@@ -1469,7 +1472,7 @@ describe('Daily page server load', () => {
     expect(sentMessages).toEqual([
       expect.objectContaining({
         html: expect.stringContaining('Live weather is unavailable right now.'),
-        text: expect.stringContaining('Weather\nLive weather is unavailable right now.')
+        text: expect.stringContaining('Weather\nUnavailable\nLive weather is unavailable right now.')
       })
     ]);
     expect(recordedDeliveryRecords).toEqual([

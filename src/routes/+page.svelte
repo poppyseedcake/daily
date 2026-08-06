@@ -1937,7 +1937,8 @@
       todoTasks,
       weatherLocation,
       commuteRoutes,
-      commuteDays
+      commuteDays,
+      openDailyUrl: `${window.location.origin}/`
     }).then((previewInput) => {
       if (renderVersion === previewRenderVersion) {
         renderedSummaryHtml = renderDailySummary(previewInput).html;
@@ -5723,7 +5724,7 @@
         <summary>Daily Summary preview</summary>
         <div>
           <p>Next summary: {summaryTime} {userTimeZone}</p>
-          <span>{summaryTheme === 'dark' ? 'Dark preview' : 'Light preview'}</span>
+          <span>Single-palette Daily Grid preview</span>
           {@html renderedSummaryHtml}
           <button type="button" disabled={!canPreviewDailySummary(previewConfiguration)}>Preview Daily Summary</button>
         </div>
