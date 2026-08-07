@@ -69,6 +69,26 @@ describe('scheduled Daily Summary generation', () => {
     expect(dependencies.commuteEstimateProvider).not.toHaveBeenCalled();
   });
 
+  test('accepts request-scoped generation options for the shared production path', async () => {
+    const generator = createScheduledDailySummaryGenerator(
+      createProviderIsolationDependencies(configuration, {
+        calendarConnectionStore: {
+          load: vi.fn().mockResolvedValue({ status: 'not-connected' }),
+          loadSelectedCalendars: vi.fn().mockResolvedValue([])
+        }
+      })
+    );
+
+    const result = await generator.generate('user-1', {
+      openDailyUrl: 'https://preview.example.test/summary?tracking=private',
+      now: new Date('2026-07-14T06:00:00.000Z')
+    });
+
+    expect(result.input.generatedAt).toEqual(new Date('2026-07-14T06:00:00.000Z'));
+    expect(result.rendered.html).toContain('href="https://preview.example.test/"');
+    expect(result.rendered.html).not.toContain('tracking=private');
+  });
+
   test('loads current User setup and live provider data into the shared renderer', async () => {
     const currentTodoTitle = { value: 'Prepare first update' };
     const currentWeatherHigh = { value: 26 };
@@ -200,6 +220,7 @@ describe('scheduled Daily Summary generation', () => {
   test('does not initialize or call providers for disabled Summary Sections', async () => {
     const loadCalendarAccessToken = vi.fn();
     const calendarEventProvider = vi.fn();
+    const loadWeatherLocation = vi.fn().mockRejectedValue(new Error('broken weather data'));
     const weatherProvider = { fetchDailyForecast: vi.fn() };
     const commuteEstimateProvider = vi.fn();
     const loadCalendarConnection = vi.fn().mockRejectedValue(new Error('broken connection data'));
@@ -212,7 +233,7 @@ describe('scheduled Daily Summary generation', () => {
       userLifecycleStore: activeUserLifecycleStore,
       configurationStore: { load: vi.fn().mockResolvedValue(disabledConfiguration) },
       todoStore: { load: vi.fn().mockResolvedValue({ todoCategories: [], todoTasks: [] }) },
-      weatherLocationStore: { load: vi.fn().mockResolvedValue(null) },
+      weatherLocationStore: { load: loadWeatherLocation },
       commuteSetupStore: { load: vi.fn().mockResolvedValue(null) },
       calendarConnectionStore: {
         load: loadCalendarConnection,
@@ -241,6 +262,7 @@ describe('scheduled Daily Summary generation', () => {
       todo: 'inapplicable'
     });
     expect(weatherProvider.fetchDailyForecast).not.toHaveBeenCalled();
+    expect(loadWeatherLocation).not.toHaveBeenCalled();
     expect(commuteEstimateProvider).not.toHaveBeenCalled();
     expect(loadCalendarConnection).not.toHaveBeenCalled();
     expect(loadSelectedCalendars).not.toHaveBeenCalled();
@@ -280,6 +302,36 @@ describe('scheduled Daily Summary generation', () => {
       expect(output).toContain('Useful Todo');
       expect(output).not.toContain('private provider payload');
     }
+  });
+
+  test('contains a Weather location failure while preserving qualifying unrelated content', async () => {
+    const weatherAndTodoConfiguration: SummaryConfiguration = {
+      ...configuration,
+      sections: { weather: true, commute: false, calendar: false, todo: true }
+    };
+    const weatherProvider = { fetchDailyForecast: vi.fn() };
+    const generator = createScheduledDailySummaryGenerator(
+      createProviderIsolationDependencies(weatherAndTodoConfiguration, {
+        weatherLocationStore: {
+          load: vi.fn().mockRejectedValue(new Error('private Weather location failure'))
+        },
+        weatherProvider
+      })
+    );
+
+    const result = await generator.generate('user-1');
+
+    expect(result.hasQualifyingContent).toBe(true);
+    expect(result.sectionContent).toEqual({
+      weather: 'unavailable',
+      commute: 'inapplicable',
+      calendar: 'inapplicable',
+      todo: 'qualifying'
+    });
+    expect(result.rendered.text).toContain('Live weather is unavailable right now.');
+    expect(result.rendered.text).toContain('Useful Todo');
+    expect(result.rendered.text).not.toContain('private Weather location failure');
+    expect(weatherProvider.fetchDailyForecast).not.toHaveBeenCalled();
   });
 
   test('contains a Commute setup failure while preserving qualifying unrelated content', async () => {

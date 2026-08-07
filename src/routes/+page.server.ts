@@ -21,7 +21,7 @@ import {
   dailySummarySenderAddress
 } from '$lib/server/dailySummaryDelivery';
 import { buildDailySummaryInput } from '$lib/dailySummaryPreview';
-import { renderDailySummary } from '$lib/dailySummaryRenderer';
+import { dailySummarySubject } from '$lib/dailySummaryRenderer';
 import {
   calendarReadinessForAuthMode,
   calendarReadinessForUnavailableCredentials,
@@ -54,6 +54,11 @@ import { accountDeletionStore } from '$lib/server/db/accountDeletionStore';
 import { accountDeletionConfirmation } from '$lib/accountDeletion';
 import { deleteDailyAccount } from '$lib/server/accountDeletion';
 import { openAiWeatherSummaryProvider } from '$lib/server/weatherSummaryProvider';
+import { openMeteoWeatherForecastProvider } from '$lib/weatherForecast';
+import {
+  createDailySummaryGenerator,
+  ScheduledDailySummaryUserNotActiveError
+} from '$lib/server/scheduledDailySummaryGeneration';
 import { defaultCommuteDays } from '$lib/commuteRoute';
 import { env } from '$env/dynamic/private';
 import { fail } from '@sveltejs/kit';
@@ -98,13 +103,27 @@ type CalendarGenerationContext = {
   readiness: ReturnType<typeof calendarReadinessForUserConnection>;
 };
 
-const commuteEstimateProviderFor = (authState: ReturnType<typeof authStateFromSession>) => {
+const commuteEstimateProviderFor = (userId: string) => {
   try {
-    return googleMapsOperations.requestGateway(authState);
+    return googleMapsOperations.requestGateway({ mode: 'user', userId });
   } catch {
     return undefined;
   }
 };
+
+const dailySummaryGenerator = createDailySummaryGenerator({
+  userLifecycleStore,
+  configurationStore: userSummaryConfigurationStore,
+  todoStore: userTodoStore,
+  weatherLocationStore: userWeatherLocationStore,
+  commuteSetupStore: userCommuteSetupStore,
+  calendarConnectionStore: userCalendarConnectionStore,
+  loadCalendarAccessToken: loadGoogleCalendarAccessToken,
+  calendarEventProvider: googleCalendarEventProvider,
+  weatherProvider: openMeteoWeatherForecastProvider,
+  weatherSummaryProvider: openAiWeatherSummaryProvider,
+  commuteEstimateProvider: (userId) => commuteEstimateProviderFor(userId)
+});
 
 type LoadedCommuteSetup = Awaited<ReturnType<typeof loadUserCommuteSetup>>;
 
@@ -122,8 +141,11 @@ const loadPageCommuteSetup = async (userId: string): Promise<{
       setup: await loadUserCommuteSetup(userCommuteSetupStore, userId),
       unavailable: false
     };
-  } catch (error: unknown) {
-    console.warn('Failed to load User Commute setup.', { userId, error });
+  } catch {
+    console.warn('Failed to load User Commute setup.', {
+      userId,
+      classification: 'commute-setup-unavailable'
+    });
     return { setup: defaultLoadedCommuteSetup, unavailable: true };
   }
 };
@@ -211,11 +233,11 @@ export const load = async ({ request }) => {
   let summaryConfigurationLoadFailed = false;
   const savedSummaryConfiguration =
     authState.mode === 'user'
-      ? await userSummaryConfigurationStore.load(authState.userId).catch((error: unknown) => {
+      ? await userSummaryConfigurationStore.load(authState.userId).catch(() => {
           summaryConfigurationLoadFailed = true;
           console.warn('Failed to load User Summary Configuration.', {
             userId: authState.userId,
-            error
+            classification: 'summary-configuration-unavailable'
           });
 
           return null;
@@ -245,10 +267,10 @@ export const load = async ({ request }) => {
       ? await deliveryRecordStore
           .loadRecentForUser(authState.userId, new Date().toISOString())
           .then((records) => records.map(toDeliveryHistoryRecord))
-          .catch((error: unknown) => {
+          .catch(() => {
             console.warn('Failed to load User Delivery Records.', {
               userId: authState.userId,
-              error
+              classification: 'delivery-records-unavailable'
             });
 
             return [];
@@ -256,10 +278,10 @@ export const load = async ({ request }) => {
       : [];
   const weatherLocation =
     authState.mode === 'user'
-      ? await loadUserWeatherLocation(userWeatherLocationStore, authState.userId).catch((error: unknown) => {
+      ? await loadUserWeatherLocation(userWeatherLocationStore, authState.userId).catch(() => {
           console.warn('Failed to load User Weather Location.', {
             userId: authState.userId,
-            error
+            classification: 'weather-location-unavailable'
           });
 
           return null;
@@ -270,10 +292,10 @@ export const load = async ({ request }) => {
   const commuteSetup = commuteContext?.setup ?? null;
   const savedWeatherCities =
     authState.mode === 'user'
-      ? await userSavedWeatherCityStore.load(authState.userId).catch((error: unknown) => {
+      ? await userSavedWeatherCityStore.load(authState.userId).catch(() => {
           console.warn('Failed to load User Saved Weather Cities.', {
             userId: authState.userId,
-            error
+            classification: 'saved-weather-cities-unavailable'
           });
 
           return [];
@@ -281,10 +303,10 @@ export const load = async ({ request }) => {
       : [];
   const savedCommuteAddresses =
     authState.mode === 'user'
-      ? await userSavedCommuteAddressStore.load(authState.userId).catch((error: unknown) => {
+      ? await userSavedCommuteAddressStore.load(authState.userId).catch(() => {
           console.warn('Failed to load User Saved Commute Addresses.', {
             userId: authState.userId,
-            error
+            classification: 'saved-commute-addresses-unavailable'
           });
 
           return [];
@@ -292,10 +314,10 @@ export const load = async ({ request }) => {
       : [];
   const calendarConnection =
     authState.mode === 'user'
-      ? await userCalendarConnectionStore.load(authState.userId).catch((error: unknown) => {
+      ? await userCalendarConnectionStore.load(authState.userId).catch(() => {
           console.warn('Failed to load User Calendar Connection.', {
             userId: authState.userId,
-            error
+            classification: 'calendar-connection-unavailable'
           });
 
           return { status: 'not-connected' } as const;
@@ -407,10 +429,32 @@ export const load = async ({ request }) => {
             weatherSummaryProvider: openAiWeatherSummaryProvider,
             openDailyUrl
           } as const;
-          const input = await buildDailySummaryInput(generationSetup);
           const calendarSummaryIsActive =
             validConfiguration.data.sections.calendar &&
             !validConfiguration.data.sectionPauses.calendar;
+          let generatedSummary;
+          try {
+            generatedSummary = await dailySummaryGenerator.generate(authState.userId, {
+              configuration: validConfiguration.data,
+              openDailyUrl,
+              calendarContext: calendarSummaryIsActive
+                ? {
+                    readiness: calendarReadiness,
+                    selectedCalendars,
+                    provider: calendarGenerationContext?.accessToken
+                      ? googleCalendarEventProvider(calendarGenerationContext.accessToken)
+                      : undefined
+                  }
+                : undefined
+            });
+          } catch (error) {
+            if (error instanceof ScheduledDailySummaryUserNotActiveError) {
+              return null;
+            }
+
+            throw error;
+          }
+          const input = generatedSummary.input;
           // The dashboard Calendar agenda is independent from the Calendar
           // Summary Section, so pausing the Summary must not hide page context.
           const calendarAgendaInput = calendarSummaryIsActive
@@ -441,7 +485,7 @@ export const load = async ({ request }) => {
           }
 
           return {
-            html: renderDailySummary(input).html,
+            html: generatedSummary.rendered.html,
             calendarSection: calendarAgendaInput?.calendarSection ?? null
           };
         })()
@@ -540,71 +584,35 @@ export const actions = {
       userSummaryConfigurationStore,
       authState.userId
     );
-    const todoEnabled = configuration.sections.todo && !configuration.sectionPauses.todo;
-    const todoStateContext = await loadUserTodoStateSafely(
-      userTodoStore,
-      authState.userId,
-      { enabled: todoEnabled }
-    );
-    const todoState = todoStateContext.state;
-    const todoStateLoadFailed = todoStateContext.unavailable;
-
-    if (todoStateLoadFailed) {
-      console.warn('Failed to load User Todo state for Test Daily Summary.', {
-        userId: authState.userId,
-        classification: 'todo-state-unavailable'
-      });
-    }
-    const weatherLocation = await loadUserWeatherLocation(userWeatherLocationStore, authState.userId);
-    const commuteContext = await loadPageCommuteSetup(authState.userId);
     const validConfiguration = summaryConfigurationSchema.safeParse(configuration);
-    const validTodoState = todoStateSchema.safeParse(todoState);
 
     if (!validConfiguration.success) {
       return validationFailureResponse;
     }
 
-    const generationTodoState = validTodoState.success
-      ? validTodoState.data
-      : createDefaultTodoState();
-
-    const calendarConnection = await userCalendarConnectionStore.load(authState.userId);
-    const calendarGenerationContext =
-      validConfiguration.data.sections.calendar && !validConfiguration.data.sectionPauses.calendar
-      ? await loadCalendarGenerationContext(authState.userId, calendarConnection)
-      : {
-          accessToken: null,
-          selectedCalendars: [],
-          readiness: calendarReadinessForAuthMode('user')
-        };
-
-    const renderedSummary = renderDailySummary(
-      await buildDailySummaryInput({
+    let generatedSummary;
+    try {
+      generatedSummary = await dailySummaryGenerator.generate(authState.userId, {
         configuration: validConfiguration.data,
-        todoCategories: generationTodoState.todoCategories,
-        todoTasks: generationTodoState.todoTasks,
-        todoStateUnavailable: todoStateLoadFailed || !validTodoState.success,
-        weatherLocation,
-        weatherSummaryProvider: openAiWeatherSummaryProvider,
-        commuteRoutes: commuteContext.setup.routes,
-        commuteDays: commuteContext.setup.days,
-        commuteSetupUnavailable: commuteContext.unavailable,
-        commuteEstimateMode: 'live',
-        commuteEstimateProvider: commuteEstimateProviderFor(authState),
-        calendarReadiness: calendarGenerationContext.readiness,
-        selectedCalendars: calendarGenerationContext.selectedCalendars,
-        calendarEventProvider: calendarGenerationContext.accessToken
-          ? googleCalendarEventProvider(calendarGenerationContext.accessToken)
-          : undefined,
         openDailyUrl
-      })
-    );
+      });
+    } catch (error) {
+      if (error instanceof ScheduledDailySummaryUserNotActiveError) {
+        return deletingUserTestDeliveryFailure;
+      }
+
+      throw error;
+    }
     const message = {
       to: authState.summaryRecipient,
       from: dailySummarySenderAddress(),
-      subject: 'Test Daily Summary',
-      html: renderedSummary.html,
-      text: renderedSummary.text
+      subject: dailySummarySubject(
+        'test',
+        generatedSummary.input.generatedAt ?? new Date(),
+        generatedSummary.input.configuration.userTimeZone
+      ),
+      html: generatedSummary.rendered.html,
+      text: generatedSummary.rendered.text
     };
     let accepted;
 

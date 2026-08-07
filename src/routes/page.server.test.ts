@@ -32,6 +32,7 @@ const {
   loadFailure,
   todoLoadFailure,
   lifecycleActive,
+  lifecycleResponses,
   deletionStart,
   deletionFinish
 } = vi.hoisted(() => ({
@@ -66,6 +67,7 @@ const {
     outcome: 'available' as 'available' | 'unavailable' | 'private-failure'
   },
   validationFailure: { enabled: false },
+  lifecycleResponses: [] as boolean[],
   recordedDeliveryRecords: [] as Array<{ userId: string; record: unknown }>,
   sentForecastRequests: [] as unknown[],
   sentCommuteEstimateRequests: [] as unknown[],
@@ -190,6 +192,10 @@ vi.mock('$lib/server/auth', () => ({
 vi.mock('$lib/server/db/userLifecycleStore', () => ({
   userLifecycleStore: {
     async isActive() {
+      if (lifecycleResponses.length > 0) {
+        return lifecycleResponses.shift()!;
+      }
+
       return lifecycleActive.value;
     }
   }
@@ -569,6 +575,7 @@ describe('Daily page server load', () => {
     todoLoadFailure.enabled = false;
     commuteSetupLoadFailure.enabled = false;
     lifecycleActive.value = true;
+    lifecycleResponses.length = 0;
     deletionStart.mockReset().mockResolvedValue('started');
     deletionFinish.mockReset().mockResolvedValue(true);
     deliveryProviderMode.outcome = 'accepted';
@@ -580,6 +587,7 @@ describe('Daily page server load', () => {
     savedConfiguration.sections.calendar = true;
     savedConfiguration.sectionPauses.calendar = false;
     savedConfiguration.sections.commute = true;
+    savedConfiguration.summaryDeliveryEnabled = true;
     savedCommuteSetup.routes.length = 0;
     savedCommuteSetup.days.splice(0, savedCommuteSetup.days.length, 'monday', 'tuesday', 'wednesday', 'thursday', 'friday');
     validationFailure.enabled = false;
@@ -970,7 +978,7 @@ describe('Daily page server load', () => {
     });
   });
 
-  test('renders the signed-in User Commute preview from its saved baseline without Maps usage', async () => {
+  test('renders the signed-in User Commute preview through live production generation', async () => {
     getSession.mockResolvedValue({
       user: { id: 'user-1', email: 'user@example.com', emailVerified: true }
     });
@@ -978,9 +986,22 @@ describe('Daily page server load', () => {
 
     const result = await loadPage();
 
-    expect(result.renderedSummaryHtml).toContain('Office: 26 minutes');
-    expect(commuteUsageAdmissions).toEqual([]);
-    expect(sentCommuteEstimateRequests).toEqual([]);
+    expect(result.renderedSummaryHtml).toContain('Office: 24 minutes');
+    expect(commuteUsageAdmissions).toHaveLength(1);
+    expect(sentCommuteEstimateRequests).toHaveLength(1);
+  });
+
+  test('keeps the signed-in User preview available when Summary Delivery is disabled', async () => {
+    getSession.mockResolvedValue({
+      user: { id: 'user-1', email: 'user@example.com', emailVerified: true }
+    });
+    savedConfiguration.summaryDeliveryEnabled = false;
+
+    await expect(loadPage()).resolves.toEqual(
+      expect.objectContaining({
+        renderedSummaryHtml: expect.stringContaining('Good morning')
+      })
+    );
   });
 
   test('keeps the User preview available when Commute setup cannot be loaded', async () => {
@@ -1293,6 +1314,23 @@ describe('Daily page server load', () => {
         title: 'Draft update'
       })
     ]);
+  });
+
+  test('sends Test Delivery while Summary Delivery is disabled with the local dated subject', async () => {
+    getSession.mockResolvedValue({
+      user: { id: 'user-1', email: 'user@example.com', emailVerified: true }
+    });
+    savedConfiguration.summaryDeliveryEnabled = false;
+
+    await expect(sendTestDailySummary()).resolves.toEqual({ outcome: 'sent' });
+
+    expect(sentMessages).toEqual([
+      expect.objectContaining({
+        subject: 'Test · Your Daily Summary · Tuesday, 7 July',
+        to: 'user@example.com'
+      })
+    ]);
+    expect(recordedDeliveryRecords).toHaveLength(1);
   });
 
   test('sends a test Daily Summary when Todo state cannot be loaded', async () => {
@@ -1809,5 +1847,34 @@ describe('Daily page server load', () => {
       message: 'User deletion has started, so no Daily Summary was sent.'
     });
     expect(sentMessages).toEqual([]);
+  });
+
+  test('returns a user-deleting failure when deletion starts during Test Delivery generation', async () => {
+    getSession.mockResolvedValue({
+      user: { id: 'user-1', email: 'user@example.com', emailVerified: true }
+    });
+    lifecycleResponses.push(true, false);
+
+    await expect(sendTestDailySummary()).resolves.toEqual({
+      outcome: 'failed',
+      reason: 'user-deleting',
+      message: 'User deletion has started, so no Daily Summary was sent.'
+    });
+    expect(sentMessages).toEqual([]);
+    expect(recordedDeliveryRecords).toEqual([]);
+  });
+
+  test('keeps Preview available when deletion starts during generation', async () => {
+    getSession.mockResolvedValue({
+      user: { id: 'user-1', email: 'user@example.com', emailVerified: true }
+    });
+    lifecycleResponses.push(true, false);
+
+    await expect(loadPage()).resolves.toEqual(
+      expect.objectContaining({
+        renderedSummaryHtml: null,
+        calendarSection: null
+      })
+    );
   });
 });

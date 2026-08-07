@@ -1,10 +1,21 @@
 import { describe, expect, test } from 'vitest';
 import { defaultSummaryConfiguration } from './summaryConfiguration';
-import { renderDailySummary } from './dailySummaryRenderer';
+import { dailySummarySubject, renderDailySummary } from './dailySummaryRenderer';
 import { buildDemoCalendarSection } from './demoCalendar';
 import { buildTodoSection } from './todo';
 
 describe('Daily Summary renderer', () => {
+  test('builds the English subject from the actual local generation date', () => {
+    const generatedAt = new Date('2026-07-07T12:00:00.000Z');
+
+    expect(dailySummarySubject('scheduled', generatedAt, 'America/New_York')).toBe(
+      'Your Daily Summary · Tuesday, 7 July'
+    );
+    expect(dailySummarySubject('test', generatedAt, 'America/New_York')).toBe(
+      'Test · Your Daily Summary · Tuesday, 7 July'
+    );
+  });
+
   test('returns HTML and plain text from the same Daily Summary input in section order', () => {
     const rendered = renderDailySummary({
       configuration: defaultSummaryConfiguration,
