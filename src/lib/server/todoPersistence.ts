@@ -54,6 +54,28 @@ export const loadUserTodoState = async (
   };
 };
 
+export const loadUserTodoStateSafely = async (
+  store: Pick<UserTodoPersistenceStore, 'load'>,
+  userId: string,
+  { enabled = true }: { enabled?: boolean } = {}
+): Promise<{
+  state: TodoStateInput;
+  unavailable: boolean;
+}> => {
+  if (!enabled) {
+    return { state: createDefaultTodoState(), unavailable: false };
+  }
+
+  try {
+    return {
+      state: await loadUserTodoState(store, userId),
+      unavailable: false
+    };
+  } catch {
+    return { state: createDefaultTodoState(), unavailable: true };
+  }
+};
+
 export const saveUserTodoState = async (
   store: UserTodoPersistenceStore,
   userId: string,

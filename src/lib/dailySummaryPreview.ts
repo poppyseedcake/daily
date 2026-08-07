@@ -36,6 +36,7 @@ export type DailySummaryGenerationSetup = {
   configuration: SummaryConfiguration;
   todoCategories: TodoCategory[];
   todoTasks: TodoTask[];
+  todoStateUnavailable?: boolean;
   weatherLocation?: WeatherLocation | null;
   weatherProvider?: WeatherForecastProvider;
   weatherSummaryProvider?: WeatherSummaryProvider;
@@ -56,6 +57,7 @@ export const buildDailySummaryInput = async ({
   configuration,
   todoCategories,
   todoTasks,
+  todoStateUnavailable = false,
   weatherLocation = null,
   weatherProvider = openMeteoWeatherForecastProvider,
   weatherSummaryProvider,
@@ -94,7 +96,7 @@ export const buildDailySummaryInput = async ({
     now
   });
 
-  const todoSection = buildTodoSection(todoCategories, todoTasks);
+  const todoSection = todoStateUnavailable ? null : buildTodoSection(todoCategories, todoTasks);
 
   return {
     configuration,
@@ -104,7 +106,7 @@ export const buildDailySummaryInput = async ({
       weather: weather.sectionState,
       commute: commuteGeneration.sectionState,
       calendar: calendarGeneration.sectionState,
-      todo: buildTodoGenerationState({ configuration, todoSection })
+      todo: buildTodoGenerationState({ configuration, todoSection, todoStateUnavailable })
     },
     calendarSection: calendarGeneration.calendarSection,
     commuteSection: commuteGeneration.commuteSection,
@@ -514,13 +516,23 @@ const buildWeatherGenerationState = async ({
 
 const buildTodoGenerationState = ({
   configuration,
-  todoSection
+  todoSection,
+  todoStateUnavailable
 }: {
   configuration: SummaryConfiguration;
   todoSection: DailySummaryInput['todoSection'];
+  todoStateUnavailable: boolean;
 }): DailySummaryInput['sections']['todo'] => {
   if (configuration.sectionPauses.todo || !configuration.sections.todo) {
     return { status: 'paused', label: 'Todo', detail: 'Todo is paused.' };
+  }
+
+  if (todoStateUnavailable) {
+    return {
+      status: 'unavailable',
+      label: 'Todo',
+      reason: 'Todo data is temporarily unavailable.'
+    };
   }
 
   return todoSection

@@ -448,6 +448,36 @@ describe('Daily Summary renderer', () => {
     expect(rendered.text).not.toContain('Empty Category');
   });
 
+  test('renders the accepted quiet urgency dots with accessible descriptions', () => {
+    const rendered = renderDailySummary({
+      configuration: {
+        ...defaultSummaryConfiguration,
+        sections: { weather: false, commute: false, calendar: false, todo: true }
+      },
+      sections: {
+        weather: { status: 'available', label: 'Weather', detail: 'Hidden.' },
+        commute: { status: 'available', label: 'Commute', detail: 'Hidden.' },
+        calendar: { status: 'available', label: 'Calendar', detail: 'Hidden.' },
+        todo: { status: 'active', label: 'Todo', detail: 'Active Todo Tasks.' }
+      },
+      todoSection: buildTodoSection([], [
+        { id: 'high', title: 'High task', categoryId: null, urgency: 'high', position: 1 },
+        { id: 'medium', title: 'Medium task', categoryId: null, urgency: 'medium', position: 2 },
+        { id: 'low', title: 'Low task', categoryId: null, urgency: 'low', position: 3 }
+      ])
+    });
+
+    expect(rendered.html).toContain('color:#c76856;">●</span>');
+    expect(rendered.html).toContain('color:#d6a52d;">●</span>');
+    expect(rendered.html).toContain('color:#91a1a2;">○</span>');
+    expect(rendered.html).toContain('daily-screen-reader-only">High urgency</span>');
+    expect(rendered.html).toContain('daily-screen-reader-only">Medium urgency</span>');
+    expect(rendered.html).toContain('daily-screen-reader-only">Low urgency</span>');
+    expect(rendered.text).toContain('High task — High urgency');
+    expect(rendered.text).toContain('Medium task — Medium urgency');
+    expect(rendered.text).toContain('Low task — Low urgency');
+  });
+
   test('keeps Todo Tasks visible when category metadata is missing', () => {
     const rendered = renderDailySummary({
       configuration: {

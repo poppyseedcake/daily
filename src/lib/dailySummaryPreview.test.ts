@@ -1023,4 +1023,46 @@ describe('Daily Summary preview input', () => {
     expect(rendered.html).toContain('>Todo</h2>');
     expect(rendered.text).toContain('Todo\nNothing scheduled\nThere are no active Todo Tasks.');
   });
+
+  test('renders Todo as unavailable when its state cannot be loaded', async () => {
+    const preview = await buildDailySummaryInput({
+      configuration,
+      todoCategories,
+      todoTasks,
+      todoStateUnavailable: true
+    });
+    const rendered = renderDailySummary(preview);
+
+    expect(preview.todoSection).toBeNull();
+    expect(preview.sections.todo).toEqual({
+      status: 'unavailable',
+      label: 'Todo',
+      reason: 'Todo data is temporarily unavailable.'
+    });
+    expect(rendered.text).toContain(
+      'Todo\nUnavailable\nTodo data is temporarily unavailable.'
+    );
+    expect(rendered.text).not.toContain('Buy coffee');
+  });
+
+  test('keeps paused Todo ahead of an unavailable Todo state', async () => {
+    const preview = await buildDailySummaryInput({
+      configuration: {
+        ...configuration,
+        sectionPauses: { ...configuration.sectionPauses, todo: true }
+      },
+      todoCategories,
+      todoTasks,
+      todoStateUnavailable: true
+    });
+    const rendered = renderDailySummary(preview);
+
+    expect(preview.sections.todo).toEqual({
+      status: 'paused',
+      label: 'Todo',
+      detail: 'Todo is paused.'
+    });
+    expect(rendered.text).toContain('Todo\nPaused\nTodo is paused.');
+    expect(rendered.text).not.toContain('Todo data is temporarily unavailable.');
+  });
 });

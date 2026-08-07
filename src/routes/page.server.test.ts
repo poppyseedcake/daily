@@ -30,12 +30,14 @@ const {
   calendarEventProviderMode,
   validationFailure,
   loadFailure,
+  todoLoadFailure,
   lifecycleActive,
   deletionStart,
   deletionFinish
 } = vi.hoisted(() => ({
   getSession: vi.fn(),
   loadFailure: { enabled: false },
+  todoLoadFailure: { enabled: false },
   lifecycleActive: { value: true },
   deletionStart: vi.fn(),
   deletionFinish: vi.fn(),
@@ -224,7 +226,7 @@ vi.mock('$lib/server/db/summaryConfigurationStore', () => ({
 vi.mock('$lib/server/db/todoStore', () => ({
   userTodoStore: {
     async load(userId: string) {
-      if (loadFailure.enabled) {
+      if (loadFailure.enabled || todoLoadFailure.enabled) {
         throw new Error('store unavailable');
       }
 
@@ -564,6 +566,7 @@ describe('Daily page server load', () => {
   beforeEach(() => {
     getSession.mockReset();
     loadFailure.enabled = false;
+    todoLoadFailure.enabled = false;
     commuteSetupLoadFailure.enabled = false;
     lifecycleActive.value = true;
     deletionStart.mockReset().mockResolvedValue('started');
@@ -996,6 +999,24 @@ describe('Daily page server load', () => {
     );
   });
 
+  test('keeps the User preview available when Todo state cannot be loaded', async () => {
+    getSession.mockResolvedValue({
+      user: { id: 'user-1', email: 'user@example.com', emailVerified: true }
+    });
+    todoLoadFailure.enabled = true;
+
+    const result = await loadPage();
+
+    expect(result.renderedSummaryHtml).toContain('Todo data is temporarily unavailable.');
+    expect(result.renderedSummaryHtml).toContain('Clear. Low 16C, high 23C.');
+    expect(result.renderedSummaryHtml).not.toContain('Draft update');
+    expect(console.warn).toHaveBeenCalledWith(
+      'Failed to load User Todo state.',
+      expect.objectContaining({ userId: 'user-1' })
+    );
+    expect(JSON.stringify(vi.mocked(console.warn).mock.calls)).not.toContain('store unavailable');
+  });
+
   test('persists successful Calendar consent and reports a connected Calendar state', async () => {
     getSession.mockResolvedValue({
       user: { id: 'user-1', email: 'user@example.com', emailVerified: true }
@@ -1272,6 +1293,29 @@ describe('Daily page server load', () => {
         title: 'Draft update'
       })
     ]);
+  });
+
+  test('sends a test Daily Summary when Todo state cannot be loaded', async () => {
+    getSession.mockResolvedValue({
+      user: { id: 'user-1', email: 'user@example.com', emailVerified: true }
+    });
+    todoLoadFailure.enabled = true;
+
+    await expect(sendTestDailySummary()).resolves.toEqual({ outcome: 'sent' });
+
+    expect(sentMessages[0]).toEqual(expect.objectContaining({
+      html: expect.stringContaining('Todo data is temporarily unavailable.'),
+      text: expect.stringContaining(
+        'Todo\nUnavailable\nTodo data is temporarily unavailable.'
+      )
+    }));
+    expect(sentMessages[0]).toEqual(expect.objectContaining({
+      text: expect.stringContaining('Clear. Low 16C, high 23C.')
+    }));
+    expect(sentMessages[0]).toEqual(expect.objectContaining({
+      text: expect.not.stringContaining('Draft update')
+    }));
+    expect(JSON.stringify(vi.mocked(console.warn).mock.calls)).not.toContain('store unavailable');
   });
 
   test('uses live qualifying Commute Routes in HTML and text test delivery', async () => {

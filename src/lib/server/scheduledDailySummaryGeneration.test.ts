@@ -420,6 +420,73 @@ describe('scheduled Daily Summary generation', () => {
     expect(result.rendered.text).not.toContain('private Calendar provider failure');
   });
 
+  test('contains a Todo state failure while preserving the other Summary Sections and delivery input', async () => {
+    const weatherAndTodoConfiguration: SummaryConfiguration = {
+      ...configuration,
+      sections: { weather: true, commute: false, calendar: false, todo: true }
+    };
+    const generator = createScheduledDailySummaryGenerator(
+      createProviderIsolationDependencies(weatherAndTodoConfiguration, {
+        todoStore: {
+          load: vi.fn().mockRejectedValue(new Error('private Todo state failure'))
+        },
+        weatherLocationStore: {
+          load: vi.fn().mockResolvedValue({
+            label: 'Warsaw', latitude: 52.2297, longitude: 21.0122
+          })
+        },
+        weatherProvider: {
+          fetchDailyForecast: vi.fn().mockResolvedValue({
+            outcome: 'available',
+            forecast: {
+              dates: ['2026-07-14'],
+              weatherCodes: [0],
+              minimumTemperaturesCelsius: [17],
+              maximumTemperaturesCelsius: [26],
+              precipitationProbabilities: [10]
+            }
+          })
+        }
+      })
+    );
+
+    const result = await generator.generate('user-1');
+
+    expect(result.input.sections.todo).toEqual({
+      status: 'unavailable',
+      label: 'Todo',
+      reason: 'Todo data is temporarily unavailable.'
+    });
+    expect(result.input.todoSection).toBeNull();
+    expect(result.rendered.text).toContain('Clear. Low 17C, high 26C.');
+    expect(result.rendered.text).toContain(
+      'Todo\nUnavailable\nTodo data is temporarily unavailable.'
+    );
+    expect(result.rendered.text).not.toContain('private Todo state failure');
+    expect(result.hasQualifyingContent).toBe(true);
+  });
+
+  test('does not load Todo state when Todo is paused and keeps the paused state', async () => {
+    const todoStore = { load: vi.fn().mockRejectedValue(new Error('should not load')) };
+    const generator = createScheduledDailySummaryGenerator(
+      createProviderIsolationDependencies({
+        ...configuration,
+        sections: { weather: false, commute: false, calendar: false, todo: true },
+        sectionPauses: { ...configuration.sectionPauses, todo: true }
+      }, { todoStore })
+    );
+
+    const result = await generator.generate('user-1');
+
+    expect(todoStore.load).not.toHaveBeenCalled();
+    expect(result.input.sections.todo).toEqual({
+      status: 'paused',
+      label: 'Todo',
+      detail: 'Todo is paused.'
+    });
+    expect(result.rendered.text).not.toContain('should not load');
+  });
+
   test('contains a Calendar connection failure while preserving qualifying unrelated content', async () => {
     const calendarAndTodoConfiguration: SummaryConfiguration = {
       ...configuration,
