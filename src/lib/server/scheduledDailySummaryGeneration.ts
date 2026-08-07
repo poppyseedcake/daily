@@ -16,7 +16,7 @@ import type { SavedSelectedCalendar } from '$lib/selectedCalendars';
 import type { UserSummaryConfigurationStore } from './summaryConfigurationPersistence';
 import { loadUserSummaryConfiguration } from './summaryConfigurationPersistence';
 import type { UserTodoPersistenceStore } from './todoPersistence';
-import { loadUserTodoState } from './todoPersistence';
+import { loadUserTodoStateSafely } from './todoPersistence';
 import type { UserWeatherLocationPersistenceStore } from './weatherLocationPersistence';
 import { loadUserWeatherLocation } from './weatherLocationPersistence';
 import type { UserCommuteSetupStore } from './commuteSetupPersistence';
@@ -81,8 +81,10 @@ export const createScheduledDailySummaryGenerator = ({
     }
 
     const configuration = await loadUserSummaryConfiguration(configurationStore, userId);
-    const [todoState, weatherLocation, commuteContext, calendarContext] = await Promise.all([
-      loadUserTodoState(todoStore, userId),
+    const [todoContext, weatherLocation, commuteContext, calendarContext] = await Promise.all([
+      loadUserTodoStateSafely(todoStore, userId, {
+        enabled: configuration.sections.todo && !configuration.sectionPauses.todo
+      }),
       loadUserWeatherLocation(weatherLocationStore, userId),
       loadScheduledCommuteContext({
         userId,
@@ -102,8 +104,9 @@ export const createScheduledDailySummaryGenerator = ({
     const input = await buildDailySummaryInput({
       authMode: 'user',
       configuration,
-      todoCategories: todoState.todoCategories,
-      todoTasks: todoState.todoTasks,
+      todoCategories: todoContext.state.todoCategories,
+      todoTasks: todoContext.state.todoTasks,
+      todoStateUnavailable: todoContext.unavailable,
       weatherLocation,
       weatherProvider,
       weatherSummaryProvider,

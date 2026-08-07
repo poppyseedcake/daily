@@ -377,7 +377,7 @@ const renderTodoHtml = (section: TodoSection) => {
 };
 
 const renderUrgencyHtml = (urgency: TodoUrgency) =>
-  ` <span aria-hidden="true" style="color:#4d733e;">●</span><span class="daily-screen-reader-only">${escapeHtml(urgencyLabel(urgency))}</span>`;
+  ` <span aria-hidden="true" style="color:${urgencyDotColors[urgency]};">${urgencyDotGlyphs[urgency]}</span><span class="daily-screen-reader-only">${escapeHtml(urgencyLabel(urgency))}</span>`;
 
 const renderText = ({
   sections,
@@ -521,6 +521,18 @@ const trafficDescriptionFor = (estimate: CommuteSection['estimates'][number]) =>
 
 const urgencyLabel = (urgency: TodoUrgency) =>
   urgency === 'high' ? 'High urgency' : urgency === 'medium' ? 'Medium urgency' : 'Low urgency';
+
+const urgencyDotColors: Record<TodoUrgency, string> = {
+  high: '#c76856',
+  medium: '#d6a52d',
+  low: '#91a1a2'
+};
+
+const urgencyDotGlyphs: Record<TodoUrgency, string> = {
+  high: '●',
+  medium: '●',
+  low: '○'
+};
 
 const calendarEventMarkerHtml = (calendarColor: string | null | undefined) => {
   const color = /^#[0-9a-f]{6}$/i.test(calendarColor ?? '') ? calendarColor : '#d9ded8';

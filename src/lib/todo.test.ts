@@ -255,6 +255,45 @@ describe('Todo Module category lifecycle', () => {
 });
 
 describe('Todo Module Daily Summary output', () => {
+  test('excludes completed Todo Tasks from the active Daily Summary state', () => {
+    const categories: TodoCategory[] = [
+      { id: 'work', name: 'Work', position: 1 },
+      { id: 'empty-after-completion', name: 'Empty after completion', position: 2 }
+    ];
+    const tasks: TodoTask[] = [
+      {
+        id: 'completed-uncategorized',
+        title: 'Already done',
+        categoryId: null,
+        urgency: 'high',
+        position: 1,
+        completed: true
+      },
+      {
+        id: 'active-uncategorized',
+        title: 'Still pending',
+        categoryId: null,
+        urgency: 'low',
+        position: 2,
+        completed: false
+      },
+      {
+        id: 'completed-categorized',
+        title: 'Completed work',
+        categoryId: 'work',
+        urgency: 'medium',
+        position: 1,
+        completed: true
+      }
+    ];
+
+    expect(buildTodoSection(categories, tasks)).toEqual({
+      label: 'Todo Tasks',
+      uncategorizedTasks: [tasks[1]],
+      categoryGroups: []
+    });
+  });
+
   test('prepares render-ready Todo Section content in Daily Summary order', () => {
     const categories: TodoCategory[] = [
       { id: 'work', name: 'Work', position: 2 },

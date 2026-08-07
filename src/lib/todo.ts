@@ -194,19 +194,21 @@ export const buildTodoSection = (
   categories: TodoCategory[],
   tasks: TodoTask[]
 ): TodoSection | null => {
-  if (tasks.length === 0) {
+  const activeTasks = tasks.filter((task) => task.completed !== true);
+
+  if (activeTasks.length === 0) {
     return null;
   }
 
   const knownCategoryIds = new Set(categories.map((category) => category.id));
-  const uncategorizedTasks = tasks
+  const uncategorizedTasks = activeTasks
     .filter((task) => task.categoryId === null || !knownCategoryIds.has(task.categoryId))
     .toSorted((first, second) => first.position - second.position);
   const categoryGroups = categories
     .toSorted((first, second) => first.position - second.position)
     .map((category) => ({
       category,
-      tasks: tasksForTodoCategory(tasks, category.id)
+      tasks: tasksForTodoCategory(activeTasks, category.id)
     }))
     .filter((group) => group.tasks.length > 0);
 

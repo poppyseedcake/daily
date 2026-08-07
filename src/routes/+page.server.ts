@@ -39,7 +39,7 @@ import {
   loadGoogleCalendarAccessToken
 } from '$lib/server/googleCalendarList';
 import { loadUserSummaryConfiguration } from '$lib/server/summaryConfigurationPersistence';
-import { loadUserTodoState } from '$lib/server/todoPersistence';
+import { loadUserTodoStateSafely } from '$lib/server/todoPersistence';
 import { loadUserWeatherLocation } from '$lib/server/weatherLocationPersistence';
 import { loadUserCommuteSetup } from '$lib/server/commuteSetupPersistence';
 import {
@@ -227,17 +227,19 @@ export const load = async ({ request }) => {
         ? null
         : savedSummaryConfiguration ?? defaultSummaryConfiguration
       : null;
-  const todoState =
+  const todoStateContext =
     authState.mode === 'user'
-      ? await loadUserTodoState(userTodoStore, authState.userId).catch((error: unknown) => {
-          console.warn('Failed to load User Todo state.', {
-            userId: authState.userId,
-            error
-          });
+      ? await loadUserTodoStateSafely(userTodoStore, authState.userId)
+      : { state: createDefaultTodoState(), unavailable: false };
+  const todoState = todoStateContext.state;
+  const todoStateLoadFailed = todoStateContext.unavailable;
 
-          return createDefaultTodoState();
-        })
-      : createDefaultTodoState();
+  if (todoStateLoadFailed && authState.mode === 'user') {
+    console.warn('Failed to load User Todo state.', {
+      userId: authState.userId,
+      classification: 'todo-state-unavailable'
+    });
+  }
   const deliveryRecords =
     authState.mode === 'user'
       ? await deliveryRecordStore
@@ -366,9 +368,13 @@ export const load = async ({ request }) => {
           const validConfiguration = summaryConfigurationSchema.safeParse(summaryConfiguration);
           const validTodoState = todoStateSchema.safeParse(todoState);
 
-          if (!validConfiguration.success || !validTodoState.success) {
+          if (!validConfiguration.success) {
             return null;
           }
+
+          const generationTodoState = validTodoState.success
+            ? validTodoState.data
+            : createDefaultTodoState();
 
           const selectedCalendars =
             calendarConnection?.status === 'connected'
@@ -386,8 +392,9 @@ export const load = async ({ request }) => {
           const generationSetup = {
             authMode: 'user',
             configuration: validConfiguration.data,
-            todoCategories: validTodoState.data.todoCategories,
-            todoTasks: validTodoState.data.todoTasks,
+            todoCategories: generationTodoState.todoCategories,
+            todoTasks: generationTodoState.todoTasks,
+            todoStateUnavailable: todoStateLoadFailed || !validTodoState.success,
             weatherLocation,
             commuteRoutes: commuteSetup?.routes ?? [],
             commuteDays: commuteSetup?.days ?? [],
@@ -533,15 +540,33 @@ export const actions = {
       userSummaryConfigurationStore,
       authState.userId
     );
-    const todoState = await loadUserTodoState(userTodoStore, authState.userId);
+    const todoEnabled = configuration.sections.todo && !configuration.sectionPauses.todo;
+    const todoStateContext = await loadUserTodoStateSafely(
+      userTodoStore,
+      authState.userId,
+      { enabled: todoEnabled }
+    );
+    const todoState = todoStateContext.state;
+    const todoStateLoadFailed = todoStateContext.unavailable;
+
+    if (todoStateLoadFailed) {
+      console.warn('Failed to load User Todo state for Test Daily Summary.', {
+        userId: authState.userId,
+        classification: 'todo-state-unavailable'
+      });
+    }
     const weatherLocation = await loadUserWeatherLocation(userWeatherLocationStore, authState.userId);
     const commuteContext = await loadPageCommuteSetup(authState.userId);
     const validConfiguration = summaryConfigurationSchema.safeParse(configuration);
     const validTodoState = todoStateSchema.safeParse(todoState);
 
-    if (!validConfiguration.success || !validTodoState.success) {
+    if (!validConfiguration.success) {
       return validationFailureResponse;
     }
+
+    const generationTodoState = validTodoState.success
+      ? validTodoState.data
+      : createDefaultTodoState();
 
     const calendarConnection = await userCalendarConnectionStore.load(authState.userId);
     const calendarGenerationContext =
@@ -556,8 +581,9 @@ export const actions = {
     const renderedSummary = renderDailySummary(
       await buildDailySummaryInput({
         configuration: validConfiguration.data,
-        todoCategories: validTodoState.data.todoCategories,
-        todoTasks: validTodoState.data.todoTasks,
+        todoCategories: generationTodoState.todoCategories,
+        todoTasks: generationTodoState.todoTasks,
+        todoStateUnavailable: todoStateLoadFailed || !validTodoState.success,
         weatherLocation,
         weatherSummaryProvider: openAiWeatherSummaryProvider,
         commuteRoutes: commuteContext.setup.routes,
