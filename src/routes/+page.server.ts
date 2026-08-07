@@ -55,7 +55,10 @@ import { accountDeletionConfirmation } from '$lib/accountDeletion';
 import { deleteDailyAccount } from '$lib/server/accountDeletion';
 import { openAiWeatherSummaryProvider } from '$lib/server/weatherSummaryProvider';
 import { openMeteoWeatherForecastProvider } from '$lib/weatherForecast';
-import { createDailySummaryGenerator } from '$lib/server/scheduledDailySummaryGeneration';
+import {
+  createDailySummaryGenerator,
+  ScheduledDailySummaryUserNotActiveError
+} from '$lib/server/scheduledDailySummaryGeneration';
 import { defaultCommuteDays } from '$lib/commuteRoute';
 import { env } from '$env/dynamic/private';
 import { fail } from '@sveltejs/kit';
@@ -429,19 +432,28 @@ export const load = async ({ request }) => {
           const calendarSummaryIsActive =
             validConfiguration.data.sections.calendar &&
             !validConfiguration.data.sectionPauses.calendar;
-          const generatedSummary = await dailySummaryGenerator.generate(authState.userId, {
-            configuration: validConfiguration.data,
-            openDailyUrl,
-            calendarContext: calendarSummaryIsActive
-              ? {
-                  readiness: calendarReadiness,
-                  selectedCalendars,
-                  provider: calendarGenerationContext?.accessToken
-                    ? googleCalendarEventProvider(calendarGenerationContext.accessToken)
-                    : undefined
-                }
-              : undefined
-          });
+          let generatedSummary;
+          try {
+            generatedSummary = await dailySummaryGenerator.generate(authState.userId, {
+              configuration: validConfiguration.data,
+              openDailyUrl,
+              calendarContext: calendarSummaryIsActive
+                ? {
+                    readiness: calendarReadiness,
+                    selectedCalendars,
+                    provider: calendarGenerationContext?.accessToken
+                      ? googleCalendarEventProvider(calendarGenerationContext.accessToken)
+                      : undefined
+                  }
+                : undefined
+            });
+          } catch (error) {
+            if (error instanceof ScheduledDailySummaryUserNotActiveError) {
+              return null;
+            }
+
+            throw error;
+          }
           const input = generatedSummary.input;
           // The dashboard Calendar agenda is independent from the Calendar
           // Summary Section, so pausing the Summary must not hide page context.
@@ -578,10 +590,19 @@ export const actions = {
       return validationFailureResponse;
     }
 
-    const generatedSummary = await dailySummaryGenerator.generate(authState.userId, {
-      configuration: validConfiguration.data,
-      openDailyUrl
-    });
+    let generatedSummary;
+    try {
+      generatedSummary = await dailySummaryGenerator.generate(authState.userId, {
+        configuration: validConfiguration.data,
+        openDailyUrl
+      });
+    } catch (error) {
+      if (error instanceof ScheduledDailySummaryUserNotActiveError) {
+        return deletingUserTestDeliveryFailure;
+      }
+
+      throw error;
+    }
     const message = {
       to: authState.summaryRecipient,
       from: dailySummarySenderAddress(),

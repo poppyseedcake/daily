@@ -32,6 +32,7 @@ const {
   loadFailure,
   todoLoadFailure,
   lifecycleActive,
+  lifecycleResponses,
   deletionStart,
   deletionFinish
 } = vi.hoisted(() => ({
@@ -66,6 +67,7 @@ const {
     outcome: 'available' as 'available' | 'unavailable' | 'private-failure'
   },
   validationFailure: { enabled: false },
+  lifecycleResponses: [] as boolean[],
   recordedDeliveryRecords: [] as Array<{ userId: string; record: unknown }>,
   sentForecastRequests: [] as unknown[],
   sentCommuteEstimateRequests: [] as unknown[],
@@ -190,6 +192,10 @@ vi.mock('$lib/server/auth', () => ({
 vi.mock('$lib/server/db/userLifecycleStore', () => ({
   userLifecycleStore: {
     async isActive() {
+      if (lifecycleResponses.length > 0) {
+        return lifecycleResponses.shift()!;
+      }
+
       return lifecycleActive.value;
     }
   }
@@ -569,6 +575,7 @@ describe('Daily page server load', () => {
     todoLoadFailure.enabled = false;
     commuteSetupLoadFailure.enabled = false;
     lifecycleActive.value = true;
+    lifecycleResponses.length = 0;
     deletionStart.mockReset().mockResolvedValue('started');
     deletionFinish.mockReset().mockResolvedValue(true);
     deliveryProviderMode.outcome = 'accepted';
@@ -1840,5 +1847,34 @@ describe('Daily page server load', () => {
       message: 'User deletion has started, so no Daily Summary was sent.'
     });
     expect(sentMessages).toEqual([]);
+  });
+
+  test('returns a user-deleting failure when deletion starts during Test Delivery generation', async () => {
+    getSession.mockResolvedValue({
+      user: { id: 'user-1', email: 'user@example.com', emailVerified: true }
+    });
+    lifecycleResponses.push(true, false);
+
+    await expect(sendTestDailySummary()).resolves.toEqual({
+      outcome: 'failed',
+      reason: 'user-deleting',
+      message: 'User deletion has started, so no Daily Summary was sent.'
+    });
+    expect(sentMessages).toEqual([]);
+    expect(recordedDeliveryRecords).toEqual([]);
+  });
+
+  test('keeps Preview available when deletion starts during generation', async () => {
+    getSession.mockResolvedValue({
+      user: { id: 'user-1', email: 'user@example.com', emailVerified: true }
+    });
+    lifecycleResponses.push(true, false);
+
+    await expect(loadPage()).resolves.toEqual(
+      expect.objectContaining({
+        renderedSummaryHtml: null,
+        calendarSection: null
+      })
+    );
   });
 });
