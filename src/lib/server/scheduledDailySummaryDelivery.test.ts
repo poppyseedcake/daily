@@ -134,7 +134,7 @@ describe('scheduled Daily Summary delivery', () => {
   test('delivers one due occurrence through generation, claim, recording, and local-day rescheduling', async () => {
     saveQualifyingUser(sqlite, {
       userId: 'user-1',
-      scheduledAt: '2026-10-24T05:00:00Z'
+      scheduledAt: '2026-10-23T05:00:00Z'
     });
     const send = vi.fn().mockResolvedValue({
       providerName: 'fake-delivery',
@@ -156,11 +156,17 @@ describe('scheduled Daily Summary delivery', () => {
     expect(send).toHaveBeenCalledWith({
       to: 'user-1@example.com',
       from: 'Daily <daily@example.com>',
-      subject: 'Daily Summary',
+      subject: 'Your Daily Summary · Saturday, 24 October',
       html: expect.stringContaining('Prepare launch notes'),
       text: expect.stringContaining('Prepare launch notes'),
       idempotencyKey: expect.stringMatching(/^daily-summary\/[a-f0-9]{64}$/)
     });
+    expect(send.mock.calls[0]?.[0].html).toContain(
+      'datetime="2026-10-24T05:00:00.000Z"'
+    );
+    expect(send.mock.calls[0]?.[0].text).toContain(
+      'Generated: Saturday, October 24, 2026 at 07:00'
+    );
     expect(
       sqlite
         .prepare(
@@ -172,7 +178,7 @@ describe('scheduled Daily Summary delivery', () => {
     ).toEqual([
       {
         attempt_type: 'scheduled',
-        scheduled_at: '2026-10-24T05:00:00Z',
+        scheduled_at: '2026-10-23T05:00:00Z',
         delivery_status: 'sent',
         attempt_count: 1,
         provider_message_id: 'message-1',
@@ -564,7 +570,7 @@ describe('scheduled Daily Summary delivery', () => {
     });
   });
 
-  test('retries transient provider unavailability with current content on the same occurrence', async () => {
+  test('retries transient provider unavailability with current content and pauses on the same occurrence', async () => {
     const scheduledAt = '2026-10-24T05:00:00.000Z';
     saveQualifyingUser(sqlite, { userId: 'user-1', scheduledAt });
     let currentTime = new Date(scheduledAt);
@@ -598,6 +604,9 @@ describe('scheduled Daily Summary delivery', () => {
     sqlite
       .prepare('update todo_tasks set title = ? where user_id = ?')
       .run('Review current launch notes', 'user-1');
+    sqlite
+      .prepare('update summary_configurations set todo_section_paused = 1 where user_id = ?')
+      .run('user-1');
     currentTime = new Date('2026-10-24T05:05:00.000Z');
 
     await expect(delivery.processOneDueOccurrence()).resolves.toEqual({
@@ -608,7 +617,8 @@ describe('scheduled Daily Summary delivery', () => {
     expect(send).toHaveBeenCalledTimes(2);
     expect(submittedMessages[0].idempotencyKey).toBe(submittedMessages[1].idempotencyKey);
     expect(submittedMessages[0].text).toContain('Prepare launch notes');
-    expect(submittedMessages[1].text).toContain('Review current launch notes');
+    expect(submittedMessages[1].text).toContain('Todo\nPaused\nTodo is paused.');
+    expect(submittedMessages[1].text).not.toContain('Review current launch notes');
     expect(
       sqlite
         .prepare(
