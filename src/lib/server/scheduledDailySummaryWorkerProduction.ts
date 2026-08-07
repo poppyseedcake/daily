@@ -6,7 +6,7 @@ import {
   dailySummarySenderAddress
 } from './dailySummaryDelivery';
 import { createScheduledDailySummaryDelivery } from './scheduledDailySummaryDelivery';
-import { createScheduledDailySummaryGenerator } from './scheduledDailySummaryGeneration';
+import { createDailySummaryGenerator } from './scheduledDailySummaryGeneration';
 import { userCalendarConnectionStore } from './db/calendarConnectionStore';
 import { userCommuteSetupStore } from './db/commuteSetupStore';
 import { deliveryRecordStore } from './db/deliveryRecordStore';
@@ -18,7 +18,7 @@ import { userLifecycleStore } from './db/userLifecycleStore';
 import { openAiWeatherSummaryProvider } from './weatherSummaryProvider';
 
 export const createProductionScheduledDailySummaryWorkerDependencies = () => {
-  const generator = createScheduledDailySummaryGenerator({
+  const generator = createDailySummaryGenerator({
     userLifecycleStore,
     configurationStore: userSummaryConfigurationStore,
     todoStore: userTodoStore,

@@ -4,6 +4,7 @@ import {
   calendarReadinessForUnavailableCredentials,
   calendarReadinessForUnavailableProvider,
   calendarReadinessForUserConnection,
+  type CalendarReadiness,
   type UserCalendarReadinessConnection
 } from '$lib/calendarReadiness';
 import { buildDailySummaryInput } from '$lib/dailySummaryPreview';
@@ -13,6 +14,7 @@ import {
   type RenderedDailySummary
 } from '$lib/dailySummaryRenderer';
 import type { SavedSelectedCalendar } from '$lib/selectedCalendars';
+import type { SummaryConfiguration } from '$lib/summaryConfiguration';
 import type { UserSummaryConfigurationStore } from './summaryConfigurationPersistence';
 import { loadUserSummaryConfiguration } from './summaryConfigurationPersistence';
 import type { UserTodoPersistenceStore } from './todoPersistence';
@@ -35,6 +37,17 @@ export type ScheduledDailySummaryGenerationResult = {
   rendered: RenderedDailySummary;
   hasQualifyingContent: boolean;
   sectionContent: Record<keyof DailySummaryInput['sections'], ScheduledSummarySectionContent>;
+};
+
+export type DailySummaryGenerationOptions = {
+  configuration?: SummaryConfiguration;
+  openDailyUrl?: string;
+  now?: Date;
+  calendarContext?: {
+    readiness: CalendarReadiness;
+    selectedCalendars: SavedSelectedCalendar[];
+    provider?: CalendarEventProvider;
+  };
 };
 
 type ScheduledCalendarConnectionStore = {
@@ -60,7 +73,7 @@ export type ScheduledDailySummaryGenerationDependencies = {
   now?: () => Date;
 };
 
-export const createScheduledDailySummaryGenerator = ({
+export const createDailySummaryGenerator = ({
   userLifecycleStore,
   configurationStore,
   todoStore,
@@ -75,39 +88,55 @@ export const createScheduledDailySummaryGenerator = ({
   openDailyUrl = process.env.ORIGIN ?? process.env.BETTER_AUTH_URL ?? 'http://localhost:5174/',
   now = () => new Date()
 }: ScheduledDailySummaryGenerationDependencies) => ({
-  async generate(userId: string): Promise<ScheduledDailySummaryGenerationResult> {
+  async generate(
+    userId: string,
+    {
+      configuration: requestedConfiguration,
+      openDailyUrl: requestedOpenDailyUrl,
+      now: requestedNow,
+      calendarContext: requestedCalendarContext
+    }: DailySummaryGenerationOptions = {}
+  ): Promise<ScheduledDailySummaryGenerationResult> {
     if (!(await userLifecycleStore.isActive(userId))) {
       throw new ScheduledDailySummaryUserNotActiveError();
     }
 
-    const configuration = await loadUserSummaryConfiguration(configurationStore, userId);
-    const [todoContext, weatherLocation, commuteContext, calendarContext] = await Promise.all([
+    const configuration =
+      requestedConfiguration ?? (await loadUserSummaryConfiguration(configurationStore, userId));
+    const [todoContext, weatherContext, commuteContext, calendarContext] = await Promise.all([
       loadUserTodoStateSafely(todoStore, userId, {
         enabled: configuration.sections.todo && !configuration.sectionPauses.todo
       }),
-      loadUserWeatherLocation(weatherLocationStore, userId),
+      loadScheduledWeatherContext({
+        userId,
+        weatherEnabled: configuration.sections.weather && !configuration.sectionPauses.weather,
+        locationStore: weatherLocationStore
+      }),
       loadScheduledCommuteContext({
         userId,
         commuteEnabled: configuration.sections.commute && !configuration.sectionPauses.commute,
         setupStore: commuteSetupStore
       }),
-      loadScheduledCalendarContext({
-        userId,
-        calendarEnabled:
-          configuration.sections.calendar && !configuration.sectionPauses.calendar,
-        connectionStore: calendarConnectionStore,
-        loadAccessToken: loadCalendarAccessToken,
-        providerForAccessToken: calendarEventProvider
-      })
+      requestedCalendarContext
+        ? Promise.resolve(requestedCalendarContext)
+        : loadScheduledCalendarContext({
+            userId,
+            calendarEnabled:
+              configuration.sections.calendar && !configuration.sectionPauses.calendar,
+            connectionStore: calendarConnectionStore,
+            loadAccessToken: loadCalendarAccessToken,
+            providerForAccessToken: calendarEventProvider
+          })
     ]);
-    const generatedAt = now();
+    const generatedAt = requestedNow ?? now();
     const input = await buildDailySummaryInput({
       authMode: 'user',
       configuration,
       todoCategories: todoContext.state.todoCategories,
       todoTasks: todoContext.state.todoTasks,
       todoStateUnavailable: todoContext.unavailable,
-      weatherLocation,
+      weatherLocation: weatherContext.location,
+      weatherLocationUnavailable: weatherContext.unavailable,
       weatherProvider,
       weatherSummaryProvider,
       commuteRoutes: commuteContext.setup.routes,
@@ -122,7 +151,7 @@ export const createScheduledDailySummaryGenerator = ({
       selectedCalendars: calendarContext.selectedCalendars,
       calendarEventProvider: calendarContext.provider,
       now: generatedAt,
-      openDailyUrl
+      openDailyUrl: requestedOpenDailyUrl ?? openDailyUrl
     });
     const sectionContent = classifySectionContent(input);
 
@@ -134,6 +163,8 @@ export const createScheduledDailySummaryGenerator = ({
     };
   }
 });
+
+export const createScheduledDailySummaryGenerator = createDailySummaryGenerator;
 
 export class ScheduledDailySummaryUserNotActiveError extends Error {
   constructor() {
@@ -154,6 +185,31 @@ const safelyLoadCommuteEstimateProvider = (
 };
 
 type LoadedCommuteSetup = Awaited<ReturnType<typeof loadUserCommuteSetup>>;
+
+type LoadedWeatherLocation = Awaited<ReturnType<typeof loadUserWeatherLocation>>;
+
+const loadScheduledWeatherContext = async ({
+  userId,
+  weatherEnabled,
+  locationStore
+}: {
+  userId: string;
+  weatherEnabled: boolean;
+  locationStore: Pick<UserWeatherLocationPersistenceStore, 'load'>;
+}): Promise<{ location: LoadedWeatherLocation; unavailable: boolean }> => {
+  if (!weatherEnabled) {
+    return { location: null, unavailable: false };
+  }
+
+  try {
+    return {
+      location: await loadUserWeatherLocation(locationStore, userId),
+      unavailable: false
+    };
+  } catch {
+    return { location: null, unavailable: true };
+  }
+};
 
 const emptyCommuteSetup: LoadedCommuteSetup = {
   routes: [],

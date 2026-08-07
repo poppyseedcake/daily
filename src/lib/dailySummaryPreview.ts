@@ -38,6 +38,7 @@ export type DailySummaryGenerationSetup = {
   todoTasks: TodoTask[];
   todoStateUnavailable?: boolean;
   weatherLocation?: WeatherLocation | null;
+  weatherLocationUnavailable?: boolean;
   weatherProvider?: WeatherForecastProvider;
   weatherSummaryProvider?: WeatherSummaryProvider;
   selectedCalendars?: SavedSelectedCalendar[];
@@ -59,6 +60,7 @@ export const buildDailySummaryInput = async ({
   todoTasks,
   todoStateUnavailable = false,
   weatherLocation = null,
+  weatherLocationUnavailable = false,
   weatherProvider = openMeteoWeatherForecastProvider,
   weatherSummaryProvider,
   selectedCalendars = [],
@@ -74,6 +76,7 @@ export const buildDailySummaryInput = async ({
   const weather = await buildWeatherGenerationState({
     configuration,
     weatherLocation,
+    weatherLocationUnavailable,
     weatherProvider,
     weatherSummaryProvider,
     assetOrigin: openDailyUrl,
@@ -397,6 +400,7 @@ const buildCalendarGenerationResult = async ({
 const buildWeatherGenerationState = async ({
   configuration,
   weatherLocation,
+  weatherLocationUnavailable,
   weatherProvider,
   weatherSummaryProvider,
   assetOrigin,
@@ -404,6 +408,7 @@ const buildWeatherGenerationState = async ({
 }: {
   configuration: SummaryConfiguration;
   weatherLocation: WeatherLocation | null;
+  weatherLocationUnavailable: boolean;
   weatherProvider: WeatherForecastProvider;
   weatherSummaryProvider?: WeatherSummaryProvider;
   assetOrigin: string;
@@ -418,6 +423,17 @@ const buildWeatherGenerationState = async ({
         status: 'paused',
         label: 'Weather',
         detail: 'Weather is paused.'
+      },
+      weatherSection: null
+    };
+  }
+
+  if (weatherLocationUnavailable) {
+    return {
+      sectionState: {
+        status: 'unavailable',
+        label: 'Weather',
+        reason: 'Live weather is unavailable right now.'
       },
       weatherSection: null
     };

@@ -65,6 +65,26 @@ export type RenderedDailySummary = {
   text: string;
 };
 
+export type DailySummaryDeliveryKind = 'scheduled' | 'test';
+
+export const dailySummarySubject = (
+  kind: DailySummaryDeliveryKind,
+  generatedAt: Date,
+  userTimeZone: string
+) => {
+  const weekday = new Intl.DateTimeFormat('en-US', {
+    weekday: 'long',
+    timeZone: userTimeZone
+  }).format(generatedAt);
+  const dayAndMonth = new Intl.DateTimeFormat('en-GB', {
+    day: 'numeric',
+    month: 'long',
+    timeZone: userTimeZone
+  }).format(generatedAt);
+
+  return `${kind === 'test' ? 'Test · ' : ''}Your Daily Summary · ${weekday}, ${dayAndMonth}`;
+};
+
 type RenderedSection = {
   key: SummarySection;
   label: string;

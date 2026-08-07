@@ -2,7 +2,7 @@ import { Temporal } from '@js-temporal/polyfill';
 import type { SummaryConfiguration } from './summaryConfiguration';
 
 export const isSummaryScheduleEligible = (configuration: SummaryConfiguration) =>
-  configuration.summaryDeliveryEnabled && Object.values(configuration.sections).some(Boolean);
+  configuration.summaryDeliveryEnabled;
 
 export const calculateNextSummaryAt = (
   configuration: SummaryConfiguration,

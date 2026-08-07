@@ -51,7 +51,7 @@ describe('next Daily Summary schedule', () => {
     );
   });
 
-  test('leaves ineligible Users unscheduled', () => {
+  test('uses Summary Delivery as the only schedule eligibility control', () => {
     const reference = Temporal.Instant.from('2026-06-22T00:00:00Z');
 
     expect(
@@ -65,6 +65,17 @@ describe('next Daily Summary schedule', () => {
         eligibleConfiguration({
           sections: { weather: false, commute: false, calendar: false, todo: false }
         }),
+        reference
+      )?.toString()
+    ).toBe('2026-06-22T07:00:00Z');
+  });
+
+  test('leaves Users with disabled Summary Delivery unscheduled', () => {
+    const reference = Temporal.Instant.from('2026-06-22T00:00:00Z');
+
+    expect(
+      calculateNextSummaryAt(
+        eligibleConfiguration({ summaryDeliveryEnabled: false }),
         reference
       )
     ).toBeNull();

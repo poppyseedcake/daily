@@ -6,14 +6,14 @@ import {
 } from './summaryConfiguration';
 
 describe('summary configuration validation', () => {
-  test('makes Daily Summary preview eligibility depend on Summary Delivery without providers', () => {
+  test('keeps Daily Summary preview available independently of Summary Delivery', () => {
     expect(canPreviewDailySummary(defaultSummaryConfiguration)).toBe(true);
     expect(
       canPreviewDailySummary({
         ...defaultSummaryConfiguration,
         summaryDeliveryEnabled: false
       })
-    ).toBe(false);
+    ).toBe(true);
   });
 
   test('defaults User Time Zone to the database persistence contract', () => {
