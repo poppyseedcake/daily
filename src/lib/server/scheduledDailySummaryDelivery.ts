@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { Temporal } from '@js-temporal/polyfill';
 import { calculateNextSummaryAt } from '$lib/nextSummarySchedule';
+import { dailySummarySubject } from '$lib/dailySummaryRenderer';
 import {
   DailySummaryDeliveryError,
   type DailySummaryDeliveryProvider
@@ -231,7 +232,11 @@ export const createScheduledDailySummaryDelivery = ({
             deliveryProvider.send({
               to: occurrence.summaryRecipient,
               from: senderAddress(),
-              subject: 'Daily Summary',
+              subject: dailySummarySubject(
+                'scheduled',
+                generated.input.generatedAt ?? processingStartedAt,
+                generated.input.configuration.userTimeZone
+              ),
               html: generated.rendered.html,
               text: generated.rendered.text,
               idempotencyKey: occurrenceIdempotencyKey(occurrence)
