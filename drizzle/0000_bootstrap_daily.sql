@@ -17,12 +17,11 @@ CREATE TABLE `summary_configurations` (
   `user_id` text NOT NULL,
   `summary_time` text DEFAULT '07:00' NOT NULL,
   `user_time_zone` text DEFAULT 'UTC' NOT NULL,
-  `summary_theme` text DEFAULT 'light' NOT NULL,
   `summary_delivery_enabled` integer DEFAULT true NOT NULL,
-  `weather_section_enabled` integer DEFAULT true NOT NULL,
-  `commute_section_enabled` integer DEFAULT true NOT NULL,
-  `calendar_section_enabled` integer DEFAULT true NOT NULL,
-  `todo_section_enabled` integer DEFAULT true NOT NULL,
+  `weather_section_paused` integer DEFAULT false NOT NULL,
+  `commute_section_paused` integer DEFAULT false NOT NULL,
+  `calendar_section_paused` integer DEFAULT false NOT NULL,
+  `todo_section_paused` integer DEFAULT false NOT NULL,
   FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON UPDATE no action ON DELETE cascade
 );
 --> statement-breakpoint

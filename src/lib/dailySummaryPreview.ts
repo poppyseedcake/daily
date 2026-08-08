@@ -145,7 +145,7 @@ const buildCommuteGenerationResult = async ({ configuration, routes, days, setup
       .toZonedDateTimeISO(configuration.userTimeZone).dayOfWeek - 1
   ];
 
-  if (configuration.sectionPauses.commute || !configuration.sections.commute) {
+  if (configuration.sectionPauses.commute) {
     return {
       commuteSection: null,
       sectionState: { status: 'paused', label: 'Commute', detail: 'Commute is paused.' }
@@ -283,7 +283,7 @@ const buildCalendarGenerationResult = async ({
   calendarSection: DailySummaryInput['calendarSection'];
   sectionState: DailySummaryInput['sections']['calendar'];
 }> => {
-  if (configuration.sectionPauses.calendar || !configuration.sections.calendar) {
+  if (configuration.sectionPauses.calendar) {
     return {
       calendarSection: null,
       sectionState: { status: 'paused', label: 'Calendar', detail: 'Calendar is paused.' }
@@ -417,7 +417,7 @@ const buildWeatherGenerationState = async ({
   sectionState: DailySummaryInput['sections']['weather'];
   weatherSection: DailySummaryInput['weatherSection'];
 }> => {
-  if (configuration.sectionPauses.weather || !configuration.sections.weather) {
+  if (configuration.sectionPauses.weather) {
     return {
       sectionState: {
         status: 'paused',
@@ -539,7 +539,7 @@ const buildTodoGenerationState = ({
   todoSection: DailySummaryInput['todoSection'];
   todoStateUnavailable: boolean;
 }): DailySummaryInput['sections']['todo'] => {
-  if (configuration.sectionPauses.todo || !configuration.sections.todo) {
+  if (configuration.sectionPauses.todo) {
     return { status: 'paused', label: 'Todo', detail: 'Todo is paused.' };
   }
 

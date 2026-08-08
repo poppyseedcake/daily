@@ -1,5 +1,6 @@
 import { Temporal } from '@js-temporal/polyfill';
 import { describe, expect, test } from 'vitest';
+import { calculateNextSummaryAt } from '$lib/nextSummarySchedule';
 import {
   defaultSummaryConfiguration,
   type SummaryConfiguration
@@ -24,9 +25,21 @@ const createStore = (): UserSummaryConfigurationStore & {
     async load(userId) {
       return saved.get(userId) ?? null;
     },
-    async save(userId, configuration, nextSummaryAt) {
+    async save(userId, configuration, referenceInstant) {
+      const current = saved.get(userId);
+      const schedulingChanged =
+        current === undefined ||
+        current.summaryTime !== configuration.summaryTime ||
+        current.userTimeZone !== configuration.userTimeZone ||
+        current.summaryDeliveryEnabled !== configuration.summaryDeliveryEnabled;
       saved.set(userId, configuration);
-      schedules.set(userId, nextSummaryAt);
+      if (schedulingChanged) {
+        schedules.set(
+          userId,
+          calculateNextSummaryAt(configuration, referenceInstant)?.toString() ?? null
+        );
+      }
+      return true;
     }
   };
 };
@@ -45,14 +58,7 @@ describe('User Summary Configuration persistence', () => {
     const configuration: SummaryConfiguration = {
       summaryTime: '18:45',
       userTimeZone: 'America/New_York',
-      summaryTheme: 'dark',
       summaryDeliveryEnabled: false,
-      sections: {
-        weather: false,
-        commute: true,
-        calendar: true,
-        todo: false
-      },
       sectionPauses: {
         weather: true,
         commute: false,
@@ -76,17 +82,16 @@ describe('User Summary Configuration persistence', () => {
     expect(store.schedules.get('user-1')).toBeNull();
   });
 
-  test('defaults pause settings when loading the legacy flat persistence shape', () => {
+  test('loads canonical pause settings from flat persistence', () => {
     expect(
       summaryConfigurationFromFlat({
         summaryTime: '07:00',
         userTimeZone: 'UTC',
-        summaryTheme: 'light',
         summaryDeliveryEnabled: true,
-        weatherSectionEnabled: true,
-        commuteSectionEnabled: true,
-        calendarSectionEnabled: true,
-        todoSectionEnabled: true
+        weatherSectionPaused: false,
+        commuteSectionPaused: false,
+        calendarSectionPaused: false,
+        todoSectionPaused: false
       })
     ).toEqual(defaultSummaryConfiguration);
   });
@@ -106,12 +111,7 @@ describe('User Summary Configuration persistence', () => {
       summaryConfigurationFromFlat({
         summaryTime: configuration.summaryTime,
         userTimeZone: configuration.userTimeZone,
-        summaryTheme: configuration.summaryTheme,
         summaryDeliveryEnabled: configuration.summaryDeliveryEnabled,
-        weatherSectionEnabled: configuration.sections.weather,
-        commuteSectionEnabled: configuration.sections.commute,
-        calendarSectionEnabled: configuration.sections.calendar,
-        todoSectionEnabled: configuration.sections.todo,
         weatherSectionPaused: configuration.sectionPauses.weather,
         commuteSectionPaused: configuration.sectionPauses.commute,
         calendarSectionPaused: configuration.sectionPauses.calendar,
@@ -147,6 +147,24 @@ describe('User Summary Configuration persistence', () => {
       'user-1',
       { ...defaultSummaryConfiguration, summaryTime: '07:00', userTimeZone: 'Europe/Warsaw' },
       Temporal.Instant.from('2026-06-22T05:00:00Z')
+    );
+
+    expect(store.schedules.get('user-1')).toBe('2026-06-23T05:00:00Z');
+  });
+
+  test('keeps the next occurrence unchanged when only a section pause changes', async () => {
+    const store = createStore();
+    store.saved.set('user-1', defaultSummaryConfiguration);
+    store.schedules.set('user-1', '2026-06-23T05:00:00Z');
+
+    await saveUserSummaryConfiguration(
+      store,
+      'user-1',
+      {
+        ...defaultSummaryConfiguration,
+        sectionPauses: { ...defaultSummaryConfiguration.sectionPauses, weather: true }
+      },
+      Temporal.Instant.from('2026-06-22T06:00:00Z')
     );
 
     expect(store.schedules.get('user-1')).toBe('2026-06-23T05:00:00Z');

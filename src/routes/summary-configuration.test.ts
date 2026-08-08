@@ -21,6 +21,7 @@ vi.mock('$lib/server/db/summaryConfigurationStore', () => ({
     },
     async save(userId: string, configuration: unknown) {
       savedConfigurations.push({ userId, configuration });
+      return true;
     }
   }
 }));

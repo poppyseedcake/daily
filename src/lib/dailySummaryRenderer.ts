@@ -150,8 +150,7 @@ export const renderDailySummary = (input: DailySummaryInput): RenderedDailySumma
 const resolveSection = (input: DailySummaryInput, key: SummarySection): RenderedSection => {
   const state = input.sections[key];
   const label = fixedSectionLabels[key];
-  const legacySectionIsDisabled = !input.configuration.sections[key];
-  const explicitlyPaused = input.configuration.sectionPauses?.[key] || legacySectionIsDisabled;
+  const explicitlyPaused = input.configuration.sectionPauses[key];
   const status = explicitlyPaused
     ? 'paused'
     : state.status === 'available'

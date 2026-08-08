@@ -28,13 +28,7 @@ const validLocalSetup = () => ({
     ...defaultSummaryConfiguration,
     summaryTime: '18:45',
     userTimeZone: 'Europe/Warsaw' as const,
-    summaryTheme: 'dark' as const,
-    sections: {
-      weather: false,
-      commute: true,
-      calendar: true,
-      todo: true
-    }
+    sectionPauses: { weather: true, commute: false, calendar: false, todo: false }
   },
   commuteRoutes: [
     {

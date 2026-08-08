@@ -33,20 +33,9 @@ export const summaryConfigurations = sqliteTable('summary_configurations', {
     .unique(),
   summaryTime: text('summary_time').notNull().default('07:00'),
   userTimeZone: text('user_time_zone').notNull().default('UTC'),
-  summaryTheme: text('summary_theme', { enum: ['light', 'dark'] }).notNull().default('light'),
   summaryDeliveryEnabled: integer('summary_delivery_enabled', { mode: 'boolean' })
     .notNull()
     .default(true),
-  weatherSectionEnabled: integer('weather_section_enabled', { mode: 'boolean' })
-    .notNull()
-    .default(true),
-  commuteSectionEnabled: integer('commute_section_enabled', { mode: 'boolean' })
-    .notNull()
-    .default(true),
-  calendarSectionEnabled: integer('calendar_section_enabled', { mode: 'boolean' })
-    .notNull()
-    .default(true),
-  todoSectionEnabled: integer('todo_section_enabled', { mode: 'boolean' }).notNull().default(true),
   weatherSectionPaused: integer('weather_section_paused', { mode: 'boolean' })
     .notNull()
     .default(false),

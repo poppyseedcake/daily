@@ -63,7 +63,7 @@ describe('next Daily Summary schedule', () => {
     expect(
       calculateNextSummaryAt(
         eligibleConfiguration({
-          sections: { weather: false, commute: false, calendar: false, todo: false }
+          sectionPauses: { weather: true, commute: true, calendar: true, todo: true }
         }),
         reference
       )?.toString()

@@ -10,9 +10,7 @@ import {
 const configuration: SummaryConfiguration = {
   summaryTime: '07:00',
   userTimeZone: 'Europe/Warsaw',
-  summaryTheme: 'dark',
   summaryDeliveryEnabled: true,
-  sections: { weather: true, commute: true, calendar: true, todo: true },
   sectionPauses: { weather: false, commute: false, calendar: false, todo: false }
 };
 
@@ -227,7 +225,7 @@ describe('scheduled Daily Summary generation', () => {
     const loadSelectedCalendars = vi.fn().mockRejectedValue(new Error('broken calendar data'));
     const disabledConfiguration: SummaryConfiguration = {
       ...configuration,
-      sections: { weather: false, commute: false, calendar: false, todo: false }
+      sectionPauses: { weather: true, commute: true, calendar: true, todo: true }
     };
     const generator = createScheduledDailySummaryGenerator({
       userLifecycleStore: activeUserLifecycleStore,
@@ -273,7 +271,7 @@ describe('scheduled Daily Summary generation', () => {
   test('contains a Weather provider failure while preserving qualifying unrelated content', async () => {
     const weatherAndTodoConfiguration: SummaryConfiguration = {
       ...configuration,
-      sections: { weather: true, commute: false, calendar: false, todo: true }
+      sectionPauses: { weather: false, commute: true, calendar: true, todo: false }
     };
     const generator = createScheduledDailySummaryGenerator(
       createProviderIsolationDependencies(weatherAndTodoConfiguration, {
@@ -307,7 +305,7 @@ describe('scheduled Daily Summary generation', () => {
   test('contains a Weather location failure while preserving qualifying unrelated content', async () => {
     const weatherAndTodoConfiguration: SummaryConfiguration = {
       ...configuration,
-      sections: { weather: true, commute: false, calendar: false, todo: true }
+      sectionPauses: { weather: false, commute: true, calendar: true, todo: false }
     };
     const weatherProvider = { fetchDailyForecast: vi.fn() };
     const generator = createScheduledDailySummaryGenerator(
@@ -337,7 +335,7 @@ describe('scheduled Daily Summary generation', () => {
   test('contains a Commute setup failure while preserving qualifying unrelated content', async () => {
     const commuteAndTodoConfiguration: SummaryConfiguration = {
       ...configuration,
-      sections: { weather: false, commute: true, calendar: false, todo: true }
+      sectionPauses: { weather: true, commute: false, calendar: true, todo: false }
     };
     const generator = createScheduledDailySummaryGenerator(
       createProviderIsolationDependencies(commuteAndTodoConfiguration, {
@@ -445,7 +443,7 @@ describe('scheduled Daily Summary generation', () => {
   test('contains a Calendar provider failure while preserving qualifying unrelated content', async () => {
     const calendarAndTodoConfiguration: SummaryConfiguration = {
       ...configuration,
-      sections: { weather: false, commute: false, calendar: true, todo: true }
+      sectionPauses: { weather: true, commute: true, calendar: false, todo: false }
     };
     const generator = createScheduledDailySummaryGenerator(
       createProviderIsolationDependencies(calendarAndTodoConfiguration, {
@@ -475,7 +473,7 @@ describe('scheduled Daily Summary generation', () => {
   test('contains a Todo state failure while preserving the other Summary Sections and delivery input', async () => {
     const weatherAndTodoConfiguration: SummaryConfiguration = {
       ...configuration,
-      sections: { weather: true, commute: false, calendar: false, todo: true }
+      sectionPauses: { weather: false, commute: true, calendar: true, todo: false }
     };
     const generator = createScheduledDailySummaryGenerator(
       createProviderIsolationDependencies(weatherAndTodoConfiguration, {
@@ -523,8 +521,7 @@ describe('scheduled Daily Summary generation', () => {
     const generator = createScheduledDailySummaryGenerator(
       createProviderIsolationDependencies({
         ...configuration,
-        sections: { weather: false, commute: false, calendar: false, todo: true },
-        sectionPauses: { ...configuration.sectionPauses, todo: true }
+        sectionPauses: { weather: true, commute: true, calendar: true, todo: true }
       }, { todoStore })
     );
 
@@ -542,7 +539,7 @@ describe('scheduled Daily Summary generation', () => {
   test('contains a Calendar connection failure while preserving qualifying unrelated content', async () => {
     const calendarAndTodoConfiguration: SummaryConfiguration = {
       ...configuration,
-      sections: { weather: false, commute: false, calendar: true, todo: true }
+      sectionPauses: { weather: true, commute: true, calendar: false, todo: false }
     };
     const generator = createScheduledDailySummaryGenerator(
       createProviderIsolationDependencies(calendarAndTodoConfiguration, {
@@ -591,7 +588,7 @@ describe('scheduled Daily Summary generation', () => {
   test('reports empty, inapplicable, and unavailable-only output as not qualifying', async () => {
     const mixedConfiguration: SummaryConfiguration = {
       ...configuration,
-      sections: { weather: true, commute: true, calendar: true, todo: true }
+      sectionPauses: { weather: false, commute: false, calendar: false, todo: false }
     };
     const generator = createScheduledDailySummaryGenerator({
       userLifecycleStore: activeUserLifecycleStore,

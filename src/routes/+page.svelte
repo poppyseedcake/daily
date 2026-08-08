@@ -52,7 +52,6 @@
     summaryTimeSchema,
     type SummaryConfiguration,
     type SummarySection,
-    type SummaryTheme,
     type UserTimeZone
   } from '$lib/summaryConfiguration';
   import {
@@ -161,11 +160,7 @@
   let summaryTime = $state(initialSummaryConfiguration.summaryTime);
   let summaryTimeInput = $state(initialSummaryConfiguration.summaryTime);
   let userTimeZone = $state<UserTimeZone>(initialSummaryConfiguration.userTimeZone);
-  let summaryTheme = $state<SummaryTheme>(initialSummaryConfiguration.summaryTheme);
   let summaryDeliveryEnabled = $state(initialSummaryConfiguration.summaryDeliveryEnabled);
-  let enabledSections = $state<Record<SummarySection, boolean>>({
-    ...initialSummaryConfiguration.sections
-  });
   let sectionPauses = $state({ ...initialSummaryConfiguration.sectionPauses });
   let todoTasks = $state<TodoTask[]>(initialTodoState.todoTasks);
   let todoDragTaskLists = $state<Record<string, TodoTask[]>>({});
@@ -322,9 +317,7 @@
   const currentSummaryConfiguration = (): SummaryConfiguration => ({
     summaryTime: currentSummaryTime(),
     userTimeZone,
-    summaryTheme,
     summaryDeliveryEnabled,
-    sections: { ...enabledSections },
     sectionPauses: { ...sectionPauses }
   });
 
@@ -338,9 +331,7 @@
     summaryTime = result.data.summaryTime;
     summaryTimeInput = result.data.summaryTime;
     userTimeZone = result.data.userTimeZone;
-    summaryTheme = result.data.summaryTheme;
     summaryDeliveryEnabled = result.data.summaryDeliveryEnabled;
-    enabledSections = { ...result.data.sections };
     sectionPauses = { ...result.data.sectionPauses };
   };
 
@@ -351,17 +342,17 @@
     });
   };
 
-  const toggleSection = (section: SummarySection, enabled: boolean) => {
+  const toggleSectionPause = (section: SummarySection, paused: boolean) => {
     const result = summaryConfigurationSchema.safeParse({
       ...currentSummaryConfiguration(),
-      sections: { ...enabledSections, [section]: enabled }
+      sectionPauses: { ...sectionPauses, [section]: paused }
     });
 
     if (!result.success) {
       return;
     }
 
-    enabledSections = { ...result.data.sections };
+    sectionPauses = { ...result.data.sectionPauses };
   };
 
   const updateSummaryTimeInput = (value: string) => {
@@ -1898,14 +1889,7 @@
   const previewConfiguration: SummaryConfiguration = $derived({
     summaryTime,
     userTimeZone,
-    summaryTheme,
     summaryDeliveryEnabled,
-    sections: {
-      weather: enabledSections.weather,
-      commute: enabledSections.commute,
-      calendar: enabledSections.calendar,
-      todo: enabledSections.todo
-    },
     sectionPauses: { ...sectionPauses }
   });
   let renderedSummaryHtml = $state('');
@@ -2009,13 +1993,13 @@
     class="daily-context-tile__toggle"
     type="button"
     disabled={!localSetupHydrated}
-    aria-label={enabledSections[section] ? 'Pause section' : 'Resume section'}
+    aria-label={sectionPauses[section] ? 'Resume section' : 'Pause section'}
     aria-describedby={statusId}
-    aria-pressed={enabledSections[section]}
-    title={enabledSections[section] ? `Pause ${summarySectionLabel(section)} section` : `Resume ${summarySectionLabel(section)} section`}
-    onclick={() => toggleSection(section, !enabledSections[section])}
+    aria-pressed={sectionPauses[section]}
+    title={sectionPauses[section] ? `Resume ${summarySectionLabel(section)} section` : `Pause ${summarySectionLabel(section)} section`}
+    onclick={() => toggleSectionPause(section, !sectionPauses[section])}
   >
-    {#if enabledSections[section]}<Pause size={14} aria-hidden="true" />{:else}<Play size={14} aria-hidden="true" />{/if}
+    {#if sectionPauses[section]}<Play size={14} aria-hidden="true" />{:else}<Pause size={14} aria-hidden="true" />{/if}
   </button>
 {/snippet}
 
@@ -2231,7 +2215,7 @@
 
       <div class="daily-context-ribbon" id="daily-context" aria-label="Daily Summary sections and delivery">
       <div
-        class:daily-context-tile--paused={!enabledSections.weather}
+        class:daily-context-tile--paused={sectionPauses.weather}
         class="daily-context-tile"
         data-summary-section="weather"
       >
@@ -2245,7 +2229,7 @@
         >
           <CloudSun size={18} aria-hidden="true" />
           <span>
-            <small id="weather-section-status">Weather · {enabledSections.weather ? 'Active' : 'Paused'}</small>
+            <small id="weather-section-status">Weather · {sectionPauses.weather ? 'Paused' : 'Active'}</small>
             <strong>{weatherLocation?.label ?? 'Choose a city'}</strong>
           </span>
           <span class="daily-context-tile__arrow" aria-hidden="true"><ChevronRight size={15} /></span>
@@ -2253,7 +2237,7 @@
         {@render SummarySectionToggle('weather', 'weather-section-status')}
       </div>
       <div
-        class:daily-context-tile--paused={!enabledSections.commute}
+        class:daily-context-tile--paused={sectionPauses.commute}
         class="daily-context-tile"
         data-summary-section="commute"
       >
@@ -2267,7 +2251,7 @@
         >
           <MapPin size={18} aria-hidden="true" />
           <span>
-            <small id="commute-section-status">Commute · {enabledSections.commute ? 'Active' : 'Paused'}</small>
+            <small id="commute-section-status">Commute · {sectionPauses.commute ? 'Paused' : 'Active'}</small>
             <strong>{commuteRoutes.length === 0 ? 'Add a route' : `${commuteRoutes.length} ${commuteRoutes.length === 1 ? 'route' : 'routes'}`}</strong>
           </span>
           <span class="daily-context-tile__arrow" aria-hidden="true"><ChevronRight size={15} /></span>
@@ -2275,7 +2259,7 @@
         {@render SummarySectionToggle('commute', 'commute-section-status')}
       </div>
       <div
-        class:daily-context-tile--paused={!enabledSections.calendar}
+        class:daily-context-tile--paused={sectionPauses.calendar}
         class="daily-context-tile"
         data-summary-section="calendar"
       >
@@ -2289,7 +2273,7 @@
         >
           <CalendarDays size={18} aria-hidden="true" />
           <span>
-            <small id="calendar-section-status">Calendar · {enabledSections.calendar ? 'Active' : 'Paused'}{calendarReadiness.status === 'connected' ? ' · Google' : ' · Not connected'}</small>
+            <small id="calendar-section-status">Calendar · {sectionPauses.calendar ? 'Paused' : 'Active'}{calendarReadiness.status === 'connected' ? ' · Google' : ' · Not connected'}</small>
             <strong>
               {calendarReadiness.status === 'connected'
                 ? `${calendarEventCount} events this week`
@@ -2301,7 +2285,7 @@
         {@render SummarySectionToggle('calendar', 'calendar-section-status')}
       </div>
       <div
-        class:daily-context-tile--paused={!enabledSections.todo}
+        class:daily-context-tile--paused={sectionPauses.todo}
         class="daily-context-tile"
         data-summary-section="todo"
       >
@@ -2315,7 +2299,7 @@
         >
           <ListTodo size={18} aria-hidden="true" />
           <span>
-            <small id="todo-section-status">Todo · {enabledSections.todo ? 'Active' : 'Paused'}</small>
+            <small id="todo-section-status">Todo · {sectionPauses.todo ? 'Paused' : 'Active'}</small>
             <strong>{todoTasks.length} {todoTasks.length === 1 ? 'task' : 'tasks'}</strong>
           </span>
           <span class="daily-context-tile__arrow" aria-hidden="true"><ChevronRight size={15} /></span>
@@ -4762,25 +4746,6 @@
     font-size: 10px;
   }
 
-  .daily-theme-choice {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 8px;
-    margin-top: 10px;
-  }
-
-  .daily-theme-choice label {
-    min-height: 40px;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    border: 1px solid #d8ddd4;
-    border-radius: 8px;
-    background: #fff;
-    padding: 0 10px;
-    font-size: 9px;
-  }
-
   .daily-settings-toggle {
     position: relative;
     min-height: 48px;
@@ -5700,21 +5665,17 @@
             </select>
           </label>
         </div>
-        <div class="daily-theme-choice" role="radiogroup" aria-label="Summary Theme">
-          <label><input type="radio" name="daily-theme" value="light" bind:group={summaryTheme} onchange={() => patchSummaryConfiguration({ summaryTheme: 'light' })} />Light Theme</label>
-          <label><input type="radio" name="daily-theme" value="dark" bind:group={summaryTheme} onchange={() => patchSummaryConfiguration({ summaryTheme: 'dark' })} />Dark Theme</label>
-        </div>
       </section>
       <section class="daily-settings-section">
         <h3>Summary Sections</h3>
         {#each summarySections as section}
           <label class="daily-settings-toggle" for={`${section.key}-section-board`}>
-            <span>{section.label} Section</span>
+            <span>Pause {section.label} Section</span>
             <input
               id={`${section.key}-section-board`}
               type="checkbox"
-              checked={enabledSections[section.key]}
-              onchange={(event) => toggleSection(section.key, readInputChecked(event))}
+              checked={sectionPauses[section.key]}
+              onchange={(event) => toggleSectionPause(section.key, readInputChecked(event))}
             />
             <span class="daily-switch" aria-hidden="true"><i></i></span>
           </label>

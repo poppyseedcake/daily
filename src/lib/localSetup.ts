@@ -22,16 +22,14 @@ import {
 } from './savedLocation';
 import {
   commuteDaysSchema,
-  commuteRouteDraftSchema,
   commuteRoutesSchema,
   defaultCommuteDays,
   type CommuteDay,
   type CommuteRoute
 } from './commuteRoute';
 
-export const localSetupVersion = 2;
-export const localSetupStorageKey = 'daily.visitorLocalSetup.v2';
-export const legacyLocalSetupStorageKey = 'daily.visitorLocalSetup.v1';
+export const localSetupVersion = 3;
+export const localSetupStorageKey = 'daily.visitorLocalSetup.v3';
 
 export type LocalSetup = {
   version: typeof localSetupVersion;
@@ -73,16 +71,11 @@ export type UserSetupImportDraft = {
     userId: string;
     summaryTime: string;
     userTimeZone: SummaryConfiguration['userTimeZone'];
-    summaryTheme: SummaryConfiguration['summaryTheme'];
     summaryDeliveryEnabled: boolean;
-    weatherSectionEnabled: boolean;
-    commuteSectionEnabled: boolean;
-    calendarSectionEnabled: boolean;
-    todoSectionEnabled: boolean;
-    weatherSectionPaused?: boolean;
-    commuteSectionPaused?: boolean;
-    calendarSectionPaused?: boolean;
-    todoSectionPaused?: boolean;
+    weatherSectionPaused: boolean;
+    commuteSectionPaused: boolean;
+    calendarSectionPaused: boolean;
+    todoSectionPaused: boolean;
   };
   todoCategories: Array<{
     id: string;
@@ -176,159 +169,10 @@ const localSetupSchema = localSetupBaseSchema.transform((setup) => ({
   nextTodoId: setup.nextTodoId
 }));
 
-const unversionedCurrentLocalSetupSchema = z
-  .object({
-    version: z.never().optional(),
-    summaryConfiguration: summaryConfigurationSchema,
-    weatherLocation: weatherLocationSchema.nullable().default(null),
-    savedWeatherCities: savedWeatherCitiesSchema.default([]),
-    savedCommuteAddresses: savedCommuteAddressesSchema.default([]),
-    commuteRoutes: commuteRoutesSchema.default([]),
-    commuteDays: commuteDaysSchema.default(defaultCommuteDays)
-  })
-  .and(todoStateSchema)
-  .transform((setup) => ({
-    version: localSetupVersion,
-    summaryConfiguration: setup.summaryConfiguration,
-    weatherLocation: setup.weatherLocation,
-    savedWeatherCities: setup.savedWeatherCities,
-    savedCommuteAddresses: setup.savedCommuteAddresses,
-    commuteRoutes: setup.commuteRoutes,
-    commuteDays: setup.commuteDays,
-    todoCategories: setup.todoCategories,
-    todoTasks: setup.todoTasks,
-    nextTodoId: setup.nextTodoId
-  }));
-
-const isSavedCommuteAddress = (
-  location: SavedWeatherCity,
-  routes: CommuteRoute[]
-) =>
-  routes.some(
-    (route) =>
-      (route.origin.latitude === location.latitude && route.origin.longitude === location.longitude) ||
-      (route.destination.latitude === location.latitude &&
-        route.destination.longitude === location.longitude)
-  );
-
-const splitLegacySavedLocations = (
-  locations: SavedWeatherCity[],
-  routes: CommuteRoute[]
-): Pick<LocalSetup, 'savedWeatherCities' | 'savedCommuteAddresses'> => ({
-  savedWeatherCities: locations.filter((location) => !isSavedCommuteAddress(location, routes)),
-  savedCommuteAddresses: locations.filter((location) => isSavedCommuteAddress(location, routes))
-});
-
-const legacySavedLocationsLocalSetupSchema = z
-  .object({
-    version: z.literal(1),
-    summaryConfiguration: summaryConfigurationSchema,
-    weatherLocation: weatherLocationSchema.nullable().default(null),
-    savedLocations: savedWeatherCitiesSchema.default([]),
-    commuteRoutes: commuteRoutesSchema.default([]),
-    commuteDays: commuteDaysSchema.default(defaultCommuteDays)
-  })
-  .and(todoStateSchema)
-  .transform((setup) =>
-    localSetupSchema.parse({
-      version: localSetupVersion,
-      summaryConfiguration: setup.summaryConfiguration,
-      weatherLocation: setup.weatherLocation,
-      ...splitLegacySavedLocations(setup.savedLocations, setup.commuteRoutes),
-      commuteRoutes: setup.commuteRoutes,
-      commuteDays: setup.commuteDays,
-      todoCategories: setup.todoCategories,
-      todoTasks: setup.todoTasks,
-      nextTodoId: setup.nextTodoId
-    })
-  );
-
-const unversionedLegacySavedLocationsLocalSetupSchema = z
-  .object({
-    version: z.never().optional(),
-    summaryConfiguration: summaryConfigurationSchema,
-    weatherLocation: weatherLocationSchema.nullable().default(null),
-    savedLocations: savedWeatherCitiesSchema.default([]),
-    commuteRoutes: commuteRoutesSchema.default([]),
-    commuteDays: commuteDaysSchema.default(defaultCommuteDays)
-  })
-  .and(todoStateSchema)
-  .transform((setup) =>
-    localSetupSchema.parse({
-      version: localSetupVersion,
-      summaryConfiguration: setup.summaryConfiguration,
-      weatherLocation: setup.weatherLocation,
-      ...splitLegacySavedLocations(setup.savedLocations, setup.commuteRoutes),
-      commuteRoutes: setup.commuteRoutes,
-      commuteDays: setup.commuteDays,
-      todoCategories: setup.todoCategories,
-      todoTasks: setup.todoTasks,
-      nextTodoId: setup.nextTodoId
-    })
-  );
-
-const legacyCommuteRouteLocalSetupSchema = z
-  .object({
-    version: z.union([z.literal(1), z.literal(localSetupVersion)]).optional(),
-    summaryConfiguration: summaryConfigurationSchema,
-    weatherLocation: weatherLocationSchema.nullable().default(null),
-    savedLocations: savedWeatherCitiesSchema.default([]),
-    commuteRoute: commuteRouteDraftSchema.nullable()
-  })
-  .and(todoStateSchema)
-  .transform((setup) =>
-    localSetupSchema.parse({
-      version: localSetupVersion,
-      summaryConfiguration: setup.summaryConfiguration,
-      weatherLocation: setup.weatherLocation,
-      ...splitLegacySavedLocations(
-        setup.savedLocations,
-        setup.commuteRoute ? [{ ...setup.commuteRoute, id: 'route-1', enabled: true }] : []
-      ),
-      commuteRoutes: setup.commuteRoute
-        ? [{ ...setup.commuteRoute, id: 'route-1', enabled: true }]
-        : [],
-      commuteDays: defaultCommuteDays,
-      todoCategories: setup.todoCategories,
-      todoTasks: setup.todoTasks,
-      nextTodoId: setup.nextTodoId
-    })
-  );
-
-const supportedLocalSetupSchema = z.union([
-  legacyCommuteRouteLocalSetupSchema,
-  legacySavedLocationsLocalSetupSchema,
-  unversionedLegacySavedLocationsLocalSetupSchema,
-  localSetupSchema,
-  unversionedCurrentLocalSetupSchema
-]);
-
 const fallbackLoadResult = (outcome: LocalSetupLoadOutcome) => ({
   outcome,
   setup: createDefaultLocalSetup()
 });
-
-const withMigratedCommuteRouteDays = (setup: unknown): unknown => {
-  if (
-    typeof setup !== 'object' ||
-    setup === null ||
-    !('commuteRoutes' in setup) ||
-    !Array.isArray(setup.commuteRoutes) ||
-    !('commuteDays' in setup) ||
-    !Array.isArray(setup.commuteDays)
-  ) {
-    return setup;
-  }
-
-  return {
-    ...setup,
-    commuteRoutes: setup.commuteRoutes.map((route) =>
-      typeof route === 'object' && route !== null && !('days' in route)
-        ? { ...route, days: setup.commuteDays }
-        : route
-    )
-  };
-};
 
 const sortTasksWithinIncomingCategoryOrder = (tasks: TodoTask[]) => {
   const tasksByCategory = new Map<string | null, TodoTask[]>();
@@ -361,9 +205,6 @@ export const loadLocalSetup = (
 
   try {
     storedSetup = storage.getItem(localSetupStorageKey);
-    if (!storedSetup) {
-      storedSetup = storage.getItem(legacyLocalSetupStorageKey);
-    }
   } catch {
     return fallbackLoadResult('read-failed');
   }
@@ -380,7 +221,7 @@ export const loadLocalSetup = (
     return fallbackLoadResult('invalid-json');
   }
 
-  const result = supportedLocalSetupSchema.safeParse(withMigratedCommuteRouteDays(parsedSetup));
+  const result = localSetupSchema.safeParse(parsedSetup);
 
   if (result.success) {
     return { outcome: 'loaded', setup: result.data as LocalSetup };
@@ -456,12 +297,7 @@ export const createUserSetupImportDraftFromLocalSetup = (
       userId: options.userId,
       summaryTime: setup.summaryConfiguration.summaryTime,
       userTimeZone: setup.summaryConfiguration.userTimeZone,
-      summaryTheme: setup.summaryConfiguration.summaryTheme,
       summaryDeliveryEnabled: setup.summaryConfiguration.summaryDeliveryEnabled,
-      weatherSectionEnabled: setup.summaryConfiguration.sections.weather,
-      commuteSectionEnabled: setup.summaryConfiguration.sections.commute,
-      calendarSectionEnabled: setup.summaryConfiguration.sections.calendar,
-      todoSectionEnabled: setup.summaryConfiguration.sections.todo,
       weatherSectionPaused: setup.summaryConfiguration.sectionPauses.weather,
       commuteSectionPaused: setup.summaryConfiguration.sectionPauses.commute,
       calendarSectionPaused: setup.summaryConfiguration.sectionPauses.calendar,

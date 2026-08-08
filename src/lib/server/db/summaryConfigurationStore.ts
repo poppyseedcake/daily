@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { db } from '$lib/server/db';
+import { calculateNextSummaryAt } from '$lib/nextSummarySchedule';
 import type { SummaryConfiguration } from '$lib/summaryConfiguration';
 import { summaryConfigurations, users } from './schema';
 import {
@@ -19,12 +20,7 @@ const toSummaryConfigurationRow = (
   userId,
   summaryTime: configuration.summaryTime,
   userTimeZone: configuration.userTimeZone,
-  summaryTheme: configuration.summaryTheme,
   summaryDeliveryEnabled: configuration.summaryDeliveryEnabled,
-  weatherSectionEnabled: configuration.sections.weather,
-  commuteSectionEnabled: configuration.sections.commute,
-  calendarSectionEnabled: configuration.sections.calendar,
-  todoSectionEnabled: configuration.sections.todo,
   weatherSectionPaused: configuration.sectionPauses.weather,
   commuteSectionPaused: configuration.sectionPauses.commute,
   calendarSectionPaused: configuration.sectionPauses.calendar,
@@ -43,17 +39,31 @@ export const createUserSummaryConfigurationStore = (
 
     return row ? toSummaryConfiguration(row) : null;
   },
-  async save(userId, configuration, nextSummaryAt) {
-    database.transaction((transaction) => {
+  async save(userId, configuration, referenceInstant) {
+    return database.transaction((transaction) => {
+      const currentRow = transaction
+        .select()
+        .from(summaryConfigurations)
+        .where(eq(summaryConfigurations.userId, userId))
+        .get();
+      const current = currentRow ? toSummaryConfiguration(currentRow) : null;
+      const schedulingChanged =
+        current === null ||
+        current.summaryTime !== configuration.summaryTime ||
+        current.userTimeZone !== configuration.userTimeZone ||
+        current.summaryDeliveryEnabled !== configuration.summaryDeliveryEnabled;
+      const nextSummaryAt = schedulingChanged
+        ? calculateNextSummaryAt(configuration, referenceInstant)?.toString() ?? null
+        : undefined;
       const activeUser = transaction
         .update(users)
-        .set({ nextSummaryAt })
+        .set(nextSummaryAt === undefined ? { updatedAt: sql`updated_at` } : { nextSummaryAt })
         .where(and(eq(users.id, userId), eq(users.lifecycleState, 'active')))
         .returning({ id: users.id })
         .get();
 
       if (!activeUser) {
-        return;
+        return false;
       }
 
       transaction
@@ -67,7 +77,7 @@ export const createUserSummaryConfigurationStore = (
           set: toSummaryConfigurationRow(userId, configuration)
         })
         .run();
-
+      return true;
     });
   }
 });
