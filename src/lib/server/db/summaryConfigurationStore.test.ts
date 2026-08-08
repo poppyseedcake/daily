@@ -8,6 +8,33 @@ import { saveUserSummaryConfiguration } from '../summaryConfigurationPersistence
 import * as schema from './schema';
 import { createUserSummaryConfigurationStore } from './summaryConfigurationStore';
 
+const insertSummaryConfiguration = (
+  sqlite: Database.Database,
+  configuration: {
+    summaryDeliveryEnabled: boolean;
+    userTimeZone: string;
+    sectionPauses: typeof defaultSummaryConfiguration.sectionPauses;
+  }
+) =>
+  sqlite
+    .prepare(
+      `insert into summary_configurations (
+        id, user_id, summary_time, user_time_zone, summary_delivery_enabled,
+        weather_section_paused, commute_section_paused, calendar_section_paused, todo_section_paused
+      ) values (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    )
+    .run(
+      'configuration-1',
+      'user-1',
+      '07:00',
+      configuration.userTimeZone,
+      configuration.summaryDeliveryEnabled ? 1 : 0,
+      configuration.sectionPauses.weather ? 1 : 0,
+      configuration.sectionPauses.commute ? 1 : 0,
+      configuration.sectionPauses.calendar ? 1 : 0,
+      configuration.sectionPauses.todo ? 1 : 0
+    );
+
 describe('SQLite User Summary Configuration store', () => {
   let sqlite: Database.Database;
 
@@ -100,14 +127,11 @@ describe('SQLite User Summary Configuration store', () => {
   });
 
   test('schedules an enabled Summary Delivery even when every Summary Section is paused', async () => {
-    sqlite
-      .prepare(
-        `insert into summary_configurations (
-          id, user_id, summary_time, user_time_zone, summary_delivery_enabled,
-          weather_section_paused, commute_section_paused, calendar_section_paused, todo_section_paused
-        ) values (?, ?, ?, ?, ?, ?, ?, ?, ?)`
-      )
-      .run('configuration-1', 'user-1', '07:00', 'Europe/Warsaw', 0, 1, 1, 1, 1);
+    insertSummaryConfiguration(sqlite, {
+      summaryDeliveryEnabled: false,
+      userTimeZone: 'Europe/Warsaw',
+      sectionPauses: { weather: true, commute: true, calendar: true, todo: true }
+    });
     const store = createUserSummaryConfigurationStore(drizzle(sqlite, { schema }));
 
     const result = await saveUserSummaryConfiguration(
@@ -128,14 +152,11 @@ describe('SQLite User Summary Configuration store', () => {
   });
 
   test('preserves the scheduled occurrence when only a Summary Section pause changes', async () => {
-    sqlite
-      .prepare(
-        `insert into summary_configurations (
-          id, user_id, summary_time, user_time_zone, summary_delivery_enabled,
-          weather_section_paused, commute_section_paused, calendar_section_paused, todo_section_paused
-        ) values (?, ?, ?, ?, ?, ?, ?, ?, ?)`
-      )
-      .run('configuration-1', 'user-1', '07:00', 'UTC', 1, 0, 0, 0, 0);
+    insertSummaryConfiguration(sqlite, {
+      summaryDeliveryEnabled: true,
+      userTimeZone: 'UTC',
+      sectionPauses: { weather: false, commute: false, calendar: false, todo: false }
+    });
     sqlite
       .prepare('update users set next_summary_at = ? where id = ?')
       .run('2026-06-23T07:00:00Z', 'user-1');
