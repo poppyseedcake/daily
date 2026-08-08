@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, lte, or, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, lte, or, sql } from 'drizzle-orm';
 import { db } from '$lib/server/db';
 import type {
   DeliveryRecord,
@@ -217,7 +217,7 @@ export const createDeliveryRecordStore = (database: DeliveryRecordDatabase) => (
         and(
           eq(deliveryRecords.id, recordId),
           eq(deliveryRecords.attemptType, 'scheduled'),
-          eq(deliveryRecords.deliveryStatus, 'retrying')
+          inArray(deliveryRecords.deliveryStatus, ['processing', 'retrying'])
         )
       )
       .returning();

@@ -155,10 +155,9 @@ export const createScheduledDailySummaryDelivery = ({
     errorClassification: 'summary-delivery-disabled' as const
   });
 
-  const stopDisabledRetry = async (
+  const cancelDisabledDelivery = async (
     record: DeliveryRecord,
-    userId: string,
-    scheduledAt: string,
+    occurrence: DueScheduledDailySummaryOccurrence,
     completedAt: string
   ) => {
     const cancelled = await deliveryRecordStore.markScheduledCancelled(record.id, {
@@ -166,20 +165,23 @@ export const createScheduledDailySummaryDelivery = ({
     });
 
     if (cancelled) {
+      await occurrenceStore.advance(occurrence.userId, occurrence.scheduledAt, null);
       return deliveryCancelled(cancelled);
     }
 
     const current = await deliveryRecordStore.loadScheduledOccurrence(
-      userId,
-      scheduledAt
+      occurrence.userId,
+      occurrence.scheduledAt
     );
     if (!current) {
       return { outcome: 'claim-lost' as const, occurrenceId: record.id };
     }
     if (current.deliveryStatus === 'cancelled') {
+      await occurrenceStore.advance(occurrence.userId, occurrence.scheduledAt, null);
       return deliveryCancelled(current);
     }
     if (current.deliveryStatus === 'sent' || current.deliveryStatus === 'failed') {
+      await occurrenceStore.advance(occurrence.userId, occurrence.scheduledAt, null);
       return { outcome: 'already-processed' as const, occurrenceId: current.id };
     }
     return { outcome: 'already-claimed' as const, occurrenceId: current.id };
@@ -191,10 +193,9 @@ export const createScheduledDailySummaryDelivery = ({
     completedAt: string
   ) => {
     if (existing?.deliveryStatus === 'retrying') {
-      return stopDisabledRetry(
+      return cancelDisabledDelivery(
         existing,
-        occurrence.userId,
-        occurrence.scheduledAt,
+        occurrence,
         completedAt
       );
     }
@@ -318,10 +319,9 @@ export const createScheduledDailySummaryDelivery = ({
       );
       if (!deliveryEnabledAfterClaim) {
         if (claimedElsewhere?.deliveryStatus === 'retrying') {
-          return stopDisabledRetry(
+          return cancelDisabledDelivery(
             claimedElsewhere,
-            occurrence.userId,
-            occurrence.scheduledAt,
+            occurrence,
             processingStartedAtIso
           );
         }
@@ -360,6 +360,14 @@ export const createScheduledDailySummaryDelivery = ({
 
     try {
       await occurrenceStore.advance(occurrence.userId, occurrence.scheduledAt, nextSummaryAt);
+
+      const deliveryEnabledBeforeSubmission = await summaryDeliveryEnabledFor(
+        occurrence.userId,
+        generated.input.configuration.summaryDeliveryEnabled
+      );
+      if (!deliveryEnabledBeforeSubmission) {
+        return cancelDisabledDelivery(claim, occurrence, processingStartedAtIso);
+      }
 
       let accepted;
       try {

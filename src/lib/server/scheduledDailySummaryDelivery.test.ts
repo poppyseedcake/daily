@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import Database from 'better-sqlite3';
+import { Temporal } from '@js-temporal/polyfill';
 import { drizzle } from 'drizzle-orm/better-sqlite3';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type { CalendarEventProvider } from '$lib/calendar';
@@ -68,6 +69,7 @@ const createTestDelivery = ({
   send,
   now,
   isActive,
+  afterClaim,
   loadCalendarAccessToken,
   calendarEventProvider
 }: {
@@ -75,10 +77,12 @@ const createTestDelivery = ({
   send: DailySummaryDeliveryProvider['send'];
   now: () => Date;
   isActive?: (userId: string) => Promise<boolean>;
+  afterClaim?: (userId: string) => Promise<void>;
   loadCalendarAccessToken?: (userId: string) => Promise<string | null>;
   calendarEventProvider?: (accessToken: string) => CalendarEventProvider;
 }) => {
   const persistedLifecycleStore = createUserLifecycleStore(database);
+  const persistedDeliveryRecordStore = createDeliveryRecordStore(database);
   const generationLifecycleStore = isActive ? { isActive } : persistedLifecycleStore;
   const deliveryLifecycleStore = isActive
     ? {
@@ -103,9 +107,25 @@ const createTestDelivery = ({
     now
   });
 
+  const deliveryRecordStore = afterClaim
+    ? {
+        ...persistedDeliveryRecordStore,
+        async claimScheduledOccurrence(
+          userId: string,
+          claim: Parameters<typeof persistedDeliveryRecordStore.claimScheduledOccurrence>[1]
+        ) {
+          const result = await persistedDeliveryRecordStore.claimScheduledOccurrence(userId, claim);
+          if (result) {
+            await afterClaim(userId);
+          }
+          return result;
+        }
+      }
+    : persistedDeliveryRecordStore;
+
   return createScheduledDailySummaryDelivery({
     occurrenceStore: createScheduledDailySummaryOccurrenceStore(database),
-    deliveryRecordStore: createDeliveryRecordStore(database),
+    deliveryRecordStore,
     userLifecycleStore: deliveryLifecycleStore,
     summaryConfigurationStore: configurationStore,
     generator,
@@ -257,6 +277,45 @@ describe('scheduled Daily Summary delivery', () => {
       completed_at: '2026-10-24T05:05:00.000Z',
       next_retry_at: null,
       error_classification: 'summary-delivery-disabled'
+    });
+  });
+
+  test('does not begin provider submission when Summary Delivery is disabled after claim', async () => {
+    const scheduledAt = '2026-10-24T05:00:00Z';
+    saveQualifyingUser(sqlite, { userId: 'user-1', scheduledAt });
+    const configurationStore = createUserSummaryConfigurationStore(database);
+    const send = vi.fn().mockResolvedValue({
+      providerName: 'fake-delivery',
+      providerMessageId: 'message-1',
+      providerStatusMetadata: 'accepted'
+    });
+    const delivery = createTestDelivery({
+      database,
+      send,
+      now: () => new Date(scheduledAt),
+      async afterClaim(userId) {
+        const configuration = await configurationStore.load(userId);
+        await configurationStore.save(
+          userId,
+          { ...configuration!, summaryDeliveryEnabled: false },
+          Temporal.Instant.from(scheduledAt)
+        );
+      }
+    });
+
+    await expect(delivery.processOneDueOccurrence()).resolves.toMatchObject({
+      outcome: 'delivery-cancelled'
+    });
+
+    expect(send).not.toHaveBeenCalled();
+    expect(
+      sqlite
+        .prepare('select delivery_status, attempt_count, completed_at from delivery_records')
+        .get()
+    ).toEqual({
+      delivery_status: 'cancelled',
+      attempt_count: 1,
+      completed_at: new Date(scheduledAt).toISOString()
     });
   });
 
