@@ -239,7 +239,7 @@ describe('scheduled Daily Summary delivery', () => {
     currentTime = new Date('2026-10-24T05:05:00.000Z');
 
     await expect(delivery.processOneDueOccurrence()).resolves.toMatchObject({
-      outcome: 'delivery-stopped'
+      outcome: 'delivery-cancelled'
     });
     await expect(delivery.processOneDueOccurrence()).resolves.toEqual({ outcome: 'none-due' });
 
@@ -326,7 +326,7 @@ describe('scheduled Daily Summary delivery', () => {
       )
     );
 
-    await expect(processing).resolves.toMatchObject({ outcome: 'delivery-stopped' });
+    await expect(processing).resolves.toMatchObject({ outcome: 'delivery-cancelled' });
     expect(
       sqlite
         .prepare('select delivery_status, attempt_count, next_retry_at, error_classification from delivery_records')

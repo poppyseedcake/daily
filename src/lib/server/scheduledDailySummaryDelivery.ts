@@ -86,7 +86,7 @@ export const scheduledDailySummaryDeliveryOutcomeNames = [
   'stale-occurrence',
   'retry-pending',
   'delivery-disabled',
-  'delivery-stopped',
+  'delivery-cancelled',
   'already-processed',
   'already-claimed',
   'delivery-failed',
@@ -144,8 +144,8 @@ export const createScheduledDailySummaryDelivery = ({
   const summaryDeliveryEnabledFor = async (userId: string, fallback: boolean) =>
     (await summaryConfigurationStore.load(userId))?.summaryDeliveryEnabled ?? fallback;
 
-  const deliveryStopped = (record: DeliveryRecord) => ({
-    outcome: 'delivery-stopped' as const,
+  const deliveryCancelled = (record: DeliveryRecord) => ({
+    outcome: 'delivery-cancelled' as const,
     occurrenceId: record.id,
     errorClassification: 'summary-delivery-disabled' as const
   });
@@ -166,7 +166,7 @@ export const createScheduledDailySummaryDelivery = ({
     });
 
     if (cancelled) {
-      return deliveryStopped(cancelled);
+      return deliveryCancelled(cancelled);
     }
 
     const current = await deliveryRecordStore.loadScheduledOccurrence(
@@ -177,12 +177,32 @@ export const createScheduledDailySummaryDelivery = ({
       return { outcome: 'claim-lost' as const, occurrenceId: record.id };
     }
     if (current.deliveryStatus === 'cancelled') {
-      return deliveryStopped(current);
+      return deliveryCancelled(current);
     }
     if (current.deliveryStatus === 'sent' || current.deliveryStatus === 'failed') {
       return { outcome: 'already-processed' as const, occurrenceId: current.id };
     }
     return { outcome: 'already-claimed' as const, occurrenceId: current.id };
+  };
+
+  const handleDisabledDelivery = async (
+    existing: DeliveryRecord | null,
+    occurrence: DueScheduledDailySummaryOccurrence,
+    completedAt: string
+  ) => {
+    if (existing?.deliveryStatus === 'retrying') {
+      return stopDisabledRetry(
+        existing,
+        occurrence.userId,
+        occurrence.scheduledAt,
+        completedAt
+      );
+    }
+    if (!existing) {
+      await occurrenceStore.advance(occurrence.userId, occurrence.scheduledAt, null);
+      return deliveryDisabled();
+    }
+    return null;
   };
 
   const processOccurrence = async (
@@ -204,17 +224,15 @@ export const createScheduledDailySummaryDelivery = ({
       occurrence.userId,
       true
     );
-    if (!deliveryEnabledBeforeGeneration && existing?.deliveryStatus === 'retrying') {
-      return stopDisabledRetry(
+    if (!deliveryEnabledBeforeGeneration) {
+      const disabledOutcome = await handleDisabledDelivery(
         existing,
-        occurrence.userId,
-        occurrence.scheduledAt,
+        occurrence,
         processingStartedAtIso
       );
-    }
-    if (!deliveryEnabledBeforeGeneration && !existing) {
-      await occurrenceStore.advance(occurrence.userId, occurrence.scheduledAt, null);
-      return deliveryDisabled();
+      if (disabledOutcome) {
+        return disabledOutcome;
+      }
     }
 
     if (
@@ -266,17 +284,15 @@ export const createScheduledDailySummaryDelivery = ({
       occurrence.userId,
       generated.input.configuration.summaryDeliveryEnabled
     );
-    if (!deliveryEnabledBeforeClaim && existing?.deliveryStatus === 'retrying') {
-      return stopDisabledRetry(
+    if (!deliveryEnabledBeforeClaim) {
+      const disabledOutcome = await handleDisabledDelivery(
         existing,
-        occurrence.userId,
-        occurrence.scheduledAt,
+        occurrence,
         processingStartedAtIso
       );
-    }
-    if (!deliveryEnabledBeforeClaim && !existing) {
-      await occurrenceStore.advance(occurrence.userId, occurrence.scheduledAt, null);
-      return deliveryDisabled();
+      if (disabledOutcome) {
+        return disabledOutcome;
+      }
     }
 
     const claim = await deliveryRecordStore.claimScheduledOccurrence(occurrence.userId, {
@@ -428,7 +444,7 @@ export const createScheduledDailySummaryDelivery = ({
         }
 
         if (retrying.deliveryStatus === 'cancelled') {
-          return deliveryStopped(retrying);
+          return deliveryCancelled(retrying);
         }
 
         return {

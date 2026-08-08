@@ -116,7 +116,7 @@ const countOutcome = (counts: ScheduledDailySummaryWorkerCounts, result: WorkerO
     case 'claim-lost':
     case 'user-deleting':
     case 'delivery-disabled':
-    case 'delivery-stopped':
+    case 'delivery-cancelled':
     case 'already-processed':
     case 'already-claimed':
       counts.skipped += 1;
