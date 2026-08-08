@@ -78,7 +78,6 @@ export const scheduledDailySummaryDeliveryOutcomeNames = [
   'retry-exhausted',
   'stale-occurrence',
   'retry-pending',
-  'not-qualifying',
   'already-processed',
   'already-claimed',
   'delivery-failed',

@@ -99,6 +99,67 @@ describe('SQLite User Summary Configuration store', () => {
     });
   });
 
+  test('schedules an enabled Summary Delivery even when every Summary Section is paused', async () => {
+    sqlite
+      .prepare(
+        `insert into summary_configurations (
+          id, user_id, summary_time, user_time_zone, summary_delivery_enabled,
+          weather_section_paused, commute_section_paused, calendar_section_paused, todo_section_paused
+        ) values (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      .run('configuration-1', 'user-1', '07:00', 'Europe/Warsaw', 0, 1, 1, 1, 1);
+    const store = createUserSummaryConfigurationStore(drizzle(sqlite, { schema }));
+
+    const result = await saveUserSummaryConfiguration(
+      store,
+      'user-1',
+      {
+        ...defaultSummaryConfiguration,
+        userTimeZone: 'Europe/Warsaw',
+        sectionPauses: { weather: true, commute: true, calendar: true, todo: true }
+      },
+      Temporal.Instant.from('2026-06-22T00:00:00Z')
+    );
+
+    expect(result).toEqual({ outcome: 'saved' });
+    expect(sqlite.prepare('select next_summary_at from users where id = ?').get('user-1')).toEqual({
+      next_summary_at: '2026-06-22T05:00:00Z'
+    });
+  });
+
+  test('preserves the scheduled occurrence when only a Summary Section pause changes', async () => {
+    sqlite
+      .prepare(
+        `insert into summary_configurations (
+          id, user_id, summary_time, user_time_zone, summary_delivery_enabled,
+          weather_section_paused, commute_section_paused, calendar_section_paused, todo_section_paused
+        ) values (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      .run('configuration-1', 'user-1', '07:00', 'UTC', 1, 0, 0, 0, 0);
+    sqlite
+      .prepare('update users set next_summary_at = ? where id = ?')
+      .run('2026-06-23T07:00:00Z', 'user-1');
+    const store = createUserSummaryConfigurationStore(drizzle(sqlite, { schema }));
+
+    const result = await saveUserSummaryConfiguration(
+      store,
+      'user-1',
+      {
+        ...defaultSummaryConfiguration,
+        sectionPauses: { weather: true, commute: false, calendar: false, todo: false }
+      },
+      Temporal.Instant.from('2026-06-22T08:00:00Z')
+    );
+
+    expect(result).toEqual({ outcome: 'saved' });
+    expect(sqlite.prepare('select next_summary_at from users where id = ?').get('user-1')).toEqual({
+      next_summary_at: '2026-06-23T07:00:00Z'
+    });
+    await expect(store.load('user-1')).resolves.toMatchObject({
+      sectionPauses: { weather: true }
+    });
+  });
+
   test('cannot restore Summary Delivery or scheduling for a deleting User', async () => {
     sqlite.prepare("update users set lifecycle_state = 'deleting' where id = ?").run('user-1');
     const store = createUserSummaryConfigurationStore(drizzle(sqlite, { schema }));

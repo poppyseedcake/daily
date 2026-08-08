@@ -164,7 +164,7 @@ describe('scheduled Daily Summary worker command', () => {
     const processOccurrence = vi
       .fn()
       .mockResolvedValueOnce({ outcome: 'sent', occurrenceId: 'record-1' })
-      .mockResolvedValueOnce({ outcome: 'not-qualifying' })
+      .mockResolvedValueOnce({ outcome: 'already-processed' })
       .mockResolvedValueOnce({ outcome: 'retry-scheduled', occurrenceId: 'record-3' });
     const events: ScheduledDailySummaryWorkerEvent[] = [];
     const persistScheduledWorkerRun = vi.fn().mockResolvedValue(undefined);

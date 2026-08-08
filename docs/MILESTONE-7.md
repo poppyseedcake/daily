@@ -11,11 +11,11 @@ Milestone 7 turns manual preview and test delivery into automated Daily Summary 
 - Idempotent scheduled delivery through Delivery Record uniqueness
 - Top-level, per-user, and per-section error handling
 - Short bounded retry behavior for failed email delivery
-- Skip without Delivery Record when no content qualifies for sending
+- Submit all four Summary Sections for every due occurrence while Summary Delivery is enabled, including paused, unconfigured, empty, and unavailable states
 - Unavailable Section behavior when one enabled section fails
 - Scheduled Delivery Records without full email content
 - User-visible delivery history for scheduled attempts
-- Tests for scheduling, DST behavior, idempotency, skip behavior, retry limits, and partial delivery
+- Tests for scheduling, DST behavior, idempotency, all-state delivery, retry limits, and section-level degradation
 
 ## Out of Scope
 

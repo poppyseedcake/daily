@@ -202,20 +202,13 @@ describe('scheduled Daily Summary generation', () => {
     expect(second.rendered.text.indexOf('Calendar')).toBeLessThan(second.rendered.text.indexOf('Todo'));
     expect(second.rendered.html).toContain('max-width:680px');
     expect(second.rendered.html).not.toContain('background-color:#111827');
-    expect(second.hasQualifyingContent).toBe(true);
-    expect(second.sectionContent).toEqual({
-      weather: 'qualifying',
-      commute: 'qualifying',
-      calendar: 'qualifying',
-      todo: 'qualifying'
-    });
     expect(weatherProvider.fetchDailyForecast).toHaveBeenCalledTimes(2);
     expect(calendarEventProvider.fetchEvents).toHaveBeenCalledTimes(2);
     expect(commuteEstimateProvider.estimateCommute).toHaveBeenCalledTimes(2);
     expect(deliveryProvider.send).toHaveBeenCalledWith(expect.objectContaining(second.rendered));
   });
 
-  test('does not initialize or call providers for disabled Summary Sections', async () => {
+  test('does not initialize or call providers for paused Summary Sections', async () => {
     const loadCalendarAccessToken = vi.fn();
     const calendarEventProvider = vi.fn();
     const loadWeatherLocation = vi.fn().mockRejectedValue(new Error('broken weather data'));
@@ -252,13 +245,6 @@ describe('scheduled Daily Summary generation', () => {
     expect(result.rendered.html).toContain('data-summary-section="todo"');
     expect(result.rendered.text).toContain('Weather\nPaused\nWeather is paused.');
     expect(result.rendered.text).toContain('Todo\nPaused\nTodo is paused.');
-    expect(result.hasQualifyingContent).toBe(false);
-    expect(result.sectionContent).toEqual({
-      weather: 'inapplicable',
-      commute: 'inapplicable',
-      calendar: 'inapplicable',
-      todo: 'inapplicable'
-    });
     expect(weatherProvider.fetchDailyForecast).not.toHaveBeenCalled();
     expect(loadWeatherLocation).not.toHaveBeenCalled();
     expect(commuteEstimateProvider).not.toHaveBeenCalled();
@@ -268,7 +254,7 @@ describe('scheduled Daily Summary generation', () => {
     expect(calendarEventProvider).not.toHaveBeenCalled();
   });
 
-  test('contains a Weather provider failure while preserving qualifying unrelated content', async () => {
+  test('contains a Weather provider failure while preserving unrelated content', async () => {
     const weatherAndTodoConfiguration: SummaryConfiguration = {
       ...configuration,
       sectionPauses: { weather: false, commute: true, calendar: true, todo: false }
@@ -288,13 +274,6 @@ describe('scheduled Daily Summary generation', () => {
 
     const result = await generator.generate('user-1');
 
-    expect(result.hasQualifyingContent).toBe(true);
-    expect(result.sectionContent).toEqual({
-      weather: 'unavailable',
-      commute: 'inapplicable',
-      calendar: 'inapplicable',
-      todo: 'qualifying'
-    });
     for (const output of [result.rendered.html, result.rendered.text]) {
       expect(output).toContain('Live weather is unavailable right now.');
       expect(output).toContain('Useful Todo');
@@ -302,7 +281,7 @@ describe('scheduled Daily Summary generation', () => {
     }
   });
 
-  test('contains a Weather location failure while preserving qualifying unrelated content', async () => {
+  test('contains a Weather location failure while preserving unrelated content', async () => {
     const weatherAndTodoConfiguration: SummaryConfiguration = {
       ...configuration,
       sectionPauses: { weather: false, commute: true, calendar: true, todo: false }
@@ -319,20 +298,13 @@ describe('scheduled Daily Summary generation', () => {
 
     const result = await generator.generate('user-1');
 
-    expect(result.hasQualifyingContent).toBe(true);
-    expect(result.sectionContent).toEqual({
-      weather: 'unavailable',
-      commute: 'inapplicable',
-      calendar: 'inapplicable',
-      todo: 'qualifying'
-    });
     expect(result.rendered.text).toContain('Live weather is unavailable right now.');
     expect(result.rendered.text).toContain('Useful Todo');
     expect(result.rendered.text).not.toContain('private Weather location failure');
     expect(weatherProvider.fetchDailyForecast).not.toHaveBeenCalled();
   });
 
-  test('contains a Commute setup failure while preserving qualifying unrelated content', async () => {
+  test('contains a Commute setup failure while preserving unrelated content', async () => {
     const commuteAndTodoConfiguration: SummaryConfiguration = {
       ...configuration,
       sectionPauses: { weather: true, commute: false, calendar: true, todo: false }
@@ -347,13 +319,6 @@ describe('scheduled Daily Summary generation', () => {
 
     const result = await generator.generate('user-1');
 
-    expect(result.hasQualifyingContent).toBe(true);
-    expect(result.sectionContent).toEqual({
-      weather: 'inapplicable',
-      commute: 'unavailable',
-      calendar: 'inapplicable',
-      todo: 'qualifying'
-    });
     expect(result.rendered.text).toContain('Live Commute is unavailable right now.');
     expect(result.rendered.text).toContain('Useful Todo');
     expect(result.rendered.text).not.toContain('private Commute setup failure');
@@ -428,11 +393,6 @@ describe('scheduled Daily Summary generation', () => {
 
       const result = await generator.generate('user-1');
 
-      expect(result.hasQualifyingContent).toBe(true);
-      expect(result.sectionContent.commute).toBe('unavailable');
-      expect(result.sectionContent.weather).toBe('qualifying');
-      expect(result.sectionContent.calendar).toBe('qualifying');
-      expect(result.sectionContent.todo).toBe('qualifying');
       expect(result.rendered.text).toContain('Live Commute is unavailable right now.');
       expect(result.rendered.text).toContain('Clear. Low 17C, high 26C.');
       expect(result.rendered.text).toContain('10:00 Planning (Work)');
@@ -440,7 +400,7 @@ describe('scheduled Daily Summary generation', () => {
     }
   );
 
-  test('contains a Calendar provider failure while preserving qualifying unrelated content', async () => {
+  test('contains a Calendar provider failure while preserving unrelated content', async () => {
     const calendarAndTodoConfiguration: SummaryConfiguration = {
       ...configuration,
       sectionPauses: { weather: true, commute: true, calendar: false, todo: false }
@@ -462,9 +422,6 @@ describe('scheduled Daily Summary generation', () => {
 
     const result = await generator.generate('user-1');
 
-    expect(result.hasQualifyingContent).toBe(true);
-    expect(result.sectionContent.calendar).toBe('unavailable');
-    expect(result.sectionContent.todo).toBe('qualifying');
     expect(result.rendered.text).toContain('Live Calendar is unavailable right now.');
     expect(result.rendered.text).toContain('Useful Todo');
     expect(result.rendered.text).not.toContain('private Calendar provider failure');
@@ -513,7 +470,6 @@ describe('scheduled Daily Summary generation', () => {
       'Todo\nUnavailable\nTodo data is temporarily unavailable.'
     );
     expect(result.rendered.text).not.toContain('private Todo state failure');
-    expect(result.hasQualifyingContent).toBe(true);
   });
 
   test('does not load Todo state when Todo is paused and keeps the paused state', async () => {
@@ -536,7 +492,7 @@ describe('scheduled Daily Summary generation', () => {
     expect(result.rendered.text).not.toContain('should not load');
   });
 
-  test('contains a Calendar connection failure while preserving qualifying unrelated content', async () => {
+  test('contains a Calendar connection failure while preserving unrelated content', async () => {
     const calendarAndTodoConfiguration: SummaryConfiguration = {
       ...configuration,
       sectionPauses: { weather: true, commute: true, calendar: false, todo: false }
@@ -552,9 +508,6 @@ describe('scheduled Daily Summary generation', () => {
 
     const result = await generator.generate('user-1');
 
-    expect(result.hasQualifyingContent).toBe(true);
-    expect(result.sectionContent.calendar).toBe('unavailable');
-    expect(result.sectionContent.todo).toBe('qualifying');
     expect(result.rendered.text).toContain('Live Calendar is unavailable right now.');
     expect(result.rendered.text).toContain('Useful Todo');
     expect(result.rendered.text).not.toContain('private Calendar connection failure');
@@ -585,7 +538,7 @@ describe('scheduled Daily Summary generation', () => {
     expect(calendarEventProvider).not.toHaveBeenCalled();
   });
 
-  test('reports empty, inapplicable, and unavailable-only output as not qualifying', async () => {
+  test('renders all four sections when content is empty, unconfigured, or unavailable', async () => {
     const mixedConfiguration: SummaryConfiguration = {
       ...configuration,
       sectionPauses: { weather: false, commute: false, calendar: false, todo: false }
@@ -613,13 +566,9 @@ describe('scheduled Daily Summary generation', () => {
 
     const result = await generator.generate('user-1');
 
-    expect(result.hasQualifyingContent).toBe(false);
-    expect(result.sectionContent).toEqual({
-      weather: 'inapplicable',
-      commute: 'inapplicable',
-      calendar: 'empty',
-      todo: 'empty'
-    });
+    for (const section of ['weather', 'commute', 'calendar', 'todo']) {
+      expect(result.rendered.html).toContain(`data-summary-section="${section}"`);
+    }
     expect(result.rendered.text).toContain('Weather\nNot configured\nChoose a Weather Location');
     expect(result.rendered.text).toContain('Calendar\nNothing scheduled\nNo Calendar Events in the Week Ahead.');
     expect(result.rendered.text).toContain('Commute');

@@ -1,4 +1,4 @@
-import { calendarSectionHasEvents, type CalendarEventProvider } from '$lib/calendar';
+import { type CalendarEventProvider } from '$lib/calendar';
 import {
   calendarReadinessForAuthMode,
   calendarReadinessForUnavailableCredentials,
@@ -26,17 +26,9 @@ import { loadUserCommuteSetup } from './commuteSetupPersistence';
 import type { WeatherForecastProvider, WeatherSummaryProvider } from '$lib/weatherForecast';
 import type { GoogleMapsRequestGateway } from './googleMapsRequestGateway';
 
-export type ScheduledSummarySectionContent =
-  | 'qualifying'
-  | 'empty'
-  | 'inapplicable'
-  | 'unavailable';
-
 export type ScheduledDailySummaryGenerationResult = {
   input: DailySummaryInput;
   rendered: RenderedDailySummary;
-  hasQualifyingContent: boolean;
-  sectionContent: Record<keyof DailySummaryInput['sections'], ScheduledSummarySectionContent>;
 };
 
 export type DailySummaryGenerationOptions = {
@@ -152,13 +144,9 @@ export const createDailySummaryGenerator = ({
       now: generatedAt,
       openDailyUrl: requestedOpenDailyUrl ?? openDailyUrl
     });
-    const sectionContent = classifySectionContent(input);
-
     return {
       input,
-      rendered: renderDailySummary(input),
-      hasQualifyingContent: Object.values(sectionContent).includes('qualifying'),
-      sectionContent
+      rendered: renderDailySummary(input)
     };
   }
 });
@@ -327,66 +315,3 @@ const unavailableCalendarContext = () => ({
   selectedCalendars: [],
   provider: undefined
 });
-
-const classifySectionContent = (
-  input: DailySummaryInput
-): ScheduledDailySummaryGenerationResult['sectionContent'] => ({
-  weather: classifyWeatherContent(input),
-  commute: classifyCommuteContent(input),
-  calendar: classifyCalendarContent(input),
-  todo: classifyTodoContent(input)
-});
-
-const classifyWeatherContent = (input: DailySummaryInput): ScheduledSummarySectionContent => {
-  if (input.configuration.sectionPauses.weather) {
-    return 'inapplicable';
-  }
-
-  switch (input.sections.weather.status) {
-    case 'unavailable':
-      return 'unavailable';
-    case 'unconfigured':
-    case 'paused':
-      return 'inapplicable';
-    default:
-      return 'qualifying';
-  }
-};
-
-const classifyCommuteContent = (input: DailySummaryInput): ScheduledSummarySectionContent => {
-  if (input.configuration.sectionPauses.commute) {
-    return 'inapplicable';
-  }
-  if (input.sections.commute.status === 'unavailable') return 'unavailable';
-  if (input.sections.commute.status === 'empty') return 'empty';
-  if (input.sections.commute.status === 'unconfigured' || input.sections.commute.status === 'paused') {
-    return 'inapplicable';
-  }
-  if (!input.commuteSection) return 'inapplicable';
-  return input.commuteSection.estimates.some((estimate) => estimate.outcome === 'available')
-    ? 'qualifying'
-    : 'unavailable';
-};
-
-const classifyCalendarContent = (input: DailySummaryInput): ScheduledSummarySectionContent => {
-  if (input.configuration.sectionPauses.calendar) {
-    return 'inapplicable';
-  }
-  if (input.sections.calendar.status === 'unavailable') return 'unavailable';
-  if (input.sections.calendar.status === 'unconfigured' || input.sections.calendar.status === 'paused') {
-    return 'inapplicable';
-  }
-  if (!input.calendarSection) return 'empty';
-  return calendarSectionHasEvents(input.calendarSection)
-    ? 'qualifying'
-    : 'empty';
-};
-
-const classifyTodoContent = (input: DailySummaryInput): ScheduledSummarySectionContent => {
-  if (input.configuration.sectionPauses.todo) {
-    return 'inapplicable';
-  }
-  if (input.sections.todo.status === 'unavailable') return 'unavailable';
-  if (input.sections.todo.status === 'paused') return 'inapplicable';
-  return input.todoSection ? 'qualifying' : 'empty';
-};
