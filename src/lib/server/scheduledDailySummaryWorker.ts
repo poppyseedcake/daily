@@ -115,7 +115,6 @@ const countOutcome = (counts: ScheduledDailySummaryWorkerCounts, result: WorkerO
     }
     case 'claim-lost':
     case 'user-deleting':
-    case 'not-qualifying':
     case 'already-processed':
     case 'already-claimed':
       counts.skipped += 1;

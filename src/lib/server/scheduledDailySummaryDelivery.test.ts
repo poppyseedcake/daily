@@ -402,6 +402,44 @@ describe('scheduled Daily Summary delivery', () => {
     ).toEqual({ next_summary_at: '2026-10-25T06:00:00Z' });
   });
 
+  test('delivers all four paused Summary Sections when no section is active', async () => {
+    saveQualifyingUser(sqlite, {
+      userId: 'user-1',
+      scheduledAt: '2026-10-24T05:00:00Z'
+    });
+    sqlite
+      .prepare('update summary_configurations set todo_section_paused = 1 where user_id = ?')
+      .run('user-1');
+    const send = vi.fn().mockResolvedValue({
+      providerName: 'fake-delivery',
+      providerMessageId: 'message-1',
+      providerStatusMetadata: 'accepted'
+    });
+    const delivery = createTestDelivery({
+      database,
+      send,
+      now: () => new Date('2026-10-24T05:00:00.000Z')
+    });
+
+    await expect(delivery.processOneDueOccurrence()).resolves.toMatchObject({
+      outcome: 'sent',
+      occurrenceId: expect.any(String)
+    });
+
+    const message = send.mock.calls[0]?.[0];
+    expect(send).toHaveBeenCalledOnce();
+    for (const section of ['weather', 'commute', 'calendar', 'todo']) {
+      expect(message?.html).toContain(`data-summary-section="${section}"`);
+    }
+    expect(message?.text).toContain('Weather\nPaused\nWeather is paused.');
+    expect(message?.text).toContain('Commute\nPaused\nCommute is paused.');
+    expect(message?.text).toContain('Calendar\nPaused\nCalendar is paused.');
+    expect(message?.text).toContain('Todo\nPaused\nTodo is paused.');
+    expect(
+      sqlite.prepare('select count(*) as count from delivery_records').get()
+    ).toEqual({ count: 1 });
+  });
+
   test('delivers Calendar-only unavailable output and records the Delivery Record', async () => {
     saveQualifyingUser(sqlite, {
       userId: 'user-1',
