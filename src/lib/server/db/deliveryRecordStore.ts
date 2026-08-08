@@ -1,15 +1,16 @@
-import { and, desc, eq, gte, lte, or, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, lte, or, sql } from 'drizzle-orm';
 import { db } from '$lib/server/db';
 import type {
   DeliveryRecord,
   DeliveryRecordInput,
   ScheduledDeliveryClaim,
+  ScheduledDeliveryCancelled,
   ScheduledDeliveryFailed,
   ScheduledDeliveryRetry,
   ScheduledDeliverySent,
   ScheduledDeliveryUnclaimedFailure
 } from '$lib/deliveryRecords';
-import { deliveryRecords } from './schema';
+import { deliveryRecords, summaryConfigurations, users } from './schema';
 
 type DeliveryRecordDatabase = typeof db;
 
@@ -66,52 +67,85 @@ export const createDeliveryRecordStore = (database: DeliveryRecordDatabase) => (
       .run();
   },
   async claimScheduledOccurrence(userId: string, claim: ScheduledDeliveryClaim) {
-    const rows = await database
-      .insert(deliveryRecords)
-      .values({
-        id: crypto.randomUUID(),
-        userId,
-        attemptType: 'scheduled',
-        requestedAt: claim.scheduledAt,
-        completedAt: null,
-        deliveryStatus: 'processing',
-        providerName: claim.providerName,
-        providerMessageId: null,
-        providerStatusMetadata: null,
-        errorClassification: null,
-        scheduledAt: claim.scheduledAt,
-        attemptCount: 1,
-        lastAttemptAt: claim.claimedAt,
-        nextRetryAt: null,
-        claimExpiresAt: claim.claimExpiresAt
-      })
-      .onConflictDoUpdate({
-        target: [deliveryRecords.userId, deliveryRecords.scheduledAt],
-        targetWhere: sql.raw("attempt_type = 'scheduled'"),
-        set: {
+    return database.transaction((transaction) => {
+      if (claim.claimKind === 'new') {
+        const eligibility = transaction
+          .select({
+            nextSummaryAt: users.nextSummaryAt,
+            summaryDeliveryEnabled: summaryConfigurations.summaryDeliveryEnabled
+          })
+          .from(users)
+          .leftJoin(summaryConfigurations, eq(summaryConfigurations.userId, users.id))
+          .where(eq(users.id, userId))
+          .get();
+
+        if (
+          !eligibility ||
+          eligibility.nextSummaryAt !== claim.scheduledAt ||
+          eligibility.summaryDeliveryEnabled === false
+        ) {
+          return null;
+        }
+      } else {
+        const configuration = transaction
+          .select({ summaryDeliveryEnabled: summaryConfigurations.summaryDeliveryEnabled })
+          .from(summaryConfigurations)
+          .where(eq(summaryConfigurations.userId, userId))
+          .get();
+
+        if (configuration?.summaryDeliveryEnabled === false) {
+          return null;
+        }
+      }
+
+      const rows = transaction
+        .insert(deliveryRecords)
+        .values({
+          id: crypto.randomUUID(),
+          userId,
+          attemptType: 'scheduled',
+          requestedAt: claim.scheduledAt,
+          completedAt: null,
           deliveryStatus: 'processing',
           providerName: claim.providerName,
+          providerMessageId: null,
           providerStatusMetadata: null,
           errorClassification: null,
-          attemptCount: sql.raw('coalesce(attempt_count, 0) + 1'),
+          scheduledAt: claim.scheduledAt,
+          attemptCount: 1,
           lastAttemptAt: claim.claimedAt,
           nextRetryAt: null,
           claimExpiresAt: claim.claimExpiresAt
-        },
-        setWhere: or(
-          and(
-            eq(deliveryRecords.deliveryStatus, 'processing'),
-            lte(deliveryRecords.claimExpiresAt, claim.claimedAt)
-          ),
-          and(
-            eq(deliveryRecords.deliveryStatus, 'retrying'),
-            lte(deliveryRecords.nextRetryAt, claim.claimedAt)
+        })
+        .onConflictDoUpdate({
+          target: [deliveryRecords.userId, deliveryRecords.scheduledAt],
+          targetWhere: sql.raw("attempt_type = 'scheduled'"),
+          set: {
+            deliveryStatus: 'processing',
+            providerName: claim.providerName,
+            providerStatusMetadata: null,
+            errorClassification: null,
+            attemptCount: sql.raw('coalesce(attempt_count, 0) + 1'),
+            lastAttemptAt: claim.claimedAt,
+            nextRetryAt: null,
+            claimExpiresAt: claim.claimExpiresAt
+          },
+          setWhere: or(
+            and(
+              eq(deliveryRecords.deliveryStatus, 'processing'),
+              lte(deliveryRecords.claimExpiresAt, claim.claimedAt)
+            ),
+            and(
+              eq(deliveryRecords.deliveryStatus, 'retrying'),
+              lte(deliveryRecords.nextRetryAt, claim.claimedAt)
+            )
           )
-        )
-      })
-      .returning();
+        })
+        .returning()
+        .all();
 
-    return firstDeliveryRecord(rows);
+      return firstDeliveryRecord(rows);
+    });
   },
   async loadScheduledOccurrence(userId: string, scheduledAt: string) {
     const row = await database.query.deliveryRecords.findFirst({
@@ -125,24 +159,65 @@ export const createDeliveryRecordStore = (database: DeliveryRecordDatabase) => (
     return row ? withoutUserId(row) : null;
   },
   async markScheduledRetrying(recordId: string, retry: ScheduledDeliveryRetry) {
+    return database.transaction((transaction) => {
+      const delivery = transaction
+        .select({ userId: deliveryRecords.userId })
+        .from(deliveryRecords)
+        .where(eq(deliveryRecords.id, recordId))
+        .get();
+      const configuration = delivery
+        ? transaction
+            .select({ summaryDeliveryEnabled: summaryConfigurations.summaryDeliveryEnabled })
+            .from(summaryConfigurations)
+            .where(eq(summaryConfigurations.userId, delivery.userId))
+            .get()
+        : undefined;
+      const deliveryDisabled = configuration?.summaryDeliveryEnabled === false;
+      const rows = transaction
+        .update(deliveryRecords)
+        .set({
+          deliveryStatus: deliveryDisabled ? 'cancelled' : 'retrying',
+          lastAttemptAt: retry.attemptedAt,
+          ...(deliveryDisabled
+            ? { completedAt: retry.attemptedAt, nextRetryAt: null }
+            : { nextRetryAt: retry.nextRetryAt }),
+          claimExpiresAt: null,
+          providerStatusMetadata: privacyPreservingProviderStatusMetadata(
+            retry.providerStatusMetadata
+          ),
+          errorClassification: deliveryDisabled
+            ? 'summary-delivery-disabled'
+            : retry.errorClassification
+        })
+        .where(
+          and(
+            eq(deliveryRecords.id, recordId),
+            eq(deliveryRecords.attemptType, 'scheduled'),
+            eq(deliveryRecords.deliveryStatus, 'processing'),
+            eq(deliveryRecords.attemptCount, retry.attemptCount)
+          )
+        )
+        .returning()
+        .all();
+
+      return firstDeliveryRecord(rows);
+    });
+  },
+  async markScheduledCancelled(recordId: string, cancelled: ScheduledDeliveryCancelled) {
     const rows = await database
       .update(deliveryRecords)
       .set({
-        deliveryStatus: 'retrying',
-        lastAttemptAt: retry.attemptedAt,
-        nextRetryAt: retry.nextRetryAt,
+        deliveryStatus: 'cancelled',
+        completedAt: cancelled.completedAt,
+        nextRetryAt: null,
         claimExpiresAt: null,
-        providerStatusMetadata: privacyPreservingProviderStatusMetadata(
-          retry.providerStatusMetadata
-        ),
-        errorClassification: retry.errorClassification
+        errorClassification: 'summary-delivery-disabled'
       })
       .where(
         and(
           eq(deliveryRecords.id, recordId),
           eq(deliveryRecords.attemptType, 'scheduled'),
-          eq(deliveryRecords.deliveryStatus, 'processing'),
-          eq(deliveryRecords.attemptCount, retry.attemptCount)
+          inArray(deliveryRecords.deliveryStatus, ['processing', 'retrying'])
         )
       )
       .returning();

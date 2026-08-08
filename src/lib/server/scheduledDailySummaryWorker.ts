@@ -115,10 +115,15 @@ const countOutcome = (counts: ScheduledDailySummaryWorkerCounts, result: WorkerO
     }
     case 'claim-lost':
     case 'user-deleting':
+    case 'delivery-disabled':
+    case 'delivery-cancelled':
     case 'already-processed':
     case 'already-claimed':
       counts.skipped += 1;
-      return { outcome: 'skipped' as const };
+      return {
+        outcome: 'skipped' as const,
+        ...(result.errorClassification ? { classification: result.errorClassification } : {})
+      };
     default: {
       const exhaustiveOutcome: never = result.outcome;
       return exhaustiveOutcome;
