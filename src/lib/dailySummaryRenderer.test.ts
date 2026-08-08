@@ -53,13 +53,7 @@ describe('Daily Summary renderer', () => {
     const rendered = renderDailySummary({
       configuration: {
         ...defaultSummaryConfiguration,
-        summaryTheme: 'dark',
-        sections: {
-          weather: true,
-          commute: false,
-          calendar: true,
-          todo: true
-        }
+        sectionPauses: { weather: false, commute: true, calendar: false, todo: false }
       },
       sections: {
         weather: { status: 'available', label: 'Mock Weather', detail: 'Mock: 18C and clear.' },
@@ -82,12 +76,7 @@ describe('Daily Summary renderer', () => {
     const rendered = renderDailySummary({
       configuration: {
         ...defaultSummaryConfiguration,
-        sections: {
-          weather: false,
-          commute: false,
-          calendar: true,
-          todo: false
-        }
+        sectionPauses: { weather: true, commute: true, calendar: false, todo: true }
       },
       sections: {
         weather: { status: 'available', label: 'Weather', detail: 'Hidden.' },
@@ -121,12 +110,7 @@ describe('Daily Summary renderer', () => {
     const rendered = renderDailySummary({
       configuration: {
         ...defaultSummaryConfiguration,
-        sections: {
-          weather: true,
-          commute: false,
-          calendar: false,
-          todo: false
-        }
+        sectionPauses: { weather: false, commute: true, calendar: true, todo: true }
       },
       sections: {
         weather: {
@@ -155,12 +139,7 @@ describe('Daily Summary renderer', () => {
     const rendered = renderDailySummary({
       configuration: {
         ...defaultSummaryConfiguration,
-        sections: {
-          weather: false,
-          commute: false,
-          calendar: false,
-          todo: true
-        }
+        sectionPauses: { weather: true, commute: true, calendar: true, todo: false }
       },
       sections: {
         weather: { status: 'available', label: 'Weather', detail: 'Hidden.' },
@@ -200,12 +179,7 @@ describe('Daily Summary renderer', () => {
     const rendered = renderDailySummary({
       configuration: {
         ...defaultSummaryConfiguration,
-        sections: {
-          weather: false,
-          commute: false,
-          calendar: true,
-          todo: true
-        }
+        sectionPauses: { weather: true, commute: true, calendar: false, todo: false }
       },
       sections: {
         weather: { status: 'available', label: 'Weather', detail: 'Hidden.' },
@@ -244,12 +218,7 @@ describe('Daily Summary renderer', () => {
     const rendered = renderDailySummary({
       configuration: {
         ...defaultSummaryConfiguration,
-        sections: {
-          weather: false,
-          commute: false,
-          calendar: true,
-          todo: false
-        }
+        sectionPauses: { weather: true, commute: true, calendar: false, todo: true }
       },
       sections: {
         weather: { status: 'available', label: 'Weather', detail: 'Hidden.' },
@@ -278,7 +247,7 @@ describe('Daily Summary renderer', () => {
     const rendered = renderDailySummary({
       configuration: {
         ...defaultSummaryConfiguration,
-        sections: { weather: false, commute: false, calendar: true, todo: false }
+        sectionPauses: { weather: true, commute: true, calendar: false, todo: true }
       },
       sections: {
         weather: { status: 'available', label: 'Weather', detail: 'Hidden.' },
@@ -318,7 +287,7 @@ describe('Daily Summary renderer', () => {
       const rendered = renderDailySummary({
         configuration: {
           ...defaultSummaryConfiguration,
-          sections: { weather: false, commute: false, calendar: true, todo: false }
+          sectionPauses: { weather: true, commute: true, calendar: false, todo: true }
         },
         sections: {
           weather: { status: 'available', label: 'Weather', detail: 'Hidden.' },
@@ -357,12 +326,7 @@ describe('Daily Summary renderer', () => {
     const rendered = renderDailySummary({
       configuration: {
         ...defaultSummaryConfiguration,
-        sections: {
-          weather: false,
-          commute: false,
-          calendar: true,
-          todo: true
-        }
+        sectionPauses: { weather: true, commute: true, calendar: false, todo: false }
       },
       sections: {
         weather: { status: 'available', label: 'Weather', detail: 'Hidden.' },
@@ -386,12 +350,7 @@ describe('Daily Summary renderer', () => {
     const rendered = renderDailySummary({
       configuration: {
         ...defaultSummaryConfiguration,
-        sections: {
-          weather: false,
-          commute: false,
-          calendar: false,
-          todo: true
-        }
+        sectionPauses: { weather: true, commute: true, calendar: true, todo: false }
       },
       sections: {
         weather: { status: 'available', label: 'Weather', detail: 'Hidden.' },
@@ -412,12 +371,7 @@ describe('Daily Summary renderer', () => {
     const rendered = renderDailySummary({
       configuration: {
         ...defaultSummaryConfiguration,
-        sections: {
-          weather: false,
-          commute: false,
-          calendar: false,
-          todo: true
-        }
+        sectionPauses: { weather: true, commute: true, calendar: true, todo: false }
       },
       sections: {
         weather: { status: 'available', label: 'Weather', detail: 'Hidden.' },
@@ -463,7 +417,7 @@ describe('Daily Summary renderer', () => {
     const rendered = renderDailySummary({
       configuration: {
         ...defaultSummaryConfiguration,
-        sections: { weather: false, commute: false, calendar: false, todo: true }
+        sectionPauses: { weather: true, commute: true, calendar: true, todo: false }
       },
       sections: {
         weather: { status: 'available', label: 'Weather', detail: 'Hidden.' },
@@ -493,12 +447,7 @@ describe('Daily Summary renderer', () => {
     const rendered = renderDailySummary({
       configuration: {
         ...defaultSummaryConfiguration,
-        sections: {
-          weather: false,
-          commute: false,
-          calendar: false,
-          todo: true
-        }
+        sectionPauses: { weather: true, commute: true, calendar: true, todo: false }
       },
       sections: {
         weather: { status: 'available', label: 'Weather', detail: 'Hidden.' },
@@ -541,12 +490,7 @@ describe('Daily Summary renderer', () => {
     const rendered = renderDailySummary({
       configuration: {
         ...defaultSummaryConfiguration,
-        sections: {
-          weather: false,
-          commute: false,
-          calendar: false,
-          todo: true
-        }
+        sectionPauses: { weather: true, commute: true, calendar: true, todo: false }
       },
       sections: {
         weather: { status: 'available', label: 'Weather', detail: 'Hidden.' },

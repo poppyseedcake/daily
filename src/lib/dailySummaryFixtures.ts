@@ -171,9 +171,7 @@ type StateMatrix = {
 
 const fixtureConfiguration: SummaryConfiguration = {
   ...defaultSummaryConfiguration,
-  summaryTheme: 'light',
   userTimeZone: 'Europe/Warsaw',
-  sections: { weather: true, commute: true, calendar: true, todo: true },
   sectionPauses: { weather: false, commute: false, calendar: false, todo: false }
 };
 

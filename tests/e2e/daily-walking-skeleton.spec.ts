@@ -25,8 +25,7 @@ test('Visitor Summary Configuration persists through the secondary Settings pane
 
   await page.getByLabel('Summary Time').fill('18:45');
   await page.getByLabel('User Time Zone').selectOption('America/New_York');
-  await page.getByRole('radio', { name: 'Dark Theme' }).check();
-  await page.getByRole('checkbox', { name: 'Weather Section' }).uncheck();
+  await page.getByRole('checkbox', { name: 'Pause Weather Section' }).check();
   await closePanel(page);
 
   await page.getByRole('checkbox', { name: /Preview only/ }).uncheck();
@@ -39,8 +38,7 @@ test('Visitor Summary Configuration persists through the secondary Settings pane
 
   await expect(page.getByLabel('Summary Time')).toHaveValue('18:45');
   await expect(page.getByLabel('User Time Zone')).toHaveValue('America/New_York');
-  await expect(page.getByRole('radio', { name: 'Dark Theme' })).toBeChecked();
-  await expect(page.getByRole('checkbox', { name: 'Weather Section' })).not.toBeChecked();
+  await expect(page.getByRole('checkbox', { name: 'Pause Weather Section' })).toBeChecked();
 });
 
 test('Visitor chooses a Weather Location in the focused city dialog and keeps it after refresh', async ({
@@ -127,7 +125,7 @@ test('Visitor keeps saved Weather Cities separate from saved Commute Addresses',
     })
     .click();
   await expect.poll(() => page.evaluate(() => {
-    const setup = localStorage.getItem('daily.visitorLocalSetup.v2');
+    const setup = localStorage.getItem('daily.visitorLocalSetup.v3');
     return setup
       ? {
           savedWeatherCities: JSON.parse(setup).savedWeatherCities,
@@ -171,7 +169,7 @@ test('Visitor keeps saved Weather Cities separate from saved Commute Addresses',
     .getByRole('button', { name: 'Add Origin point to Saved Commute Addresses' })
     .click();
   await expect.poll(() => page.evaluate(() => {
-    const setup = localStorage.getItem('daily.visitorLocalSetup.v2');
+    const setup = localStorage.getItem('daily.visitorLocalSetup.v3');
     return setup ? JSON.parse(setup).savedCommuteAddresses : null;
   })).toEqual([
     { label: 'Origin point', latitude: 52.2285, longitude: 21.0037 }

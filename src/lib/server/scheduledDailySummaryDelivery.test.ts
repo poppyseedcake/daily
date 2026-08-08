@@ -31,8 +31,7 @@ const applyMigrations = (sqlite: Database.Database) => {
     '0019_add_commute_route_days.sql',
     '0011_add_next_summary_at.sql',
     '0012_add_scheduled_delivery_claims.sql',
-    '0015_add_user_lifecycle.sql',
-    '0022_add_summary_section_pause_settings.sql'
+    '0015_add_user_lifecycle.sql'
   ]) {
     sqlite.exec(readFileSync(`drizzle/${migration}`, 'utf8'));
   }
@@ -50,12 +49,11 @@ const saveQualifyingUser = (
   sqlite
     .prepare(
       `insert into summary_configurations (
-        id, user_id, summary_time, user_time_zone, summary_theme,
-        summary_delivery_enabled, weather_section_enabled, commute_section_enabled,
-        calendar_section_enabled, todo_section_enabled
-      ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        id, user_id, summary_time, user_time_zone, summary_delivery_enabled,
+        weather_section_paused, commute_section_paused, calendar_section_paused, todo_section_paused
+      ) values (?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
-    .run(`configuration-${userId}`, userId, '07:00', 'Europe/Warsaw', 'dark', 1, 0, 0, 0, 1);
+    .run(`configuration-${userId}`, userId, '07:00', 'Europe/Warsaw', 1, 1, 1, 1, 0);
   sqlite
     .prepare(
       `insert into todo_tasks (
@@ -222,7 +220,7 @@ describe('scheduled Daily Summary delivery', () => {
       scheduledAt: '2026-10-24T05:00:00Z'
     });
     sqlite
-      .prepare('update summary_configurations set weather_section_enabled = 1 where user_id = ?')
+      .prepare('update summary_configurations set weather_section_paused = 0 where user_id = ?')
       .run('user-1');
     const send = vi.fn().mockResolvedValue({
       providerName: 'fake-delivery',
@@ -413,9 +411,9 @@ describe('scheduled Daily Summary delivery', () => {
     sqlite
       .prepare(
         `update summary_configurations
-            set weather_section_enabled = 0,
-                calendar_section_enabled = 1,
-                todo_section_enabled = 0
+            set weather_section_paused = 1,
+                calendar_section_paused = 0,
+                todo_section_paused = 1
           where user_id = ?`
       )
       .run('user-1');

@@ -29,7 +29,7 @@ describe('summary configuration validation', () => {
     });
   });
 
-  test('adds pause defaults when parsing the legacy Summary Configuration shape', () => {
+  test('adds pause defaults when none are provided', () => {
     const { sectionPauses, ...legacyConfiguration } = defaultSummaryConfiguration;
 
     expect(summaryConfigurationSchema.parse(legacyConfiguration)).toEqual(defaultSummaryConfiguration);
@@ -45,14 +45,7 @@ describe('summary configuration validation', () => {
     const configuration = summaryConfigurationSchema.parse({
       summaryTime: '18:45',
       userTimeZone: 'America/New_York',
-      summaryTheme: 'dark',
       summaryDeliveryEnabled: false,
-      sections: {
-        weather: false,
-        commute: true,
-        calendar: true,
-        todo: false
-      },
       sectionPauses: {
         weather: true,
         commute: false,
@@ -63,8 +56,6 @@ describe('summary configuration validation', () => {
 
     expect(configuration.summaryTime).toBe('18:45');
     expect(configuration.userTimeZone).toBe('America/New_York');
-    expect(configuration.sections.weather).toBe(false);
-    expect(configuration.sections.todo).toBe(false);
     expect(configuration.sectionPauses.weather).toBe(true);
   });
 
@@ -87,14 +78,7 @@ describe('summary configuration validation', () => {
     const result = summaryConfigurationSchema.safeParse({
       summaryTime: 'morning',
       userTimeZone: '',
-      summaryTheme: 'sepia',
       summaryDeliveryEnabled: true,
-      sections: {
-        weather: true,
-        commute: true,
-        calendar: true,
-        todo: true
-      },
       sectionPauses: {
         weather: 'sometimes',
         commute: false,
@@ -109,8 +93,17 @@ describe('summary configuration validation', () => {
 
       expect(errorPaths).toContain('summaryTime');
       expect(errorPaths).toContain('userTimeZone');
-      expect(errorPaths).toContain('summaryTheme');
       expect(errorPaths).toContain('sectionPauses.weather');
     }
+  });
+
+  test('rejects removed Summary Theme and section-enabled settings', () => {
+    const legacy = {
+      ...defaultSummaryConfiguration,
+      summaryTheme: 'light',
+      sections: { weather: true, commute: true, calendar: true, todo: true }
+    };
+
+    expect(summaryConfigurationSchema.safeParse(legacy).success).toBe(false);
   });
 });

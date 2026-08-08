@@ -12,7 +12,6 @@ import {
 import {
   createDefaultLocalSetup,
   createUserSetupImportDraftFromLocalSetup,
-  legacyLocalSetupStorageKey,
   loadLocalSetup,
   localSetupStorageKey,
   localSetupVersion,
@@ -25,7 +24,7 @@ import {
 const memoryStorage = (initialValue: string | null = null): LocalSetupStorageAdapter & { stored: string | null } => ({
   stored: initialValue,
   getItem(key) {
-    expect([localSetupStorageKey, 'daily.visitorLocalSetup.v1']).toContain(key);
+    expect(key).toBe(localSetupStorageKey);
     return this.stored;
   },
   setItem(key, value) {
@@ -38,8 +37,8 @@ describe('Visitor Local Setup module', () => {
   test('loads a valid default Local Setup from empty storage', () => {
     const result = loadLocalSetup(memoryStorage());
 
-    expect(localSetupVersion).toBe(2);
-    expect(localSetupStorageKey).toBe('daily.visitorLocalSetup.v2');
+    expect(localSetupVersion).toBe(3);
+    expect(localSetupStorageKey).toBe('daily.visitorLocalSetup.v3');
     expect(result.outcome).toBe('empty');
     expect(result.setup).toEqual(createDefaultLocalSetup());
     expect(result.setup.summaryConfiguration).toEqual(defaultSummaryConfiguration);
@@ -48,120 +47,27 @@ describe('Visitor Local Setup module', () => {
     expect(result.setup.nextTodoId).toBe(1);
   });
 
-  test('loads existing current-key Local Setup values that predate the explicit version field', () => {
-    const storedSetup = {
-      summaryConfiguration: {
-        ...defaultSummaryConfiguration,
-        summaryTime: '18:45',
-        sections: { weather: true, commute: false, calendar: true, todo: true }
-      },
-      weatherLocation: {
-        label: 'Warsaw, Poland',
-        latitude: 52.2297,
-        longitude: 21.0122
-      },
-      savedLocations: [
-        {
-          label: 'Warsaw, Poland',
-          latitude: 52.2297,
-          longitude: 21.0122
-        }
-      ],
-      commuteRoutes: [
-        {
-          id: 'visitor-route-1',
-          name: 'Morning commute',
-          origin: { label: 'Home', latitude: 52.2297, longitude: 21.0122 },
-          destination: { label: 'Office', latitude: 52.2318, longitude: 21.0067 },
-          previewDurationMinutes: 24,
-          enabled: false
-        }
-      ],
-      commuteDays: ['monday', 'wednesday', 'sunday'],
-      todoCategories: [{ id: 'category-1', name: 'Home', position: 1 }],
-      demoCalendar: { label: 'Demo Calendar' },
-      mockWeather: { label: 'Mock Weather' },
-      mockCommute: { label: 'Mock Commute' },
-      todoTasks: [
-        {
-          id: 'todo-1',
-          title: 'Buy oats',
-          categoryId: 'category-1',
-          urgency: 'medium',
-          position: 1
-        }
-      ],
-      nextTodoId: 2
-    };
-
-    const result = loadLocalSetup(memoryStorage(JSON.stringify(storedSetup)));
-
-    expect(result.outcome).toBe('loaded');
-    expect(result.setup).toMatchObject({
-      version: localSetupVersion,
-      summaryConfiguration: storedSetup.summaryConfiguration,
-      todoCategories: storedSetup.todoCategories,
-      nextTodoId: storedSetup.nextTodoId
-    });
-    expect(result.setup).not.toHaveProperty('demoCalendar');
-    expect(result.setup).not.toHaveProperty('mockWeather');
-    expect(result.setup).not.toHaveProperty('mockCommute');
-    expect(result.setup.commuteRoutes[0]?.days).toEqual(storedSetup.commuteDays);
-    expect(result.setup.todoTasks[0]?.completed).toBe(false);
-  });
-
-  test('splits legacy shared favorites into Weather Cities and Commute Addresses', () => {
-    const legacySetup = {
+  test('initializes fresh state instead of converting version 2 Local Setup data', () => {
+    const version2Setup = JSON.stringify({
       ...createDefaultLocalSetup(),
-      version: 1,
-      savedLocations: [
-        { label: 'Warsaw, Poland', latitude: 52.2297, longitude: 21.0122 },
-        { label: 'Home entrance', latitude: 52.2318, longitude: 21.0067 }
-      ],
-      commuteRoutes: [
-        {
-          id: 'route-1',
-          name: 'Office',
-          origin: { label: 'Home', latitude: 52.2318, longitude: 21.0067 },
-          destination: { label: 'Office', latitude: 52.24, longitude: 21.03 },
-          days: ['monday'],
-          enabled: true
-        }
-      ]
-    };
-
-    const result = loadLocalSetup(memoryStorage(JSON.stringify(legacySetup)));
-
-    expect(result.outcome).toBe('loaded');
-    expect(result.setup.savedWeatherCities).toEqual([
-      { label: 'Warsaw, Poland', latitude: 52.2297, longitude: 21.0122 }
-    ]);
-    expect(result.setup.savedCommuteAddresses).toEqual([
-      { label: 'Home entrance', latitude: 52.2318, longitude: 21.0067 }
-    ]);
-  });
-
-  test('loads version 1 Local Setup from its previous browser storage key', () => {
-    const legacySetup = JSON.stringify({
-      ...createDefaultLocalSetup(),
-      version: 1,
-      savedLocations: [{ label: 'Warsaw, Poland', latitude: 52.2297, longitude: 21.0122 }]
+      version: 2,
+      todoTasks: [{ id: 'todo-1', title: 'Legacy task', categoryId: null, urgency: 'high', position: 1 }],
+      weatherLocation: { label: 'Warsaw', latitude: 52.2, longitude: 21 },
+      commuteRoutes: [{ id: 'route-1', name: 'Legacy route' }]
     });
     const readKeys: string[] = [];
 
     const result = loadLocalSetup({
       getItem(key) {
         readKeys.push(key);
-        return key === legacyLocalSetupStorageKey ? legacySetup : null;
+        return key === 'daily.visitorLocalSetup.v2' ? version2Setup : null;
       },
       setItem() {}
     });
 
-    expect(readKeys).toEqual([localSetupStorageKey, legacyLocalSetupStorageKey]);
-    expect(result.outcome).toBe('loaded');
-    expect(result.setup.savedWeatherCities).toEqual([
-      { label: 'Warsaw, Poland', latitude: 52.2297, longitude: 21.0122 }
-    ]);
+    expect(readKeys).toEqual([localSetupStorageKey]);
+    expect(result.outcome).toBe('empty');
+    expect(result.setup).toEqual(createDefaultLocalSetup());
   });
 
   test.each([
@@ -213,7 +119,7 @@ describe('Visitor Local Setup module', () => {
       ...createDefaultLocalSetup(),
       summaryConfiguration: {
         ...defaultSummaryConfiguration,
-        sections: { weather: true, commute: true, calendar: true, todo: false }
+        sectionPauses: { weather: false, commute: false, calendar: false, todo: true }
       },
       todoTasks: [
         {
@@ -305,7 +211,6 @@ describe('Visitor Local Setup module', () => {
       summaryConfiguration: {
         ...defaultSummaryConfiguration,
         summaryTime: '18:45',
-        sections: { weather: true, commute: true, calendar: true, todo: true }
       },
       todoCategories: todoStateAfterDeletion.categories,
       todoTasks: todoStateAfterDeletion.tasks,
@@ -439,7 +344,7 @@ describe('Visitor Local Setup module', () => {
     expect(storage.stored).toBeNull();
   });
 
-  test('migrates a legacy single Commute Route to an enabled ordered route', () => {
+  test('does not expand a legacy single Commute Route', () => {
     const setup = createDefaultLocalSetup();
     const storage = memoryStorage(
       JSON.stringify({
@@ -452,10 +357,7 @@ describe('Visitor Local Setup module', () => {
       })
     );
 
-    expect(loadLocalSetup(storage).setup).toMatchObject({
-      commuteRoutes: [{ id: 'route-1', name: 'Morning commute', enabled: true }],
-      commuteDays: ['monday', 'tuesday', 'wednesday', 'thursday', 'friday']
-    });
+    expect(loadLocalSetup(storage).setup.commuteRoutes).toEqual([]);
   });
 
   test('returns a failed outcome when storage cannot be written', () => {
@@ -487,7 +389,7 @@ describe('Visitor Local Setup module', () => {
       summaryConfiguration: {
         ...defaultSummaryConfiguration,
         summaryTime: '18:45',
-        sections: { weather: true, commute: false, calendar: true, todo: true }
+        sectionPauses: { weather: false, commute: true, calendar: false, todo: false }
       },
       weatherLocation: {
         label: 'Warsaw, Poland',
@@ -586,14 +488,9 @@ describe('Visitor Local Setup module', () => {
         userId: 'user-1',
         summaryTime: '18:45',
         userTimeZone: 'UTC',
-        summaryTheme: 'light',
         summaryDeliveryEnabled: true,
-        weatherSectionEnabled: true,
-        commuteSectionEnabled: false,
-        calendarSectionEnabled: true,
-        todoSectionEnabled: true,
         weatherSectionPaused: false,
-        commuteSectionPaused: false,
+        commuteSectionPaused: true,
         calendarSectionPaused: false,
         todoSectionPaused: false
       },

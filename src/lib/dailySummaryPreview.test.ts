@@ -8,14 +8,7 @@ import type { CommuteRoute } from './commuteRoute';
 const configuration: SummaryConfiguration = {
   summaryTime: '18:45',
   userTimeZone: 'America/New_York',
-  summaryTheme: 'light',
   summaryDeliveryEnabled: true,
-  sections: {
-    weather: true,
-    commute: true,
-    calendar: true,
-    todo: true
-  },
   sectionPauses: {
     weather: false,
     commute: false,
@@ -190,9 +183,9 @@ describe('Daily Summary preview input', () => {
     ]);
   });
 
-  test.each(['light', 'dark'] as const)('keeps route-labeled Commute in fixed HTML and text order for the %s legacy theme setting', async (summaryTheme) => {
+  test('keeps route-labeled Commute in fixed HTML and text order with the canonical appearance', async () => {
     const preview = await buildDailySummaryInput({
-      configuration: { ...configuration, summaryTheme },
+      configuration,
       todoCategories,
       todoTasks,
       commuteRoutes: [{ id: 'office', name: 'Office', days: ['wednesday'], enabled: true, origin: { label: 'Home', latitude: 40.1, longitude: -73.9 }, destination: { label: 'Office', latitude: 40.7, longitude: -74 } }],
@@ -463,7 +456,7 @@ describe('Daily Summary preview input', () => {
   });
 
   test.each([
-    ['disabled section', { sections: { ...configuration.sections, commute: false } }, ['wednesday']],
+    ['paused section', { sectionPauses: { ...configuration.sectionPauses, commute: true } }, ['wednesday']],
     ['non-Commute Day', {}, ['thursday']],
     ['empty weekday selection', {}, []]
   ] as const)('keeps the Commute state visible without estimate requests for %s', async (_case, configurationPatch, commuteDays) => {
@@ -818,10 +811,7 @@ describe('Daily Summary preview input', () => {
       authMode: 'user',
       configuration: {
         ...configuration,
-        sections: {
-          ...configuration.sections,
-          calendar: false
-        }
+        sectionPauses: { ...configuration.sectionPauses, calendar: true }
       },
       todoCategories,
       todoTasks,
@@ -906,10 +896,7 @@ describe('Daily Summary preview input', () => {
     const preview = await buildDailySummaryInput({
       configuration: {
         ...configuration,
-        sections: {
-          ...configuration.sections,
-          weather: false
-        }
+        sectionPauses: { ...configuration.sectionPauses, weather: true }
       },
       todoCategories,
       todoTasks,
@@ -1007,12 +994,7 @@ describe('Daily Summary preview input', () => {
     const preview = await buildDailySummaryInput({
       configuration: {
         ...configuration,
-        sections: {
-          weather: false,
-          commute: false,
-          calendar: false,
-          todo: true
-        }
+        sectionPauses: { weather: true, commute: true, calendar: true, todo: false }
       },
       todoCategories,
       todoTasks: []

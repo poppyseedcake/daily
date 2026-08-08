@@ -227,7 +227,7 @@ describe('Calendar Section', () => {
     const rendered = renderDailySummary({
       configuration: {
         ...defaultSummaryConfiguration,
-        sections: { weather: false, commute: false, calendar: true, todo: false }
+        sectionPauses: { weather: true, commute: true, calendar: false, todo: true }
       },
       sections: {
         weather: { status: 'available', label: 'Weather', detail: '' },

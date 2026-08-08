@@ -1,5 +1,4 @@
 import type { Temporal } from '@js-temporal/polyfill';
-import { calculateNextSummaryAt } from '$lib/nextSummarySchedule';
 import {
   defaultSummaryConfiguration,
   summaryConfigurationSchema,
@@ -11,8 +10,8 @@ export type UserSummaryConfigurationStore = {
   save: (
     userId: string,
     configuration: SummaryConfiguration,
-    nextSummaryAt: string | null
-  ) => Promise<void>;
+    referenceInstant: Temporal.Instant
+  ) => Promise<boolean>;
 };
 
 export type UserSummaryConfigurationSaveOutcome = 'saved' | 'invalid-configuration' | 'save-failed';
@@ -20,16 +19,11 @@ export type UserSummaryConfigurationSaveOutcome = 'saved' | 'invalid-configurati
 export type FlatSummaryConfiguration = {
   summaryTime: string;
   userTimeZone: string;
-  summaryTheme: string;
   summaryDeliveryEnabled: boolean;
-  weatherSectionEnabled: boolean;
-  commuteSectionEnabled: boolean;
-  calendarSectionEnabled: boolean;
-  todoSectionEnabled: boolean;
-  weatherSectionPaused?: boolean;
-  commuteSectionPaused?: boolean;
-  calendarSectionPaused?: boolean;
-  todoSectionPaused?: boolean;
+  weatherSectionPaused: boolean;
+  commuteSectionPaused: boolean;
+  calendarSectionPaused: boolean;
+  todoSectionPaused: boolean;
 };
 
 export const summaryConfigurationFromFlat = (
@@ -38,19 +32,12 @@ export const summaryConfigurationFromFlat = (
   summaryConfigurationSchema.parse({
     summaryTime: configuration.summaryTime,
     userTimeZone: configuration.userTimeZone,
-    summaryTheme: configuration.summaryTheme,
     summaryDeliveryEnabled: configuration.summaryDeliveryEnabled,
-    sections: {
-      weather: configuration.weatherSectionEnabled,
-      commute: configuration.commuteSectionEnabled,
-      calendar: configuration.calendarSectionEnabled,
-      todo: configuration.todoSectionEnabled
-    },
     sectionPauses: {
-      weather: configuration.weatherSectionPaused ?? false,
-      commute: configuration.commuteSectionPaused ?? false,
-      calendar: configuration.calendarSectionPaused ?? false,
-      todo: configuration.todoSectionPaused ?? false
+      weather: configuration.weatherSectionPaused,
+      commute: configuration.commuteSectionPaused,
+      calendar: configuration.calendarSectionPaused,
+      todo: configuration.todoSectionPaused
     }
   });
 
@@ -76,8 +63,9 @@ export const saveUserSummaryConfiguration = async (
   }
 
   try {
-    const nextSummaryAt = calculateNextSummaryAt(result.data, referenceInstant)?.toString() ?? null;
-    await store.save(userId, result.data, nextSummaryAt);
+    if (!(await store.save(userId, result.data, referenceInstant))) {
+      return { outcome: 'save-failed' };
+    }
   } catch {
     return { outcome: 'save-failed' };
   }

@@ -112,13 +112,13 @@ test('Visitor can pause and resume a Summary Section from its context tile', asy
     await tile.getByRole('button', { name: 'Pause section' }).click();
     await expect(tile).toContainText(`${section.label} · Paused`);
     await expect(tile.getByRole('button', { name: 'Resume section' }))
-      .toHaveAttribute('aria-pressed', 'false');
+      .toHaveAttribute('aria-pressed', 'true');
   }
 
   await expect.poll(() => page.evaluate(() => {
-    const storedSetup = localStorage.getItem('daily.visitorLocalSetup.v2');
-    return storedSetup ? JSON.parse(storedSetup).summaryConfiguration.sections : null;
-  })).toEqual({ weather: false, commute: false, calendar: false, todo: false });
+    const storedSetup = localStorage.getItem('daily.visitorLocalSetup.v3');
+    return storedSetup ? JSON.parse(storedSetup).summaryConfiguration.sectionPauses : null;
+  })).toEqual({ weather: true, commute: true, calendar: true, todo: true });
 
   await page.reload();
 
@@ -130,7 +130,7 @@ test('Visitor can pause and resume a Summary Section from its context tile', asy
   await page.getByRole('button', { name: 'Open settings' }).click();
   const settings = page.getByRole('dialog', { name: 'Settings' });
   for (const section of sections) {
-    await expect(settings.locator(`#${section.settingsId}`)).not.toBeChecked();
+    await expect(settings.locator(`#${section.settingsId}`)).toBeChecked();
   }
   await settings.getByRole('button', { name: 'Close panel' }).click();
 

@@ -415,15 +415,8 @@ describe('Daily database schema', () => {
     });
   });
 
-  test('ships additive per-section pause settings with false defaults', () => {
-    const migration = readFileSync(
-      'drizzle/0022_add_summary_section_pause_settings.sql',
-      'utf8'
-    );
-    const journal = JSON.parse(readFileSync('drizzle/meta/_journal.json', 'utf8')) as {
-      entries: Array<{ idx: number; tag: string }>;
-    };
-
+  test('bootstraps only canonical per-section pause settings with false defaults', () => {
+    const bootstrap = readFileSync('drizzle/0000_bootstrap_daily.sql', 'utf8');
     expect(Object.keys(getTableColumns(summaryConfigurations))).toEqual(
       expect.arrayContaining([
         'weatherSectionPaused',
@@ -432,17 +425,11 @@ describe('Daily database schema', () => {
         'todoSectionPaused'
       ])
     );
-    expect(migration).toContain(
-      'ALTER TABLE `summary_configurations` ADD `weather_section_paused` integer DEFAULT false NOT NULL'
-    );
-    expect(migration).toContain(
-      'ALTER TABLE `summary_configurations` ADD `todo_section_paused` integer DEFAULT false NOT NULL'
-    );
-    expect(migration).not.toMatch(/DROP TABLE|DROP COLUMN|UPDATE `summary_configurations`/i);
-    expect(journal.entries.find(({ idx }) => idx === 22)).toMatchObject({
-      idx: 22,
-      tag: '0022_add_summary_section_pause_settings'
-    });
+    expect(bootstrap).toContain('`weather_section_paused` integer DEFAULT false NOT NULL');
+    expect(bootstrap).not.toContain('summary_theme');
+    expect(bootstrap).not.toContain('section_enabled');
+    expect(getTableColumns(summaryConfigurations)).not.toHaveProperty('summaryTheme');
+    expect(getTableColumns(summaryConfigurations)).not.toHaveProperty('weatherSectionEnabled');
   });
 
   test('ships unique Scheduled Delivery occurrence claims in an upgrade migration', () => {

@@ -11,7 +11,6 @@ describe('next Summary schedule backfill lifecycle eligibility', () => {
   beforeEach(() => {
     sqlite = new Database(':memory:');
     sqlite.exec(readFileSync('drizzle/0000_bootstrap_daily.sql', 'utf8'));
-    sqlite.exec(readFileSync('drizzle/0022_add_summary_section_pause_settings.sql', 'utf8'));
     sqlite.exec(readFileSync('drizzle/0011_add_next_summary_at.sql', 'utf8'));
     sqlite.exec(readFileSync('drizzle/0015_add_user_lifecycle.sql', 'utf8'));
     sqlite.exec('PRAGMA foreign_keys = ON;');

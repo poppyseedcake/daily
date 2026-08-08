@@ -429,9 +429,7 @@ export const load = async ({ request }) => {
             weatherSummaryProvider: openAiWeatherSummaryProvider,
             openDailyUrl
           } as const;
-          const calendarSummaryIsActive =
-            validConfiguration.data.sections.calendar &&
-            !validConfiguration.data.sectionPauses.calendar;
+          const calendarSummaryIsActive = !validConfiguration.data.sectionPauses.calendar;
           let generatedSummary;
           try {
             generatedSummary = await dailySummaryGenerator.generate(authState.userId, {
@@ -463,12 +461,6 @@ export const load = async ({ request }) => {
                 ...generationSetup,
                 configuration: {
                   ...validConfiguration.data,
-                  sections: {
-                    weather: false,
-                    commute: false,
-                    calendar: true,
-                    todo: false
-                  },
                   sectionPauses: {
                     ...validConfiguration.data.sectionPauses,
                     calendar: false

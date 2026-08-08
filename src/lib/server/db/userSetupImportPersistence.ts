@@ -11,17 +11,12 @@ const persistedSummaryConfigurationSchema = z.object({
   userId: z.string().min(1),
   summaryTime: summaryTimeSchema,
   userTimeZone: userTimeZoneSchema,
-  summaryTheme: z.enum(['light', 'dark']),
   summaryDeliveryEnabled: z.boolean(),
-  weatherSectionEnabled: z.boolean(),
-  commuteSectionEnabled: z.boolean(),
-  calendarSectionEnabled: z.boolean(),
-  todoSectionEnabled: z.boolean(),
-  weatherSectionPaused: z.boolean().default(false),
-  commuteSectionPaused: z.boolean().default(false),
-  calendarSectionPaused: z.boolean().default(false),
-  todoSectionPaused: z.boolean().default(false)
-});
+  weatherSectionPaused: z.boolean(),
+  commuteSectionPaused: z.boolean(),
+  calendarSectionPaused: z.boolean(),
+  todoSectionPaused: z.boolean()
+}).strict();
 
 const persistedTodoCategorySchema = z.object({
   id: z.string().min(1),

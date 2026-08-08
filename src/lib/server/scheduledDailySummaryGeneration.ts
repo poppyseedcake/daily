@@ -105,24 +105,23 @@ export const createDailySummaryGenerator = ({
       requestedConfiguration ?? (await loadUserSummaryConfiguration(configurationStore, userId));
     const [todoContext, weatherContext, commuteContext, calendarContext] = await Promise.all([
       loadUserTodoStateSafely(todoStore, userId, {
-        enabled: configuration.sections.todo && !configuration.sectionPauses.todo
+        enabled: !configuration.sectionPauses.todo
       }),
       loadScheduledWeatherContext({
         userId,
-        weatherEnabled: configuration.sections.weather && !configuration.sectionPauses.weather,
+        weatherEnabled: !configuration.sectionPauses.weather,
         locationStore: weatherLocationStore
       }),
       loadScheduledCommuteContext({
         userId,
-        commuteEnabled: configuration.sections.commute && !configuration.sectionPauses.commute,
+        commuteEnabled: !configuration.sectionPauses.commute,
         setupStore: commuteSetupStore
       }),
       requestedCalendarContext
         ? Promise.resolve(requestedCalendarContext)
         : loadScheduledCalendarContext({
             userId,
-            calendarEnabled:
-              configuration.sections.calendar && !configuration.sectionPauses.calendar,
+            calendarEnabled: !configuration.sectionPauses.calendar,
             connectionStore: calendarConnectionStore,
             loadAccessToken: loadCalendarAccessToken,
             providerForAccessToken: calendarEventProvider
@@ -144,7 +143,7 @@ export const createDailySummaryGenerator = ({
       commuteSetupUnavailable: commuteContext.unavailable,
       commuteEstimateMode: 'live',
       commuteEstimateProvider:
-        configuration.sections.commute && !configuration.sectionPauses.commute
+        !configuration.sectionPauses.commute
         ? safelyLoadCommuteEstimateProvider(commuteEstimateProvider, userId)
         : undefined,
       calendarReadiness: calendarContext.readiness,
@@ -339,7 +338,7 @@ const classifySectionContent = (
 });
 
 const classifyWeatherContent = (input: DailySummaryInput): ScheduledSummarySectionContent => {
-  if (!input.configuration.sections.weather || input.configuration.sectionPauses.weather) {
+  if (input.configuration.sectionPauses.weather) {
     return 'inapplicable';
   }
 
@@ -355,7 +354,7 @@ const classifyWeatherContent = (input: DailySummaryInput): ScheduledSummarySecti
 };
 
 const classifyCommuteContent = (input: DailySummaryInput): ScheduledSummarySectionContent => {
-  if (!input.configuration.sections.commute || input.configuration.sectionPauses.commute) {
+  if (input.configuration.sectionPauses.commute) {
     return 'inapplicable';
   }
   if (input.sections.commute.status === 'unavailable') return 'unavailable';
@@ -370,7 +369,7 @@ const classifyCommuteContent = (input: DailySummaryInput): ScheduledSummarySecti
 };
 
 const classifyCalendarContent = (input: DailySummaryInput): ScheduledSummarySectionContent => {
-  if (!input.configuration.sections.calendar || input.configuration.sectionPauses.calendar) {
+  if (input.configuration.sectionPauses.calendar) {
     return 'inapplicable';
   }
   if (input.sections.calendar.status === 'unavailable') return 'unavailable';
@@ -384,7 +383,7 @@ const classifyCalendarContent = (input: DailySummaryInput): ScheduledSummarySect
 };
 
 const classifyTodoContent = (input: DailySummaryInput): ScheduledSummarySectionContent => {
-  if (!input.configuration.sections.todo || input.configuration.sectionPauses.todo) {
+  if (input.configuration.sectionPauses.todo) {
     return 'inapplicable';
   }
   if (input.sections.todo.status === 'unavailable') return 'unavailable';

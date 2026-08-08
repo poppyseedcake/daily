@@ -79,14 +79,7 @@ const {
   savedConfiguration: {
     summaryTime: '18:45',
     userTimeZone: 'America/New_York' as const,
-    summaryTheme: 'light' as const,
     summaryDeliveryEnabled: true,
-    sections: {
-      weather: true,
-      commute: true,
-      calendar: true,
-      todo: true
-    },
     sectionPauses: {
       weather: false,
       commute: false,
@@ -584,9 +577,8 @@ describe('Daily page server load', () => {
     calendarAccessTokenMode.outcome = 'available';
     calendarListProviderMode.outcome = 'available';
     calendarEventProviderMode.outcome = 'available';
-    savedConfiguration.sections.calendar = true;
     savedConfiguration.sectionPauses.calendar = false;
-    savedConfiguration.sections.commute = true;
+    savedConfiguration.sectionPauses.commute = false;
     savedConfiguration.summaryDeliveryEnabled = true;
     savedCommuteSetup.routes.length = 0;
     savedCommuteSetup.days.splice(0, savedCommuteSetup.days.length, 'monday', 'tuesday', 'wednesday', 'thursday', 'friday');
@@ -734,7 +726,7 @@ describe('Daily page server load', () => {
     getSession.mockResolvedValue({
       user: { id: 'user-1', email: 'user@example.com', emailVerified: true }
     });
-    savedConfiguration.sections.calendar = false;
+    savedConfiguration.sectionPauses.calendar = true;
     savedCalendarConnection.status = 'connected';
     savedSelectedCalendars.push({
       id: 'work',
@@ -1293,14 +1285,7 @@ describe('Daily page server load', () => {
     expect(savedConfiguration).toEqual({
       summaryTime: '18:45',
       userTimeZone: 'America/New_York',
-      summaryTheme: 'light',
       summaryDeliveryEnabled: true,
-      sections: {
-        weather: true,
-        commute: true,
-        calendar: true,
-        todo: true
-      },
       sectionPauses: {
         weather: false,
         commute: false,
@@ -1398,7 +1383,7 @@ describe('Daily page server load', () => {
   });
 
   test.each([
-    ['Commute is disabled', () => { savedConfiguration.sections.commute = false; }],
+    ['Commute is paused', () => { savedConfiguration.sectionPauses.commute = true; }],
     ['the local weekday is not a Commute Day', () => { savedCommuteSetup.days.splice(0); }],
     ['there are no enabled routes', () => { savedCommuteSetup.routes[0]!.enabled = false; }]
   ])('makes no Maps estimate call when %s during test delivery', async (_scenario, arrange) => {
@@ -1520,7 +1505,7 @@ describe('Daily page server load', () => {
     getSession.mockResolvedValue({
       user: { id: 'user-1', email: 'user@example.com', emailVerified: true }
     });
-    savedConfiguration.sections.calendar = false;
+    savedConfiguration.sectionPauses.calendar = true;
     savedCalendarConnection.status = 'connected';
     savedSelectedCalendars.push({
       id: 'work',

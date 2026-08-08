@@ -23,7 +23,6 @@ const createTestDatabase = () => {
   const sqlite = new Database(':memory:');
   sqlite.pragma('foreign_keys = ON');
   sqlite.exec(readFileSync('drizzle/0000_bootstrap_daily.sql', 'utf8'));
-  sqlite.exec(readFileSync('drizzle/0022_add_summary_section_pause_settings.sql', 'utf8'));
   sqlite.exec(readFileSync('drizzle/0003_add_weather_locations.sql', 'utf8'));
   sqlite.exec(readFileSync('drizzle/0010_add_commute_setup.sql', 'utf8'));
   sqlite.exec(readFileSync('drizzle/0016_add_commute_preview_duration.sql', 'utf8'));
@@ -53,12 +52,7 @@ const validDraft = (): UserSetupImportDraft => ({
     userId: 'user-1',
     summaryTime: '18:45',
     userTimeZone: 'Europe/Warsaw',
-    summaryTheme: 'dark',
     summaryDeliveryEnabled: false,
-    weatherSectionEnabled: false,
-    commuteSectionEnabled: true,
-    calendarSectionEnabled: true,
-    todoSectionEnabled: true,
     weatherSectionPaused: false,
     commuteSectionPaused: false,
     calendarSectionPaused: false,
@@ -179,8 +173,8 @@ describe('SQLite User Setup import store', () => {
     });
 
     await expect(store.hasExistingUserSetup('user-1')).resolves.toBe(true);
-    expect(sqlite.prepare('select summary_time, summary_theme from summary_configurations').all()).toEqual([
-      { summary_time: '18:45', summary_theme: 'dark' }
+    expect(sqlite.prepare('select summary_time, commute_section_paused from summary_configurations').all()).toEqual([
+      { summary_time: '18:45', commute_section_paused: 0 }
     ]);
     expect(sqlite.prepare('select name, position from todo_categories').all()).toEqual([
       { name: 'Work', position: 1 }
