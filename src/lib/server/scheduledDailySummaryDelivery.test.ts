@@ -88,9 +88,10 @@ const createTestDelivery = ({
         }
       }
     : persistedLifecycleStore;
+  const configurationStore = createUserSummaryConfigurationStore(database);
   const generator = createScheduledDailySummaryGenerator({
     userLifecycleStore: generationLifecycleStore,
-    configurationStore: createUserSummaryConfigurationStore(database),
+    configurationStore,
     todoStore: createUserTodoStore(database),
     weatherLocationStore: createUserWeatherLocationStore(database),
     commuteSetupStore: createUserCommuteSetupStore(database),
@@ -106,6 +107,7 @@ const createTestDelivery = ({
     occurrenceStore: createScheduledDailySummaryOccurrenceStore(database),
     deliveryRecordStore: createDeliveryRecordStore(database),
     userLifecycleStore: deliveryLifecycleStore,
+    summaryConfigurationStore: configurationStore,
     generator,
     deliveryProvider: { send },
     providerName: 'fake-delivery',
@@ -186,6 +188,155 @@ describe('scheduled Daily Summary delivery', () => {
     expect(
       sqlite.prepare('select next_summary_at from users where id = ?').get('user-1')
     ).toEqual({ next_summary_at: '2026-10-25T06:00:00Z' });
+  });
+
+  test('clears a disabled due occurrence without provider submission or a Delivery Record', async () => {
+    const scheduledAt = '2026-10-24T05:00:00Z';
+    saveQualifyingUser(sqlite, { userId: 'user-1', scheduledAt });
+    sqlite
+      .prepare('update summary_configurations set summary_delivery_enabled = 0 where user_id = ?')
+      .run('user-1');
+    const send = vi.fn();
+    const delivery = createTestDelivery({
+      database,
+      send,
+      now: () => new Date(scheduledAt)
+    });
+
+    await expect(delivery.processOneDueOccurrence()).resolves.toEqual({
+      outcome: 'delivery-disabled',
+      errorClassification: 'summary-delivery-disabled'
+    });
+
+    expect(send).not.toHaveBeenCalled();
+    expect(sqlite.prepare('select count(*) as count from delivery_records').get()).toEqual({
+      count: 0
+    });
+    expect(sqlite.prepare('select next_summary_at from users where id = ?').get('user-1')).toEqual({
+      next_summary_at: null
+    });
+  });
+
+  test('stops every remaining retry when Summary Delivery is disabled', async () => {
+    const scheduledAt = '2026-10-24T05:00:00Z';
+    saveQualifyingUser(sqlite, { userId: 'user-1', scheduledAt });
+    let currentTime = new Date(scheduledAt);
+    const send = vi.fn<DailySummaryDeliveryProvider['send']>().mockRejectedValue(
+      new DailySummaryDeliveryError(
+        'Delivery provider is temporarily unavailable.',
+        'provider-unavailable',
+        { providerName: 'fake-delivery', providerStatusMetadata: 'temporarily unavailable' }
+      )
+    );
+    const delivery = createTestDelivery({ database, send, now: () => currentTime });
+
+    await expect(delivery.processOneDueOccurrence()).resolves.toMatchObject({
+      outcome: 'retry-scheduled'
+    });
+    sqlite
+      .prepare('update summary_configurations set summary_delivery_enabled = 0 where user_id = ?')
+      .run('user-1');
+    currentTime = new Date('2026-10-24T05:05:00.000Z');
+
+    await expect(delivery.processOneDueOccurrence()).resolves.toMatchObject({
+      outcome: 'delivery-stopped'
+    });
+    await expect(delivery.processOneDueOccurrence()).resolves.toEqual({ outcome: 'none-due' });
+
+    expect(send).toHaveBeenCalledOnce();
+    expect(
+      sqlite
+        .prepare(
+          `select delivery_status, attempt_count, completed_at, next_retry_at,
+                  error_classification from delivery_records`
+        )
+        .get()
+    ).toEqual({
+      delivery_status: 'cancelled',
+      attempt_count: 1,
+      completed_at: '2026-10-24T05:05:00.000Z',
+      next_retry_at: null,
+      error_classification: 'summary-delivery-disabled'
+    });
+  });
+
+  test('allows an in-progress provider submission to finish after Summary Delivery is disabled', async () => {
+    const scheduledAt = '2026-10-24T05:00:00Z';
+    saveQualifyingUser(sqlite, { userId: 'user-1', scheduledAt });
+    let releaseProvider: ((value: {
+      providerName: string;
+      providerMessageId: string;
+      providerStatusMetadata: string;
+    }) => void) | undefined;
+    const send = vi.fn<DailySummaryDeliveryProvider['send']>().mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          releaseProvider = resolve;
+        })
+    );
+    const delivery = createTestDelivery({
+      database,
+      send,
+      now: () => new Date(scheduledAt)
+    });
+    const processing = delivery.processOneDueOccurrence();
+
+    await vi.waitFor(() => expect(send).toHaveBeenCalledOnce());
+    sqlite
+      .prepare('update summary_configurations set summary_delivery_enabled = 0 where user_id = ?')
+      .run('user-1');
+    releaseProvider?.({
+      providerName: 'fake-delivery',
+      providerMessageId: 'message-1',
+      providerStatusMetadata: 'accepted'
+    });
+
+    await expect(processing).resolves.toMatchObject({ outcome: 'sent' });
+    expect(
+      sqlite.prepare('select delivery_status from delivery_records').get()
+    ).toEqual({ delivery_status: 'sent' });
+  });
+
+  test('does not schedule another attempt when an in-progress provider failure finishes after disablement', async () => {
+    const scheduledAt = '2026-10-24T05:00:00Z';
+    saveQualifyingUser(sqlite, { userId: 'user-1', scheduledAt });
+    let rejectProvider: ((error: Error) => void) | undefined;
+    const send = vi.fn<DailySummaryDeliveryProvider['send']>().mockImplementation(
+      () =>
+        new Promise((_, reject) => {
+          rejectProvider = reject;
+        })
+    );
+    const delivery = createTestDelivery({
+      database,
+      send,
+      now: () => new Date(scheduledAt)
+    });
+    const processing = delivery.processOneDueOccurrence();
+
+    await vi.waitFor(() => expect(send).toHaveBeenCalledOnce());
+    sqlite
+      .prepare('update summary_configurations set summary_delivery_enabled = 0 where user_id = ?')
+      .run('user-1');
+    rejectProvider?.(
+      new DailySummaryDeliveryError(
+        'Delivery provider is temporarily unavailable.',
+        'provider-unavailable',
+        { providerName: 'fake-delivery', providerStatusMetadata: 'temporarily unavailable' }
+      )
+    );
+
+    await expect(processing).resolves.toMatchObject({ outcome: 'delivery-stopped' });
+    expect(
+      sqlite
+        .prepare('select delivery_status, attempt_count, next_retry_at, error_classification from delivery_records')
+        .get()
+    ).toEqual({
+      delivery_status: 'cancelled',
+      attempt_count: 1,
+      next_retry_at: null,
+      error_classification: 'summary-delivery-disabled'
+    });
   });
 
   test('does not begin a provider call when deletion wins the race after generation', async () => {

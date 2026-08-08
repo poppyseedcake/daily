@@ -12,6 +12,7 @@ const createTestDatabase = () => {
   sqlite.pragma('foreign_keys = ON');
   sqlite.exec(readFileSync('drizzle/0000_bootstrap_daily.sql', 'utf8'));
   sqlite.exec(readFileSync('drizzle/0002_add_delivery_records.sql', 'utf8'));
+  sqlite.exec(readFileSync('drizzle/0011_add_next_summary_at.sql', 'utf8'));
   sqlite.exec(readFileSync('drizzle/0012_add_scheduled_delivery_claims.sql', 'utf8'));
 
   return {
@@ -391,6 +392,65 @@ describe('SQLite Delivery Record store', () => {
       claimExpiresAt: null
     });
     expect(earlyClaim).toBeNull();
+  });
+
+  test('cancels a retrying Scheduled Delivery Record without changing its identity or attempts', async () => {
+    const store = createDeliveryRecordStore(database);
+    const claim = await store.claimScheduledOccurrence('user-1', {
+      scheduledAt: '2026-07-06T07:00:00.000Z',
+      claimedAt: '2026-07-06T07:00:01.000Z',
+      claimExpiresAt: '2026-07-06T07:05:01.000Z',
+      providerName: 'resend'
+    });
+    await store.markScheduledRetrying(claim!.id, {
+      attemptCount: claim!.attemptCount!,
+      attemptedAt: '2026-07-06T07:00:02.000Z',
+      nextRetryAt: '2026-07-06T07:05:02.000Z',
+      providerStatusMetadata: 'temporarily unavailable',
+      errorClassification: 'provider-unavailable'
+    });
+
+    const cancelled = await store.markScheduledCancelled(claim!.id, {
+      completedAt: '2026-07-06T07:00:03.000Z'
+    });
+
+    expect(cancelled).toMatchObject({
+      id: claim!.id,
+      deliveryStatus: 'cancelled',
+      attemptCount: 1,
+      completedAt: '2026-07-06T07:00:03.000Z',
+      lastAttemptAt: '2026-07-06T07:00:02.000Z',
+      nextRetryAt: null,
+      claimExpiresAt: null,
+      errorClassification: 'summary-delivery-disabled'
+    });
+  });
+
+  test('does not claim a new occurrence after Summary Delivery is disabled', async () => {
+    sqlite
+      .prepare(
+        `insert into summary_configurations (
+          id, user_id, summary_time, user_time_zone, summary_delivery_enabled
+        ) values (?, ?, ?, ?, ?)`
+      )
+      .run('configuration-1', 'user-1', '07:00', 'UTC', 0);
+    sqlite
+      .prepare('update users set next_summary_at = ? where id = ?')
+      .run('2026-07-06T07:00:00.000Z', 'user-1');
+    const store = createDeliveryRecordStore(database);
+
+    await expect(
+      store.claimScheduledOccurrence('user-1', {
+        scheduledAt: '2026-07-06T07:00:00.000Z',
+        claimedAt: '2026-07-06T07:00:01.000Z',
+        claimExpiresAt: '2026-07-06T07:05:01.000Z',
+        providerName: 'resend',
+        claimKind: 'new'
+      })
+    ).resolves.toBeNull();
+    expect(sqlite.prepare('select count(*) as count from delivery_records').get()).toEqual({
+      count: 0
+    });
   });
 
   test('updates one Scheduled Delivery Record through retrying and sent states', async () => {

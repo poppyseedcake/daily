@@ -1352,7 +1352,8 @@
     processing: { label: 'Processing', classes: 'bg-sky-100 text-sky-800' },
     retrying: { label: 'Retrying', classes: 'bg-amber-100 text-amber-800' },
     sent: { label: 'Sent', classes: 'bg-emerald-100 text-emerald-800' },
-    failed: { label: 'Failed', classes: 'bg-red-100 text-red-700' }
+    failed: { label: 'Failed', classes: 'bg-red-100 text-red-700' },
+    cancelled: { label: 'Stopped', classes: 'bg-stone-100 text-stone-700' }
   } satisfies Record<DeliveryStatus, { label: string; classes: string }>;
   const unknownDeliveryStatusPresentation = {
     label: 'Unknown',

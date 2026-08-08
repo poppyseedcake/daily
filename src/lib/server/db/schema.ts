@@ -211,7 +211,7 @@ export const deliveryRecords = sqliteTable(
     requestedAt: text('requested_at').notNull(),
     completedAt: text('completed_at'),
     deliveryStatus: text('delivery_status', {
-      enum: ['processing', 'retrying', 'sent', 'failed']
+      enum: ['processing', 'retrying', 'sent', 'failed', 'cancelled']
     }).notNull(),
     providerName: text('provider_name').notNull(),
     providerMessageId: text('provider_message_id'),

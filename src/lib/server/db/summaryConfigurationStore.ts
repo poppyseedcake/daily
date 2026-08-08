@@ -3,7 +3,7 @@ import { and, eq, sql } from 'drizzle-orm';
 import { db } from '$lib/server/db';
 import { calculateNextSummaryAt } from '$lib/nextSummarySchedule';
 import type { SummaryConfiguration } from '$lib/summaryConfiguration';
-import { summaryConfigurations, users } from './schema';
+import { deliveryRecords, summaryConfigurations, users } from './schema';
 import {
   summaryConfigurationFromFlat,
   type UserSummaryConfigurationStore
@@ -77,6 +77,27 @@ export const createUserSummaryConfigurationStore = (
           set: toSummaryConfigurationRow(userId, configuration)
         })
         .run();
+
+      if (!configuration.summaryDeliveryEnabled) {
+        transaction
+          .update(deliveryRecords)
+          .set({
+            deliveryStatus: 'cancelled',
+            completedAt: referenceInstant.toString(),
+            nextRetryAt: null,
+            claimExpiresAt: null,
+            errorClassification: 'summary-delivery-disabled'
+          })
+          .where(
+            and(
+              eq(deliveryRecords.userId, userId),
+              eq(deliveryRecords.attemptType, 'scheduled'),
+              eq(deliveryRecords.deliveryStatus, 'retrying')
+            )
+          )
+          .run();
+      }
+
       return true;
     });
   }

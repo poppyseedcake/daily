@@ -39,6 +39,7 @@ export const createProductionScheduledDailySummaryWorkerDependencies = () => {
     occurrenceStore: scheduledDailySummaryOccurrenceStore,
     deliveryRecordStore,
     userLifecycleStore,
+    summaryConfigurationStore: userSummaryConfigurationStore,
     generator,
     deliveryProvider: dailySummaryDeliveryProvider,
     providerName: 'resend',

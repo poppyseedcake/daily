@@ -1,5 +1,5 @@
 export type DeliveryAttemptType = 'test' | 'scheduled';
-export type DeliveryStatus = 'processing' | 'retrying' | 'sent' | 'failed';
+export type DeliveryStatus = 'processing' | 'retrying' | 'sent' | 'failed' | 'cancelled';
 export const deliveryProviderErrorClassifications = [
   'configuration-missing',
   'validation-failed',
@@ -10,8 +10,13 @@ export const deliveryProviderErrorClassifications = [
 export type DeliveryProviderErrorClassification =
   (typeof deliveryProviderErrorClassifications)[number];
 
+export const deliveryCancellationClassifications = ['summary-delivery-disabled'] as const;
+export type DeliveryCancellationClassification =
+  (typeof deliveryCancellationClassifications)[number];
+
 export const deliveryErrorClassifications = [
   ...deliveryProviderErrorClassifications,
+  ...deliveryCancellationClassifications,
   'provider-missing-message-id',
   'retry-exhausted',
   'stale-occurrence',
@@ -105,6 +110,7 @@ export type ScheduledDeliveryClaim = {
   claimedAt: string;
   claimExpiresAt: string;
   providerName: string;
+  claimKind?: 'new' | 'retry';
 };
 
 export type ScheduledDeliveryRetry = {
@@ -118,6 +124,10 @@ export type ScheduledDeliveryRetry = {
 export type ScheduledDeliveryUnclaimedFailure = {
   completedAt: string;
   errorClassification: 'retry-exhausted' | 'stale-occurrence';
+};
+
+export type ScheduledDeliveryCancelled = {
+  completedAt: string;
 };
 
 export type ScheduledDeliverySent = {

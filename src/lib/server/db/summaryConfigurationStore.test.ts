@@ -42,7 +42,9 @@ describe('SQLite User Summary Configuration store', () => {
     sqlite = new Database(':memory:');
     sqlite.pragma('foreign_keys = ON');
     sqlite.exec(readFileSync('drizzle/0000_bootstrap_daily.sql', 'utf8'));
+    sqlite.exec(readFileSync('drizzle/0002_add_delivery_records.sql', 'utf8'));
     sqlite.exec(readFileSync('drizzle/0011_add_next_summary_at.sql', 'utf8'));
+    sqlite.exec(readFileSync('drizzle/0012_add_scheduled_delivery_claims.sql', 'utf8'));
     sqlite.exec(readFileSync('drizzle/0015_add_user_lifecycle.sql', 'utf8'));
     sqlite
       .prepare(
@@ -124,6 +126,85 @@ describe('SQLite User Summary Configuration store', () => {
     expect(sqlite.prepare('select next_summary_at from users where id = ?').get('user-1')).toEqual({
       next_summary_at: null
     });
+  });
+
+  test('cancels retrying scheduled records when Summary Delivery becomes disabled', async () => {
+    insertSummaryConfiguration(sqlite, {
+      summaryDeliveryEnabled: true,
+      userTimeZone: 'UTC',
+      sectionPauses: { weather: false, commute: false, calendar: false, todo: false }
+    });
+    sqlite
+      .prepare(
+        `insert into delivery_records (
+          id, user_id, attempt_type, requested_at, delivery_status, provider_name,
+          scheduled_at, attempt_count, last_attempt_at, next_retry_at
+        ) values (?, ?, 'scheduled', ?, 'retrying', ?, ?, ?, ?, ?)`
+      )
+      .run(
+        'retrying-delivery',
+        'user-1',
+        '2026-06-22T07:00:00Z',
+        'resend',
+        '2026-06-22T07:00:00Z',
+        2,
+        '2026-06-22T07:05:00Z',
+        '2026-06-22T07:10:00Z'
+      );
+    sqlite
+      .prepare(
+        `insert into delivery_records (
+          id, user_id, attempt_type, requested_at, delivery_status, provider_name,
+          scheduled_at, attempt_count, last_attempt_at, claim_expires_at
+        ) values (?, ?, 'scheduled', ?, 'processing', ?, ?, ?, ?, ?)`
+      )
+      .run(
+        'processing-delivery',
+        'user-1',
+        '2026-06-22T07:01:00Z',
+        'resend',
+        '2026-06-22T07:01:00Z',
+        1,
+        '2026-06-22T07:05:00Z',
+        '2026-06-22T07:10:00Z'
+      );
+    const store = createUserSummaryConfigurationStore(drizzle(sqlite, { schema }));
+
+    await saveUserSummaryConfiguration(
+      store,
+      'user-1',
+      { ...defaultSummaryConfiguration, summaryDeliveryEnabled: false },
+      Temporal.Instant.from('2026-06-22T07:06:00Z')
+    );
+
+    expect(
+      sqlite
+        .prepare(
+          `select id, delivery_status, attempt_count, completed_at, next_retry_at,
+                  claim_expires_at, error_classification
+             from delivery_records order by id`
+        )
+        .all()
+    ).toEqual([
+      {
+        id: 'processing-delivery',
+        delivery_status: 'processing',
+        attempt_count: 1,
+        completed_at: null,
+        next_retry_at: null,
+        claim_expires_at: '2026-06-22T07:10:00Z',
+        error_classification: null
+      },
+      {
+        id: 'retrying-delivery',
+        delivery_status: 'cancelled',
+        attempt_count: 2,
+        completed_at: '2026-06-22T07:06:00Z',
+        next_retry_at: null,
+        claim_expires_at: null,
+        error_classification: 'summary-delivery-disabled'
+      }
+    ]);
   });
 
   test('schedules an enabled Summary Delivery even when every Summary Section is paused', async () => {

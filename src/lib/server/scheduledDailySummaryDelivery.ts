@@ -13,10 +13,12 @@ import {
 import type {
   DeliveryErrorClassification,
   DeliveryRecord,
+  ScheduledDeliveryCancelled,
   ScheduledDeliveryRetry,
   ScheduledDeliveryUnclaimedFailure
 } from '$lib/deliveryRecords';
 import type { DueScheduledDailySummaryOccurrence } from './db/scheduledDailySummaryOccurrenceStore';
+import type { UserSummaryConfigurationStore } from './summaryConfigurationPersistence';
 
 const processingClaimDurationMilliseconds = 5 * 60 * 1000;
 const retryDelayMilliseconds = 5 * 60 * 1000;
@@ -36,9 +38,14 @@ type ScheduledDailySummaryDeliveryRecordStore = {
       claimedAt: string;
       claimExpiresAt: string;
       providerName: string;
+      claimKind?: 'new' | 'retry';
     }
   ): Promise<DeliveryRecord | null>;
   loadScheduledOccurrence(userId: string, scheduledAt: string): Promise<DeliveryRecord | null>;
+  markScheduledCancelled(
+    recordId: string,
+    cancelled: ScheduledDeliveryCancelled
+  ): Promise<DeliveryRecord | null>;
   markScheduledUnclaimedFailed(
     recordId: string,
     failure: ScheduledDeliveryUnclaimedFailure
@@ -78,6 +85,8 @@ export const scheduledDailySummaryDeliveryOutcomeNames = [
   'retry-exhausted',
   'stale-occurrence',
   'retry-pending',
+  'delivery-disabled',
+  'delivery-stopped',
   'already-processed',
   'already-claimed',
   'delivery-failed',
@@ -102,6 +111,7 @@ export type ScheduledDailySummaryDeliveryDependencies = {
   occurrenceStore: ScheduledDailySummaryOccurrenceStore;
   deliveryRecordStore: ScheduledDailySummaryDeliveryRecordStore;
   userLifecycleStore: ActiveUserStore;
+  summaryConfigurationStore: Pick<UserSummaryConfigurationStore, 'load'>;
   generator: ScheduledDailySummaryGenerator;
   deliveryProvider: DailySummaryDeliveryProvider;
   providerName: string;
@@ -124,12 +134,57 @@ export const createScheduledDailySummaryDelivery = ({
   occurrenceStore,
   deliveryRecordStore,
   userLifecycleStore,
+  summaryConfigurationStore,
   generator,
   deliveryProvider,
   providerName,
   senderAddress,
   now = () => new Date()
 }: ScheduledDailySummaryDeliveryDependencies) => {
+  const summaryDeliveryEnabledFor = async (userId: string, fallback: boolean) =>
+    (await summaryConfigurationStore.load(userId))?.summaryDeliveryEnabled ?? fallback;
+
+  const deliveryStopped = (record: DeliveryRecord) => ({
+    outcome: 'delivery-stopped' as const,
+    occurrenceId: record.id,
+    errorClassification: 'summary-delivery-disabled' as const
+  });
+
+  const deliveryDisabled = () => ({
+    outcome: 'delivery-disabled' as const,
+    errorClassification: 'summary-delivery-disabled' as const
+  });
+
+  const stopDisabledRetry = async (
+    record: DeliveryRecord,
+    userId: string,
+    scheduledAt: string,
+    completedAt: string
+  ) => {
+    const cancelled = await deliveryRecordStore.markScheduledCancelled(record.id, {
+      completedAt
+    });
+
+    if (cancelled) {
+      return deliveryStopped(cancelled);
+    }
+
+    const current = await deliveryRecordStore.loadScheduledOccurrence(
+      userId,
+      scheduledAt
+    );
+    if (!current) {
+      return { outcome: 'claim-lost' as const, occurrenceId: record.id };
+    }
+    if (current.deliveryStatus === 'cancelled') {
+      return deliveryStopped(current);
+    }
+    if (current.deliveryStatus === 'sent' || current.deliveryStatus === 'failed') {
+      return { outcome: 'already-processed' as const, occurrenceId: current.id };
+    }
+    return { outcome: 'already-claimed' as const, occurrenceId: current.id };
+  };
+
   const processOccurrence = async (
     occurrence: DueScheduledDailySummaryOccurrence,
     processingStartedAt = now()
@@ -144,6 +199,24 @@ export const createScheduledDailySummaryDelivery = ({
       occurrence.userId,
       occurrence.scheduledAt
     );
+
+    const deliveryEnabledBeforeGeneration = await summaryDeliveryEnabledFor(
+      occurrence.userId,
+      true
+    );
+    if (!deliveryEnabledBeforeGeneration && existing?.deliveryStatus === 'retrying') {
+      return stopDisabledRetry(
+        existing,
+        occurrence.userId,
+        occurrence.scheduledAt,
+        processingStartedAtIso
+      );
+    }
+    if (!deliveryEnabledBeforeGeneration && !existing) {
+      await occurrenceStore.advance(occurrence.userId, occurrence.scheduledAt, null);
+      return deliveryDisabled();
+    }
+
     if (
       existing &&
       (existing.deliveryStatus === 'processing' || existing.deliveryStatus === 'retrying')
@@ -189,13 +262,31 @@ export const createScheduledDailySummaryDelivery = ({
         Temporal.Instant.from(processingStartedAtIso)
       )?.toString() ?? null;
 
+    const deliveryEnabledBeforeClaim = await summaryDeliveryEnabledFor(
+      occurrence.userId,
+      generated.input.configuration.summaryDeliveryEnabled
+    );
+    if (!deliveryEnabledBeforeClaim && existing?.deliveryStatus === 'retrying') {
+      return stopDisabledRetry(
+        existing,
+        occurrence.userId,
+        occurrence.scheduledAt,
+        processingStartedAtIso
+      );
+    }
+    if (!deliveryEnabledBeforeClaim && !existing) {
+      await occurrenceStore.advance(occurrence.userId, occurrence.scheduledAt, null);
+      return deliveryDisabled();
+    }
+
     const claim = await deliveryRecordStore.claimScheduledOccurrence(occurrence.userId, {
       scheduledAt: occurrence.scheduledAt,
       claimedAt: processingStartedAtIso,
       claimExpiresAt: new Date(
         processingStartedAt.getTime() + processingClaimDurationMilliseconds
       ).toISOString(),
-      providerName
+      providerName,
+      claimKind: existing ? 'retry' : 'new'
     });
     if (!claim) {
       const claimedElsewhere =
@@ -205,9 +296,40 @@ export const createScheduledDailySummaryDelivery = ({
           occurrence.scheduledAt
         ));
 
+      const deliveryEnabledAfterClaim = await summaryDeliveryEnabledFor(
+        occurrence.userId,
+        generated.input.configuration.summaryDeliveryEnabled
+      );
+      if (!deliveryEnabledAfterClaim) {
+        if (claimedElsewhere?.deliveryStatus === 'retrying') {
+          return stopDisabledRetry(
+            claimedElsewhere,
+            occurrence.userId,
+            occurrence.scheduledAt,
+            processingStartedAtIso
+          );
+        }
+
+        if (!claimedElsewhere) {
+          await occurrenceStore.advance(occurrence.userId, occurrence.scheduledAt, null);
+          return deliveryDisabled();
+        }
+
+        if (
+          claimedElsewhere.deliveryStatus === 'sent' ||
+          claimedElsewhere.deliveryStatus === 'failed' ||
+          claimedElsewhere.deliveryStatus === 'cancelled'
+        ) {
+          await occurrenceStore.advance(occurrence.userId, occurrence.scheduledAt, null);
+          return { outcome: 'already-processed' as const, occurrenceId: claimedElsewhere.id };
+        }
+      }
+
       if (
         claimedElsewhere &&
-        (claimedElsewhere.deliveryStatus === 'sent' || claimedElsewhere.deliveryStatus === 'failed')
+        (claimedElsewhere.deliveryStatus === 'sent' ||
+          claimedElsewhere.deliveryStatus === 'failed' ||
+          claimedElsewhere.deliveryStatus === 'cancelled')
       ) {
         await occurrenceStore.advance(occurrence.userId, occurrence.scheduledAt, nextSummaryAt);
         return { outcome: 'already-processed' as const, occurrenceId: claimedElsewhere.id };
@@ -303,6 +425,10 @@ export const createScheduledDailySummaryDelivery = ({
 
         if (!retrying) {
           return { outcome: 'claim-lost' as const, occurrenceId: claim.id };
+        }
+
+        if (retrying.deliveryStatus === 'cancelled') {
+          return deliveryStopped(retrying);
         }
 
         return {
