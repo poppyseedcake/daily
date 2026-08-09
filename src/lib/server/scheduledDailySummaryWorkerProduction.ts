@@ -5,12 +5,11 @@ import {
   dailySummaryDeliveryProvider,
   dailySummarySenderAddress
 } from './dailySummaryDelivery';
-import { createScheduledDailySummaryDelivery } from './scheduledDailySummaryDelivery';
+import { createScheduledDelivery } from './scheduledDelivery';
 import { createDailySummaryGenerator } from './scheduledDailySummaryGeneration';
+import { db } from './db';
 import { userCalendarConnectionStore } from './db/calendarConnectionStore';
 import { userCommuteSetupStore } from './db/commuteSetupStore';
-import { deliveryRecordStore } from './db/deliveryRecordStore';
-import { scheduledDailySummaryOccurrenceStore } from './db/scheduledDailySummaryOccurrenceStore';
 import { userSummaryConfigurationStore } from './db/summaryConfigurationStore';
 import { userTodoStore } from './db/todoStore';
 import { userWeatherLocationStore } from './db/weatherLocationStore';
@@ -35,11 +34,8 @@ export const createProductionScheduledDailySummaryWorkerDependencies = () => {
         userId
       })
   });
-  const delivery = createScheduledDailySummaryDelivery({
-    occurrenceStore: scheduledDailySummaryOccurrenceStore,
-    deliveryRecordStore,
-    userLifecycleStore,
-    summaryConfigurationStore: userSummaryConfigurationStore,
+  const scheduledDelivery = createScheduledDelivery({
+    database: db,
     generator,
     deliveryProvider: dailySummaryDeliveryProvider,
     providerName: 'resend',
@@ -47,7 +43,6 @@ export const createProductionScheduledDailySummaryWorkerDependencies = () => {
   });
 
   return {
-    occurrenceStore: scheduledDailySummaryOccurrenceStore,
-    delivery
+    scheduledDelivery
   };
 };

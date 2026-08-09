@@ -1,10 +1,8 @@
-import { createHash } from 'node:crypto';
-import type {
-  DueScheduledDailySummaryOccurrence,
-  ScheduledDailySummaryOccurrenceCursor
-} from './db/scheduledDailySummaryOccurrenceStore';
 import type { DeliveryErrorClassification } from '$lib/deliveryRecords';
-import type { ScheduledDailySummaryDeliveryOutcomeName } from './scheduledDailySummaryDelivery';
+import type {
+  ScheduledDeliveryModule,
+  ScheduledDeliveryOutcome
+} from './scheduledDelivery';
 
 export type ScheduledDailySummaryWorkerCounts = {
   due: number;
@@ -49,22 +47,8 @@ export type ScheduledDailySummaryWorkerEvent =
       classification: ScheduledDailySummaryWorkerFailureClassification;
     };
 
-type WorkerOutcome = {
-  outcome: ScheduledDailySummaryDeliveryOutcomeName;
-  errorClassification?: DeliveryErrorClassification;
-};
-
 export type ScheduledDailySummaryWorkerDependencies = {
-  occurrenceStore: {
-    loadProcessableBatch(query: {
-      now: string;
-      limit: number;
-      after: ScheduledDailySummaryOccurrenceCursor | null;
-    }): Promise<DueScheduledDailySummaryOccurrence[]>;
-  };
-  delivery: {
-    processOccurrence(occurrence: DueScheduledDailySummaryOccurrence): Promise<WorkerOutcome>;
-  };
+  scheduledDelivery: Pick<ScheduledDeliveryModule, 'loadDueBatch' | 'process'>;
   batchSize?: number;
   now?: () => Date;
   monotonicNow?: () => number;
@@ -80,22 +64,15 @@ export const emptyScheduledDailySummaryWorkerCounts = (): ScheduledDailySummaryW
   isolatedError: 0
 });
 
-const opaqueOccurrenceId = (occurrence: DueScheduledDailySummaryOccurrence) =>
-  createHash('sha256')
-    .update('scheduled-daily-summary-worker\0')
-    .update(occurrence.userId)
-    .update('\0')
-    .update(occurrence.scheduledAt)
-    .digest('hex')
-    .slice(0, 16);
-
-const countOutcome = (counts: ScheduledDailySummaryWorkerCounts, result: WorkerOutcome) => {
+const countOutcome = (
+  counts: ScheduledDailySummaryWorkerCounts,
+  result: ScheduledDeliveryOutcome
+) => {
   switch (result.outcome) {
     case 'sent':
       counts.sent += 1;
       return { outcome: 'sent' as const };
-    case 'retry-scheduled':
-    case 'retry-pending':
+    case 'retrying':
       counts.retrying += 1;
       return {
         outcome: 'retrying' as const,
@@ -103,37 +80,28 @@ const countOutcome = (counts: ScheduledDailySummaryWorkerCounts, result: WorkerO
           ? { classification: result.errorClassification }
           : {})
       };
-    case 'delivery-failed':
-    case 'retry-exhausted':
-    case 'stale-occurrence':
-    case 'provider-missing-message-id': {
+    case 'failed': {
       counts.failed += 1;
-      const classification =
-        result.errorClassification ??
-        (result.outcome === 'delivery-failed' ? 'unexpected' : result.outcome);
-      return { outcome: 'failed' as const, classification };
+      return {
+        outcome: 'failed' as const,
+        classification: result.errorClassification
+      };
     }
-    case 'claim-lost':
-    case 'user-deleting':
-    case 'delivery-disabled':
-    case 'delivery-cancelled':
-    case 'already-processed':
-    case 'already-claimed':
+    case 'skipped':
       counts.skipped += 1;
       return {
         outcome: 'skipped' as const,
         ...(result.errorClassification ? { classification: result.errorClassification } : {})
       };
     default: {
-      const exhaustiveOutcome: never = result.outcome;
+      const exhaustiveOutcome: never = result;
       return exhaustiveOutcome;
     }
   }
 };
 
 export const runScheduledDailySummaryWorker = async ({
-  occurrenceStore,
-  delivery,
+  scheduledDelivery,
   batchSize = 50,
   now = () => new Date(),
   monotonicNow = () => performance.now(),
@@ -146,14 +114,14 @@ export const runScheduledDailySummaryWorker = async ({
   const startedAt = monotonicNow();
   const processingTime = now().toISOString();
   const counts = emptyScheduledDailySummaryWorkerCounts();
-  let after: ScheduledDailySummaryOccurrenceCursor | null = null;
+  let after: string | null = null;
 
   while (true) {
-    let batch: DueScheduledDailySummaryOccurrence[];
+    let batch: Awaited<ReturnType<ScheduledDeliveryModule['loadDueBatch']>>;
 
     try {
-      batch = await occurrenceStore.loadProcessableBatch({
-        now: processingTime,
+      batch = await scheduledDelivery.loadDueBatch({
+        eligibleAt: processingTime,
         limit: batchSize,
         after
       });
@@ -167,36 +135,34 @@ export const runScheduledDailySummaryWorker = async ({
       return { exitCode: 1 as const, counts };
     }
 
-    if (batch.length === 0) {
+    if (batch.work.length === 0) {
       break;
     }
 
-    for (const occurrence of batch) {
+    for (const work of batch.work) {
       counts.due += 1;
-      const occurrenceId = opaqueOccurrenceId(occurrence);
 
       try {
-        const result = await delivery.processOccurrence(occurrence);
+        const result = await scheduledDelivery.process(work);
         emit({
           event: 'scheduled-daily-summary-occurrence-completed',
-          occurrenceId,
+          occurrenceId: work.opaqueId,
           ...countOutcome(counts, result)
         });
       } catch {
         counts.isolatedError += 1;
         emit({
           event: 'scheduled-daily-summary-occurrence-isolated-error',
-          occurrenceId,
+          occurrenceId: work.opaqueId,
           classification: 'isolated-error'
         });
       }
     }
 
-    const lastOccurrence = batch.at(-1)!;
-    after = {
-      scheduledAt: lastOccurrence.scheduledAt,
-      workId: lastOccurrence.workId
-    };
+    if (!batch.nextCursor) {
+      throw new Error('Scheduled Delivery batch did not provide a cursor.');
+    }
+    after = batch.nextCursor;
   }
 
   emit({

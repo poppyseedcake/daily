@@ -13,7 +13,7 @@ import type {
 
 type WorkerDependencies = Pick<
   ScheduledDailySummaryWorkerDependencies,
-  'occurrenceStore' | 'delivery'
+  'scheduledDelivery'
 >;
 
 type ScheduledDailySummaryWorkerCommandOptions = {
