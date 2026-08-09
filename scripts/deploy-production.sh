@@ -9,6 +9,7 @@ SYSTEMD_DIRECTORY=${DAILY_SYSTEMD_DIRECTORY:-/etc/systemd/system}
 RELEASE_OWNER=${DAILY_RELEASE_OWNER:-root}
 RELEASE_GROUP=${DAILY_RELEASE_GROUP:-daily}
 READINESS_URL=${READINESS_URL:-http://127.0.0.1:5174/health}
+PREVIOUS_RELEASE_SCHEMA_COMPATIBLE=${DAILY_PREVIOUS_RELEASE_SCHEMA_COMPATIBLE:-false}
 
 fail() {
   printf '%s\n' "Daily deployment failed: $1" >&2
@@ -24,8 +25,26 @@ case "$RELEASE_ID" in
 esac
 [ -n "${DATABASE_URL:-}" ] || fail 'DATABASE_URL is required.'
 [ -n "${BACKUP_DIRECTORY:-}" ] || fail 'BACKUP_DIRECTORY is required.'
+case "$PREVIOUS_RELEASE_SCHEMA_COMPATIBLE" in
+  true|false) ;;
+  *) fail 'DAILY_PREVIOUS_RELEASE_SCHEMA_COMPATIBLE must be true or false.' ;;
+esac
 
 SOURCE_DIRECTORY=$(cd "$SOURCE_DIRECTORY" && pwd -P)
+git_in_source() {
+  # Root must explicitly trust the operator-owned checkout for this invocation.
+  git -c "safe.directory=$SOURCE_DIRECTORY" -C "$SOURCE_DIRECTORY" "$@"
+}
+
+if ! SOURCE_COMMIT=$(git_in_source rev-parse --verify 'HEAD^{commit}'); then
+  fail 'source checkout has no readable commit.'
+fi
+if ! SOURCE_STATUS=$(git_in_source status --porcelain --untracked-files=all); then
+  fail 'source checkout status could not be read.'
+fi
+[ -z "$SOURCE_STATUS" ] || fail 'source checkout contains uncommitted changes.'
+[ "$RELEASE_ID" = "$SOURCE_COMMIT" ] || fail 'release identifier must equal the source commit SHA.'
+
 RELEASE_DIRECTORY=$RELEASES_DIRECTORY/$RELEASE_ID
 STAGING_DIRECTORY=$RELEASES_DIRECTORY/.${RELEASE_ID}.staging-$$
 NEXT_LINK=${CURRENT_LINK}.next-$$
@@ -39,6 +58,94 @@ if [ -n "$PREVIOUS_LINK_TARGET" ]; then
 fi
 RELEASE_ACTIVATED=false
 SERVICES_STOPPED=false
+MIGRATION_ATTEMPTED=false
+
+finalized_pre_migration_recovery_point_names() {
+  for recovery_point in "$BACKUP_DIRECTORY"/pre-migration-*
+  do
+    if [ -d "$recovery_point" ] &&
+      [ -f "$recovery_point/backup.sqlite3" ] &&
+      [ -f "$recovery_point/metadata.json" ]; then
+      printf '%s\n' "${recovery_point##*/}"
+    fi
+  done
+}
+
+recovery_point_was_present() {
+  recovery_point_name=$1
+  # Recovery-point names contain only timestamp, UUID, and separator characters.
+  for previous_recovery_point in $PREVIOUS_PRE_MIGRATION_RECOVERY_POINTS
+  do
+    [ "$previous_recovery_point" = "$recovery_point_name" ] && return 0
+  done
+  return 1
+}
+
+new_finalized_pre_migration_recovery_point() {
+  for recovery_point in "$BACKUP_DIRECTORY"/pre-migration-*
+  do
+    if [ -d "$recovery_point" ] &&
+      [ -f "$recovery_point/backup.sqlite3" ] &&
+      [ -f "$recovery_point/metadata.json" ]; then
+      recovery_point_name=${recovery_point##*/}
+      if ! recovery_point_was_present "$recovery_point_name"; then
+        printf '%s' "$recovery_point"
+        return 0
+      fi
+    fi
+  done
+}
+
+stop_production_units() {
+  systemctl stop \
+    daily-scheduled-worker.timer \
+    daily-backup.timer \
+    daily-scheduled-worker.service \
+    daily-web.service
+}
+
+hold_scheduled_delivery() {
+  systemctl disable --now daily-scheduled-worker.timer
+  systemctl stop daily-scheduled-worker.service
+}
+
+start_web_and_backup_units() {
+  systemctl enable daily-web.service daily-backup.timer
+  hold_scheduled_delivery
+  systemctl restart daily-web.service
+  systemctl restart daily-backup.timer
+  systemctl is-active --quiet daily-web.service daily-backup.timer
+  systemctl is-inactive --quiet daily-scheduled-worker.timer daily-scheduled-worker.service
+}
+
+restore_previous_release() {
+  if [ -n "$PREVIOUS_LINK_TARGET" ]; then
+    rollback_link=${CURRENT_LINK}.rollback-$$
+    ln -s "$PREVIOUS_LINK_TARGET" "$rollback_link"
+    mv -Tf "$rollback_link" "$CURRENT_LINK"
+    for unit in \
+      daily-web.service \
+      daily-scheduled-worker.service \
+      daily-scheduled-worker.timer \
+      daily-backup.service \
+      daily-backup.timer
+    do
+      if [ -f "$PREVIOUS_RELEASE_DIRECTORY/deploy/systemd/$unit" ]; then
+        install -m 0644 "$PREVIOUS_RELEASE_DIRECTORY/deploy/systemd/$unit" "$SYSTEMD_DIRECTORY/$unit"
+      fi
+    done
+    rm -rf "$RELEASE_DIRECTORY"
+  else
+    rm -f "$CURRENT_LINK"
+    rm -f \
+      "$SYSTEMD_DIRECTORY/daily-web.service" \
+      "$SYSTEMD_DIRECTORY/daily-scheduled-worker.service" \
+      "$SYSTEMD_DIRECTORY/daily-scheduled-worker.timer" \
+      "$SYSTEMD_DIRECTORY/daily-backup.service" \
+      "$SYSTEMD_DIRECTORY/daily-backup.timer"
+  fi
+  systemctl daemon-reload
+}
 
 [ ! -e "$RELEASE_DIRECTORY" ] || fail 'release identifier already exists.'
 mkdir -p "$RELEASES_DIRECTORY" "$SYSTEMD_DIRECTORY"
@@ -46,36 +153,25 @@ mkdir -p "$RELEASES_DIRECTORY" "$SYSTEMD_DIRECTORY"
 finish() {
   status=$?
   set +e
-  if [ "$status" -ne 0 ] && [ "$RELEASE_ACTIVATED" = true ]; then
-    if [ -n "$PREVIOUS_LINK_TARGET" ]; then
-      rollback_link=${CURRENT_LINK}.rollback-$$
-      ln -s "$PREVIOUS_LINK_TARGET" "$rollback_link"
-      mv -Tf "$rollback_link" "$CURRENT_LINK"
-      for unit in \
-        daily-web.service \
-        daily-scheduled-worker.service \
-        daily-scheduled-worker.timer \
-        daily-backup.service \
-        daily-backup.timer
-      do
-        if [ -f "$PREVIOUS_RELEASE_DIRECTORY/deploy/systemd/$unit" ]; then
-          install -m 0644 "$PREVIOUS_RELEASE_DIRECTORY/deploy/systemd/$unit" "$SYSTEMD_DIRECTORY/$unit"
-        fi
-      done
-    else
-      rm -f "$CURRENT_LINK"
-      rm -f \
-        "$SYSTEMD_DIRECTORY/daily-web.service" \
-        "$SYSTEMD_DIRECTORY/daily-scheduled-worker.service" \
-        "$SYSTEMD_DIRECTORY/daily-scheduled-worker.timer" \
-        "$SYSTEMD_DIRECTORY/daily-backup.service" \
-        "$SYSTEMD_DIRECTORY/daily-backup.timer"
+  if [ "$status" -ne 0 ]; then
+    if [ "$SERVICES_STOPPED" = true ]; then
+      stop_production_units || true
+      hold_scheduled_delivery || true
     fi
-    rm -rf "$RELEASE_DIRECTORY"
-    systemctl daemon-reload
-  fi
-  if [ "$status" -ne 0 ] && [ "$SERVICES_STOPPED" = true ] && [ -n "$PREVIOUS_LINK_TARGET" ]; then
-    systemctl restart daily-web.service daily-scheduled-worker.timer daily-backup.timer
+    if [ "$RELEASE_ACTIVATED" = true ] &&
+      [ "$PREVIOUS_RELEASE_SCHEMA_COMPATIBLE" = true ] &&
+      [ -n "$PREVIOUS_LINK_TARGET" ]; then
+      restore_previous_release || true
+      start_web_and_backup_units || true
+    elif [ "$MIGRATION_ATTEMPTED" = false ] &&
+      [ "$RELEASE_ACTIVATED" = false ] &&
+      [ "$SERVICES_STOPPED" = true ] &&
+      [ -n "$PREVIOUS_LINK_TARGET" ]; then
+      start_web_and_backup_units || true
+    elif [ "$RELEASE_ACTIVATED" = true ] || [ "$MIGRATION_ATTEMPTED" = true ]; then
+      printf '%s\n' \
+        'Daily deployment stopped all services. Restore the previous release and the pre-migration database recovery point together; code-only rollback is blocked without explicit schema compatibility.' >&2
+    fi
   fi
   rm -rf "$STAGING_DIRECTORY"
   rm -f "$NEXT_LINK"
@@ -98,18 +194,23 @@ rm -rf "$STAGING_DIRECTORY/.git" "$STAGING_DIRECTORY/node_modules" "$STAGING_DIR
 )
 
 # The backup command verifies SQLite integrity and its finalized checksum before it succeeds.
+PREVIOUS_PRE_MIGRATION_RECOVERY_POINTS=$(finalized_pre_migration_recovery_point_names)
 (
   cd "$STAGING_DIRECTORY"
   npm run db:backup -- pre-migration
 )
+PRE_MIGRATION_RECOVERY_POINT=$(new_finalized_pre_migration_recovery_point)
+[ -n "$PRE_MIGRATION_RECOVERY_POINT" ] || fail 'pre-migration backup produced no finalized recovery point.'
+
+printf '%s\n' \
+  "{\"formatVersion\":1,\"releaseId\":\"$RELEASE_ID\",\"sourceCommit\":\"$SOURCE_COMMIT\"}" \
+  > "$STAGING_DIRECTORY/release-manifest.json"
 
 SERVICES_STOPPED=true
-systemctl stop \
-  daily-scheduled-worker.timer \
-  daily-backup.timer \
-  daily-scheduled-worker.service \
-  daily-web.service
+stop_production_units
+hold_scheduled_delivery
 
+MIGRATION_ATTEMPTED=true
 (
   cd "$STAGING_DIRECTORY"
   npm run db:migrate
@@ -133,13 +234,10 @@ do
 done
 
 systemctl daemon-reload
-systemctl enable daily-web.service daily-scheduled-worker.timer daily-backup.timer
-systemctl restart daily-web.service
-systemctl restart daily-scheduled-worker.timer daily-backup.timer
-systemctl is-active --quiet daily-web.service daily-scheduled-worker.timer daily-backup.timer
+start_web_and_backup_units
 
 readiness_response=$(curl --fail --silent --show-error "$READINESS_URL")
 [ "$readiness_response" = '{"status":"ok"}' ] || fail 'readiness endpoint returned an unexpected response.'
 
 trap - EXIT HUP INT TERM
-printf '%s\n' "Daily deployment succeeded: $RELEASE_ID"
+printf '%s\n' "Daily deployment succeeded: $RELEASE_ID (pre-migration recovery point: $PRE_MIGRATION_RECOVERY_POINT)"

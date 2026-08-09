@@ -66,6 +66,20 @@ describe('systemd scheduled worker contract', () => {
     expect(guide).toContain('Delivery Record');
   });
 
+  test('documents that cutover keeps Scheduled Delivery stopped until smoke verification', () => {
+    const guide = read(operatorGuidePath);
+
+    expect(guide).toContain('Keep Scheduled Delivery stopped until the deployment');
+    expect(guide).toContain('systemctl disable --now daily-scheduled-worker.timer');
+    expect(guide).toContain(
+      'systemctl is-inactive --quiet daily-scheduled-worker.timer daily-scheduled-worker.service'
+    );
+    expect(guide).toContain('one controlled genuine Scheduled Delivery');
+    expect(guide.indexOf('systemctl disable --now daily-scheduled-worker.timer')).toBeLessThan(
+      guide.lastIndexOf('systemctl enable --now daily-scheduled-worker.timer')
+    );
+  });
+
   test.runIf(existsSync('/usr/bin/systemd-analyze'))(
     'passes systemd unit verification when systemd tooling is available',
     () => {

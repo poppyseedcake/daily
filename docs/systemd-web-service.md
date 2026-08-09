@@ -48,26 +48,39 @@ For every production release, use the single ordered workflow in
 `docs/production-deployment.md`. Do not switch the `current` symlink or migrate the
 database by hand during a normal deployment.
 
-Ask systemd to validate the installed unit, reload it, and enable automatic startup:
+Ask systemd to validate the installed units, reload them, and start only Web and Backup
+for the initial production cutover. Keep Scheduled Delivery stopped until the deployment
+smoke checklist passes:
 
 ```sh
 sudo systemd-analyze verify /etc/systemd/system/daily-web.service /etc/systemd/system/daily-scheduled-worker.service /etc/systemd/system/daily-scheduled-worker.timer /etc/systemd/system/daily-backup.service /etc/systemd/system/daily-backup.timer
 sudo systemctl daemon-reload
 sudo systemctl enable --now daily-web.service
-sudo systemctl enable --now daily-scheduled-worker.timer
 sudo systemctl enable --now daily-backup.timer
+sudo systemctl disable --now daily-scheduled-worker.timer
+sudo systemctl stop daily-scheduled-worker.service
+sudo systemctl is-inactive --quiet daily-scheduled-worker.timer daily-scheduled-worker.service
+```
+
+After Preview, controlled Test Delivery, and one controlled genuine Scheduled Delivery
+pass, enable the timer for normal operation:
+
+```sh
+sudo systemctl enable --now daily-scheduled-worker.timer
+sudo systemctl is-active --quiet daily-scheduled-worker.timer
 ```
 
 The restart policy retries unexpected failures after five seconds, but permits no
 more than five starts in 60 seconds. A normal stop sends `SIGTERM` to Node and gives
 it 30 seconds to finish before systemd escalates termination.
 
-The timer starts `daily-scheduled-worker.service` once per minute. `Persistent=true`
-makes systemd evaluate a recently missed activation shortly after a reboot. Because
-the target is a single oneshot service, normal timer activation cannot start a
-second invocation while that unit is still active. Application-level Delivery Record
+When enabled, the timer starts `daily-scheduled-worker.service` once per minute.
+`Persistent=true` makes systemd evaluate a recently missed activation shortly after a
+reboot. Because the target is a single oneshot service, normal timer activation cannot
+start a second invocation while that unit is still active. Application-level Delivery Record
 idempotency remains authoritative if an operator starts the worker manually or an
-abnormal duplicate invocation occurs.
+abnormal duplicate invocation occurs. During a production cutover, keep this timer
+disabled and start the oneshot only for the documented controlled smoke delivery.
 
 The worker shares the web service's release directory, production environment file,
 database configuration, unprivileged identity, and write restrictions. It is still
@@ -82,6 +95,14 @@ shared backup-directory lock serializes timer and operator invocations, and its
 verified-finalization and retention rules remain authoritative. The service can
 write the live database directory and `/var/backups/daily`, but the root-owned
 release below `/srv/daily/current` stays read-only.
+
+Starting `daily-backup.timer` does not start `daily-scheduled-worker.timer`. Verify both
+states during cutover:
+
+```sh
+sudo systemctl is-active --quiet daily-backup.timer
+sudo systemctl is-inactive --quiet daily-scheduled-worker.timer daily-scheduled-worker.service
+```
 
 A command failure exits non-zero, leaves `daily-backup.service` failed, and emits a
 privacy-safe `sqlite-backup-failed` technical event. The event and command output
