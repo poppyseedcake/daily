@@ -229,8 +229,23 @@ export const createScheduledDeliveryPersistence = (database: ScheduledDeliveryDa
       }
 
       if (existingRow) {
+        const attemptCount = existingRow.attemptCount;
+        const availableAt =
+          existingRow.deliveryStatus === 'processing'
+            ? existingRow.claimExpiresAt
+            : existingRow.deliveryStatus === 'retrying'
+              ? existingRow.nextRetryAt
+              : null;
+        if (
+          attemptCount === null ||
+          availableAt === null ||
+          new Date(availableAt).getTime() > new Date(claimedAt).getTime()
+        ) {
+          return { outcome: 'skipped' };
+        }
+
         const errorClassification =
-          (existingRow.attemptCount ?? 0) >= maximumAttempts
+          attemptCount >= maximumAttempts
             ? ('retry-exhausted' as const)
             : new Date(claimedAt).getTime() >
                 new Date(work.scheduledAt).getTime() + retryDeadlineMilliseconds
@@ -238,7 +253,7 @@ export const createScheduledDeliveryPersistence = (database: ScheduledDeliveryDa
               : null;
 
         if (errorClassification) {
-          transaction
+          const failed = transaction
             .update(deliveryRecords)
             .set({
               deliveryStatus: 'failed',
@@ -248,9 +263,22 @@ export const createScheduledDeliveryPersistence = (database: ScheduledDeliveryDa
               providerMessageId: null,
               errorClassification
             })
-            .where(eq(deliveryRecords.id, existingRow.id))
-            .run();
-          return { outcome: 'failed', errorClassification };
+            .where(
+              and(
+                eq(deliveryRecords.id, existingRow.id),
+                eq(deliveryRecords.attemptType, 'scheduled'),
+                eq(deliveryRecords.deliveryStatus, existingRow.deliveryStatus),
+                eq(deliveryRecords.attemptCount, attemptCount),
+                existingRow.deliveryStatus === 'processing'
+                  ? sql`julianday(${deliveryRecords.claimExpiresAt}) <= julianday(${claimedAt})`
+                  : sql`julianday(${deliveryRecords.nextRetryAt}) <= julianday(${claimedAt})`
+              )
+            )
+            .returning({ id: deliveryRecords.id })
+            .get();
+          return failed
+            ? { outcome: 'failed', errorClassification }
+            : { outcome: 'skipped' };
         }
       } else if (user.nextSummaryAt !== work.scheduledAt) {
         return { outcome: 'skipped' };
@@ -342,13 +370,13 @@ export const createScheduledDeliveryPersistence = (database: ScheduledDeliveryDa
 
   beginSubmission<T>(
     claim: ScheduledDeliveryClaim,
-    completedAt: string,
+    submissionStartedAt: string,
     submit: () => Promise<T>
   ):
     | { outcome: 'began'; submission: Promise<T> }
     | { outcome: 'skipped'; errorClassification?: DeliveryErrorClassification } {
     let submission: Promise<T> | null = null;
-    const began = database.transaction((transaction) => {
+    const gate = database.transaction((transaction) => {
       const eligibility = transaction
         .select({
           lifecycleState: users.lifecycleState,
@@ -368,7 +396,7 @@ export const createScheduledDeliveryPersistence = (database: ScheduledDeliveryDa
           .update(deliveryRecords)
           .set({
             deliveryStatus: 'cancelled',
-            completedAt,
+            completedAt: submissionStartedAt,
             nextRetryAt: null,
             claimExpiresAt: null,
             errorClassification: 'summary-delivery-disabled'
@@ -381,18 +409,37 @@ export const createScheduledDeliveryPersistence = (database: ScheduledDeliveryDa
             )
           )
           .run();
-        return false;
+        return 'ineligible' as const;
+      }
+
+      const activeClaim = transaction
+        .select({ id: deliveryRecords.id })
+        .from(deliveryRecords)
+        .where(
+          and(
+            eq(deliveryRecords.id, claim.record.id),
+            eq(deliveryRecords.attemptType, 'scheduled'),
+            eq(deliveryRecords.deliveryStatus, 'processing'),
+            eq(deliveryRecords.attemptCount, claim.record.attemptCount),
+            sql`julianday(${deliveryRecords.claimExpiresAt}) > julianday(${submissionStartedAt})`
+          )
+        )
+        .get();
+      if (!activeClaim) {
+        return 'stale' as const;
       }
 
       submission = submit();
-      return true;
+      return 'began' as const;
     });
 
-    return began && submission
+    return gate === 'began' && submission
       ? { outcome: 'began', submission }
       : {
           outcome: 'skipped',
-          errorClassification: 'summary-delivery-disabled'
+          ...(gate === 'ineligible'
+            ? { errorClassification: 'summary-delivery-disabled' as const }
+            : {})
         };
   },
 

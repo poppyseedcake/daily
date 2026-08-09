@@ -507,6 +507,149 @@ describe('Scheduled Delivery', () => {
     ).toEqual({ count: 1 });
   });
 
+  test('does not submit from a claim that expired while its Daily Summary was generated', async () => {
+    const scheduledAt = '2026-10-24T05:00:00.000Z';
+    saveQualifyingUser(sqlite, { userId: 'user-1', scheduledAt });
+    let currentTime = new Date(scheduledAt);
+    let releaseFirstGeneration!: () => void;
+    let reportFirstClaim!: () => void;
+    const firstClaimed = new Promise<void>((resolve) => {
+      reportFirstClaim = resolve;
+    });
+    const firstGenerationCanFinish = new Promise<void>((resolve) => {
+      releaseFirstGeneration = resolve;
+    });
+    const send = vi.fn().mockResolvedValue({
+      providerName: 'fake-delivery',
+      providerMessageId: 'message-1',
+      providerStatusMetadata: 'accepted'
+    });
+    const firstDelivery = createTestDelivery({
+      database,
+      send,
+      now: () => currentTime,
+      async afterClaim() {
+        reportFirstClaim();
+        await firstGenerationCanFinish;
+      }
+    });
+    const recoveredDelivery = createTestDelivery({
+      database,
+      send,
+      now: () => currentTime
+    });
+    const firstBatch = await firstDelivery.loadDueBatch({
+      eligibleAt: currentTime.toISOString(),
+      limit: 1,
+      after: null
+    });
+    const firstProcessing = firstDelivery.process(firstBatch.work[0]!);
+    await firstClaimed;
+
+    currentTime = new Date('2026-10-24T05:05:01.000Z');
+    const recoveredBatch = await recoveredDelivery.loadDueBatch({
+      eligibleAt: currentTime.toISOString(),
+      limit: 1,
+      after: null
+    });
+    await expect(recoveredDelivery.process(recoveredBatch.work[0]!)).resolves.toEqual({
+      outcome: 'sent'
+    });
+    releaseFirstGeneration();
+
+    await expect(firstProcessing).resolves.toEqual({ outcome: 'skipped' });
+    expect(send).toHaveBeenCalledOnce();
+  });
+
+  test('does not let delayed work terminalize a newer active claim', async () => {
+    const scheduledAt = '2026-10-24T05:00:00.000Z';
+    saveQualifyingUser(sqlite, { userId: 'user-1', scheduledAt });
+    let currentTime = new Date(scheduledAt);
+    let releaseFirstGeneration!: () => void;
+    let reportFirstClaim!: () => void;
+    const firstClaimed = new Promise<void>((resolve) => {
+      reportFirstClaim = resolve;
+    });
+    const firstGenerationCanFinish = new Promise<void>((resolve) => {
+      releaseFirstGeneration = resolve;
+    });
+    let releaseRecoveredGeneration!: () => void;
+    let reportRecoveredClaim!: () => void;
+    const recoveredClaimed = new Promise<void>((resolve) => {
+      reportRecoveredClaim = resolve;
+    });
+    const recoveredGenerationCanFinish = new Promise<void>((resolve) => {
+      releaseRecoveredGeneration = resolve;
+    });
+    const send = vi.fn().mockResolvedValue({
+      providerName: 'fake-delivery',
+      providerMessageId: 'message-1',
+      providerStatusMetadata: 'accepted'
+    });
+    const delayedDelivery = createTestDelivery({ database, send, now: () => currentTime });
+    const firstDelivery = createTestDelivery({
+      database,
+      send,
+      now: () => currentTime,
+      async afterClaim() {
+        reportFirstClaim();
+        await firstGenerationCanFinish;
+      }
+    });
+    const recoveredDelivery = createTestDelivery({
+      database,
+      send,
+      now: () => currentTime,
+      async afterClaim() {
+        reportRecoveredClaim();
+        await recoveredGenerationCanFinish;
+      }
+    });
+    const delayedBatch = await delayedDelivery.loadDueBatch({
+      eligibleAt: currentTime.toISOString(),
+      limit: 1,
+      after: null
+    });
+    const firstBatch = await firstDelivery.loadDueBatch({
+      eligibleAt: currentTime.toISOString(),
+      limit: 1,
+      after: null
+    });
+    const firstProcessing = firstDelivery.process(firstBatch.work[0]!);
+    await firstClaimed;
+
+    currentTime = new Date('2026-10-24T05:12:00.000Z');
+    const recoveredBatch = await recoveredDelivery.loadDueBatch({
+      eligibleAt: currentTime.toISOString(),
+      limit: 1,
+      after: null
+    });
+    const recoveredProcessing = recoveredDelivery.process(recoveredBatch.work[0]!);
+    await recoveredClaimed;
+
+    currentTime = new Date('2026-10-24T05:16:00.000Z');
+    const delayedOutcome = await delayedDelivery.process(delayedBatch.work[0]!);
+    const recordWhileRecoveredClaimIsActive = sqlite
+      .prepare(
+        'select delivery_status, attempt_count, claim_expires_at from delivery_records'
+      )
+      .get();
+    releaseRecoveredGeneration();
+    const recoveredOutcome = await recoveredProcessing;
+    releaseFirstGeneration();
+    const firstOutcome = await firstProcessing;
+
+    expect(delayedOutcome).toEqual({ outcome: 'skipped' });
+    expect(recordWhileRecoveredClaimIsActive).toEqual({
+      delivery_status: 'processing',
+      attempt_count: 2,
+      claim_expires_at: '2026-10-24T05:17:00.000Z'
+    });
+    expect(recoveredOutcome).toEqual({ outcome: 'sent' });
+    expect(firstOutcome).toEqual({ outcome: 'skipped' });
+    expect(send).toHaveBeenCalledOnce();
+  });
+
   test('keeps a scheduled occurrence due while its retry is not yet eligible', async () => {
     const scheduledAt = '2026-10-24T05:00:00Z';
     saveQualifyingUser(sqlite, { userId: 'user-1', scheduledAt });

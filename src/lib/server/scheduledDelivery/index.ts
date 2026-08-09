@@ -177,7 +177,8 @@ export const createScheduledDelivery = ({
         throw error;
       }
 
-      const submission = persistence.beginSubmission(claim, processingStartedAtIso, () =>
+      const submissionStartedAtIso = now().toISOString();
+      const submission = persistence.beginSubmission(claim, submissionStartedAtIso, () =>
         deliveryProvider.send({
           to: claim.summaryRecipient,
           from: senderAddress(),
