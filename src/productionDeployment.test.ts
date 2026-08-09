@@ -65,11 +65,14 @@ const createFixture = () => {
   const database = join(root, 'daily.db');
   writeFileSync(database, 'sqlite fixture');
   const log = join(state, 'operations.log');
+  const gitLog = join(state, 'git.log');
 
   executable(
     join(bin, 'git'),
-    'if [ "$1" = "-C" ] && [ "$3" = "rev-parse" ]; then printf "%s\\n" "$DAILY_TEST_SOURCE_COMMIT"; exit 0; fi\n' +
-      'if [ "$1" = "-C" ] && [ "$3" = "status" ]; then printf "%s\\n" "${DAILY_TEST_SOURCE_STATUS:-}"; exit 0; fi\n' +
+    'printf "%s\\n" "$*" >> "$DAILY_TEST_GIT_LOG"\n' +
+      '[ "${DAILY_TEST_GIT_FAIL:-false}" != true ] || { printf "%s\\n" "fatal: detected dubious ownership in repository" >&2; exit 128; }\n' +
+      'if [ "$1" = "-c" ] && [ "$3" = "-C" ] && [ "$5" = "rev-parse" ]; then printf "%s\\n" "$DAILY_TEST_SOURCE_COMMIT"; exit 0; fi\n' +
+      'if [ "$1" = "-c" ] && [ "$3" = "-C" ] && [ "$5" = "status" ]; then printf "%s\\n" "${DAILY_TEST_SOURCE_STATUS:-}"; exit 0; fi\n' +
       'exit 1'
   );
   executable(
@@ -98,7 +101,18 @@ const createFixture = () => {
       'printf \'{"status":"ok"}\''
   );
 
-  return { root, source, releases, bin, state, database, log, commit: sourceCommit };
+  return {
+    root,
+    source,
+    releases,
+    bin,
+    state,
+    database,
+    backups: join(root, 'backups'),
+    log,
+    gitLog,
+    commit: sourceCommit
+  };
 };
 
 const deploy = (
@@ -119,6 +133,7 @@ const deploy = (
       BACKUP_DIRECTORY: join(fixture.root, 'backups'),
       READINESS_URL: 'http://127.0.0.1:5174/health',
       DAILY_TEST_LOG: fixture.log,
+      DAILY_TEST_GIT_LOG: fixture.gitLog,
       DAILY_TEST_BACKUP_COPY: join(fixture.state, 'pre-migration.sqlite3'),
       DAILY_TEST_SOURCE_COMMIT: fixture.commit,
       ...extraEnvironment
@@ -167,6 +182,42 @@ describe('production deployment operator boundary', () => {
     ]);
     expect(existsSync(join(fixture.root, 'systemd', 'daily-web.service'))).toBe(true);
     expect(existsSync(join(fixture.releases, 'previous'))).toBe(true);
+  });
+
+  test('trusts the exact source checkout when Git runs as root', () => {
+    const fixture = createFixture();
+
+    expect(deploy(fixture).status).toBe(0);
+    expect(readFileSync(fixture.gitLog, 'utf8').trim().split('\n')).toEqual([
+      `-c safe.directory=${fixture.source} -C ${fixture.source} rev-parse --verify HEAD^{commit}`,
+      `-c safe.directory=${fixture.source} -C ${fixture.source} status --porcelain --untracked-files=all`
+    ]);
+  });
+
+  test('keeps Git ownership diagnostics visible', () => {
+    const fixture = createFixture();
+
+    const result = deploy(fixture, { DAILY_TEST_GIT_FAIL: 'true' });
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain('detected dubious ownership');
+    expect(result.stderr).toContain('source checkout has no readable commit.');
+  });
+
+  test('accepts a new recovery point when an existing point has a later name', () => {
+    const fixture = createFixture();
+    const existingRecoveryPoint = join(
+      fixture.backups,
+      'pre-migration-20990101T000000000Z-existing'
+    );
+    mkdirSync(existingRecoveryPoint, { recursive: true });
+    writeFileSync(join(existingRecoveryPoint, 'backup.sqlite3'), 'older backup');
+    writeFileSync(join(existingRecoveryPoint, 'metadata.json'), 'verified');
+
+    const result = deploy(fixture);
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain('pre-migration-20260809T000000000Z-test');
   });
 
   test('does not migrate or switch releases when the verified backup command fails', () => {

@@ -31,10 +31,17 @@ case "$PREVIOUS_RELEASE_SCHEMA_COMPATIBLE" in
 esac
 
 SOURCE_DIRECTORY=$(cd "$SOURCE_DIRECTORY" && pwd -P)
-SOURCE_COMMIT=$(git -C "$SOURCE_DIRECTORY" rev-parse --verify 'HEAD^{commit}' 2>/dev/null) ||
+git_in_source() {
+  # Root must explicitly trust the operator-owned checkout for this invocation.
+  git -c "safe.directory=$SOURCE_DIRECTORY" -C "$SOURCE_DIRECTORY" "$@"
+}
+
+if ! SOURCE_COMMIT=$(git_in_source rev-parse --verify 'HEAD^{commit}'); then
   fail 'source checkout has no readable commit.'
-SOURCE_STATUS=$(git -C "$SOURCE_DIRECTORY" status --porcelain --untracked-files=all) ||
+fi
+if ! SOURCE_STATUS=$(git_in_source status --porcelain --untracked-files=all); then
   fail 'source checkout status could not be read.'
+fi
 [ -z "$SOURCE_STATUS" ] || fail 'source checkout contains uncommitted changes.'
 [ "$RELEASE_ID" = "$SOURCE_COMMIT" ] || fail 'release identifier must equal the source commit SHA.'
 
@@ -53,17 +60,40 @@ RELEASE_ACTIVATED=false
 SERVICES_STOPPED=false
 MIGRATION_ATTEMPTED=false
 
-latest_pre_migration_recovery_point() {
-  latest=
+finalized_pre_migration_recovery_point_names() {
   for recovery_point in "$BACKUP_DIRECTORY"/pre-migration-*
   do
     if [ -d "$recovery_point" ] &&
       [ -f "$recovery_point/backup.sqlite3" ] &&
       [ -f "$recovery_point/metadata.json" ]; then
-      latest=$recovery_point
+      printf '%s\n' "${recovery_point##*/}"
     fi
   done
-  printf '%s' "$latest"
+}
+
+recovery_point_was_present() {
+  recovery_point_name=$1
+  # Recovery-point names contain only timestamp, UUID, and separator characters.
+  for previous_recovery_point in $PREVIOUS_PRE_MIGRATION_RECOVERY_POINTS
+  do
+    [ "$previous_recovery_point" = "$recovery_point_name" ] && return 0
+  done
+  return 1
+}
+
+new_finalized_pre_migration_recovery_point() {
+  for recovery_point in "$BACKUP_DIRECTORY"/pre-migration-*
+  do
+    if [ -d "$recovery_point" ] &&
+      [ -f "$recovery_point/backup.sqlite3" ] &&
+      [ -f "$recovery_point/metadata.json" ]; then
+      recovery_point_name=${recovery_point##*/}
+      if ! recovery_point_was_present "$recovery_point_name"; then
+        printf '%s' "$recovery_point"
+        return 0
+      fi
+    fi
+  done
 }
 
 stop_production_units() {
@@ -164,15 +194,13 @@ rm -rf "$STAGING_DIRECTORY/.git" "$STAGING_DIRECTORY/node_modules" "$STAGING_DIR
 )
 
 # The backup command verifies SQLite integrity and its finalized checksum before it succeeds.
-PREVIOUS_PRE_MIGRATION_RECOVERY_POINT=$(latest_pre_migration_recovery_point)
+PREVIOUS_PRE_MIGRATION_RECOVERY_POINTS=$(finalized_pre_migration_recovery_point_names)
 (
   cd "$STAGING_DIRECTORY"
   npm run db:backup -- pre-migration
 )
-PRE_MIGRATION_RECOVERY_POINT=$(latest_pre_migration_recovery_point)
+PRE_MIGRATION_RECOVERY_POINT=$(new_finalized_pre_migration_recovery_point)
 [ -n "$PRE_MIGRATION_RECOVERY_POINT" ] || fail 'pre-migration backup produced no finalized recovery point.'
-[ "$PRE_MIGRATION_RECOVERY_POINT" != "$PREVIOUS_PRE_MIGRATION_RECOVERY_POINT" ] ||
-  fail 'pre-migration backup did not produce a new recovery point.'
 
 printf '%s\n' \
   "{\"formatVersion\":1,\"releaseId\":\"$RELEASE_ID\",\"sourceCommit\":\"$SOURCE_COMMIT\"}" \
