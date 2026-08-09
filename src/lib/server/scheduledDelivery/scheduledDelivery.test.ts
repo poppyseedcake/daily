@@ -4,21 +4,19 @@ import { Temporal } from '@js-temporal/polyfill';
 import { drizzle } from 'drizzle-orm/better-sqlite3';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type { CalendarEventProvider } from '$lib/calendar';
-import { createUserCalendarConnectionStore } from './db/calendarConnectionStore';
-import { createUserCommuteSetupStore } from './db/commuteSetupStore';
-import { createDeliveryRecordStore } from './db/deliveryRecordStore';
-import { createScheduledDailySummaryOccurrenceStore } from './db/scheduledDailySummaryOccurrenceStore';
-import { createUserLifecycleStore } from './db/userLifecycleStore';
-import * as schema from './db/schema';
-import { createUserSummaryConfigurationStore } from './db/summaryConfigurationStore';
-import { createUserTodoStore } from './db/todoStore';
-import { createUserWeatherLocationStore } from './db/weatherLocationStore';
+import { createUserCalendarConnectionStore } from '../db/calendarConnectionStore';
+import { createUserCommuteSetupStore } from '../db/commuteSetupStore';
+import { createUserLifecycleStore } from '../db/userLifecycleStore';
+import * as schema from '../db/schema';
+import { createUserSummaryConfigurationStore } from '../db/summaryConfigurationStore';
+import { createUserTodoStore } from '../db/todoStore';
+import { createUserWeatherLocationStore } from '../db/weatherLocationStore';
 import {
   DailySummaryDeliveryError,
   type DailySummaryDeliveryProvider
-} from './dailySummaryDelivery';
-import { createScheduledDailySummaryDelivery } from './scheduledDailySummaryDelivery';
-import { createScheduledDailySummaryGenerator } from './scheduledDailySummaryGeneration';
+} from '../dailySummaryDelivery';
+import { createScheduledDelivery } from '.';
+import { createScheduledDailySummaryGenerator } from '../scheduledDailySummaryGeneration';
 
 const applyMigrations = (sqlite: Database.Database) => {
   for (const migration of [
@@ -82,18 +80,9 @@ const createTestDelivery = ({
   calendarEventProvider?: (accessToken: string) => CalendarEventProvider;
 }) => {
   const persistedLifecycleStore = createUserLifecycleStore(database);
-  const persistedDeliveryRecordStore = createDeliveryRecordStore(database);
   const generationLifecycleStore = isActive ? { isActive } : persistedLifecycleStore;
-  const deliveryLifecycleStore = isActive
-    ? {
-        isActive,
-        async beginProviderSubmission<T>(userId: string, submit: () => Promise<T>) {
-          return (await isActive(userId)) ? submit() : null;
-        }
-      }
-    : persistedLifecycleStore;
   const configurationStore = createUserSummaryConfigurationStore(database);
-  const generator = createScheduledDailySummaryGenerator({
+  const productionGenerator = createScheduledDailySummaryGenerator({
     userLifecycleStore: generationLifecycleStore,
     configurationStore,
     todoStore: createUserTodoStore(database),
@@ -107,36 +96,40 @@ const createTestDelivery = ({
     now
   });
 
-  const deliveryRecordStore = afterClaim
+  const generator = afterClaim
     ? {
-        ...persistedDeliveryRecordStore,
-        async claimScheduledOccurrence(
-          userId: string,
-          claim: Parameters<typeof persistedDeliveryRecordStore.claimScheduledOccurrence>[1]
-        ) {
-          const result = await persistedDeliveryRecordStore.claimScheduledOccurrence(userId, claim);
-          if (result) {
-            await afterClaim(userId);
-          }
-          return result;
+        async generate(userId: string) {
+          await afterClaim(userId);
+          return productionGenerator.generate(userId);
         }
       }
-    : persistedDeliveryRecordStore;
+    : productionGenerator;
 
-  return createScheduledDailySummaryDelivery({
-    occurrenceStore: createScheduledDailySummaryOccurrenceStore(database),
-    deliveryRecordStore,
-    userLifecycleStore: deliveryLifecycleStore,
-    summaryConfigurationStore: configurationStore,
+  const scheduledDelivery = createScheduledDelivery({
+    database,
     generator,
     deliveryProvider: { send },
     providerName: 'fake-delivery',
     senderAddress: () => 'Daily <daily@example.com>',
     now
   });
+
+  return {
+    ...scheduledDelivery,
+    async processOneDueOccurrence() {
+      const batch = await scheduledDelivery.loadDueBatch({
+        eligibleAt: now().toISOString(),
+        limit: 1,
+        after: null
+      });
+      return batch.work[0]
+        ? scheduledDelivery.process(batch.work[0])
+        : { outcome: 'none-due' as const };
+    }
+  };
 };
 
-describe('scheduled Daily Summary delivery', () => {
+describe('Scheduled Delivery', () => {
   let sqlite: Database.Database;
   let database: ReturnType<typeof drizzle<typeof schema>>;
 
@@ -167,10 +160,7 @@ describe('scheduled Daily Summary delivery', () => {
       now: () => new Date('2026-10-24T05:00:00.000Z')
     });
 
-    await expect(delivery.processOneDueOccurrence()).resolves.toEqual({
-      outcome: 'sent',
-      occurrenceId: expect.any(String)
-    });
+    await expect(delivery.processOneDueOccurrence()).resolves.toEqual({ outcome: 'sent' });
 
     expect(send).toHaveBeenCalledOnce();
     expect(send).toHaveBeenCalledWith({
@@ -224,7 +214,7 @@ describe('scheduled Daily Summary delivery', () => {
     });
 
     await expect(delivery.processOneDueOccurrence()).resolves.toEqual({
-      outcome: 'delivery-disabled',
+      outcome: 'skipped',
       errorClassification: 'summary-delivery-disabled'
     });
 
@@ -251,7 +241,7 @@ describe('scheduled Daily Summary delivery', () => {
     const delivery = createTestDelivery({ database, send, now: () => currentTime });
 
     await expect(delivery.processOneDueOccurrence()).resolves.toMatchObject({
-      outcome: 'retry-scheduled'
+      outcome: 'retrying'
     });
     sqlite
       .prepare('update summary_configurations set summary_delivery_enabled = 0 where user_id = ?')
@@ -259,7 +249,7 @@ describe('scheduled Daily Summary delivery', () => {
     currentTime = new Date('2026-10-24T05:05:00.000Z');
 
     await expect(delivery.processOneDueOccurrence()).resolves.toMatchObject({
-      outcome: 'delivery-cancelled'
+      outcome: 'skipped'
     });
     await expect(delivery.processOneDueOccurrence()).resolves.toEqual({ outcome: 'none-due' });
 
@@ -304,7 +294,7 @@ describe('scheduled Daily Summary delivery', () => {
     });
 
     await expect(delivery.processOneDueOccurrence()).resolves.toMatchObject({
-      outcome: 'delivery-cancelled'
+      outcome: 'skipped'
     });
 
     expect(send).not.toHaveBeenCalled();
@@ -385,7 +375,7 @@ describe('scheduled Daily Summary delivery', () => {
       )
     );
 
-    await expect(processing).resolves.toMatchObject({ outcome: 'delivery-cancelled' });
+    await expect(processing).resolves.toMatchObject({ outcome: 'skipped' });
     expect(
       sqlite
         .prepare('select delivery_status, attempt_count, next_retry_at, error_classification from delivery_records')
@@ -404,24 +394,48 @@ describe('scheduled Daily Summary delivery', () => {
       scheduledAt: '2026-10-24T05:00:00Z'
     });
     const send = vi.fn();
-    let checks = 0;
     const delivery = createTestDelivery({
       database,
       send,
       now: () => new Date('2026-10-24T05:00:00.000Z'),
-      async isActive(userId) {
-        checks += 1;
-        if (checks === 3) {
-          await createUserLifecycleStore(database).startDeleting(userId);
-        }
-        return createUserLifecycleStore(database).isActive(userId);
-      },
+      async afterClaim(userId) {
+        await createUserLifecycleStore(database).startDeleting(userId);
+      }
     });
 
     await expect(delivery.processOneDueOccurrence()).resolves.toMatchObject({
-      outcome: 'user-deleting'
+      outcome: 'skipped'
     });
     expect(send).not.toHaveBeenCalled();
+  });
+
+  test('cancels a claim when generation finds that the User is not active', async () => {
+    saveQualifyingUser(sqlite, {
+      userId: 'user-1',
+      scheduledAt: '2026-10-24T05:00:00Z'
+    });
+    const send = vi.fn();
+    const delivery = createTestDelivery({
+      database,
+      send,
+      now: () => new Date('2026-10-24T05:00:00.000Z'),
+      isActive: vi.fn().mockResolvedValue(false)
+    });
+
+    await expect(delivery.processOneDueOccurrence()).resolves.toEqual({
+      outcome: 'skipped',
+      errorClassification: 'summary-delivery-disabled'
+    });
+
+    expect(send).not.toHaveBeenCalled();
+    expect(
+      sqlite
+        .prepare('select delivery_status, error_classification from delivery_records')
+        .get()
+    ).toEqual({
+      delivery_status: 'cancelled',
+      error_classification: 'summary-delivery-disabled'
+    });
   });
 
   test('delivers qualifying Todo content when Weather is unavailable', async () => {
@@ -443,10 +457,7 @@ describe('scheduled Daily Summary delivery', () => {
       now: () => new Date('2026-10-24T05:00:00.000Z')
     });
 
-    await expect(delivery.processOneDueOccurrence()).resolves.toEqual({
-      outcome: 'sent',
-      occurrenceId: expect.any(String)
-    });
+    await expect(delivery.processOneDueOccurrence()).resolves.toEqual({ outcome: 'sent' });
 
     expect(send).toHaveBeenCalledWith(expect.objectContaining({
       html: expect.stringContaining('Choose a Weather Location'),
@@ -489,11 +500,7 @@ describe('scheduled Daily Summary delivery', () => {
     expect(send).toHaveBeenCalledOnce();
     const overlappingOutcomeNames = overlappingOutcomes.map(({ outcome }) => outcome);
     expect(overlappingOutcomeNames.filter((outcome) => outcome === 'sent')).toHaveLength(1);
-    expect(
-      overlappingOutcomeNames.some(
-        (outcome) => outcome === 'already-claimed' || outcome === 'already-processed'
-      )
-    ).toBe(true);
+    expect(overlappingOutcomeNames).toContain('skipped');
     expect(repeatedOutcome).toEqual({ outcome: 'none-due' });
     expect(
       sqlite.prepare('select count(*) as count from delivery_records').get()
@@ -503,36 +510,41 @@ describe('scheduled Daily Summary delivery', () => {
   test('keeps a scheduled occurrence due while its retry is not yet eligible', async () => {
     const scheduledAt = '2026-10-24T05:00:00Z';
     saveQualifyingUser(sqlite, { userId: 'user-1', scheduledAt });
-    const recordStore = createDeliveryRecordStore(database);
-    const claim = await recordStore.claimScheduledOccurrence('user-1', {
-      scheduledAt,
-      claimedAt: '2026-10-24T05:00:00.000Z',
-      claimExpiresAt: '2026-10-24T05:05:00.000Z',
-      providerName: 'fake-delivery'
-    });
-    await recordStore.markScheduledRetrying(claim!.id, {
-      attemptCount: 1,
-      attemptedAt: '2026-10-24T05:00:01.000Z',
-      nextRetryAt: '2026-10-24T05:10:00.000Z',
-      providerStatusMetadata: 'temporarily unavailable',
-      errorClassification: 'provider-unavailable'
-    });
-    const send = vi.fn();
+    let currentTime = new Date('2026-10-24T05:00:00.000Z');
+    const send = vi.fn().mockRejectedValue(
+      new DailySummaryDeliveryError(
+        'temporarily unavailable',
+        'provider-unavailable',
+        { providerStatusMetadata: 'temporarily unavailable' }
+      )
+    );
     const delivery = createTestDelivery({
       database,
       send,
-      now: () => new Date('2026-10-24T05:05:00.000Z')
+      now: () => currentTime
     });
 
     await expect(delivery.processOneDueOccurrence()).resolves.toEqual({
-      outcome: 'retry-pending',
-      occurrenceId: claim!.id
+      outcome: 'retrying',
+      errorClassification: 'provider-unavailable'
     });
+    currentTime = new Date('2026-10-24T05:04:59.000Z');
+    await expect(delivery.processOneDueOccurrence()).resolves.toEqual({ outcome: 'none-due' });
 
-    expect(send).not.toHaveBeenCalled();
+    expect(send).toHaveBeenCalledOnce();
     expect(
       sqlite.prepare('select next_summary_at from users where id = ?').get('user-1')
-    ).toEqual({ next_summary_at: scheduledAt });
+    ).toEqual({ next_summary_at: '2026-10-25T06:00:00Z' });
+    expect(
+      sqlite
+        .prepare(
+          'select delivery_status, next_retry_at from delivery_records where user_id = ?'
+        )
+        .get('user-1')
+    ).toEqual({
+      delivery_status: 'retrying',
+      next_retry_at: '2026-10-24T05:05:00.000Z'
+    });
   });
 
   test('finishes an accepted occurrence as failed when the provider omits its message id', async () => {
@@ -555,8 +567,7 @@ describe('scheduled Daily Summary delivery', () => {
     const repeatedOutcome = await delivery.processOneDueOccurrence();
 
     expect(firstOutcome).toEqual({
-      outcome: 'provider-missing-message-id',
-      occurrenceId: expect.any(String),
+      outcome: 'failed',
       errorClassification: 'provider-missing-message-id'
     });
     expect(repeatedOutcome).toEqual({ outcome: 'none-due' });
@@ -595,10 +606,7 @@ describe('scheduled Daily Summary delivery', () => {
       now: () => new Date('2026-10-24T05:00:00.000Z')
     });
 
-    await expect(delivery.processOneDueOccurrence()).resolves.toEqual({
-      outcome: 'sent',
-      occurrenceId: expect.any(String)
-    });
+    await expect(delivery.processOneDueOccurrence()).resolves.toEqual({ outcome: 'sent' });
     await expect(delivery.processOneDueOccurrence()).resolves.toEqual({
       outcome: 'none-due'
     });
@@ -631,10 +639,7 @@ describe('scheduled Daily Summary delivery', () => {
       now: () => new Date('2026-10-24T05:00:00.000Z')
     });
 
-    await expect(delivery.processOneDueOccurrence()).resolves.toMatchObject({
-      outcome: 'sent',
-      occurrenceId: expect.any(String)
-    });
+    await expect(delivery.processOneDueOccurrence()).resolves.toEqual({ outcome: 'sent' });
 
     const message = send.mock.calls[0]?.[0];
     expect(send).toHaveBeenCalledOnce();
@@ -692,10 +697,7 @@ describe('scheduled Daily Summary delivery', () => {
       calendarEventProvider
     });
 
-    await expect(delivery.processOneDueOccurrence()).resolves.toEqual({
-      outcome: 'sent',
-      occurrenceId: expect.any(String)
-    });
+    await expect(delivery.processOneDueOccurrence()).resolves.toEqual({ outcome: 'sent' });
 
     expect(send).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -768,10 +770,7 @@ describe('scheduled Daily Summary delivery', () => {
       )
       .get();
 
-    expect(recoveredOutcome).toEqual({
-      outcome: 'sent',
-      occurrenceId: interruptedRecord.id
-    });
+    expect(recoveredOutcome).toEqual({ outcome: 'sent' });
     expect(recoveredRecord).toEqual({
       id: interruptedRecord.id,
       scheduled_at: '2026-10-24T05:00:00Z',
@@ -801,7 +800,8 @@ describe('scheduled Daily Summary delivery', () => {
     currentTime = new Date('2026-10-24T05:15:00.000Z');
 
     await expect(delivery.processOneDueOccurrence()).resolves.toMatchObject({
-      outcome: 'retry-exhausted'
+      outcome: 'failed',
+      errorClassification: 'retry-exhausted'
     });
 
     expect(send).toHaveBeenCalledTimes(3);
@@ -842,9 +842,7 @@ describe('scheduled Daily Summary delivery', () => {
     const delivery = createTestDelivery({ database, send, now: () => currentTime });
 
     await expect(delivery.processOneDueOccurrence()).resolves.toEqual({
-      outcome: 'retry-scheduled',
-      occurrenceId: expect.any(String),
-      nextRetryAt: '2026-10-24T05:05:00.000Z',
+      outcome: 'retrying',
       errorClassification: 'provider-unavailable'
     });
     sqlite
@@ -855,10 +853,7 @@ describe('scheduled Daily Summary delivery', () => {
       .run('user-1');
     currentTime = new Date('2026-10-24T05:05:00.000Z');
 
-    await expect(delivery.processOneDueOccurrence()).resolves.toEqual({
-      outcome: 'sent',
-      occurrenceId: expect.any(String)
-    });
+    await expect(delivery.processOneDueOccurrence()).resolves.toEqual({ outcome: 'sent' });
 
     expect(send).toHaveBeenCalledTimes(2);
     expect(submittedMessages[0].idempotencyKey).toBe(submittedMessages[1].idempotencyKey);
@@ -898,15 +893,16 @@ describe('scheduled Daily Summary delivery', () => {
     const delivery = createTestDelivery({ database, send, now: () => currentTime });
 
     await expect(delivery.processOneDueOccurrence()).resolves.toMatchObject({
-      outcome: 'retry-scheduled'
+      outcome: 'retrying'
     });
     currentTime = new Date('2026-10-24T05:05:00.000Z');
     await expect(delivery.processOneDueOccurrence()).resolves.toMatchObject({
-      outcome: 'retry-scheduled'
+      outcome: 'retrying'
     });
     currentTime = new Date('2026-10-24T05:10:00.000Z');
     await expect(delivery.processOneDueOccurrence()).resolves.toMatchObject({
-      outcome: 'retry-exhausted'
+      outcome: 'failed',
+      errorClassification: 'retry-exhausted'
     });
     currentTime = new Date('2026-10-24T05:15:00.000Z');
     await expect(delivery.processOneDueOccurrence()).resolves.toEqual({ outcome: 'none-due' });
@@ -942,12 +938,13 @@ describe('scheduled Daily Summary delivery', () => {
     const delivery = createTestDelivery({ database, send, now: () => currentTime });
 
     await expect(delivery.processOneDueOccurrence()).resolves.toMatchObject({
-      outcome: 'retry-scheduled'
+      outcome: 'retrying'
     });
     currentTime = new Date('2026-10-24T05:15:00.001Z');
 
     await expect(delivery.processOneDueOccurrence()).resolves.toMatchObject({
-      outcome: 'stale-occurrence'
+      outcome: 'failed',
+      errorClassification: 'stale-occurrence'
     });
 
     expect(send).toHaveBeenCalledOnce();
@@ -988,7 +985,8 @@ describe('scheduled Daily Summary delivery', () => {
     });
 
     await expect(delivery.processOneDueOccurrence()).resolves.toMatchObject({
-      outcome: 'delivery-failed'
+      outcome: 'failed',
+      errorClassification: classification
     });
     await expect(delivery.processOneDueOccurrence()).resolves.toEqual({ outcome: 'none-due' });
 

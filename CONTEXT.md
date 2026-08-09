@@ -56,6 +56,10 @@ _Avoid_: Required setup, onboarding completion
 The User-controlled state that determines whether Daily Summaries are sent at all, independent of the state of individual Summary Sections. When enabled, a Daily Summary is sent even when every section is paused, unconfigured, empty, or unavailable. Summary Delivery is enabled by default.
 _Avoid_: Section toggle, unsubscribe
 
+**Scheduled Delivery**:
+A Daily Summary delivery planned for one User at one Summary Time occurrence. It includes the first delivery attempt and any bounded retry attempts until the Daily Summary is sent, fails, or is cancelled.
+_Avoid_: Summary Delivery, Delivery Record, delivery batch
+
 **Summary Section**:
 A fixed part of every delivered Daily Summary that can be active or paused independently from whether the User has configured data for it. Summary Sections always appear in the order Weather, Commute, Calendar, Todo and show a status instead of live content when necessary.
 _Avoid_: Optional section, feature, widget, module
