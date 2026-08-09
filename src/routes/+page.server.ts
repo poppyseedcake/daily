@@ -15,13 +15,10 @@ import {
   type CalendarConnection
 } from '$lib/server/db/calendarConnectionStore';
 import {
-  DailySummaryDeliveryError,
-  type DailySummaryDeliveryErrorClassification,
   dailySummaryDeliveryProvider,
   dailySummarySenderAddress
 } from '$lib/server/dailySummaryDelivery';
 import { buildDailySummaryInput } from '$lib/dailySummaryPreview';
-import { dailySummarySubject } from '$lib/dailySummaryRenderer';
 import {
   calendarReadinessForAuthMode,
   calendarReadinessForUnavailableCredentials,
@@ -59,28 +56,10 @@ import {
   createDailySummaryGenerator,
   ScheduledDailySummaryUserNotActiveError
 } from '$lib/server/scheduledDailySummaryGeneration';
+import { createTestDailySummaryDelivery } from '$lib/server/testDailySummaryDelivery';
 import { defaultCommuteDays } from '$lib/commuteRoute';
 import { env } from '$env/dynamic/private';
 import { fail } from '@sveltejs/kit';
-
-const testDeliveryFailureMessage = (classification: DailySummaryDeliveryErrorClassification) => {
-  switch (classification) {
-    case 'configuration-missing':
-      return 'Test Daily Summary delivery is not configured.';
-    case 'validation-failed':
-      return 'The delivery provider could not validate the test Daily Summary.';
-    case 'authentication-failed':
-      return 'The delivery provider could not authenticate the test Daily Summary request.';
-    case 'provider-rejected':
-      return 'The delivery provider rejected the test Daily Summary.';
-    case 'provider-unavailable':
-      return 'The test Daily Summary could not be sent.';
-    default: {
-      const exhaustiveClassification: never = classification;
-      return exhaustiveClassification;
-    }
-  }
-};
 
 const validationFailureResponse = {
   outcome: 'failed',
@@ -123,6 +102,12 @@ const dailySummaryGenerator = createDailySummaryGenerator({
   weatherProvider: openMeteoWeatherForecastProvider,
   weatherSummaryProvider: openAiWeatherSummaryProvider,
   commuteEstimateProvider: (userId) => commuteEstimateProviderFor(userId)
+});
+
+const testDailySummaryDelivery = createTestDailySummaryDelivery({
+  deliveryProvider: dailySummaryDeliveryProvider,
+  senderAddress: dailySummarySenderAddress,
+  recordAttempt: (userId, record) => deliveryRecordStore.recordAttempt(userId, record)
 });
 
 type LoadedCommuteSetup = Awaited<ReturnType<typeof loadUserCommuteSetup>>;
@@ -566,9 +551,9 @@ export const actions = {
       };
     }
 
-    const inactiveUserFailure = await rejectTestDeliveryForInactiveUser(authState.userId);
-    if (inactiveUserFailure) {
-      return inactiveUserFailure;
+    const inactiveUserFailureBeforeDelivery = await rejectTestDeliveryForInactiveUser(authState.userId);
+    if (inactiveUserFailureBeforeDelivery) {
+      return inactiveUserFailureBeforeDelivery;
     }
 
     const requestedAt = new Date().toISOString();
@@ -595,84 +580,16 @@ export const actions = {
 
       throw error;
     }
-    const message = {
-      to: authState.summaryRecipient,
-      from: dailySummarySenderAddress(),
-      subject: dailySummarySubject(
-        'test',
-        generatedSummary.input.generatedAt ?? new Date(),
-        generatedSummary.input.configuration.userTimeZone
-      ),
-      html: generatedSummary.rendered.html,
-      text: generatedSummary.rendered.text
-    };
-    let accepted;
-
-    try {
-      const inactiveUserFailure = await rejectTestDeliveryForInactiveUser(authState.userId);
-      if (inactiveUserFailure) {
-        return inactiveUserFailure;
-      }
-
-      accepted = await dailySummaryDeliveryProvider.send(message);
-    } catch (error) {
-      if (!(error instanceof DailySummaryDeliveryError)) {
-        throw error;
-      }
-
-      await deliveryRecordStore.recordAttempt(authState.userId, {
-        id: crypto.randomUUID(),
-        attemptType: 'test',
-        requestedAt,
-        completedAt: new Date().toISOString(),
-        deliveryStatus: 'failed',
-        providerName: error.providerName,
-        providerMessageId: null,
-        providerStatusMetadata: error.providerStatusMetadata,
-        errorClassification: error.classification
-      });
-
-      return {
-        outcome: 'failed',
-        reason: error.classification,
-        message: testDeliveryFailureMessage(error.classification)
-      };
+    const inactiveUserFailure = await rejectTestDeliveryForInactiveUser(authState.userId);
+    if (inactiveUserFailure) {
+      return inactiveUserFailure;
     }
 
-    if (!accepted.providerMessageId) {
-      await deliveryRecordStore.recordAttempt(authState.userId, {
-        id: crypto.randomUUID(),
-        attemptType: 'test',
-        requestedAt,
-        completedAt: new Date().toISOString(),
-        deliveryStatus: 'failed',
-        providerName: accepted.providerName,
-        providerMessageId: null,
-        providerStatusMetadata: accepted.providerStatusMetadata
-          ? `${accepted.providerStatusMetadata}; missing message id`
-          : 'missing message id',
-        errorClassification: 'provider-missing-message-id'
-      });
-
-      return {
-        outcome: 'failed',
-        reason: 'provider-missing-message-id',
-        message: 'The delivery provider accepted the request without a message id.'
-      };
-    }
-
-    await deliveryRecordStore.recordAttempt(authState.userId, {
-      id: crypto.randomUUID(),
-      attemptType: 'test',
+    return testDailySummaryDelivery.send({
+      userId: authState.userId,
+      summaryRecipient: authState.summaryRecipient,
       requestedAt,
-      completedAt: new Date().toISOString(),
-      deliveryStatus: 'sent',
-      providerName: accepted.providerName,
-      providerMessageId: accepted.providerMessageId,
-      providerStatusMetadata: accepted.providerStatusMetadata,
-      errorClassification: null
+      generated: generatedSummary
     });
-
-    return { outcome: 'sent' };
   }
 };
