@@ -42,6 +42,8 @@ export type DailySummaryGenerationOptions = {
   };
 };
 
+export type DailySummaryInputBuilder = typeof buildDailySummaryInput;
+
 type ScheduledCalendarConnectionStore = {
   load: (userId: string) => Promise<UserCalendarReadinessConnection>;
   loadSelectedCalendars: (userId: string) => Promise<SavedSelectedCalendar[]>;
@@ -61,6 +63,7 @@ export type ScheduledDailySummaryGenerationDependencies = {
   commuteEstimateProvider: (
     userId: string
   ) => Pick<GoogleMapsRequestGateway, 'estimateCommute'> | undefined;
+  buildInput?: DailySummaryInputBuilder;
   openDailyUrl?: string;
   now?: () => Date;
 };
@@ -77,6 +80,7 @@ export const createDailySummaryGenerator = ({
   weatherProvider,
   weatherSummaryProvider,
   commuteEstimateProvider,
+  buildInput = buildDailySummaryInput,
   openDailyUrl = process.env.ORIGIN ?? process.env.BETTER_AUTH_URL ?? 'http://localhost:5174/',
   now = () => new Date()
 }: ScheduledDailySummaryGenerationDependencies) => ({
@@ -120,7 +124,7 @@ export const createDailySummaryGenerator = ({
           })
     ]);
     const generatedAt = requestedNow ?? now();
-    const input = await buildDailySummaryInput({
+    const input = await buildInput({
       authMode: 'user',
       configuration,
       todoCategories: todoContext.state.todoCategories,

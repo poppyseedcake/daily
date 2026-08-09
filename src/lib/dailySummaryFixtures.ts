@@ -263,9 +263,11 @@ const stateFixture = (
     ...fixture,
     sections: nextSections,
     commuteSection: states.commute === 'active' ? fixture.commuteSection : null,
-    calendarSection: states.calendar === 'active' || states.calendar === 'empty'
+    calendarSection: states.calendar === 'active'
       ? fixture.calendarSection
-      : null,
+      : states.calendar === 'empty'
+        ? emptyCalendarSectionFor(fixture.calendarSection!)
+        : null,
     todoSection: states.todo === 'active' ? fixture.todoSection : null
   };
 };
@@ -301,6 +303,18 @@ const rotatingVerificationStates = [
   { weather: 'unavailable', commute: 'paused', calendar: 'unconfigured', todo: 'empty' },
   { weather: 'active', commute: 'unavailable', calendar: 'paused', todo: 'active' }
 ] as const satisfies readonly StateMatrix[];
+
+const emptyCalendarSectionFor = (section: CalendarSection): CalendarSection => ({
+  label: section.label,
+  today: section.today
+    ? { ...section.today, allDayEvents: [], timedEvents: [] }
+    : null,
+  weekAhead: section.weekAhead.map((day) => ({
+    ...day,
+    allDayEvents: [],
+    timedEvents: []
+  }))
+});
 
 const fixtureConfiguration: SummaryConfiguration = {
   ...defaultSummaryConfiguration,

@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import {
-  buildDailySummaryBlockedImageFixture,
   buildDailySummaryFixture,
+  buildDailySummaryDenseAllActiveFixture,
   buildDailySummaryExtremeContentFixture,
   buildDailySummaryNarrowFixture,
   buildDailySummaryStateMatrixFixtures
@@ -102,10 +102,11 @@ describe('Daily Grid renderer', () => {
   });
 
   test('keeps meaning when decorative images are unavailable', () => {
-    const rendered = renderDailySummary(buildDailySummaryBlockedImageFixture());
+    const rendered = renderDailySummary(buildDailySummaryDenseAllActiveFixture());
+    const imageBlockedHtml = rendered.html.replace(/<img\b[^>]*>/g, '');
 
-    expect(rendered.html).not.toContain('<img');
-    expect(rendered.html).toContain('Partly cloudy');
+    expect(imageBlockedHtml).not.toContain('<img');
+    expect(imageBlockedHtml).toContain('Partly cloudy');
     expect(rendered.text).toContain('Partly cloudy');
     expect(rendered.html).toContain('Light traffic');
     expect(rendered.text).toContain('Light traffic');

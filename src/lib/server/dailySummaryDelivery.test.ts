@@ -1,6 +1,4 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest';
-import { buildDailySummaryVerificationFixtures } from '$lib/dailySummaryFixtures';
-import { dailySummarySubject, renderDailySummary } from '$lib/dailySummaryRenderer';
 
 const { env } = vi.hoisted(() => ({
   env: {
@@ -64,51 +62,6 @@ describe('Daily Summary delivery provider', () => {
       providerMessageId: 'resend-message-1',
       providerStatusMetadata: 'accepted'
     });
-  });
-
-  test('submits every immutable verification fixture with both HTML and plain text to the recipient', async () => {
-    const fixtures = buildDailySummaryVerificationFixtures();
-    const fetch = vi.fn().mockImplementation(async () =>
-      new Response(JSON.stringify({ id: `resend-message-${fetch.mock.calls.length}` }), {
-        status: 200,
-        headers: { 'content-type': 'application/json' }
-      })
-    );
-    vi.stubGlobal('fetch', fetch);
-
-    for (const fixture of fixtures) {
-      const rendered = renderDailySummary(fixture.input);
-      const accepted = await resendDailySummaryDeliveryProvider.send({
-        to: 'verification-recipient@example.com',
-        from: dailySummarySenderAddress(),
-        subject: dailySummarySubject(
-          'test',
-          fixture.input.generatedAt ?? new Date('2026-07-31T05:00:00.000Z'),
-          fixture.input.configuration.userTimeZone
-        ),
-        html: rendered.html,
-        text: rendered.text
-      });
-
-      expect(accepted.providerMessageId).toBe(`resend-message-${fetch.mock.calls.length}`);
-    }
-
-    expect(fetch).toHaveBeenCalledTimes(fixtures.length);
-
-    for (const [index, fixture] of fixtures.entries()) {
-      const payload = JSON.parse(fetch.mock.calls[index]![1].body as string) as {
-        to: string[];
-        subject: string;
-        html: string;
-        text: string;
-      };
-
-      expect(payload.to).toEqual(['verification-recipient@example.com']);
-      expect(payload.subject).toContain('Test · Your Daily Summary');
-      expect(payload.html).toContain(`data-summary-section="weather"`);
-      expect(payload.text).toContain('Weather');
-      expect(payload.html).toContain(fixture.input.sections.todo.label);
-    }
   });
 
   test('reports missing Resend configuration without submitting provider content', async () => {

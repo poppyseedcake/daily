@@ -14,6 +14,11 @@ The source of truth is `src/lib/dailySummaryFixtures.ts`.
 - `npm run verify:email-client-kit` renders the five named fixtures, measures their UTF-8
   HTML and plain-text size, and prints a SHA-256 digest for each rendered pair.
 
+The automated delivery-path test also sends every fixture through the production Daily
+Summary generator, shared renderer, Test Delivery service, Resend adapter, Summary Recipient,
+and metadata-only Test Delivery Record store. Its fetch stub replaces only the external Resend
+network call.
+
 The four rotations cover every supported state. Weather has no Empty state. Todo has no
 Unconfigured state. This is the accepted Summary Section contract.
 

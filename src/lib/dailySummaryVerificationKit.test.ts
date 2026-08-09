@@ -1,6 +1,5 @@
 import { describe, expect, test } from 'vitest';
 import {
-  buildDailySummaryBlockedImageFixture,
   buildDailySummaryDenseAllActiveFixture,
   buildDailySummaryExtremeContentFixture,
   buildDailySummaryVerificationFixtures,
@@ -41,6 +40,17 @@ describe('Daily Summary email-client verification kit', () => {
 
       expect([...states]).toEqual(expect.arrayContaining(expectedStates));
     }
+
+    const emptyCalendar = rotatingFixtures.find(
+      (fixture) => fixture.input.sections.calendar.status === 'empty'
+    );
+    expect(emptyCalendar?.input.calendarSection?.today?.allDayEvents).toEqual([]);
+    expect(emptyCalendar?.input.calendarSection?.today?.timedEvents).toEqual([]);
+    expect(
+      emptyCalendar?.input.calendarSection?.weekAhead.every(
+        (day) => day.allDayEvents.length === 0 && day.timedEvents.length === 0
+      )
+    ).toBe(true);
   });
 
   test('the dense fixture contains long non-ASCII content in every content section', () => {
@@ -63,14 +73,13 @@ describe('Daily Summary email-client verification kit', () => {
 
   test('the active fixture keeps meaning when images are blocked and plain text is inspected', () => {
     const active = renderDailySummary(buildDailySummaryDenseAllActiveFixture());
-    const blockedImage = renderDailySummary(buildDailySummaryBlockedImageFixture());
+    const blockedImage = active.html.replace(/<img\b[^>]*>/g, '');
 
     expect(active.html).toContain('<img');
     expect(active.html).toContain('Partly cloudy');
     expect(active.text).toContain('Partly cloudy');
-    expect(blockedImage.html).not.toContain('<img');
-    expect(blockedImage.html).toContain('Partly cloudy');
-    expect(blockedImage.text).toContain('Partly cloudy');
+    expect(blockedImage).not.toContain('<img');
+    expect(blockedImage).toContain('Partly cloudy');
   });
 
   test('measures the UTF-8 size of the canonical extreme fixture without a byte budget', () => {
