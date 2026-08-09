@@ -12,7 +12,7 @@ The source of truth is `src/lib/dailySummaryFixtures.ts`.
 - `rotate-01` through `rotate-04` are fixed state rotations.
 - `buildDailySummaryStateMatrixFixtures()` remains the exhaustive local renderer matrix.
 - `npm run verify:email-client-kit` renders the five named fixtures, measures their UTF-8
-  HTML and plain-text size, and prints a SHA-256 digest for each rendered pair.
+  HTML and plain-text size.
 
 The automated delivery-path test also sends every fixture through the production Daily
 Summary generator, shared renderer, Test Delivery service, Resend adapter, Summary Recipient,
@@ -30,9 +30,10 @@ Unconfigured state. This is the accepted Summary Section contract.
 | `rotate-03` | Unavailable | Paused | Unconfigured | Empty |
 | `rotate-04` | Active | Unavailable | Paused | Active |
 
-The command reports size only. It does not enforce a byte limit. A realistic message that
-clips in a supported client is a release failure and needs a separate product decision. Do
-not add a byte limit to make that failure pass.
+The command is a preflight size check only. It does not identify a delivered message and does
+not enforce a byte limit. A realistic message that clips in a supported client is a release
+failure and needs a separate product decision. Do not add a byte limit to make that failure
+pass.
 
 ## Immutable candidate procedure
 
@@ -114,10 +115,15 @@ immutable release SHA.
 - [ ] Visible Open Daily link target, with no tracking query or fragment.
 - [ ] Exactly one `sent` Test Delivery Record for each sent message.
 - [ ] Original message source or exported MIME where the client permits export.
-- [ ] Verification-command output with fixture sizes and artifact digests.
+- [ ] Verification-command output with fixture sizes and the immutable release SHA.
 
 Do not put rendered email content, Todo Task titles, Calendar Event content, Commute
 locations, provider payloads, credentials, or tokens into Delivery Records or technical logs.
+
+Do not use a preflight fixture digest as evidence for a sent message. If a digest is required,
+calculate it from the exact HTML and plain text submitted by the signed-in Test Delivery action.
+The recipient, subject, provider message id, Delivery Record id, exported source, and client
+evidence must refer to that same Test Delivery attempt.
 
 ## Release rules
 

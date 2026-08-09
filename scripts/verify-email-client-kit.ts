@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto';
 import {
   buildDailySummaryVerificationFixtures,
   measureDailySummaryEncodedSize
@@ -37,11 +36,6 @@ const fixtures = await Promise.all(buildDailySummaryVerificationFixtures().map(a
   });
   const rendered = generated.rendered;
   const size = measureDailySummaryEncodedSize(rendered);
-  const artifactSha256 = createHash('sha256')
-    .update(rendered.html)
-    .update('\0')
-    .update(rendered.text)
-    .digest('hex');
 
   return {
     id: fixture.id,
@@ -50,8 +44,7 @@ const fixtures = await Promise.all(buildDailySummaryVerificationFixtures().map(a
     states: Object.fromEntries(
       Object.entries(fixture.input.sections).map(([section, state]) => [section, state.status])
     ),
-    ...size,
-    artifactSha256
+    ...size
   };
 }));
 
