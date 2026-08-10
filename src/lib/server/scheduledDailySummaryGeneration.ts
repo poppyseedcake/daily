@@ -1,19 +1,11 @@
-import { type CalendarEventProvider } from '$lib/calendar';
-import {
-  calendarReadinessForAuthMode,
-  calendarReadinessForUnavailableCredentials,
-  calendarReadinessForUnavailableProvider,
-  calendarReadinessForUserConnection,
-  type CalendarReadiness,
-  type UserCalendarReadinessConnection
-} from '$lib/calendarReadiness';
+import type { LoadedCalendarEvents } from '$lib/calendar';
+import { calendarReadinessForAuthMode } from '$lib/calendarReadiness';
 import { buildDailySummaryInput } from '$lib/dailySummaryPreview';
 import {
   renderDailySummary,
   type DailySummaryInput,
   type RenderedDailySummary
 } from '$lib/dailySummaryRenderer';
-import type { SavedSelectedCalendar } from '$lib/selectedCalendars';
 import type { SummaryConfiguration } from '$lib/summaryConfiguration';
 import type { UserSummaryConfigurationStore } from './summaryConfigurationPersistence';
 import { loadUserSummaryConfiguration } from './summaryConfigurationPersistence';
@@ -25,6 +17,7 @@ import type { UserCommuteSetupStore } from './commuteSetupPersistence';
 import { loadUserCommuteSetup } from './commuteSetupPersistence';
 import type { WeatherForecastProvider, WeatherSummaryProvider } from '$lib/weatherForecast';
 import type { GoogleMapsRequestGateway } from './googleMapsRequestGateway';
+import type { UserCalendarEventsModule } from './userCalendarEvents';
 
 export type ScheduledDailySummaryGenerationResult = {
   input: DailySummaryInput;
@@ -35,19 +28,10 @@ export type DailySummaryGenerationOptions = {
   configuration?: SummaryConfiguration;
   openDailyUrl?: string;
   now?: Date;
-  calendarContext?: {
-    readiness: CalendarReadiness;
-    selectedCalendars: SavedSelectedCalendar[];
-    provider?: CalendarEventProvider;
-  };
+  calendarEvents?: LoadedCalendarEvents;
 };
 
 export type DailySummaryInputBuilder = typeof buildDailySummaryInput;
-
-type ScheduledCalendarConnectionStore = {
-  load: (userId: string) => Promise<UserCalendarReadinessConnection>;
-  loadSelectedCalendars: (userId: string) => Promise<SavedSelectedCalendar[]>;
-};
 
 export type ScheduledDailySummaryGenerationDependencies = {
   userLifecycleStore: { isActive(userId: string): Promise<boolean> };
@@ -55,9 +39,7 @@ export type ScheduledDailySummaryGenerationDependencies = {
   todoStore: Pick<UserTodoPersistenceStore, 'load'>;
   weatherLocationStore: Pick<UserWeatherLocationPersistenceStore, 'load'>;
   commuteSetupStore: Pick<UserCommuteSetupStore, 'load'>;
-  calendarConnectionStore: ScheduledCalendarConnectionStore;
-  loadCalendarAccessToken: (userId: string) => Promise<string | null>;
-  calendarEventProvider: (accessToken: string) => CalendarEventProvider;
+  calendarEvents: Pick<UserCalendarEventsModule, 'load'>;
   weatherProvider: WeatherForecastProvider;
   weatherSummaryProvider?: WeatherSummaryProvider;
   commuteEstimateProvider: (
@@ -74,9 +56,7 @@ export const createDailySummaryGenerator = ({
   todoStore,
   weatherLocationStore,
   commuteSetupStore,
-  calendarConnectionStore,
-  loadCalendarAccessToken,
-  calendarEventProvider,
+  calendarEvents,
   weatherProvider,
   weatherSummaryProvider,
   commuteEstimateProvider,
@@ -90,7 +70,7 @@ export const createDailySummaryGenerator = ({
       configuration: requestedConfiguration,
       openDailyUrl: requestedOpenDailyUrl,
       now: requestedNow,
-      calendarContext: requestedCalendarContext
+      calendarEvents: requestedCalendarEvents
     }: DailySummaryGenerationOptions = {}
   ): Promise<ScheduledDailySummaryGenerationResult> {
     if (!(await userLifecycleStore.isActive(userId))) {
@@ -99,7 +79,8 @@ export const createDailySummaryGenerator = ({
 
     const configuration =
       requestedConfiguration ?? (await loadUserSummaryConfiguration(configurationStore, userId));
-    const [todoContext, weatherContext, commuteContext, calendarContext] = await Promise.all([
+    const generatedAt = requestedNow ?? now();
+    const [todoContext, weatherContext, commuteContext, loadedCalendarEvents] = await Promise.all([
       loadUserTodoStateSafely(todoStore, userId, {
         enabled: !configuration.sectionPauses.todo
       }),
@@ -113,17 +94,22 @@ export const createDailySummaryGenerator = ({
         commuteEnabled: !configuration.sectionPauses.commute,
         setupStore: commuteSetupStore
       }),
-      requestedCalendarContext
-        ? Promise.resolve(requestedCalendarContext)
-        : loadScheduledCalendarContext({
-            userId,
-            calendarEnabled: !configuration.sectionPauses.calendar,
-            connectionStore: calendarConnectionStore,
-            loadAccessToken: loadCalendarAccessToken,
-            providerForAccessToken: calendarEventProvider
-          })
+      requestedCalendarEvents
+        ? Promise.resolve(requestedCalendarEvents)
+        : configuration.sectionPauses.calendar
+          ? Promise.resolve({
+              readiness: calendarReadinessForAuthMode('user'),
+              selectedCalendars: [],
+              eventResult: { outcome: 'not-requested' as const }
+            })
+          : calendarEvents
+              .load({
+                userId,
+                userTimeZone: configuration.userTimeZone,
+                now: generatedAt
+              })
+              .then((result) => result.calendarEvents)
     ]);
-    const generatedAt = requestedNow ?? now();
     const input = await buildInput({
       authMode: 'user',
       configuration,
@@ -142,9 +128,7 @@ export const createDailySummaryGenerator = ({
         !configuration.sectionPauses.commute
         ? safelyLoadCommuteEstimateProvider(commuteEstimateProvider, userId)
         : undefined,
-      calendarReadiness: calendarContext.readiness,
-      selectedCalendars: calendarContext.selectedCalendars,
-      calendarEventProvider: calendarContext.provider,
+      calendarEvents: loadedCalendarEvents,
       now: generatedAt,
       openDailyUrl: requestedOpenDailyUrl ?? openDailyUrl
     });
@@ -229,93 +213,3 @@ const loadScheduledCommuteContext = async ({
     return { setup: emptyCommuteSetup, unavailable: true };
   }
 };
-
-const loadScheduledCalendarContext = async ({
-  userId,
-  calendarEnabled,
-  connectionStore,
-  loadAccessToken,
-  providerForAccessToken
-}: {
-  userId: string;
-  calendarEnabled: boolean;
-  connectionStore: ScheduledCalendarConnectionStore;
-  loadAccessToken: (userId: string) => Promise<string | null>;
-  providerForAccessToken: (accessToken: string) => CalendarEventProvider;
-}) => {
-  if (!calendarEnabled) {
-    return {
-      readiness: calendarReadinessForAuthMode('user'),
-      selectedCalendars: [],
-      provider: undefined
-    };
-  }
-
-  let connection: UserCalendarReadinessConnection;
-
-  try {
-    connection = await connectionStore.load(userId);
-  } catch {
-    return unavailableCalendarContext();
-  }
-
-  if (connection.status !== 'connected') {
-    return {
-      readiness: calendarReadinessForUserConnection(connection),
-      selectedCalendars: [],
-      provider: undefined
-    };
-  }
-
-  let selectedCalendars: SavedSelectedCalendar[];
-
-  try {
-    selectedCalendars = await connectionStore.loadSelectedCalendars(userId);
-  } catch {
-    return unavailableCalendarContext();
-  }
-
-  if (selectedCalendars.length === 0) {
-    return {
-      readiness: calendarReadinessForUserConnection(connection),
-      selectedCalendars,
-      provider: undefined
-    };
-  }
-
-  let accessToken: string | null;
-
-  try {
-    accessToken = await loadAccessToken(userId);
-  } catch {
-    return {
-      readiness: calendarReadinessForUnavailableCredentials(),
-      selectedCalendars: [],
-      provider: undefined
-    };
-  }
-
-  if (!accessToken) {
-    return {
-      readiness: calendarReadinessForUnavailableCredentials(),
-      selectedCalendars: [],
-      provider: undefined
-    };
-  }
-
-  try {
-    return {
-      readiness: calendarReadinessForUserConnection(connection),
-      selectedCalendars,
-      provider: providerForAccessToken(accessToken)
-    };
-  } catch {
-    return unavailableCalendarContext();
-  }
-};
-
-const unavailableCalendarContext = () => ({
-  readiness: calendarReadinessForUnavailableProvider(),
-  selectedCalendars: [],
-  provider: undefined
-});

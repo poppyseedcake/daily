@@ -1,4 +1,10 @@
 import { describe, expect, test, vi } from 'vitest';
+import type { LoadedCalendarEvents } from '$lib/calendar';
+import {
+  calendarReadinessForAuthMode,
+  calendarReadinessForUnavailableProvider,
+  calendarReadinessForUserConnection
+} from '$lib/calendarReadiness';
 import type { SummaryConfiguration } from '$lib/summaryConfiguration';
 import type { DailySummaryDeliveryProvider } from './dailySummaryDelivery';
 import {
@@ -30,6 +36,29 @@ const usefulTodoState = {
 
 const activeUserLifecycleStore = { isActive: vi.fn().mockResolvedValue(true) };
 
+const loadedCalendarEvents = (
+  eventResult: LoadedCalendarEvents['eventResult'] = { outcome: 'not-requested' }
+): LoadedCalendarEvents => ({
+  readiness: calendarReadinessForUserConnection({ status: 'connected' }),
+  selectedCalendars: [
+    { id: 'work', summary: 'Work', backgroundColor: '#0b8043', primary: true }
+  ],
+  eventResult
+});
+
+const calendarEventsDependency = (
+  calendarEvents: LoadedCalendarEvents = {
+    readiness: calendarReadinessForAuthMode('user'),
+    selectedCalendars: [],
+    eventResult: { outcome: 'not-requested' }
+  }
+) => ({
+  load: vi.fn().mockResolvedValue({
+    calendarEvents,
+    selectedCalendarConfiguration: null
+  })
+});
+
 const createProviderIsolationDependencies = (
   summaryConfiguration: SummaryConfiguration,
   overrides: Partial<ScheduledDailySummaryGenerationDependencies>
@@ -39,9 +68,7 @@ const createProviderIsolationDependencies = (
   todoStore: { load: vi.fn().mockResolvedValue(usefulTodoState) },
   weatherLocationStore: { load: vi.fn().mockResolvedValue(null) },
   commuteSetupStore: { load: vi.fn().mockResolvedValue({ routes: [], days: [] }) },
-  calendarConnectionStore: { load: vi.fn(), loadSelectedCalendars: vi.fn() },
-  loadCalendarAccessToken: vi.fn(),
-  calendarEventProvider: vi.fn(),
+  calendarEvents: calendarEventsDependency(),
   weatherProvider: { fetchDailyForecast: vi.fn() },
   commuteEstimateProvider: vi.fn(),
   now: () => new Date('2026-07-14T06:00:00.000Z'),
@@ -63,18 +90,13 @@ describe('scheduled Daily Summary generation', () => {
     expect(configurationStore.load).not.toHaveBeenCalled();
     expect(dependencies.todoStore.load).not.toHaveBeenCalled();
     expect(dependencies.weatherProvider.fetchDailyForecast).not.toHaveBeenCalled();
-    expect(dependencies.calendarEventProvider).not.toHaveBeenCalled();
+    expect(dependencies.calendarEvents.load).not.toHaveBeenCalled();
     expect(dependencies.commuteEstimateProvider).not.toHaveBeenCalled();
   });
 
   test('accepts request-scoped generation options for the shared production path', async () => {
     const generator = createScheduledDailySummaryGenerator(
-      createProviderIsolationDependencies(configuration, {
-        calendarConnectionStore: {
-          load: vi.fn().mockResolvedValue({ status: 'not-connected' }),
-          loadSelectedCalendars: vi.fn().mockResolvedValue([])
-        }
-      })
+      createProviderIsolationDependencies(configuration, {})
     );
 
     const result = await generator.generate('user-1', {
@@ -104,8 +126,8 @@ describe('scheduled Daily Summary generation', () => {
         }
       } as const))
     };
-    const calendarEventProvider = {
-      fetchEvents: vi.fn().mockImplementation(async () => ({
+    const loadCalendarEvents = vi.fn().mockImplementation(async () => ({
+      calendarEvents: loadedCalendarEvents({
         outcome: 'available',
         events: [{
           kind: 'timed',
@@ -116,8 +138,9 @@ describe('scheduled Daily Summary generation', () => {
           start: '2026-07-14T08:00:00.000Z',
           end: '2026-07-14T08:30:00.000Z'
         }]
-      } as const))
-    };
+      }),
+      selectedCalendarConfiguration: null
+    }));
     const commuteEstimateProvider = {
       estimateCommute: vi.fn().mockImplementation(async () => ({
         outcome: 'available',
@@ -163,14 +186,7 @@ describe('scheduled Daily Summary generation', () => {
           days: ['tuesday']
         })
       },
-      calendarConnectionStore: {
-        load: vi.fn().mockResolvedValue({ status: 'connected' }),
-        loadSelectedCalendars: vi.fn().mockResolvedValue([
-          { id: 'work', summary: 'Work', backgroundColor: '#0b8043', primary: true }
-        ])
-      },
-      loadCalendarAccessToken: vi.fn().mockResolvedValue('calendar-token'),
-      calendarEventProvider: vi.fn().mockReturnValue(calendarEventProvider),
+      calendarEvents: { load: loadCalendarEvents },
       weatherProvider,
       commuteEstimateProvider: vi.fn().mockReturnValue(commuteEstimateProvider),
       now: () => new Date('2026-07-14T06:00:00.000Z')
@@ -203,19 +219,16 @@ describe('scheduled Daily Summary generation', () => {
     expect(second.rendered.html).toContain('max-width:680px');
     expect(second.rendered.html).not.toContain('background-color:#111827');
     expect(weatherProvider.fetchDailyForecast).toHaveBeenCalledTimes(2);
-    expect(calendarEventProvider.fetchEvents).toHaveBeenCalledTimes(2);
+    expect(loadCalendarEvents).toHaveBeenCalledTimes(2);
     expect(commuteEstimateProvider.estimateCommute).toHaveBeenCalledTimes(2);
     expect(deliveryProvider.send).toHaveBeenCalledWith(expect.objectContaining(second.rendered));
   });
 
   test('does not initialize or call providers for paused Summary Sections', async () => {
-    const loadCalendarAccessToken = vi.fn();
-    const calendarEventProvider = vi.fn();
+    const loadCalendarEvents = vi.fn().mockRejectedValue(new Error('broken Calendar data'));
     const loadWeatherLocation = vi.fn().mockRejectedValue(new Error('broken weather data'));
     const weatherProvider = { fetchDailyForecast: vi.fn() };
     const commuteEstimateProvider = vi.fn();
-    const loadCalendarConnection = vi.fn().mockRejectedValue(new Error('broken connection data'));
-    const loadSelectedCalendars = vi.fn().mockRejectedValue(new Error('broken calendar data'));
     const disabledConfiguration: SummaryConfiguration = {
       ...configuration,
       sectionPauses: { weather: true, commute: true, calendar: true, todo: true }
@@ -226,12 +239,7 @@ describe('scheduled Daily Summary generation', () => {
       todoStore: { load: vi.fn().mockResolvedValue({ todoCategories: [], todoTasks: [] }) },
       weatherLocationStore: { load: loadWeatherLocation },
       commuteSetupStore: { load: vi.fn().mockResolvedValue(null) },
-      calendarConnectionStore: {
-        load: loadCalendarConnection,
-        loadSelectedCalendars
-      },
-      loadCalendarAccessToken,
-      calendarEventProvider,
+      calendarEvents: { load: loadCalendarEvents },
       weatherProvider,
       commuteEstimateProvider,
       now: () => new Date('2026-07-14T06:00:00.000Z')
@@ -248,10 +256,7 @@ describe('scheduled Daily Summary generation', () => {
     expect(weatherProvider.fetchDailyForecast).not.toHaveBeenCalled();
     expect(loadWeatherLocation).not.toHaveBeenCalled();
     expect(commuteEstimateProvider).not.toHaveBeenCalled();
-    expect(loadCalendarConnection).not.toHaveBeenCalled();
-    expect(loadSelectedCalendars).not.toHaveBeenCalled();
-    expect(loadCalendarAccessToken).not.toHaveBeenCalled();
-    expect(calendarEventProvider).not.toHaveBeenCalled();
+    expect(loadCalendarEvents).not.toHaveBeenCalled();
   });
 
   test('contains a Weather provider failure while preserving unrelated content', async () => {
@@ -368,15 +373,8 @@ describe('scheduled Daily Summary generation', () => {
               days: ['tuesday']
             })
           },
-          calendarConnectionStore: {
-            load: vi.fn().mockResolvedValue({ status: 'connected' }),
-            loadSelectedCalendars: vi.fn().mockResolvedValue([
-              { id: 'work', summary: 'Work', backgroundColor: null, primary: true }
-            ])
-          },
-          loadCalendarAccessToken: vi.fn().mockResolvedValue('calendar-token'),
-          calendarEventProvider: vi.fn().mockReturnValue({
-            fetchEvents: vi.fn().mockResolvedValue({
+          calendarEvents: calendarEventsDependency(
+            loadedCalendarEvents({
               outcome: 'available',
               events: [{
                 kind: 'timed', id: 'planning', calendarId: 'work', calendarSummary: 'Work',
@@ -384,7 +382,7 @@ describe('scheduled Daily Summary generation', () => {
                 end: '2026-07-14T08:30:00.000Z'
               }]
             })
-          }),
+          ),
           commuteEstimateProvider: vi.fn().mockReturnValue({
             estimateCommute: estimateCommute()
           })
@@ -407,15 +405,13 @@ describe('scheduled Daily Summary generation', () => {
     };
     const generator = createScheduledDailySummaryGenerator(
       createProviderIsolationDependencies(calendarAndTodoConfiguration, {
-        calendarConnectionStore: {
-          load: vi.fn().mockResolvedValue({ status: 'connected' }),
-          loadSelectedCalendars: vi.fn().mockResolvedValue([
-            { id: 'work', summary: 'Work', backgroundColor: null, primary: true }
-          ])
-        },
-        loadCalendarAccessToken: vi.fn().mockResolvedValue('calendar-token'),
-        calendarEventProvider: vi.fn().mockReturnValue({
-          fetchEvents: vi.fn().mockRejectedValue(new Error('private Calendar provider failure'))
+        calendarEvents: calendarEventsDependency({
+          ...loadedCalendarEvents(),
+          readiness: calendarReadinessForUnavailableProvider(),
+          eventResult: {
+            outcome: 'unavailable',
+            reason: 'Live Calendar is unavailable right now.'
+          }
         })
       })
     );
@@ -492,38 +488,15 @@ describe('scheduled Daily Summary generation', () => {
     expect(result.rendered.text).not.toContain('should not load');
   });
 
-  test('contains a Calendar connection failure while preserving unrelated content', async () => {
-    const calendarAndTodoConfiguration: SummaryConfiguration = {
-      ...configuration,
-      sectionPauses: { weather: true, commute: true, calendar: false, todo: false }
-    };
-    const generator = createScheduledDailySummaryGenerator(
-      createProviderIsolationDependencies(calendarAndTodoConfiguration, {
-        calendarConnectionStore: {
-          load: vi.fn().mockRejectedValue(new Error('private Calendar connection failure')),
-          loadSelectedCalendars: vi.fn()
-        }
-      })
-    );
-
-    const result = await generator.generate('user-1');
-
-    expect(result.rendered.text).toContain('Live Calendar is unavailable right now.');
-    expect(result.rendered.text).toContain('Useful Todo');
-    expect(result.rendered.text).not.toContain('private Calendar connection failure');
-  });
-
-  test('does not load Calendar credentials or events when no Selected Calendar exists', async () => {
-    const loadCalendarAccessToken = vi.fn();
-    const calendarEventProvider = vi.fn();
+  test('renders an unconfigured Calendar from the loaded Calendar result', async () => {
+    const calendarEvents = calendarEventsDependency({
+      readiness: calendarReadinessForUserConnection({ status: 'connected' }),
+      selectedCalendars: [],
+      eventResult: { outcome: 'not-requested' }
+    });
     const generator = createScheduledDailySummaryGenerator(
       createProviderIsolationDependencies(configuration, {
-        calendarConnectionStore: {
-          load: vi.fn().mockResolvedValue({ status: 'connected' }),
-          loadSelectedCalendars: vi.fn().mockResolvedValue([])
-        },
-        loadCalendarAccessToken,
-        calendarEventProvider
+        calendarEvents
       })
     );
 
@@ -534,8 +507,7 @@ describe('scheduled Daily Summary generation', () => {
       label: 'Calendar',
       detail: 'Select a Calendar to include Calendar Events.'
     });
-    expect(loadCalendarAccessToken).not.toHaveBeenCalled();
-    expect(calendarEventProvider).not.toHaveBeenCalled();
+    expect(calendarEvents.load).toHaveBeenCalledOnce();
   });
 
   test('renders all four sections when content is empty, unconfigured, or unavailable', async () => {
@@ -549,16 +521,9 @@ describe('scheduled Daily Summary generation', () => {
       todoStore: { load: vi.fn().mockResolvedValue({ todoCategories: [], todoTasks: [] }) },
       weatherLocationStore: { load: vi.fn().mockResolvedValue(null) },
       commuteSetupStore: { load: vi.fn().mockResolvedValue({ routes: [], days: ['tuesday'] }) },
-      calendarConnectionStore: {
-        load: vi.fn().mockResolvedValue({ status: 'connected' }),
-        loadSelectedCalendars: vi.fn().mockResolvedValue([
-          { id: 'work', summary: 'Work', backgroundColor: null, primary: true }
-        ])
-      },
-      loadCalendarAccessToken: vi.fn().mockResolvedValue('calendar-token'),
-      calendarEventProvider: vi.fn().mockReturnValue({
-        fetchEvents: vi.fn().mockResolvedValue({ outcome: 'available', events: [] })
-      }),
+      calendarEvents: calendarEventsDependency(
+        loadedCalendarEvents({ outcome: 'available', events: [] })
+      ),
       weatherProvider: { fetchDailyForecast: vi.fn() },
       commuteEstimateProvider: vi.fn(),
       now: () => new Date('2026-07-14T06:00:00.000Z')

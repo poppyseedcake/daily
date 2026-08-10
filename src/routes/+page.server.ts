@@ -10,31 +10,20 @@ import {
   userSavedCommuteAddressStore,
   userSavedWeatherCityStore
 } from '$lib/server/db/savedLocationStore';
-import {
-  userCalendarConnectionStore,
-  type CalendarConnection
-} from '$lib/server/db/calendarConnectionStore';
+import { userCalendarConnectionStore } from '$lib/server/db/calendarConnectionStore';
 import {
   dailySummaryDeliveryProvider,
   dailySummarySenderAddress
 } from '$lib/server/dailySummaryDelivery';
-import { buildDailySummaryInput } from '$lib/dailySummaryPreview';
-import {
-  calendarReadinessForAuthMode,
-  calendarReadinessForUnavailableCredentials,
-  calendarReadinessForUnavailableProvider,
-  calendarReadinessForUserConnection
-} from '$lib/calendarReadiness';
-import {
-  buildSelectedCalendarConfiguration,
-  type SavedSelectedCalendar
-} from '$lib/selectedCalendars';
+import { buildCalendarGenerationResult } from '$lib/dailySummaryPreview';
+import { calendarReadinessForAuthMode } from '$lib/calendarReadiness';
 import {
   googleCalendarEventProvider,
   googleCalendarListProvider,
   isGoogleCalendarAuthorizationFailure,
   loadGoogleCalendarAccessToken
 } from '$lib/server/googleCalendarList';
+import { createUserCalendarEvents } from '$lib/server/userCalendarEvents';
 import { loadUserSummaryConfiguration } from '$lib/server/summaryConfigurationPersistence';
 import { loadUserTodoStateSafely } from '$lib/server/todoPersistence';
 import { loadUserWeatherLocation } from '$lib/server/weatherLocationPersistence';
@@ -43,7 +32,7 @@ import {
   defaultSummaryConfiguration,
   summaryConfigurationSchema
 } from '$lib/summaryConfiguration';
-import { createDefaultTodoState, todoStateSchema } from '$lib/todo';
+import { createDefaultTodoState } from '$lib/todo';
 import { googleMapsOperations } from '$lib/server/googleMapsOperations';
 import { toDeliveryHistoryRecord } from '$lib/deliveryRecords';
 import { userLifecycleStore } from '$lib/server/db/userLifecycleStore';
@@ -76,12 +65,6 @@ const deletingUserTestDeliveryFailure = {
 const rejectTestDeliveryForInactiveUser = async (userId: string) =>
   (await userLifecycleStore.isActive(userId)) ? null : deletingUserTestDeliveryFailure;
 
-type CalendarGenerationContext = {
-  accessToken: string | null;
-  selectedCalendars: SavedSelectedCalendar[];
-  readiness: ReturnType<typeof calendarReadinessForUserConnection>;
-};
-
 const commuteEstimateProviderFor = (userId: string) => {
   try {
     return googleMapsOperations.requestGateway({ mode: 'user', userId });
@@ -90,15 +73,21 @@ const commuteEstimateProviderFor = (userId: string) => {
   }
 };
 
+const userCalendarEvents = createUserCalendarEvents({
+  connectionStore: userCalendarConnectionStore,
+  loadAccessToken: loadGoogleCalendarAccessToken,
+  eventProvider: googleCalendarEventProvider,
+  calendarListProvider: googleCalendarListProvider,
+  isAuthorizationFailure: isGoogleCalendarAuthorizationFailure
+});
+
 const dailySummaryGenerator = createDailySummaryGenerator({
   userLifecycleStore,
   configurationStore: userSummaryConfigurationStore,
   todoStore: userTodoStore,
   weatherLocationStore: userWeatherLocationStore,
   commuteSetupStore: userCommuteSetupStore,
-  calendarConnectionStore: userCalendarConnectionStore,
-  loadCalendarAccessToken: loadGoogleCalendarAccessToken,
-  calendarEventProvider: googleCalendarEventProvider,
+  calendarEvents: userCalendarEvents,
   weatherProvider: openMeteoWeatherForecastProvider,
   weatherSummaryProvider: openAiWeatherSummaryProvider,
   commuteEstimateProvider: (userId) => commuteEstimateProviderFor(userId)
@@ -132,45 +121,6 @@ const loadPageCommuteSetup = async (userId: string): Promise<{
       classification: 'commute-setup-unavailable'
     });
     return { setup: defaultLoadedCommuteSetup, unavailable: true };
-  }
-};
-
-const loadCalendarGenerationContext = async (
-  userId: string,
-  connection: CalendarConnection
-): Promise<CalendarGenerationContext> => {
-  if (connection.status !== 'connected') {
-    return {
-      accessToken: null,
-      selectedCalendars: [],
-      readiness: calendarReadinessForUserConnection(connection)
-    };
-  }
-
-  try {
-    const accessToken = await loadGoogleCalendarAccessToken(userId);
-
-    if (!accessToken) {
-      return {
-        accessToken: null,
-        selectedCalendars: [],
-        readiness: calendarReadinessForUnavailableCredentials()
-      };
-    }
-
-    return {
-      accessToken,
-      selectedCalendars: await userCalendarConnectionStore.loadSelectedCalendars(userId),
-      readiness: calendarReadinessForUserConnection(connection)
-    };
-  } catch {
-    console.warn('Failed to load Calendar generation configuration.', { userId });
-
-    return {
-      accessToken: null,
-      selectedCalendars: [],
-      readiness: calendarReadinessForUnavailableCredentials()
-    };
   }
 };
 
@@ -297,138 +247,37 @@ export const load = async ({ request }) => {
           return [];
         })
       : [];
-  const calendarConnection =
+  const calendarNow = new Date();
+  const loadedPageCalendar =
     authState.mode === 'user'
-      ? await userCalendarConnectionStore.load(authState.userId).catch(() => {
-          console.warn('Failed to load User Calendar Connection.', {
-            userId: authState.userId,
-            classification: 'calendar-connection-unavailable'
-          });
-
-          return { status: 'not-connected' } as const;
+      ? await userCalendarEvents.load({
+          userId: authState.userId,
+          userTimeZone:
+            summaryConfiguration?.userTimeZone ?? defaultSummaryConfiguration.userTimeZone,
+          now: calendarNow,
+          refreshSelectedCalendarConfiguration: true
         })
       : null;
-  const calendarGenerationContext =
-    authState.mode === 'user' &&
-    calendarConnection
-      ? await loadCalendarGenerationContext(authState.userId, calendarConnection)
-      : null;
-  let calendarReadiness =
-    calendarGenerationContext?.readiness ??
-    (authState.mode === 'user' && calendarConnection
-      ? calendarReadinessForUserConnection(calendarConnection)
-      : calendarReadinessForAuthMode(authState.mode));
-  const calendarListAccessToken = calendarGenerationContext?.accessToken;
+  const calendarReadiness =
+    loadedPageCalendar?.calendarEvents.readiness ??
+    calendarReadinessForAuthMode(authState.mode);
   const selectedCalendarConfiguration =
-    authState.mode === 'user' &&
-    calendarConnection?.status === 'connected' &&
-    calendarListAccessToken
-      ? await (async () => {
-          try {
-            const providerCalendars = await googleCalendarListProvider.loadCalendars(
-              calendarListAccessToken
-            );
-            const configuration = buildSelectedCalendarConfiguration({
-              providerCalendars,
-              savedCalendars: calendarGenerationContext.selectedCalendars
-            });
-
-            if (
-              calendarGenerationContext.selectedCalendars.length === 0 &&
-              configuration.selectedCalendarIds.length > 0
-            ) {
-              await userCalendarConnectionStore.saveSelectedCalendars(
-                authState.userId,
-                configuration.calendars
-                  .filter((calendar) => calendar.selected)
-                  .map((calendar) => ({
-                    id: calendar.id,
-                    summary: calendar.summary,
-                    backgroundColor: calendar.backgroundColor,
-                    primary: calendar.primary
-                  }))
-              );
-            }
-
-            return configuration;
-          } catch (error) {
-            const authorizationFailed = isGoogleCalendarAuthorizationFailure(error);
-
-            if (authorizationFailed) {
-              calendarReadiness = calendarReadinessForUnavailableCredentials();
-            }
-
-            console.warn('Failed to load User Selected Calendar configuration.', {
-              userId: authState.userId,
-              classification: authorizationFailed
-                ? 'authorization-failed'
-                : 'provider-unavailable'
-            });
-
-            return null;
-          }
-      })()
-      : null;
+    loadedPageCalendar?.selectedCalendarConfiguration ?? null;
   const renderedSummary =
     authState.mode === 'user'
       ? await (async () => {
           const validConfiguration = summaryConfigurationSchema.safeParse(summaryConfiguration);
-          const validTodoState = todoStateSchema.safeParse(todoState);
 
           if (!validConfiguration.success) {
             return null;
           }
-
-          const generationTodoState = validTodoState.success
-            ? validTodoState.data
-            : createDefaultTodoState();
-
-          const selectedCalendars =
-            calendarConnection?.status === 'connected'
-              ? selectedCalendarConfiguration
-                ? selectedCalendarConfiguration.calendars
-                    .filter((calendar) => calendar.selected)
-                    .map((calendar) => ({
-                      id: calendar.id,
-                      summary: calendar.summary,
-                      backgroundColor: calendar.backgroundColor,
-                      primary: calendar.primary
-                    }))
-                : (calendarGenerationContext?.selectedCalendars ?? [])
-              : [];
-          const generationSetup = {
-            authMode: 'user',
-            configuration: validConfiguration.data,
-            todoCategories: generationTodoState.todoCategories,
-            todoTasks: generationTodoState.todoTasks,
-            todoStateUnavailable: todoStateLoadFailed || !validTodoState.success,
-            weatherLocation,
-            commuteRoutes: commuteSetup?.routes ?? [],
-            commuteDays: commuteSetup?.days ?? [],
-            commuteSetupUnavailable: commuteContext?.unavailable ?? false,
-            calendarReadiness,
-            selectedCalendars,
-            calendarEventProvider: calendarGenerationContext?.accessToken
-              ? googleCalendarEventProvider(calendarGenerationContext.accessToken)
-              : undefined,
-            weatherSummaryProvider: openAiWeatherSummaryProvider,
-            openDailyUrl
-          } as const;
-          const calendarSummaryIsActive = !validConfiguration.data.sectionPauses.calendar;
           let generatedSummary;
           try {
             generatedSummary = await dailySummaryGenerator.generate(authState.userId, {
               configuration: validConfiguration.data,
               openDailyUrl,
-              calendarContext: calendarSummaryIsActive
-                ? {
-                    readiness: calendarReadiness,
-                    selectedCalendars,
-                    provider: calendarGenerationContext?.accessToken
-                      ? googleCalendarEventProvider(calendarGenerationContext.accessToken)
-                      : undefined
-                  }
-                : undefined
+              now: calendarNow,
+              calendarEvents: loadedPageCalendar?.calendarEvents
             });
           } catch (error) {
             if (error instanceof ScheduledDailySummaryUserNotActiveError) {
@@ -437,33 +286,25 @@ export const load = async ({ request }) => {
 
             throw error;
           }
-          const input = generatedSummary.input;
           // The dashboard Calendar agenda is independent from the Calendar
           // Summary Section, so pausing the Summary must not hide page context.
-          const calendarAgendaInput = calendarSummaryIsActive
-            ? input
-            : await buildDailySummaryInput({
-                ...generationSetup,
+          const calendarAgenda = loadedPageCalendar
+            ? buildCalendarGenerationResult({
+                calendarEvents: loadedPageCalendar.calendarEvents,
                 configuration: {
                   ...validConfiguration.data,
                   sectionPauses: {
                     ...validConfiguration.data.sectionPauses,
                     calendar: false
                   }
-                }
-              });
-
-          if (
-            calendarReadiness.status === 'connected' &&
-            (input.sections.calendar.status === 'unavailable' ||
-              calendarAgendaInput?.sections.calendar.status === 'unavailable')
-          ) {
-            calendarReadiness = calendarReadinessForUnavailableProvider();
-          }
+                },
+                now: calendarNow
+              })
+            : null;
 
           return {
             html: generatedSummary.rendered.html,
-            calendarSection: calendarAgendaInput?.calendarSection ?? null
+            calendarSection: calendarAgenda?.calendarSection ?? null
           };
         })()
       : null;

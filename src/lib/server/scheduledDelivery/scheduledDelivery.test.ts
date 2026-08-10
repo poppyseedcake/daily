@@ -17,6 +17,7 @@ import {
 } from '../dailySummaryDelivery';
 import { createScheduledDelivery } from '.';
 import { createScheduledDailySummaryGenerator } from '../scheduledDailySummaryGeneration';
+import { createUserCalendarEvents } from '../userCalendarEvents';
 
 const applyMigrations = (sqlite: Database.Database) => {
   for (const migration of [
@@ -82,15 +83,20 @@ const createTestDelivery = ({
   const persistedLifecycleStore = createUserLifecycleStore(database);
   const generationLifecycleStore = isActive ? { isActive } : persistedLifecycleStore;
   const configurationStore = createUserSummaryConfigurationStore(database);
+  const calendarEvents = createUserCalendarEvents({
+    connectionStore: createUserCalendarConnectionStore(database),
+    loadAccessToken: loadCalendarAccessToken ?? vi.fn(),
+    eventProvider: calendarEventProvider ?? vi.fn(),
+    calendarListProvider: { loadCalendars: vi.fn() },
+    isAuthorizationFailure: vi.fn().mockReturnValue(false)
+  });
   const productionGenerator = createScheduledDailySummaryGenerator({
     userLifecycleStore: generationLifecycleStore,
     configurationStore,
     todoStore: createUserTodoStore(database),
     weatherLocationStore: createUserWeatherLocationStore(database),
     commuteSetupStore: createUserCommuteSetupStore(database),
-    calendarConnectionStore: createUserCalendarConnectionStore(database),
-    loadCalendarAccessToken: loadCalendarAccessToken ?? vi.fn(),
-    calendarEventProvider: calendarEventProvider ?? vi.fn(),
+    calendarEvents,
     weatherProvider: { fetchDailyForecast: vi.fn() },
     commuteEstimateProvider: vi.fn(),
     now

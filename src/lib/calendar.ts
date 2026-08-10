@@ -2,6 +2,7 @@ import { Temporal } from '@js-temporal/polyfill';
 import type { SavedSelectedCalendar } from './selectedCalendars';
 import type { UserTimeZone } from './summaryConfiguration';
 import { buildWeekAhead, getLocalToday } from './summaryDates';
+import type { CalendarReadiness } from './calendarReadiness';
 
 type CalendarProviderEventStatus = {
   status?: 'cancelled';
@@ -38,6 +39,15 @@ export type CalendarEventProvider = {
     | { outcome: 'available'; events: CalendarProviderEvent[] }
     | { outcome: 'unavailable'; reason: string }
   >;
+};
+
+export type LoadedCalendarEvents = {
+  readiness: CalendarReadiness;
+  selectedCalendars: SavedSelectedCalendar[];
+  eventResult:
+    | { outcome: 'not-requested' }
+    | { outcome: 'available'; events: CalendarProviderEvent[] }
+    | { outcome: 'unavailable'; reason: string };
 };
 
 export type AllDayCalendarEvent = {
