@@ -1916,7 +1916,11 @@
     const renderVersion = ++previewRenderVersion;
 
     void buildDailySummaryInput({
-      calendarReadiness,
+      calendarEvents: {
+        readiness: calendarReadiness,
+        selectedCalendars: [],
+        eventResult: { outcome: 'not-requested' }
+      },
       configuration: previewConfiguration,
       todoCategories,
       todoTasks,

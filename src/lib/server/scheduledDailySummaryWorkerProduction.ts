@@ -1,5 +1,10 @@
 import { openMeteoWeatherForecastProvider } from '$lib/weatherForecast';
-import { googleCalendarEventProvider, loadGoogleCalendarAccessToken } from './googleCalendarList';
+import {
+  googleCalendarEventProvider,
+  googleCalendarListProvider,
+  isGoogleCalendarAuthorizationFailure,
+  loadGoogleCalendarAccessToken
+} from './googleCalendarList';
 import { googleMapsOperations } from './googleMapsOperations';
 import {
   dailySummaryDeliveryProvider,
@@ -15,17 +20,23 @@ import { userTodoStore } from './db/todoStore';
 import { userWeatherLocationStore } from './db/weatherLocationStore';
 import { userLifecycleStore } from './db/userLifecycleStore';
 import { openAiWeatherSummaryProvider } from './weatherSummaryProvider';
+import { createUserCalendarEvents } from './userCalendarEvents';
 
 export const createProductionScheduledDailySummaryWorkerDependencies = () => {
+  const calendarEvents = createUserCalendarEvents({
+    connectionStore: userCalendarConnectionStore,
+    loadAccessToken: loadGoogleCalendarAccessToken,
+    eventProvider: googleCalendarEventProvider,
+    calendarListProvider: googleCalendarListProvider,
+    isAuthorizationFailure: isGoogleCalendarAuthorizationFailure
+  });
   const generator = createDailySummaryGenerator({
     userLifecycleStore,
     configurationStore: userSummaryConfigurationStore,
     todoStore: userTodoStore,
     weatherLocationStore: userWeatherLocationStore,
     commuteSetupStore: userCommuteSetupStore,
-    calendarConnectionStore: userCalendarConnectionStore,
-    loadCalendarAccessToken: loadGoogleCalendarAccessToken,
-    calendarEventProvider: googleCalendarEventProvider,
+    calendarEvents,
     weatherProvider: openMeteoWeatherForecastProvider,
     weatherSummaryProvider: openAiWeatherSummaryProvider,
     commuteEstimateProvider: (userId) =>

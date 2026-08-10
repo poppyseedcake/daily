@@ -1163,7 +1163,13 @@ describe('Daily page server load', () => {
         summaryRecipient: 'user@example.com'
       },
       isAdministrator: false,
-      calendarReadiness: userCalendarReadiness,
+      calendarReadiness: {
+        status: 'unavailable',
+        label: 'Calendar',
+        statusLabel: 'Calendar unavailable',
+        detail: 'Calendar data cannot be loaded right now.',
+        unavailableReason: 'Live Calendar is unavailable right now.'
+      },
       summaryConfiguration: null,
       todoState: {
         todoCategories: [],

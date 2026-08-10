@@ -1,18 +1,15 @@
 import { buildDemoCalendarSection } from './demoCalendar';
 import type { DailySummaryInput } from './dailySummaryRenderer';
 import {
-  buildCalendarEventFetchRequest,
   buildCalendarSection,
   calendarSectionHasEvents,
-  type CalendarEventProvider
+  type LoadedCalendarEvents
 } from './calendar';
-import type { SavedSelectedCalendar } from './selectedCalendars';
 import type { SummaryConfiguration } from './summaryConfiguration';
 import { buildTodoSection, type TodoCategory, type TodoTask } from './todo';
 import type { WeatherLocation } from './weatherLocation';
 import {
   calendarReadinessForAuthMode,
-  type CalendarReadiness,
   type CalendarReadinessAuthMode
 } from './calendarReadiness';
 import {
@@ -32,7 +29,7 @@ import type { GoogleMapsRequestGateway } from './server/googleMapsRequestGateway
 
 export type DailySummaryGenerationSetup = {
   authMode?: CalendarReadinessAuthMode;
-  calendarReadiness?: CalendarReadiness;
+  calendarEvents?: LoadedCalendarEvents;
   configuration: SummaryConfiguration;
   todoCategories: TodoCategory[];
   todoTasks: TodoTask[];
@@ -41,8 +38,6 @@ export type DailySummaryGenerationSetup = {
   weatherLocationUnavailable?: boolean;
   weatherProvider?: WeatherForecastProvider;
   weatherSummaryProvider?: WeatherSummaryProvider;
-  selectedCalendars?: SavedSelectedCalendar[];
-  calendarEventProvider?: CalendarEventProvider;
   commuteRoutes?: CommuteRoute[];
   commuteDays?: readonly CommuteDay[];
   commuteSetupUnavailable?: boolean;
@@ -54,7 +49,11 @@ export type DailySummaryGenerationSetup = {
 
 export const buildDailySummaryInput = async ({
   authMode = 'visitor',
-  calendarReadiness = calendarReadinessForAuthMode(authMode),
+  calendarEvents = {
+    readiness: calendarReadinessForAuthMode(authMode),
+    selectedCalendars: [],
+    eventResult: { outcome: 'not-requested' }
+  },
   configuration,
   todoCategories,
   todoTasks,
@@ -63,8 +62,6 @@ export const buildDailySummaryInput = async ({
   weatherLocationUnavailable = false,
   weatherProvider = openMeteoWeatherForecastProvider,
   weatherSummaryProvider,
-  selectedCalendars = [],
-  calendarEventProvider,
   commuteRoutes = [],
   commuteDays = [],
   commuteSetupUnavailable = false,
@@ -82,11 +79,9 @@ export const buildDailySummaryInput = async ({
     assetOrigin: openDailyUrl,
     now
   });
-  const calendarGeneration = await buildCalendarGenerationResult({
-    calendarReadiness,
+  const calendarGeneration = buildCalendarGenerationResult({
+    calendarEvents,
     configuration,
-    selectedCalendars,
-    calendarEventProvider,
     now
   });
   const commuteGeneration = await buildCommuteGenerationResult({
@@ -267,22 +262,19 @@ const buildCommuteGenerationResult = async ({ configuration, routes, days, setup
   }
 };
 
-const buildCalendarGenerationResult = async ({
-  calendarReadiness,
+export const buildCalendarGenerationResult = ({
+  calendarEvents,
   configuration,
-  selectedCalendars,
-  calendarEventProvider,
   now
 }: {
-  calendarReadiness: CalendarReadiness;
+  calendarEvents: LoadedCalendarEvents;
   configuration: SummaryConfiguration;
-  selectedCalendars: SavedSelectedCalendar[];
-  calendarEventProvider: CalendarEventProvider | undefined;
   now: Date;
-}): Promise<{
+}): {
   calendarSection: DailySummaryInput['calendarSection'];
   sectionState: DailySummaryInput['sections']['calendar'];
-}> => {
+} => {
+  const { readiness: calendarReadiness, selectedCalendars, eventResult } = calendarEvents;
   if (configuration.sectionPauses.calendar) {
     return {
       calendarSection: null,
@@ -305,7 +297,9 @@ const buildCalendarGenerationResult = async ({
   }
 
   if (calendarReadiness.status !== 'connected') {
-    const unavailable = calendarReadiness.status === 'reconnect-required' || calendarReadiness.status === 'unavailable';
+    const unavailable =
+      calendarReadiness.status === 'reconnect-required' ||
+      calendarReadiness.status === 'unavailable';
 
     if (unavailable) {
       return {
@@ -339,7 +333,7 @@ const buildCalendarGenerationResult = async ({
     };
   }
 
-  if (!calendarEventProvider) {
+  if (eventResult.outcome === 'not-requested') {
     return {
       calendarSection: null,
       sectionState: {
@@ -350,51 +344,30 @@ const buildCalendarGenerationResult = async ({
     };
   }
 
-  try {
-    const providerResult = await calendarEventProvider.fetchEvents(
-      buildCalendarEventFetchRequest({
-        selectedCalendars,
-        userTimeZone: configuration.userTimeZone,
-        now
-      })
-    );
-
-    if (providerResult.outcome === 'unavailable') {
-      return {
-        calendarSection: null,
-        sectionState: {
-          status: 'unavailable',
-          label: 'Calendar',
-          reason: safeCalendarProviderReason(providerResult.reason)
-        }
-      };
-    }
-
-    const calendarSection = buildCalendarSection({
-      providerEvents: providerResult.events,
-      selectedCalendars,
-      userTimeZone: configuration.userTimeZone,
-      now
-    });
-
-    return {
-      calendarSection,
-      sectionState: calendarSectionHasEvents(calendarSection)
-        ? { status: 'active', label: 'Calendar' }
-        : { status: 'empty', label: 'Calendar', detail: 'No Calendar Events in the Week Ahead.' }
-    };
-  } catch {
-    console.warn('Calendar Event provider failed during Daily Summary generation.');
-
+  if (eventResult.outcome === 'unavailable') {
     return {
       calendarSection: null,
       sectionState: {
         status: 'unavailable',
         label: 'Calendar',
-        reason: 'Live Calendar is unavailable right now.'
+        reason: safeCalendarProviderReason(eventResult.reason)
       }
     };
   }
+
+  const calendarSection = buildCalendarSection({
+    providerEvents: eventResult.events,
+    selectedCalendars,
+    userTimeZone: configuration.userTimeZone,
+    now
+  });
+
+  return {
+    calendarSection,
+    sectionState: calendarSectionHasEvents(calendarSection)
+      ? { status: 'active', label: 'Calendar' }
+      : { status: 'empty', label: 'Calendar', detail: 'No Calendar Events in the Week Ahead.' }
+  };
 };
 
 const buildWeatherGenerationState = async ({

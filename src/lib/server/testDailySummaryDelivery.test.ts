@@ -45,12 +45,22 @@ describe('production Test Delivery path', () => {
         todoStore: { load: vi.fn().mockResolvedValue({ todoCategories: [], todoTasks: [] }) },
         weatherLocationStore: { load: vi.fn().mockResolvedValue(null) },
         commuteSetupStore: { load: vi.fn().mockResolvedValue({ routes: [], days: [] }) },
-        calendarConnectionStore: {
-          load: vi.fn().mockResolvedValue({ status: 'not-connected' }),
-          loadSelectedCalendars: vi.fn().mockResolvedValue([])
+        calendarEvents: {
+          load: vi.fn().mockResolvedValue({
+            calendarEvents: {
+              readiness: {
+                status: 'not-connected',
+                label: 'Calendar',
+                statusLabel: 'Calendar not connected',
+                detail: 'Calendar Events will appear after Google Calendar setup is available.',
+                unavailableReason: 'Connect Google Calendar to include Calendar Events.'
+              },
+              selectedCalendars: [],
+              eventResult: { outcome: 'not-requested' }
+            },
+            selectedCalendarConfiguration: null
+          })
         },
-        loadCalendarAccessToken: vi.fn(),
-        calendarEventProvider: vi.fn(),
         weatherProvider: { fetchDailyForecast: vi.fn() },
         commuteEstimateProvider: vi.fn(),
         buildInput: async () => fixture.input,
