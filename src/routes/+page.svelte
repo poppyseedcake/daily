@@ -33,6 +33,10 @@
   import { invalidateAll } from '$app/navigation';
   import type { ActionData, PageData } from './$types';
   import { calendarReadinessForAuthMode } from '$lib/calendarReadiness';
+  import {
+    createBrowserSaveCoordinator,
+    createJsonPutSaveAdapter
+  } from '$lib/browserSaveCoordinator';
   import { visitorDailySummaryGenerator } from '$lib/dailySummaryGeneration';
   import type { DeliveryHistoryRecord, DeliveryStatus } from '$lib/deliveryRecords';
   import {
@@ -93,6 +97,11 @@
 
   const visitorAuthState = { mode: 'visitor' } as const;
   type CommuteAddressSuggestion = { placeId: string; label: string };
+  type UserTodoState = {
+    todoCategories: TodoCategory[];
+    todoTasks: TodoTask[];
+    nextTodoId: number;
+  };
   let { data, form }: { data?: PageData; form?: ActionData } = $props();
   const authState = $derived(data?.authState ?? visitorAuthState);
   const calendarReadiness = $derived(
@@ -180,25 +189,15 @@
   let localSetupStatusTone = $state<'success' | 'warning' | 'error' | 'neutral'>('neutral');
   let lastLocalSetupSnapshot: string | null = null;
   let hydratedLocalSetupSnapshot: string | null = null;
-  let lastUserSummaryConfigurationSnapshot: string | null = JSON.stringify(initialSummaryConfiguration);
-  let queuedUserSummaryConfigurationSnapshot: string | null = null;
-  let userSummaryConfigurationSaveQueue = Promise.resolve();
   let userSummaryConfigurationStatus = $state('Saved to your account.');
   let userSummaryConfigurationStatusTone = $state<'success' | 'warning' | 'error' | 'neutral'>(
     'success'
   );
-  let lastUserTodoStateSnapshot: string | null = JSON.stringify(initialTodoState);
-  let queuedUserTodoStateSnapshot: string | null = null;
-  let userTodoStateSaveQueue = Promise.resolve();
   let userTodoStateStatus = $state('Todo state saved to your account.');
   let userTodoStateStatusTone = $state<'success' | 'warning' | 'error' | 'neutral'>('success');
   let weatherLocation = $state<WeatherLocation | null>(initialWeatherLocation);
   let savedWeatherCities = $state<SavedWeatherCity[]>(initialSavedWeatherCities);
   let savedCommuteAddresses = $state<SavedCommuteAddress[]>(initialSavedCommuteAddresses);
-  let savedWeatherCitySaveVersion = 0;
-  let savedCommuteAddressSaveVersion = 0;
-  let savedWeatherCitySaveQueue = Promise.resolve();
-  let savedCommuteAddressSaveQueue = Promise.resolve();
   let weatherLocationSearchQuery = $state('');
   let weatherLocationSearchResults = $state<WeatherLocation[]>([]);
   let activeWeatherLocationSuggestion = $state(-1);
@@ -235,6 +234,45 @@
   let selectedCalendarStatusTone = $state<'success' | 'warning' | 'error' | 'neutral'>(
     initialSelectedCalendarConfiguration ? 'success' : 'neutral'
   );
+  const createSummaryConfigurationSave = (initialState: SummaryConfiguration) =>
+    createBrowserSaveCoordinator({
+      initialState,
+      adapter: createJsonPutSaveAdapter<SummaryConfiguration>({ url: '/summary-configuration' })
+    });
+  const createTodoStateSave = (initialState: UserTodoState) =>
+    createBrowserSaveCoordinator({
+      initialState,
+      adapter: createJsonPutSaveAdapter<UserTodoState>({ url: '/todo-state' })
+    });
+  let userSummaryConfigurationSave = createSummaryConfigurationSave(initialSummaryConfiguration);
+  let userTodoStateSave = createTodoStateSave(initialTodoState);
+  const createSavedWeatherCitiesSave = (initialState: SavedWeatherCity[]) =>
+    createBrowserSaveCoordinator({
+      initialState,
+      adapter: createJsonPutSaveAdapter<SavedWeatherCity[]>({
+        url: '/saved-weather-cities',
+        body: (cities) => ({ cities })
+      })
+    });
+  const createSavedCommuteAddressesSave = (initialState: SavedCommuteAddress[]) =>
+    createBrowserSaveCoordinator({
+      initialState,
+      adapter: createJsonPutSaveAdapter<SavedCommuteAddress[]>({
+        url: '/saved-commute-addresses',
+        body: (addresses) => ({ addresses })
+      })
+    });
+  let savedWeatherCitiesSave = createSavedWeatherCitiesSave(initialSavedWeatherCities);
+  let savedCommuteAddressesSave = createSavedCommuteAddressesSave(initialSavedCommuteAddresses);
+  const selectedCalendarsSave = createBrowserSaveCoordinator({
+    initialState: initialSelectedCalendarConfiguration?.calendars ?? [],
+    adapter: createJsonPutSaveAdapter<SelectedCalendarOption[]>({
+      url: '/selected-calendars',
+      body: (calendars) => calendars
+        .filter((calendar) => calendar.selected)
+        .map((calendar) => calendar.id)
+    })
+  });
   let localSetupImportStatus = $state('No browser Local Setup was imported.');
   let localSetupImportStatusTone = $state<'success' | 'warning' | 'error' | 'neutral'>('neutral');
   let nextTodoId = initialTodoState.nextTodoId;
@@ -541,11 +579,10 @@
     globalThis.history.replaceState(globalThis.history.state, '', `${url.pathname}${url.search}${url.hash}`);
   };
   const markCurrentUserStateSaved = () => {
-    const configuration = currentSummaryConfiguration();
-    const todoState = currentTodoState();
-
-    lastUserSummaryConfigurationSnapshot = JSON.stringify(configuration);
-    lastUserTodoStateSnapshot = JSON.stringify(todoState);
+    userSummaryConfigurationSave = createSummaryConfigurationSave(currentSummaryConfiguration());
+    userTodoStateSave = createTodoStateSave(currentTodoState());
+    savedWeatherCitiesSave = createSavedWeatherCitiesSave(savedWeatherCities);
+    savedCommuteAddressesSave = createSavedCommuteAddressesSave(savedCommuteAddresses);
   };
   const importVisitorLocalSetupAfterSignIn = async () => {
     const result = loadLocalSetup(browserLocalSetupStorage());
@@ -583,56 +620,6 @@
     todoControlsReady = true;
     removeLocalSetupImportUrlFlag();
   };
-  const persistUserSummaryConfiguration = async (configuration: SummaryConfiguration) => {
-    try {
-      const response = await fetch('/summary-configuration', {
-        method: 'PUT',
-        headers: {
-          'content-type': 'application/json'
-        },
-        body: JSON.stringify(configuration)
-      });
-
-      if (!response.ok) {
-        userSummaryConfigurationStatus = 'Account save failed. Try again.';
-        userSummaryConfigurationStatusTone = response.status === 400 ? 'warning' : 'error';
-        return false;
-      }
-
-      userSummaryConfigurationStatus = 'Saved to your account.';
-      userSummaryConfigurationStatusTone = 'success';
-      return true;
-    } catch {
-      userSummaryConfigurationStatus = 'Account save failed. Try again.';
-      userSummaryConfigurationStatusTone = 'error';
-      return false;
-    }
-  };
-  const persistUserTodoState = async (todoState: ReturnType<typeof currentTodoState>) => {
-    try {
-      const response = await fetch('/todo-state', {
-        method: 'PUT',
-        headers: {
-          'content-type': 'application/json'
-        },
-        body: JSON.stringify(todoState)
-      });
-
-      if (!response.ok) {
-        userTodoStateStatus = 'Todo save failed. Try again.';
-        userTodoStateStatusTone = response.status === 400 ? 'warning' : 'error';
-        return false;
-      }
-
-      userTodoStateStatus = 'Todo state saved to your account.';
-      userTodoStateStatusTone = 'success';
-      return true;
-    } catch {
-      userTodoStateStatus = 'Todo save failed. Try again.';
-      userTodoStateStatusTone = 'error';
-      return false;
-    }
-  };
   const cancelPendingWeatherLocationSearch = () => {
     clearTimeout(weatherLocationSearchTimer);
     weatherLocationSearchTimer = undefined;
@@ -659,90 +646,42 @@
       : 'No Saved Weather Cities yet. Search for a city to add one.';
     weatherLocationStatusTone = 'neutral';
   };
-  const persistSavedWeatherCities = (
-    nextCities: SavedWeatherCity[],
-    previousCities: SavedWeatherCity[]
-  ) => {
-    if (authState.mode !== 'user') return;
+  const persistSavedWeatherCities = async (nextCities: SavedWeatherCity[]) => {
+    const request = savedWeatherCitiesSave.save(nextCities);
+    if (request.outcome === 'unchanged') return;
 
-    const requestVersion = ++savedWeatherCitySaveVersion;
-    const requestedSnapshot = JSON.stringify(nextCities);
+    const result = await request.completion;
+    if (result.outcome !== 'failed') return;
 
-    savedWeatherCitySaveQueue = savedWeatherCitySaveQueue.then(async () => {
-      try {
-        const response = await fetch('/saved-weather-cities', {
-          method: 'PUT',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ cities: nextCities })
-        });
-
-        if (response.ok) return;
-        if (requestVersion !== savedWeatherCitySaveVersion) return;
-
-        if (JSON.stringify(savedWeatherCities) === requestedSnapshot) {
-          savedWeatherCities = previousCities;
-        }
-        const message = response.status === 400
-          ? 'Saved Weather Cities could not be updated.'
-          : 'Saved Weather Cities are temporarily unavailable.';
-        weatherLocationStatus = message;
-        weatherLocationStatusTone = response.status === 400 ? 'warning' : 'error';
-      } catch {
-        if (requestVersion !== savedWeatherCitySaveVersion) return;
-
-        if (JSON.stringify(savedWeatherCities) === requestedSnapshot) {
-          savedWeatherCities = previousCities;
-        }
-        weatherLocationStatus = 'Saved Weather Cities could not be updated. Try again.';
-        weatherLocationStatusTone = 'error';
-      }
-    });
-
-    return savedWeatherCitySaveQueue;
+    savedWeatherCities = result.rollback;
+    if (weatherLocationSearchQuery.trim().length === 0) {
+      weatherLocationSearchResults = [...result.rollback];
+      activeWeatherLocationSuggestion = result.rollback.length > 0 ? 0 : -1;
+    }
+    weatherLocationStatus = result.reason === 'invalid'
+      ? 'Saved Weather Cities could not be updated.'
+      : result.reason === 'network'
+        ? 'Saved Weather Cities could not be updated. Try again.'
+        : 'Saved Weather Cities are temporarily unavailable.';
+    weatherLocationStatusTone = result.reason === 'invalid' ? 'warning' : 'error';
   };
-  const persistSavedCommuteAddresses = (
-    nextAddresses: SavedCommuteAddress[],
-    previousAddresses: SavedCommuteAddress[]
-  ) => {
-    if (authState.mode !== 'user') return;
+  const persistSavedCommuteAddresses = async (nextAddresses: SavedCommuteAddress[]) => {
+    const request = savedCommuteAddressesSave.save(nextAddresses);
+    if (request.outcome === 'unchanged') return;
 
-    const requestVersion = ++savedCommuteAddressSaveVersion;
-    const requestedSnapshot = JSON.stringify(nextAddresses);
+    const result = await request.completion;
+    if (result.outcome !== 'failed') return;
 
-    savedCommuteAddressSaveQueue = savedCommuteAddressSaveQueue.then(async () => {
-      try {
-        const response = await fetch('/saved-commute-addresses', {
-          method: 'PUT',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ addresses: nextAddresses })
-        });
-
-        if (response.ok) return;
-        if (requestVersion !== savedCommuteAddressSaveVersion) return;
-
-        if (JSON.stringify(savedCommuteAddresses) === requestedSnapshot) {
-          savedCommuteAddresses = previousAddresses;
-        }
-        commuteRouteStatus = response.status === 400
-          ? 'Saved Commute Addresses could not be updated.'
-          : 'Saved Commute Addresses are temporarily unavailable.';
-        commuteRouteStatusTone = response.status === 400 ? 'warning' : 'error';
-      } catch {
-        if (requestVersion !== savedCommuteAddressSaveVersion) return;
-
-        if (JSON.stringify(savedCommuteAddresses) === requestedSnapshot) {
-          savedCommuteAddresses = previousAddresses;
-        }
-        commuteRouteStatus = 'Saved Commute Addresses could not be updated. Try again.';
-        commuteRouteStatusTone = 'error';
-      }
-    });
-
-    return savedCommuteAddressSaveQueue;
+    savedCommuteAddresses = result.rollback;
+    commuteRouteStatus = result.reason === 'invalid'
+      ? 'Saved Commute Addresses could not be updated.'
+      : result.reason === 'network'
+        ? 'Saved Commute Addresses could not be updated. Try again.'
+        : 'Saved Commute Addresses are temporarily unavailable.';
+    commuteRouteStatusTone = result.reason === 'invalid' ? 'warning' : 'error';
   };
   const toggleSavedWeatherCity = async (city: SavedWeatherCity) => {
     const normalizedCity = savedWeatherCitySchema.parse(city);
-    const previousCities = savedWeatherCities;
     const nextCities = isSavedWeatherCity(normalizedCity)
       ? savedWeatherCities.filter(
           (candidate) => !sameSavedLocationCoordinates(candidate, normalizedCity)
@@ -760,11 +699,10 @@
       showSavedWeatherLocations();
     }
     if (authState.mode === 'visitor') return;
-    await persistSavedWeatherCities(nextCities, previousCities);
+    await persistSavedWeatherCities(nextCities);
   };
   const toggleSavedCommuteAddress = async (address: SavedCommuteAddress) => {
     const normalizedAddress = savedCommuteAddressSchema.parse(address);
-    const previousAddresses = savedCommuteAddresses;
     const nextAddresses = isSavedCommuteAddress(normalizedAddress)
       ? savedCommuteAddresses.filter(
           (candidate) => !sameSavedLocationCoordinates(candidate, normalizedAddress)
@@ -779,7 +717,7 @@
 
     savedCommuteAddresses = nextAddresses;
     if (authState.mode === 'visitor') return;
-    await persistSavedCommuteAddresses(nextAddresses, previousAddresses);
+    await persistSavedCommuteAddresses(nextAddresses);
   };
   const searchWeatherLocation = async () => {
     cancelPendingWeatherLocationSearch();
@@ -1248,35 +1186,19 @@
     }
   };
   const persistSelectedCalendars = async (calendars: SelectedCalendarOption[]) => {
+    const request = selectedCalendarsSave.save(calendars);
+    if (request.outcome === 'unchanged') return;
+
     selectedCalendarStatus = 'Saving Selected Calendars...';
     selectedCalendarStatusTone = 'neutral';
-
-    try {
-      const response = await fetch('/selected-calendars', {
-        method: 'PUT',
-        headers: {
-          'content-type': 'application/json'
-        },
-        body: JSON.stringify(
-          calendars.filter((calendar) => calendar.selected).map((calendar) => calendar.id)
-        )
-      });
-
-      if (!response.ok) {
-        selectedCalendarStatus = 'Selected Calendar save failed. Try again.';
-        selectedCalendarStatusTone = response.status === 400 ? 'warning' : 'error';
-        return false;
-      }
-
-      selectedCalendarStatus = 'Selected Calendars saved to your account.';
-      selectedCalendarStatusTone = 'success';
-      return true;
-    } catch {
-      selectedCalendarStatus = 'Selected Calendar save failed. Try again.';
-      selectedCalendarStatusTone = 'error';
-      return false;
-    }
+    return request.completion;
   };
+  const calendarConfigurationFor = (calendars: SelectedCalendarOption[]) => ({
+    calendars,
+    selectedCalendarIds: calendars
+      .filter((calendar) => calendar.selected)
+      .map((calendar) => calendar.id)
+  });
   const toggleSelectedCalendar = async (calendarId: string, selected: boolean) => {
     if (!selectedCalendarConfiguration) {
       return;
@@ -1285,61 +1207,54 @@
     const nextCalendars = selectedCalendarConfiguration.calendars.map((calendar) =>
       calendar.id === calendarId ? { ...calendar, selected } : calendar
     );
-    const previousConfiguration = selectedCalendarConfiguration;
+    selectedCalendarConfiguration = calendarConfigurationFor(nextCalendars);
+    const result = await persistSelectedCalendars(nextCalendars);
 
-    selectedCalendarConfiguration = {
-      calendars: nextCalendars,
-      selectedCalendarIds: nextCalendars
-        .filter((calendar) => calendar.selected)
-        .map((calendar) => calendar.id)
-    };
-
-    const saved = await persistSelectedCalendars(nextCalendars);
-
-    if (!saved) {
-      selectedCalendarConfiguration = previousConfiguration;
+    if (!result || result.outcome === 'superseded') return;
+    if (result.outcome === 'failed') {
+      selectedCalendarConfiguration = calendarConfigurationFor(result.rollback);
+      selectedCalendarStatus = 'Selected Calendar save failed. Try again.';
+      selectedCalendarStatusTone = result.reason === 'invalid' ? 'warning' : 'error';
       return;
     }
 
+    selectedCalendarStatus = 'Selected Calendars saved to your account.';
+    selectedCalendarStatusTone = 'success';
     await invalidateAll();
   };
-  const queueUserSummaryConfigurationSave = (configuration: SummaryConfiguration, snapshot: string) => {
-    queuedUserSummaryConfigurationSnapshot = snapshot;
+  const queueUserSummaryConfigurationSave = (configuration: SummaryConfiguration) => {
+    const request = userSummaryConfigurationSave.save(configuration);
+    if (request.outcome === 'unchanged') return;
+
     userSummaryConfigurationStatus = 'Saving to your account...';
     userSummaryConfigurationStatusTone = 'neutral';
-
-    userSummaryConfigurationSaveQueue = userSummaryConfigurationSaveQueue.then(async () => {
-      const saved = await persistUserSummaryConfiguration(configuration);
-
-      if (saved) {
-        lastUserSummaryConfigurationSnapshot = snapshot;
+    void request.completion.then((result) => {
+      if (result.outcome === 'superseded') return;
+      if (result.outcome === 'saved') {
+        userSummaryConfigurationStatus = 'Saved to your account.';
+        userSummaryConfigurationStatusTone = 'success';
+        return;
       }
-
-      if (queuedUserSummaryConfigurationSnapshot === snapshot) {
-        queuedUserSummaryConfigurationSnapshot = null;
-      }
+      userSummaryConfigurationStatus = 'Account save failed. Try again.';
+      userSummaryConfigurationStatusTone = result.reason === 'invalid' ? 'warning' : 'error';
     });
-
-    void userSummaryConfigurationSaveQueue;
   };
-  const queueUserTodoStateSave = (todoState: ReturnType<typeof currentTodoState>, snapshot: string) => {
-    queuedUserTodoStateSnapshot = snapshot;
+  const queueUserTodoStateSave = (todoState: ReturnType<typeof currentTodoState>) => {
+    const request = userTodoStateSave.save(todoState);
+    if (request.outcome === 'unchanged') return;
+
     userTodoStateStatus = 'Saving Todo state to your account...';
     userTodoStateStatusTone = 'neutral';
-
-    userTodoStateSaveQueue = userTodoStateSaveQueue.then(async () => {
-      const saved = await persistUserTodoState(todoState);
-
-      if (saved) {
-        lastUserTodoStateSnapshot = snapshot;
+    void request.completion.then((result) => {
+      if (result.outcome === 'superseded') return;
+      if (result.outcome === 'saved') {
+        userTodoStateStatus = 'Todo state saved to your account.';
+        userTodoStateStatusTone = 'success';
+        return;
       }
-
-      if (queuedUserTodoStateSnapshot === snapshot) {
-        queuedUserTodoStateSnapshot = null;
-      }
+      userTodoStateStatus = 'Todo save failed. Try again.';
+      userTodoStateStatusTone = result.reason === 'invalid' ? 'warning' : 'error';
     });
-
-    void userTodoStateSaveQueue;
   };
   const urgencyLabel = (urgency: TodoUrgency) =>
     urgency === 'high' ? 'High urgency' : urgency === 'medium' ? 'Medium urgency' : 'Low urgency';
@@ -1952,13 +1867,7 @@
     }
 
     const configuration = currentSummaryConfiguration();
-    const snapshot = JSON.stringify(configuration);
-
-    if (snapshot === lastUserSummaryConfigurationSnapshot || snapshot === queuedUserSummaryConfigurationSnapshot) {
-      return;
-    }
-
-    queueUserSummaryConfigurationSave(configuration, snapshot);
+    queueUserSummaryConfigurationSave(configuration);
   });
 
   $effect(() => {
@@ -1967,13 +1876,7 @@
     }
 
     const todoState = currentTodoState();
-    const snapshot = JSON.stringify(todoState);
-
-    if (snapshot === lastUserTodoStateSnapshot || snapshot === queuedUserTodoStateSnapshot) {
-      return;
-    }
-
-    queueUserTodoStateSave(todoState, snapshot);
+    queueUserTodoStateSave(todoState);
   });
 </script>
 
