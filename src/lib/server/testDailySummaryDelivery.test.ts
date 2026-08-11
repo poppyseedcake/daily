@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { buildDailySummaryVerificationFixtures } from '$lib/dailySummaryFixtures';
-import { createDailySummaryGenerator } from './scheduledDailySummaryGeneration';
+import { renderDailySummary } from '$lib/dailySummaryRenderer';
 
 const { env } = vi.hoisted(() => ({
   env: {
@@ -39,37 +39,10 @@ describe('production Test Delivery path', () => {
     });
 
     for (const fixture of buildDailySummaryVerificationFixtures()) {
-      const generated = await createDailySummaryGenerator({
-        userLifecycleStore: { isActive: vi.fn().mockResolvedValue(true) },
-        configurationStore: { load: vi.fn().mockResolvedValue(fixture.input.configuration) },
-        todoStore: { load: vi.fn().mockResolvedValue({ todoCategories: [], todoTasks: [] }) },
-        weatherLocationStore: { load: vi.fn().mockResolvedValue(null) },
-        commuteSetupStore: { load: vi.fn().mockResolvedValue({ routes: [], days: [] }) },
-        calendarEvents: {
-          load: vi.fn().mockResolvedValue({
-            calendarEvents: {
-              readiness: {
-                status: 'not-connected',
-                label: 'Calendar',
-                statusLabel: 'Calendar not connected',
-                detail: 'Calendar Events will appear after Google Calendar setup is available.',
-                unavailableReason: 'Connect Google Calendar to include Calendar Events.'
-              },
-              selectedCalendars: [],
-              eventResult: { outcome: 'not-requested' }
-            },
-            selectedCalendarConfiguration: null
-          })
-        },
-        weatherProvider: { fetchDailyForecast: vi.fn() },
-        commuteEstimateProvider: vi.fn(),
-        buildInput: async () => fixture.input,
-        now: () => fixture.input.generatedAt ?? new Date('2026-07-31T05:00:00.000Z')
-      }).generate('verification-user', {
-        configuration: fixture.input.configuration,
-        openDailyUrl: fixture.input.openDailyUrl,
-        now: fixture.input.generatedAt
-      });
+      const generated = {
+        input: fixture.input,
+        rendered: renderDailySummary(fixture.input)
+      };
 
       await expect(delivery.send({
         userId: 'verification-user',

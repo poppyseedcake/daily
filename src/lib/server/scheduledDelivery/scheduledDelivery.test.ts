@@ -16,7 +16,7 @@ import {
   type DailySummaryDeliveryProvider
 } from '../dailySummaryDelivery';
 import { createScheduledDelivery } from '.';
-import { createScheduledDailySummaryGenerator } from '../scheduledDailySummaryGeneration';
+import { createUserDailySummaryGenerator } from '$lib/dailySummaryGeneration/server';
 import { createUserCalendarEvents } from '../userCalendarEvents';
 
 const applyMigrations = (sqlite: Database.Database) => {
@@ -90,7 +90,7 @@ const createTestDelivery = ({
     calendarListProvider: { loadCalendars: vi.fn() },
     isAuthorizationFailure: vi.fn().mockReturnValue(false)
   });
-  const productionGenerator = createScheduledDailySummaryGenerator({
+  const productionGenerator = createUserDailySummaryGenerator({
     userLifecycleStore: generationLifecycleStore,
     configurationStore,
     todoStore: createUserTodoStore(database),
@@ -104,9 +104,9 @@ const createTestDelivery = ({
 
   const generator = afterClaim
     ? {
-        async generate(userId: string) {
-          await afterClaim(userId);
-          return productionGenerator.generate(userId);
+        async generate(request: { userId: string }) {
+          await afterClaim(request.userId);
+          return productionGenerator.generate(request);
         }
       }
     : productionGenerator;

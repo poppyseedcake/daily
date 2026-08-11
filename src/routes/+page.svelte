@@ -33,9 +33,8 @@
   import { invalidateAll } from '$app/navigation';
   import type { ActionData, PageData } from './$types';
   import { calendarReadinessForAuthMode } from '$lib/calendarReadiness';
-  import { buildDailySummaryInput } from '$lib/dailySummaryPreview';
+  import { visitorDailySummaryGenerator } from '$lib/dailySummaryGeneration';
   import type { DeliveryHistoryRecord, DeliveryStatus } from '$lib/deliveryRecords';
-  import { renderDailySummary } from '$lib/dailySummaryRenderer';
   import {
     createDefaultLocalSetup,
     loadLocalSetup,
@@ -1915,22 +1914,15 @@
 
     const renderVersion = ++previewRenderVersion;
 
-    void buildDailySummaryInput({
-      calendarEvents: {
-        readiness: calendarReadiness,
-        selectedCalendars: [],
-        eventResult: { outcome: 'not-requested' }
+    void visitorDailySummaryGenerator.generate(
+      {
+        ...currentLocalSetup(),
+        summaryConfiguration: previewConfiguration
       },
-      configuration: previewConfiguration,
-      todoCategories,
-      todoTasks,
-      weatherLocation,
-      commuteRoutes,
-      commuteDays,
-      openDailyUrl: `${window.location.origin}/`
-    }).then((previewInput) => {
+      { openDailyUrl: `${window.location.origin}/` }
+    ).then((generated) => {
       if (renderVersion === previewRenderVersion) {
-        renderedSummaryHtml = renderDailySummary(previewInput).html;
+        renderedSummaryHtml = generated.rendered.html;
       }
     });
   });

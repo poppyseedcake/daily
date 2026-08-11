@@ -1,14 +1,12 @@
 import { createHash } from 'node:crypto';
+import type { DailySummaryGenerationResult } from '$lib/dailySummaryGeneration';
 import { dailySummarySubject } from '$lib/dailySummaryRenderer';
 import type { DeliveryErrorClassification } from '$lib/deliveryRecords';
 import {
   DailySummaryDeliveryError,
   type DailySummaryDeliveryProvider
 } from '../dailySummaryDelivery';
-import {
-  ScheduledDailySummaryUserNotActiveError,
-  type ScheduledDailySummaryGenerationResult
-} from '../scheduledDailySummaryGeneration';
+import { UserDailySummaryNotActiveError } from '$lib/dailySummaryGeneration/server';
 import {
   createScheduledDeliveryPersistence,
   type ScheduledDeliveryCursor,
@@ -53,7 +51,7 @@ export type ScheduledDeliveryModule = {
 };
 
 type ScheduledDeliveryGenerator = {
-  generate(userId: string): Promise<ScheduledDailySummaryGenerationResult>;
+  generate(request: { userId: string }): Promise<DailySummaryGenerationResult>;
 };
 
 export type ScheduledDeliveryDependencies = {
@@ -162,11 +160,11 @@ export const createScheduledDelivery = ({
       if (claimed.outcome === 'failed') return claimed;
 
       const { claim } = claimed;
-      let generated: ScheduledDailySummaryGenerationResult;
+      let generated: DailySummaryGenerationResult;
       try {
-        generated = await generator.generate(claim.userId);
+        generated = await generator.generate({ userId: claim.userId });
       } catch (error) {
-        if (error instanceof ScheduledDailySummaryUserNotActiveError) {
+        if (error instanceof UserDailySummaryNotActiveError) {
           await persistence.markCancelled(claim, processingStartedAtIso);
           return {
             outcome: 'skipped',

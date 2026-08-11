@@ -198,6 +198,31 @@ export const buildCalendarSection = ({
   };
 };
 
+export const buildCalendarAgenda = ({
+  calendarEvents,
+  userTimeZone,
+  now
+}: {
+  calendarEvents: LoadedCalendarEvents;
+  userTimeZone: UserTimeZone;
+  now: Date;
+}): CalendarSection | null => {
+  if (
+    calendarEvents.readiness.status !== 'connected' ||
+    calendarEvents.selectedCalendars.length === 0 ||
+    calendarEvents.eventResult.outcome !== 'available'
+  ) {
+    return null;
+  }
+
+  return buildCalendarSection({
+    providerEvents: calendarEvents.eventResult.events,
+    selectedCalendars: calendarEvents.selectedCalendars,
+    userTimeZone,
+    now
+  });
+};
+
 const compareCalendarEvents = (
   left: AllDayCalendarEvent,
   right: AllDayCalendarEvent

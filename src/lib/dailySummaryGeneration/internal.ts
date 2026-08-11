@@ -1,34 +1,35 @@
-import { buildDemoCalendarSection } from './demoCalendar';
-import type { DailySummaryInput } from './dailySummaryRenderer';
+import { buildDemoCalendarSection } from '../demoCalendar';
+import {
+  renderDailySummary,
+  type DailySummaryInput,
+  type RenderedDailySummary
+} from '../dailySummaryRenderer';
+import type { LocalSetupInput } from '../localSetup';
 import {
   buildCalendarSection,
   calendarSectionHasEvents,
   type LoadedCalendarEvents
-} from './calendar';
-import type { SummaryConfiguration } from './summaryConfiguration';
-import { buildTodoSection, type TodoCategory, type TodoTask } from './todo';
-import type { WeatherLocation } from './weatherLocation';
-import {
-  calendarReadinessForAuthMode,
-  type CalendarReadinessAuthMode
-} from './calendarReadiness';
+} from '../calendar';
+import type { SummaryConfiguration } from '../summaryConfiguration';
+import { buildTodoSection, type TodoCategory, type TodoTask } from '../todo';
+import type { WeatherLocation } from '../weatherLocation';
+import { calendarReadinessForAuthMode } from '../calendarReadiness';
 import {
   buildWeatherSection,
   buildWeatherDisplayForecast,
   openMeteoWeatherForecastProvider,
   type WeatherForecastProvider,
   type WeatherSummaryProvider
-} from './weatherForecast';
+} from '../weatherForecast';
 import { Temporal } from '@js-temporal/polyfill';
-import type { CommuteDay, CommuteRoute } from './commuteRoute';
+import type { CommuteDay, CommuteRoute } from '../commuteRoute';
 import {
   classifyCommuteTraffic,
   commuteTrafficDescription
-} from './commuteTraffic';
-import type { GoogleMapsRequestGateway } from './server/googleMapsRequestGateway';
+} from '../commuteTraffic';
+import type { GoogleMapsRequestGateway } from '../server/googleMapsRequestGateway';
 
-export type DailySummaryGenerationSetup = {
-  authMode?: CalendarReadinessAuthMode;
+export type DailySummaryGenerationContext = {
   calendarEvents?: LoadedCalendarEvents;
   configuration: SummaryConfiguration;
   todoCategories: TodoCategory[];
@@ -43,14 +44,49 @@ export type DailySummaryGenerationSetup = {
   commuteSetupUnavailable?: boolean;
   commuteEstimateProvider?: Pick<GoogleMapsRequestGateway, 'estimateCommute'>;
   commuteEstimateMode?: 'saved' | 'live';
+};
+
+export type DailySummaryGenerationOptions = {
   openDailyUrl?: string;
   now?: Date;
 };
 
-export const buildDailySummaryInput = async ({
-  authMode = 'visitor',
+export type DailySummaryGenerationResult = {
+  input: DailySummaryInput;
+  rendered: RenderedDailySummary;
+};
+
+export type DailySummaryGenerator<Request, Options = DailySummaryGenerationOptions> = {
+  generate(
+    request: Request,
+    options?: Options
+  ): Promise<DailySummaryGenerationResult>;
+};
+
+type LoadedDailySummaryGenerationContext = {
+  context: DailySummaryGenerationContext;
+  generatedAt: Date;
+};
+
+export type DailySummaryGenerationSource<Request> = {
+  load(
+    request: Request,
+    generatedAt: Date
+  ):
+    | DailySummaryGenerationContext
+    | LoadedDailySummaryGenerationContext
+    | Promise<DailySummaryGenerationContext | LoadedDailySummaryGenerationContext>;
+};
+
+export type DailySummaryGeneratorDependencies<Request> = {
+  source: DailySummaryGenerationSource<Request>;
+  openDailyUrl?: string;
+  now?: () => Date;
+};
+
+const buildDailySummaryInput = async ({
   calendarEvents = {
-    readiness: calendarReadinessForAuthMode(authMode),
+    readiness: calendarReadinessForAuthMode('visitor'),
     selectedCalendars: [],
     eventResult: { outcome: 'not-requested' }
   },
@@ -69,7 +105,7 @@ export const buildDailySummaryInput = async ({
   commuteEstimateMode = 'saved',
   openDailyUrl = '/',
   now = new Date()
-}: DailySummaryGenerationSetup): Promise<DailySummaryInput> => {
+}: DailySummaryGenerationContext & DailySummaryGenerationOptions): Promise<DailySummaryInput> => {
   const weather = await buildWeatherGenerationState({
     configuration,
     weatherLocation,
@@ -112,6 +148,45 @@ export const buildDailySummaryInput = async ({
     todoSection
   };
 };
+
+export const createDailySummaryGenerator = <Request>({
+  source,
+  openDailyUrl = '/',
+  now = () => new Date()
+}: DailySummaryGeneratorDependencies<Request>): DailySummaryGenerator<Request> => ({
+  async generate(request, options = {}) {
+    const requestedAt = options.now ?? now();
+    const loaded = await source.load(request, requestedAt);
+    const { context, generatedAt } = 'context' in loaded
+      ? loaded
+      : { context: loaded, generatedAt: requestedAt };
+    const input = await buildDailySummaryInput({
+      ...context,
+      openDailyUrl: options.openDailyUrl ?? openDailyUrl,
+      now: generatedAt
+    });
+
+    return {
+      input,
+      rendered: renderDailySummary(input)
+    };
+  }
+});
+
+export const visitorDailySummaryGenerator = createDailySummaryGenerator<LocalSetupInput>({
+  source: {
+    load(setup) {
+      return {
+        configuration: setup.summaryConfiguration,
+        todoCategories: setup.todoCategories,
+        todoTasks: setup.todoTasks,
+        weatherLocation: setup.weatherLocation,
+        commuteRoutes: setup.commuteRoutes,
+        commuteDays: setup.commuteDays
+      };
+    }
+  }
+});
 
 const commuteDayByIsoDay = [
   'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'
@@ -262,7 +337,7 @@ const buildCommuteGenerationResult = async ({ configuration, routes, days, setup
   }
 };
 
-export const buildCalendarGenerationResult = ({
+const buildCalendarGenerationResult = ({
   calendarEvents,
   configuration,
   now

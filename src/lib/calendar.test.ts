@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest';
-import { buildCalendarSection } from './calendar';
+import { buildCalendarAgenda, buildCalendarSection } from './calendar';
+import { calendarReadinessForUserConnection } from './calendarReadiness';
 import { renderDailySummary } from './dailySummaryRenderer';
 import { defaultSummaryConfiguration } from './summaryConfiguration';
 
@@ -8,6 +9,33 @@ const selectedCalendars = [
 ];
 
 describe('Calendar Section', () => {
+  test('builds a dashboard agenda from one loaded Calendar Events snapshot', () => {
+    const section = buildCalendarAgenda({
+      calendarEvents: {
+        readiness: calendarReadinessForUserConnection({ status: 'connected' }),
+        selectedCalendars,
+        eventResult: {
+          outcome: 'available',
+          events: [{
+            kind: 'timed',
+            id: 'planning',
+            calendarId: 'personal',
+            calendarSummary: 'Personal',
+            summary: 'Planning',
+            start: '2026-07-08T12:00:00.000Z',
+            end: '2026-07-08T12:30:00.000Z'
+          }]
+        }
+      },
+      userTimeZone: 'America/New_York',
+      now: new Date('2026-07-08T10:00:00.000Z')
+    });
+
+    expect(section?.today?.timedEvents).toEqual([
+      expect.objectContaining({ id: 'planning', title: 'Planning' })
+    ]);
+  });
+
   test('retains today and the next six local dates when the Week Ahead is empty', () => {
     const section = buildCalendarSection({
       providerEvents: [],

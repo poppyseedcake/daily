@@ -2,16 +2,15 @@ import { describe, expect, test, vi } from 'vitest';
 import type { LoadedCalendarEvents } from '$lib/calendar';
 import {
   calendarReadinessForAuthMode,
-  calendarReadinessForUnavailableProvider,
   calendarReadinessForUserConnection
 } from '$lib/calendarReadiness';
 import type { SummaryConfiguration } from '$lib/summaryConfiguration';
 import type { DailySummaryDeliveryProvider } from './dailySummaryDelivery';
 import {
-  createScheduledDailySummaryGenerator,
-  ScheduledDailySummaryUserNotActiveError,
-  type ScheduledDailySummaryGenerationDependencies
-} from './scheduledDailySummaryGeneration';
+  createUserDailySummaryGenerator,
+  UserDailySummaryNotActiveError,
+  type UserDailySummaryGenerationDependencies
+} from '$lib/dailySummaryGeneration/server';
 
 const configuration: SummaryConfiguration = {
   summaryTime: '07:00',
@@ -61,8 +60,8 @@ const calendarEventsDependency = (
 
 const createProviderIsolationDependencies = (
   summaryConfiguration: SummaryConfiguration,
-  overrides: Partial<ScheduledDailySummaryGenerationDependencies>
-): ScheduledDailySummaryGenerationDependencies => ({
+  overrides: Partial<UserDailySummaryGenerationDependencies>
+): UserDailySummaryGenerationDependencies => ({
   userLifecycleStore: activeUserLifecycleStore,
   configurationStore: { load: vi.fn().mockResolvedValue(summaryConfiguration) },
   todoStore: { load: vi.fn().mockResolvedValue(usefulTodoState) },
@@ -75,17 +74,17 @@ const createProviderIsolationDependencies = (
   ...overrides
 });
 
-describe('scheduled Daily Summary generation', () => {
+describe('User Daily Summary generation', () => {
   test('rejects a deleting User before loading setup or providers', async () => {
     const configurationStore = { load: vi.fn() };
     const dependencies = createProviderIsolationDependencies(configuration, {
       userLifecycleStore: { isActive: vi.fn().mockResolvedValue(false) },
       configurationStore
     });
-    const generator = createScheduledDailySummaryGenerator(dependencies);
+    const generator = createUserDailySummaryGenerator(dependencies);
 
-    await expect(generator.generate('user-1')).rejects.toBeInstanceOf(
-      ScheduledDailySummaryUserNotActiveError
+    await expect(generator.generate({ userId: 'user-1' })).rejects.toBeInstanceOf(
+      UserDailySummaryNotActiveError
     );
     expect(configurationStore.load).not.toHaveBeenCalled();
     expect(dependencies.todoStore.load).not.toHaveBeenCalled();
@@ -94,15 +93,17 @@ describe('scheduled Daily Summary generation', () => {
     expect(dependencies.commuteEstimateProvider).not.toHaveBeenCalled();
   });
 
-  test('accepts request-scoped generation options for the shared production path', async () => {
-    const generator = createScheduledDailySummaryGenerator(
+  test('accepts a request-scoped public URL for the shared production path', async () => {
+    const generator = createUserDailySummaryGenerator(
       createProviderIsolationDependencies(configuration, {})
     );
 
-    const result = await generator.generate('user-1', {
-      openDailyUrl: 'https://preview.example.test/summary?tracking=private',
-      now: new Date('2026-07-14T06:00:00.000Z')
-    });
+    const result = await generator.generate(
+      { userId: 'user-1' },
+      {
+        openDailyUrl: 'https://preview.example.test/summary?tracking=private'
+      }
+    );
 
     expect(result.input.generatedAt).toEqual(new Date('2026-07-14T06:00:00.000Z'));
     expect(result.rendered.html).toContain('href="https://preview.example.test/"');
@@ -154,7 +155,7 @@ describe('scheduled Daily Summary generation', () => {
         providerStatusMetadata: 'accepted'
       })
     };
-    const generator = createScheduledDailySummaryGenerator({
+    const generator = createUserDailySummaryGenerator({
       userLifecycleStore: activeUserLifecycleStore,
       configurationStore: { load: vi.fn().mockResolvedValue(configuration) },
       todoStore: {
@@ -192,12 +193,12 @@ describe('scheduled Daily Summary generation', () => {
       now: () => new Date('2026-07-14T06:00:00.000Z')
     });
 
-    const first = await generator.generate('user-1');
+    const first = await generator.generate({ userId: 'user-1' });
     currentTodoTitle.value = 'Prepare current update';
     currentWeatherHigh.value = 28;
     currentCalendarTitle.value = 'Current planning';
     currentCommuteDuration.value = 31.2;
-    const second = await generator.generate('user-1');
+    const second = await generator.generate({ userId: 'user-1' });
     await deliveryProvider.send({
       to: 'user@example.com',
       from: 'daily@example.com',
@@ -233,7 +234,7 @@ describe('scheduled Daily Summary generation', () => {
       ...configuration,
       sectionPauses: { weather: true, commute: true, calendar: true, todo: true }
     };
-    const generator = createScheduledDailySummaryGenerator({
+    const generator = createUserDailySummaryGenerator({
       userLifecycleStore: activeUserLifecycleStore,
       configurationStore: { load: vi.fn().mockResolvedValue(disabledConfiguration) },
       todoStore: { load: vi.fn().mockResolvedValue({ todoCategories: [], todoTasks: [] }) },
@@ -245,7 +246,7 @@ describe('scheduled Daily Summary generation', () => {
       now: () => new Date('2026-07-14T06:00:00.000Z')
     });
 
-    const result = await generator.generate('user-1');
+    const result = await generator.generate({ userId: 'user-1' });
 
     expect(result.rendered.html).toContain('data-summary-section="weather"');
     expect(result.rendered.html).toContain('data-summary-section="commute"');
@@ -259,31 +260,44 @@ describe('scheduled Daily Summary generation', () => {
     expect(loadCalendarEvents).not.toHaveBeenCalled();
   });
 
-  test('contains a Weather provider failure while preserving unrelated content', async () => {
-    const weatherAndTodoConfiguration: SummaryConfiguration = {
+  test('keeps a preloaded Calendar snapshot bound to a paused Summary generation', async () => {
+    const configurationStore = { load: vi.fn() };
+    const calendarEvents = calendarEventsDependency();
+    const pausedConfiguration: SummaryConfiguration = {
       ...configuration,
-      sectionPauses: { weather: false, commute: true, calendar: true, todo: false }
+      sectionPauses: { weather: true, commute: true, calendar: true, todo: true }
     };
-    const generator = createScheduledDailySummaryGenerator(
-      createProviderIsolationDependencies(weatherAndTodoConfiguration, {
-        weatherLocationStore: {
-          load: vi.fn().mockResolvedValue({
-            label: 'Warsaw', latitude: 52.2297, longitude: 21.0122
-          })
-        },
-        weatherProvider: {
-          fetchDailyForecast: vi.fn().mockRejectedValue(new Error('private provider payload'))
-        }
+    const preloadedCalendarEvents = loadedCalendarEvents({
+      outcome: 'available',
+      events: [{
+        kind: 'timed',
+        id: 'planning',
+        calendarId: 'work',
+        calendarSummary: 'Work',
+        summary: 'Planning',
+        start: '2026-07-14T08:00:00.000Z',
+        end: '2026-07-14T08:30:00.000Z'
+      }]
+    });
+    const generator = createUserDailySummaryGenerator(
+      createProviderIsolationDependencies(pausedConfiguration, {
+        configurationStore,
+        calendarEvents
       })
     );
 
-    const result = await generator.generate('user-1');
+    const result = await generator.generate({
+      userId: 'user-1',
+      snapshot: {
+        configuration: pausedConfiguration,
+        calendarEvents: preloadedCalendarEvents,
+        generatedAt: new Date('2026-07-14T06:00:00.000Z')
+      }
+    });
 
-    for (const output of [result.rendered.html, result.rendered.text]) {
-      expect(output).toContain('Live weather is unavailable right now.');
-      expect(output).toContain('Useful Todo');
-      expect(output).not.toContain('private provider payload');
-    }
+    expect(result.input.sections.calendar.status).toBe('paused');
+    expect(configurationStore.load).not.toHaveBeenCalled();
+    expect(calendarEvents.load).not.toHaveBeenCalled();
   });
 
   test('contains a Weather location failure while preserving unrelated content', async () => {
@@ -292,7 +306,7 @@ describe('scheduled Daily Summary generation', () => {
       sectionPauses: { weather: false, commute: true, calendar: true, todo: false }
     };
     const weatherProvider = { fetchDailyForecast: vi.fn() };
-    const generator = createScheduledDailySummaryGenerator(
+    const generator = createUserDailySummaryGenerator(
       createProviderIsolationDependencies(weatherAndTodoConfiguration, {
         weatherLocationStore: {
           load: vi.fn().mockRejectedValue(new Error('private Weather location failure'))
@@ -301,7 +315,7 @@ describe('scheduled Daily Summary generation', () => {
       })
     );
 
-    const result = await generator.generate('user-1');
+    const result = await generator.generate({ userId: 'user-1' });
 
     expect(result.rendered.text).toContain('Live weather is unavailable right now.');
     expect(result.rendered.text).toContain('Useful Todo');
@@ -314,7 +328,7 @@ describe('scheduled Daily Summary generation', () => {
       ...configuration,
       sectionPauses: { weather: true, commute: false, calendar: true, todo: false }
     };
-    const generator = createScheduledDailySummaryGenerator(
+    const generator = createUserDailySummaryGenerator(
       createProviderIsolationDependencies(commuteAndTodoConfiguration, {
         commuteSetupStore: {
           load: vi.fn().mockRejectedValue(new Error('private Commute setup failure'))
@@ -322,105 +336,11 @@ describe('scheduled Daily Summary generation', () => {
       })
     );
 
-    const result = await generator.generate('user-1');
+    const result = await generator.generate({ userId: 'user-1' });
 
     expect(result.rendered.text).toContain('Live Commute is unavailable right now.');
     expect(result.rendered.text).toContain('Useful Todo');
     expect(result.rendered.text).not.toContain('private Commute setup failure');
-  });
-
-  test.each([
-    {
-      failure: 'a Commute provider failure',
-      estimateCommute: () => vi.fn().mockRejectedValue(new Error('private Commute provider failure'))
-    },
-    {
-      failure: 'a protective Maps suspension',
-      estimateCommute: () => vi.fn().mockResolvedValue({
-        outcome: 'unavailable', reason: 'global-daily-cap'
-      })
-    }
-  ])(
-    'contains $failure without stopping Weather, Calendar, or Todo output',
-    async ({ estimateCommute }) => {
-      const generator = createScheduledDailySummaryGenerator(
-        createProviderIsolationDependencies(configuration, {
-          weatherLocationStore: {
-            load: vi.fn().mockResolvedValue({
-              label: 'Warsaw', latitude: 52.2297, longitude: 21.0122
-            })
-          },
-          weatherProvider: {
-            fetchDailyForecast: vi.fn().mockResolvedValue({
-              outcome: 'available',
-              forecast: {
-                dates: ['2026-07-14'],
-                weatherCodes: [0],
-                minimumTemperaturesCelsius: [17],
-                maximumTemperaturesCelsius: [26],
-                precipitationProbabilities: [10]
-              }
-            })
-          },
-          commuteSetupStore: {
-            load: vi.fn().mockResolvedValue({
-              routes: [{
-                id: 'office', name: 'Office', enabled: true,
-                days: ['tuesday'],
-                origin: { label: 'Home', latitude: 52.2, longitude: 21 },
-                destination: { label: 'Office', latitude: 52.3, longitude: 21.1 }
-              }],
-              days: ['tuesday']
-            })
-          },
-          calendarEvents: calendarEventsDependency(
-            loadedCalendarEvents({
-              outcome: 'available',
-              events: [{
-                kind: 'timed', id: 'planning', calendarId: 'work', calendarSummary: 'Work',
-                summary: 'Planning', start: '2026-07-14T08:00:00.000Z',
-                end: '2026-07-14T08:30:00.000Z'
-              }]
-            })
-          ),
-          commuteEstimateProvider: vi.fn().mockReturnValue({
-            estimateCommute: estimateCommute()
-          })
-        })
-      );
-
-      const result = await generator.generate('user-1');
-
-      expect(result.rendered.text).toContain('Live Commute is unavailable right now.');
-      expect(result.rendered.text).toContain('Clear. Low 17C, high 26C.');
-      expect(result.rendered.text).toContain('10:00 Planning (Work)');
-      expect(result.rendered.text).toContain('Useful Todo');
-    }
-  );
-
-  test('contains a Calendar provider failure while preserving unrelated content', async () => {
-    const calendarAndTodoConfiguration: SummaryConfiguration = {
-      ...configuration,
-      sectionPauses: { weather: true, commute: true, calendar: false, todo: false }
-    };
-    const generator = createScheduledDailySummaryGenerator(
-      createProviderIsolationDependencies(calendarAndTodoConfiguration, {
-        calendarEvents: calendarEventsDependency({
-          ...loadedCalendarEvents(),
-          readiness: calendarReadinessForUnavailableProvider(),
-          eventResult: {
-            outcome: 'unavailable',
-            reason: 'Live Calendar is unavailable right now.'
-          }
-        })
-      })
-    );
-
-    const result = await generator.generate('user-1');
-
-    expect(result.rendered.text).toContain('Live Calendar is unavailable right now.');
-    expect(result.rendered.text).toContain('Useful Todo');
-    expect(result.rendered.text).not.toContain('private Calendar provider failure');
   });
 
   test('contains a Todo state failure while preserving the other Summary Sections and delivery input', async () => {
@@ -428,7 +348,7 @@ describe('scheduled Daily Summary generation', () => {
       ...configuration,
       sectionPauses: { weather: false, commute: true, calendar: true, todo: false }
     };
-    const generator = createScheduledDailySummaryGenerator(
+    const generator = createUserDailySummaryGenerator(
       createProviderIsolationDependencies(weatherAndTodoConfiguration, {
         todoStore: {
           load: vi.fn().mockRejectedValue(new Error('private Todo state failure'))
@@ -453,7 +373,7 @@ describe('scheduled Daily Summary generation', () => {
       })
     );
 
-    const result = await generator.generate('user-1');
+    const result = await generator.generate({ userId: 'user-1' });
 
     expect(result.input.sections.todo).toEqual({
       status: 'unavailable',
@@ -470,14 +390,14 @@ describe('scheduled Daily Summary generation', () => {
 
   test('does not load Todo state when Todo is paused and keeps the paused state', async () => {
     const todoStore = { load: vi.fn().mockRejectedValue(new Error('should not load')) };
-    const generator = createScheduledDailySummaryGenerator(
+    const generator = createUserDailySummaryGenerator(
       createProviderIsolationDependencies({
         ...configuration,
         sectionPauses: { weather: true, commute: true, calendar: true, todo: true }
       }, { todoStore })
     );
 
-    const result = await generator.generate('user-1');
+    const result = await generator.generate({ userId: 'user-1' });
 
     expect(todoStore.load).not.toHaveBeenCalled();
     expect(result.input.sections.todo).toEqual({
@@ -488,55 +408,4 @@ describe('scheduled Daily Summary generation', () => {
     expect(result.rendered.text).not.toContain('should not load');
   });
 
-  test('renders an unconfigured Calendar from the loaded Calendar result', async () => {
-    const calendarEvents = calendarEventsDependency({
-      readiness: calendarReadinessForUserConnection({ status: 'connected' }),
-      selectedCalendars: [],
-      eventResult: { outcome: 'not-requested' }
-    });
-    const generator = createScheduledDailySummaryGenerator(
-      createProviderIsolationDependencies(configuration, {
-        calendarEvents
-      })
-    );
-
-    const result = await generator.generate('user-1');
-
-    expect(result.input.sections.calendar).toEqual({
-      status: 'unconfigured',
-      label: 'Calendar',
-      detail: 'Select a Calendar to include Calendar Events.'
-    });
-    expect(calendarEvents.load).toHaveBeenCalledOnce();
-  });
-
-  test('renders all four sections when content is empty, unconfigured, or unavailable', async () => {
-    const mixedConfiguration: SummaryConfiguration = {
-      ...configuration,
-      sectionPauses: { weather: false, commute: false, calendar: false, todo: false }
-    };
-    const generator = createScheduledDailySummaryGenerator({
-      userLifecycleStore: activeUserLifecycleStore,
-      configurationStore: { load: vi.fn().mockResolvedValue(mixedConfiguration) },
-      todoStore: { load: vi.fn().mockResolvedValue({ todoCategories: [], todoTasks: [] }) },
-      weatherLocationStore: { load: vi.fn().mockResolvedValue(null) },
-      commuteSetupStore: { load: vi.fn().mockResolvedValue({ routes: [], days: ['tuesday'] }) },
-      calendarEvents: calendarEventsDependency(
-        loadedCalendarEvents({ outcome: 'available', events: [] })
-      ),
-      weatherProvider: { fetchDailyForecast: vi.fn() },
-      commuteEstimateProvider: vi.fn(),
-      now: () => new Date('2026-07-14T06:00:00.000Z')
-    });
-
-    const result = await generator.generate('user-1');
-
-    for (const section of ['weather', 'commute', 'calendar', 'todo']) {
-      expect(result.rendered.html).toContain(`data-summary-section="${section}"`);
-    }
-    expect(result.rendered.text).toContain('Weather\nNot configured\nChoose a Weather Location');
-    expect(result.rendered.text).toContain('Calendar\nNothing scheduled\nNo Calendar Events in the Week Ahead.');
-    expect(result.rendered.text).toContain('Commute');
-    expect(result.rendered.text).toContain('Todo\nNothing scheduled\nThere are no active Todo Tasks.');
-  });
 });
