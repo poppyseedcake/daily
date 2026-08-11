@@ -70,8 +70,8 @@ export const createTestDailySummaryDelivery = ({
       from: senderAddress(),
       subject: dailySummarySubject(
         'test',
-        generated.input.generatedAt ?? now(),
-        generated.input.configuration.userTimeZone
+        generated.input.generatedAt,
+        generated.input.userTimeZone
       ),
       html: generated.rendered.html,
       text: generated.rendered.text

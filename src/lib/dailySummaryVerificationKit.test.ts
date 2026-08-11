@@ -44,10 +44,14 @@ describe('Daily Summary email-client verification kit', () => {
     const emptyCalendar = rotatingFixtures.find(
       (fixture) => fixture.input.sections.calendar.status === 'empty'
     );
-    expect(emptyCalendar?.input.calendarSection?.today?.allDayEvents).toEqual([]);
-    expect(emptyCalendar?.input.calendarSection?.today?.timedEvents).toEqual([]);
+    const calendarSection = emptyCalendar?.input.sections.calendar;
+    const calendarContent = calendarSection && 'content' in calendarSection
+      ? calendarSection.content
+      : undefined;
+    expect(calendarContent?.today?.allDayEvents).toEqual([]);
+    expect(calendarContent?.today?.timedEvents).toEqual([]);
     expect(
-      emptyCalendar?.input.calendarSection?.weekAhead.every(
+      calendarContent?.weekAhead.every(
         (day) => day.allDayEvents.length === 0 && day.timedEvents.length === 0
       )
     ).toBe(true);

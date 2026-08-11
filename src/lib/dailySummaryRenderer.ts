@@ -3,7 +3,7 @@ import {
   commuteTrafficDescription,
   type CommuteTrafficLevel
 } from './commuteTraffic';
-import type { SummaryConfiguration, SummarySection } from './summaryConfiguration';
+import type { SummarySection, UserTimeZone } from './summaryConfiguration';
 import type { WeatherDisplayForecast } from './weatherForecast';
 import type {
   SummarySectionPresentationState,
@@ -13,36 +13,48 @@ import type { TodoSection, TodoTask, TodoUrgency } from './todo';
 
 export const dailySummarySectionOrder = ['weather', 'commute', 'calendar', 'todo'] as const;
 
-export type DailySummarySectionStatus = SummarySectionPresentationState | 'available';
+type ActiveContentSummarySection<Content> = {
+  status: 'active';
+  content: Content;
+  detail?: string;
+};
 
-export type DailySummarySectionStateFor<Section extends SummarySection> =
-  | {
-      status: Exclude<SummarySectionPresentationStateFor<Section>, 'unavailable'> | 'available';
-      label: string;
-      detail?: string;
-    }
-  | {
-      status: 'unavailable';
-      label: string;
-      reason: string;
-      detail?: string;
-    };
+type ActiveTextSummarySection<Content> =
+  | ActiveContentSummarySection<Content>
+  | { status: 'active'; content?: never; detail: string };
 
-export type DailySummarySectionState = {
-  [Section in SummarySection]: DailySummarySectionStateFor<Section>;
-}[SummarySection];
+type InactiveSummarySection<Status extends SummarySectionPresentationState> =
+  Status extends 'unavailable'
+    ? { status: Status; reason: string }
+    : { status: Status; detail: string };
+
+type InactiveSummarySectionFor<Section extends SummarySection> = {
+  [Status in Exclude<SummarySectionPresentationStateFor<Section>, 'active'>]:
+    InactiveSummarySection<Status>;
+}[Exclude<SummarySectionPresentationStateFor<Section>, 'active'>];
+
+type DailySummarySectionInput<Section extends SummarySection, Content> =
+  | ActiveContentSummarySection<Content>
+  | InactiveSummarySectionFor<Section>;
+
+type CalendarSummarySectionInput =
+  | ActiveTextSummarySection<CalendarSection>
+  | { status: 'empty'; detail: string; content?: CalendarSection }
+  | InactiveSummarySection<Exclude<
+      SummarySectionPresentationStateFor<'calendar'>,
+      'active' | 'empty'
+    >>;
 
 export type DailySummaryInput = {
-  configuration: SummaryConfiguration;
-  generatedAt?: Date;
-  openDailyUrl?: string;
+  userTimeZone: UserTimeZone;
+  generatedAt: Date;
+  openDailyUrl: string;
   sections: {
-    [Section in SummarySection]: DailySummarySectionStateFor<Section>;
+    weather: ActiveTextSummarySection<WeatherDisplayForecast> | InactiveSummarySectionFor<'weather'>;
+    commute: DailySummarySectionInput<'commute', CommuteSection>;
+    calendar: CalendarSummarySectionInput;
+    todo: DailySummarySectionInput<'todo', TodoSection>;
   };
-  weatherSection?: WeatherDisplayForecast | null;
-  calendarSection?: CalendarSection | null;
-  commuteSection?: CommuteSection | null;
-  todoSection: TodoSection | null;
 };
 
 export type { CommuteTrafficLevel } from './commuteTraffic';
@@ -85,17 +97,28 @@ export const dailySummarySubject = (
   return `${kind === 'test' ? 'Test · ' : ''}Your Daily Summary · ${weekday}, ${dayAndMonth}`;
 };
 
-type RenderedSection = {
-  key: SummarySection;
-  label: string;
-  status: Exclude<DailySummarySectionStatus, 'available'>;
-  detail?: string;
-  reason?: string;
-  weatherSection?: WeatherDisplayForecast | null;
-  calendarSection?: CalendarSection | null;
-  commuteSection?: CommuteSection | null;
-  todoSection?: TodoSection | null;
+type SummarySectionContent = {
+  weather: WeatherDisplayForecast;
+  commute: CommuteSection;
+  calendar: CalendarSection;
+  todo: TodoSection;
 };
+
+type RenderedSectionFor<Section extends SummarySection> = {
+  key: Section;
+  label: string;
+  content?: SummarySectionContent[Section];
+} & (
+  | { status: 'active'; detail?: string }
+  | {
+      status: Exclude<SummarySectionPresentationState, 'active'>;
+      message: string;
+    }
+);
+
+type RenderedSection = {
+  [Section in SummarySection]: RenderedSectionFor<Section>;
+}[SummarySection];
 
 const fixedSectionLabels: Record<SummarySection, string> = {
   weather: 'Weather',
@@ -126,8 +149,8 @@ const stateLabels = {
 
 export const renderDailySummary = (input: DailySummaryInput): RenderedDailySummary => {
   const sections = dailySummarySectionOrder.map((key) => resolveSection(input, key));
-  const generatedAt = input.generatedAt ?? new Date();
-  const generatedTimestamp = formatGeneratedTimestamp(generatedAt, input.configuration.userTimeZone);
+  const generatedAt = input.generatedAt;
+  const generatedTimestamp = formatGeneratedTimestamp(generatedAt, input.userTimeZone);
   const openDailyUrl = canonicalOpenDailyUrl(input.openDailyUrl);
 
   return {
@@ -135,13 +158,13 @@ export const renderDailySummary = (input: DailySummaryInput): RenderedDailySumma
       sections,
       generatedAt,
       generatedTimestamp,
-      userTimeZone: input.configuration.userTimeZone,
+      userTimeZone: input.userTimeZone,
       openDailyUrl
     }),
     text: renderText({
       sections,
       generatedTimestamp,
-      userTimeZone: input.configuration.userTimeZone,
+      userTimeZone: input.userTimeZone,
       openDailyUrl
     })
   };
@@ -150,31 +173,26 @@ export const renderDailySummary = (input: DailySummaryInput): RenderedDailySumma
 const resolveSection = (input: DailySummaryInput, key: SummarySection): RenderedSection => {
   const state = input.sections[key];
   const label = fixedSectionLabels[key];
-  const explicitlyPaused = input.configuration.sectionPauses[key];
-  const status = explicitlyPaused
-    ? 'paused'
-    : state.status === 'available'
-      ? 'active'
-      : state.status;
-  const detail = explicitlyPaused
-    ? state.status === 'paused'
-      ? state.detail
-      : `${label} is paused.`
-    : state.detail;
-
-  return {
+  const content = 'content' in state ? state.content : undefined;
+  const renderedContent = {
     key,
     label,
-    status,
-    detail,
-    ...(!explicitlyPaused && state.status === 'unavailable' ? { reason: state.reason } : {}),
-    ...(key === 'weather' && !explicitlyPaused
-      ? { weatherSection: input.weatherSection ?? null }
-      : {}),
-    ...(key === 'calendar' ? { calendarSection: input.calendarSection } : {}),
-    ...(key === 'commute' ? { commuteSection: input.commuteSection } : {}),
-    ...(key === 'todo' ? { todoSection: input.todoSection } : {})
+    ...(content ? { content } : {})
   };
+
+  if (state.status === 'active') {
+    return {
+      ...renderedContent,
+      status: 'active',
+      ...('detail' in state ? { detail: state.detail } : {})
+    } as RenderedSection;
+  }
+
+  return {
+    ...renderedContent,
+    status: state.status,
+    message: state.status === 'unavailable' ? state.reason : state.detail
+  } as RenderedSection;
 };
 
 const renderHtml = ({
@@ -270,8 +288,8 @@ const renderSectionCell = (section: RenderedSection) => {
 
 const renderSectionHtmlContent = (section: RenderedSection): string => {
   if (section.status !== 'active') {
-    if (section.key === 'calendar' && section.status === 'empty' && section.calendarSection) {
-      return `${renderStateHtml(section)}${renderCalendarHtml(section.calendarSection)}`;
+    if (section.key === 'calendar' && section.status === 'empty' && section.content) {
+      return `${renderStateHtml(section)}${renderCalendarHtml(section.content)}`;
     }
 
     return renderStateHtml(section);
@@ -281,15 +299,15 @@ const renderSectionHtmlContent = (section: RenderedSection): string => {
 
   switch (section.key) {
     case 'weather':
-      return section.weatherSection
-        ? renderWeatherHtml(section.weatherSection)
-        : `${detail || '<p style="margin:0;color:#68756a;">Weather facts are ready.</p>'}`;
+      return section.content
+        ? renderWeatherHtml(section.content)
+        : detail;
     case 'commute':
-      return `${detail}${section.commuteSection ? renderCommuteHtml(section.commuteSection) : '<p style="margin:0;color:#68756a;">Commute facts are ready.</p>'}`;
+      return `${detail}${section.content ? renderCommuteHtml(section.content) : ''}`;
     case 'calendar':
-      return `${detail}${section.calendarSection && calendarSectionHasEvents(section.calendarSection) ? renderCalendarHtml(section.calendarSection) : '<p style="margin:0;color:#68756a;">Calendar facts are ready.</p>'}`;
+      return `${detail}${section.content && calendarSectionHasEvents(section.content) ? renderCalendarHtml(section.content) : ''}`;
     case 'todo':
-      return `${detail}${section.todoSection ? renderTodoHtml(section.todoSection) : '<p style="margin:0;color:#68756a;">Todo facts are ready.</p>'}`;
+      return `${detail}${section.content ? renderTodoHtml(section.content) : ''}`;
   }
 };
 
@@ -315,9 +333,7 @@ const renderWeatherHtml = (weather: WeatherDisplayForecast) => `
 const renderStateHtml = (section: RenderedSection) => {
   if (section.status === 'active') return '';
 
-  const message = section.reason ?? section.detail ?? defaultStateMessage(section.key, section.status);
-
-  return `<p style="margin:0 0 8px;color:#68756a;font-size:11px;line-height:1.3;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;">${escapeHtml(stateLabels[section.status])}</p><p style="margin:0;color:#172019;font-size:14px;line-height:1.5;">${escapeHtml(message)}</p>`;
+  return `<p style="margin:0 0 8px;color:#68756a;font-size:11px;line-height:1.3;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;">${escapeHtml(stateLabels[section.status])}</p><p style="margin:0;color:#172019;font-size:14px;line-height:1.5;">${escapeHtml(section.message)}</p>`;
 };
 
 const renderCommuteHtml = (section: CommuteSection) => {
@@ -421,8 +437,8 @@ const renderSectionTextContent = (section: RenderedSection): string => {
   if (section.status !== 'active') {
     const stateText = renderStateText(section);
 
-    return section.key === 'calendar' && section.status === 'empty' && section.calendarSection
-      ? `${stateText}\n\n${renderCalendarText(section.calendarSection)}`
+    return section.key === 'calendar' && section.status === 'empty' && section.content
+      ? `${stateText}\n\n${renderCalendarText(section.content)}`
       : stateText;
   }
 
@@ -430,25 +446,25 @@ const renderSectionTextContent = (section: RenderedSection): string => {
 
   switch (section.key) {
     case 'weather':
-      return section.weatherSection
-        ? renderWeatherText(section.weatherSection)
-        : detail.join('\n') || 'Weather facts are ready.';
+      return section.content
+        ? renderWeatherText(section.content)
+        : detail.join('\n');
     case 'commute':
       return [
         ...detail,
-        section.commuteSection ? renderCommuteText(section.commuteSection) : 'Commute facts are ready.'
+        section.content ? renderCommuteText(section.content) : ''
       ].filter(Boolean).join('\n');
     case 'calendar':
       return [
         ...detail,
-        section.calendarSection && calendarSectionHasEvents(section.calendarSection)
-          ? renderCalendarText(section.calendarSection)
-          : 'Calendar facts are ready.'
+        section.content && calendarSectionHasEvents(section.content)
+          ? renderCalendarText(section.content)
+          : ''
       ].filter(Boolean).join('\n');
     case 'todo':
       return [
         ...detail,
-        section.todoSection ? renderTodoText(section.todoSection) : 'Todo facts are ready.'
+        section.content ? renderTodoText(section.content) : ''
       ].filter(Boolean).join('\n');
   }
 };
@@ -496,7 +512,7 @@ const renderCalendarDayText = (day: NonNullable<CalendarSection['today']>) => [
 const renderStateText = (section: RenderedSection) => {
   if (section.status === 'active') return '';
 
-  return `${stateLabels[section.status]}\n${section.reason ?? section.detail ?? defaultStateMessage(section.key, section.status)}`;
+  return `${stateLabels[section.status]}\n${section.message}`;
 };
 
 const renderTodoText = (section: TodoSection) => [
@@ -507,27 +523,6 @@ const renderTodoText = (section: TodoSection) => [
 ].join('\n\n');
 
 const renderTodoTaskText = (task: TodoTask) => `${task.title} — ${urgencyLabel(task.urgency)}`;
-
-const defaultStateMessage = (section: SummarySection, status: Exclude<DailySummarySectionStatus, 'available' | 'active'>) => {
-  switch (status) {
-    case 'paused':
-      return `${fixedSectionLabels[section]} is paused.`;
-    case 'unconfigured':
-      return section === 'weather'
-        ? 'Choose a Weather Location to include local weather.'
-        : section === 'commute'
-          ? 'Add a Commute Route to include commute estimates.'
-          : 'Connect Google Calendar and select a Calendar to include Calendar Events.';
-    case 'empty':
-      return section === 'commute'
-        ? 'No Commute Routes are scheduled today.'
-        : section === 'calendar'
-          ? 'No Calendar Events are scheduled in the Week Ahead.'
-          : 'There are no active Todo Tasks.';
-    case 'unavailable':
-      return `${fixedSectionLabels[section]} is unavailable right now.`;
-  }
-};
 
 const formatMinutes = (durationMinutes: number | undefined) =>
   `${Number.isFinite(durationMinutes) ? Math.round(durationMinutes!) : '—'} minutes`;
@@ -579,9 +574,7 @@ const formatGeneratedTimestamp = (date: Date, userTimeZone: string) => {
   return `${localDate} at ${localTime}`;
 };
 
-const canonicalOpenDailyUrl = (value: string | undefined) => {
-  if (!value) return '/';
-
+const canonicalOpenDailyUrl = (value: string) => {
   try {
     const url = new URL(value, 'http://daily.local');
 

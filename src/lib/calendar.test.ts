@@ -253,18 +253,15 @@ describe('Calendar Section', () => {
       now: new Date('2026-07-08T10:00:00.000Z')
     });
     const rendered = renderDailySummary({
-      configuration: {
-        ...defaultSummaryConfiguration,
-        sectionPauses: { weather: true, commute: true, calendar: false, todo: true }
-      },
+      userTimeZone: defaultSummaryConfiguration.userTimeZone,
+      generatedAt: new Date('2026-07-08T10:00:00.000Z'),
+      openDailyUrl: '/',
       sections: {
-        weather: { status: 'available', label: 'Weather', detail: '' },
-        commute: { status: 'available', label: 'Commute', detail: '' },
-        calendar: { status: 'available', label: 'Calendar', detail: '' },
-        todo: { status: 'available', label: 'Todo', detail: '' }
-      },
-      calendarSection,
-      todoSection: null
+        weather: { status: 'paused', detail: 'Weather is paused.' },
+        commute: { status: 'paused', detail: 'Commute is paused.' },
+        calendar: { status: 'active', content: calendarSection },
+        todo: { status: 'paused', detail: 'Todo is paused.' }
+      }
     });
 
     expect(rendered.html).toContain('Included planning');

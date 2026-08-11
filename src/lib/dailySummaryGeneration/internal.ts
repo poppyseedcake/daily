@@ -133,19 +133,15 @@ const buildDailySummaryInput = async ({
   const todoSection = todoStateUnavailable ? null : buildTodoSection(todoCategories, todoTasks);
 
   return {
-    configuration,
+    userTimeZone: configuration.userTimeZone,
     generatedAt: new Date(now),
     openDailyUrl,
     sections: {
-      weather: weather.sectionState,
-      commute: commuteGeneration.sectionState,
-      calendar: calendarGeneration.sectionState,
-      todo: buildTodoGenerationState({ configuration, todoSection, todoStateUnavailable })
-    },
-    calendarSection: calendarGeneration.calendarSection,
-    commuteSection: commuteGeneration.commuteSection,
-    weatherSection: weather.weatherSection,
-    todoSection
+      weather,
+      commute: commuteGeneration,
+      calendar: calendarGeneration,
+      todo: buildTodoGenerationSection({ configuration, todoSection, todoStateUnavailable })
+    }
   };
 };
 
@@ -206,41 +202,27 @@ const buildCommuteGenerationResult = async ({ configuration, routes, days, setup
   provider: Pick<GoogleMapsRequestGateway, 'estimateCommute'> | undefined;
   mode: 'saved' | 'live';
   now: Date;
-}): Promise<{
-  commuteSection: DailySummaryInput['commuteSection'];
-  sectionState: DailySummaryInput['sections']['commute'];
-}> => {
+}): Promise<DailySummaryInput['sections']['commute']> => {
   const localDay = commuteDayByIsoDay[
     Temporal.Instant.fromEpochMilliseconds(now.getTime())
       .toZonedDateTimeISO(configuration.userTimeZone).dayOfWeek - 1
   ];
 
   if (configuration.sectionPauses.commute) {
-    return {
-      commuteSection: null,
-      sectionState: { status: 'paused', label: 'Commute', detail: 'Commute is paused.' }
-    };
+    return { status: 'paused', detail: 'Commute is paused.' };
   }
 
-  const unavailable = () => ({
-    commuteSection: null,
-    sectionState: {
-      status: 'unavailable' as const,
-      label: 'Commute',
-      reason: 'Live Commute is unavailable right now.'
-    }
+  const unavailable = (): DailySummaryInput['sections']['commute'] => ({
+    status: 'unavailable',
+    reason: 'Live Commute is unavailable right now.'
   });
 
   if (setupUnavailable) return unavailable();
 
   if (routes.length === 0) {
     return {
-      commuteSection: null,
-      sectionState: {
-        status: 'unconfigured',
-        label: 'Commute',
-        detail: 'Add a Commute Route to include commute estimates.'
-      }
+      status: 'unconfigured',
+      detail: 'Add a Commute Route to include commute estimates.'
     };
   }
 
@@ -249,19 +231,13 @@ const buildCommuteGenerationResult = async ({ configuration, routes, days, setup
   );
 
   if (enabledRoutes.length === 0) {
-    return {
-      commuteSection: null,
-      sectionState: {
-        status: 'empty',
-        label: 'Commute',
-        detail: 'No Commute Routes are scheduled today.'
-      }
-    };
+    return { status: 'empty', detail: 'No Commute Routes are scheduled today.' };
   }
 
   if (mode === 'saved') {
     return {
-      commuteSection: {
+      status: 'active',
+      content: {
         label: 'Commute',
         estimates: enabledRoutes.map((route) => ({
           ...commuteRouteLabels(route),
@@ -269,8 +245,7 @@ const buildCommuteGenerationResult = async ({ configuration, routes, days, setup
             ? { outcome: 'unavailable' as const }
             : { outcome: 'available' as const, durationMinutes: route.previewDurationMinutes })
         }))
-      },
-      sectionState: { status: 'active', label: 'Commute' }
+      }
     };
   }
 
@@ -326,11 +301,11 @@ const buildCommuteGenerationResult = async ({ configuration, routes, days, setup
     }
 
     return {
-      commuteSection: {
+      status: 'active',
+      content: {
         label: 'Commute',
         estimates
-      },
-      sectionState: { status: 'active', label: 'Commute' }
+      }
     };
   } catch {
     return unavailable();
@@ -345,29 +320,19 @@ const buildCalendarGenerationResult = ({
   calendarEvents: LoadedCalendarEvents;
   configuration: SummaryConfiguration;
   now: Date;
-}): {
-  calendarSection: DailySummaryInput['calendarSection'];
-  sectionState: DailySummaryInput['sections']['calendar'];
-} => {
+}): DailySummaryInput['sections']['calendar'] => {
   const { readiness: calendarReadiness, selectedCalendars, eventResult } = calendarEvents;
   if (configuration.sectionPauses.calendar) {
-    return {
-      calendarSection: null,
-      sectionState: { status: 'paused', label: 'Calendar', detail: 'Calendar is paused.' }
-    };
+    return { status: 'paused', detail: 'Calendar is paused.' };
   }
 
   if (calendarReadiness.status === 'demo') {
     return {
-      calendarSection: null,
-      sectionState: {
-        status: 'active',
-        label: 'Calendar',
-        detail: buildDemoCalendarSection({
-          userTimeZone: configuration.userTimeZone,
-          now
-        }).summaryDetail
-      }
+      status: 'active',
+      detail: buildDemoCalendarSection({
+        userTimeZone: configuration.userTimeZone,
+        now
+      }).summaryDetail
     };
   }
 
@@ -378,55 +343,35 @@ const buildCalendarGenerationResult = ({
 
     if (unavailable) {
       return {
-        calendarSection: null,
-        sectionState: {
-          status: 'unavailable',
-          label: 'Calendar',
-          reason: calendarReadiness.unavailableReason
-        }
+        status: 'unavailable',
+        reason: calendarReadiness.unavailableReason
       };
     }
 
     return {
-      calendarSection: null,
-      sectionState: {
-        status: 'unconfigured',
-        label: 'Calendar',
-        detail: calendarReadiness.unavailableReason
-      }
+      status: 'unconfigured',
+      detail: calendarReadiness.unavailableReason
     };
   }
 
   if (selectedCalendars.length === 0) {
     return {
-      calendarSection: null,
-      sectionState: {
-        status: 'unconfigured',
-        label: 'Calendar',
-        detail: 'Select a Calendar to include Calendar Events.'
-      }
+      status: 'unconfigured',
+      detail: 'Select a Calendar to include Calendar Events.'
     };
   }
 
   if (eventResult.outcome === 'not-requested') {
     return {
-      calendarSection: null,
-      sectionState: {
-        status: 'unavailable',
-        label: 'Calendar',
-        reason: 'Calendar preview is unavailable until Calendar Events can be loaded.'
-      }
+      status: 'unavailable',
+      reason: 'Calendar preview is unavailable until Calendar Events can be loaded.'
     };
   }
 
   if (eventResult.outcome === 'unavailable') {
     return {
-      calendarSection: null,
-      sectionState: {
-        status: 'unavailable',
-        label: 'Calendar',
-        reason: safeCalendarProviderReason(eventResult.reason)
-      }
+      status: 'unavailable',
+      reason: safeCalendarProviderReason(eventResult.reason)
     };
   }
 
@@ -437,12 +382,13 @@ const buildCalendarGenerationResult = ({
     now
   });
 
-  return {
-    calendarSection,
-    sectionState: calendarSectionHasEvents(calendarSection)
-      ? { status: 'active', label: 'Calendar' }
-      : { status: 'empty', label: 'Calendar', detail: 'No Calendar Events in the Week Ahead.' }
-  };
+  return calendarSectionHasEvents(calendarSection)
+    ? { status: 'active', content: calendarSection }
+    : {
+        status: 'empty',
+        detail: 'No Calendar Events in the Week Ahead.',
+        content: calendarSection
+      };
 };
 
 const buildWeatherGenerationState = async ({
@@ -461,40 +407,25 @@ const buildWeatherGenerationState = async ({
   weatherSummaryProvider?: WeatherSummaryProvider;
   assetOrigin: string;
   now: Date;
-}): Promise<{
-  sectionState: DailySummaryInput['sections']['weather'];
-  weatherSection: DailySummaryInput['weatherSection'];
-}> => {
+}): Promise<DailySummaryInput['sections']['weather']> => {
   if (configuration.sectionPauses.weather) {
     return {
-      sectionState: {
-        status: 'paused',
-        label: 'Weather',
-        detail: 'Weather is paused.'
-      },
-      weatherSection: null
+      status: 'paused',
+      detail: 'Weather is paused.'
     };
   }
 
   if (weatherLocationUnavailable) {
     return {
-      sectionState: {
-        status: 'unavailable',
-        label: 'Weather',
-        reason: 'Live weather is unavailable right now.'
-      },
-      weatherSection: null
+      status: 'unavailable',
+      reason: 'Live weather is unavailable right now.'
     };
   }
 
   if (!weatherLocation) {
     return {
-      sectionState: {
-        status: 'unconfigured',
-        label: 'Weather',
-        detail: 'Choose a Weather Location to include local weather.'
-      },
-      weatherSection: null
+      status: 'unconfigured',
+      detail: 'Choose a Weather Location to include local weather.'
     };
   }
 
@@ -511,12 +442,8 @@ const buildWeatherGenerationState = async ({
 
     if (forecastResult.outcome === 'unavailable') {
       return {
-        sectionState: {
-          status: 'unavailable',
-          label: 'Weather',
-          reason: forecastResult.reason
-        },
-        weatherSection: null
+        status: 'unavailable',
+        reason: forecastResult.reason
       };
     }
 
@@ -531,12 +458,8 @@ const buildWeatherGenerationState = async ({
 
     if (!weatherSection && forecastResult.forecast.currentTemperatureCelsius !== undefined) {
       return {
-        sectionState: {
-          status: 'unavailable',
-          label: 'Weather',
-          reason: 'Live weather is unavailable right now.'
-        },
-        weatherSection: null
+        status: 'unavailable',
+        reason: 'Live weather is unavailable right now.'
       };
     }
 
@@ -554,54 +477,56 @@ const buildWeatherGenerationState = async ({
       }
     }
 
-    return {
-      sectionState: buildWeatherSection({
-        forecast: forecastResult.forecast,
-        userTimeZone: configuration.userTimeZone,
-        now,
-        summary,
-        assetOrigin
-      }),
-      weatherSection: summary && displayWeatherSection
-        ? { ...displayWeatherSection, summary }
-        : displayWeatherSection
-    };
+    const state = buildWeatherSection({
+      forecast: forecastResult.forecast,
+      userTimeZone: configuration.userTimeZone,
+      now,
+      summary,
+      assetOrigin
+    });
+
+    if (state.status === 'unavailable') {
+      return { status: 'unavailable', reason: state.reason };
+    }
+
+    const content = summary && displayWeatherSection
+      ? { ...displayWeatherSection, summary }
+      : displayWeatherSection;
+
+    return content
+      ? { status: 'active', detail: state.detail, content }
+      : { status: 'active', detail: state.detail };
   } catch {
     return {
-      sectionState: {
-        status: 'unavailable',
-        label: 'Weather',
-        reason: 'Live weather is unavailable right now.'
-      },
-      weatherSection: null
+      status: 'unavailable',
+      reason: 'Live weather is unavailable right now.'
     };
   }
 };
 
-const buildTodoGenerationState = ({
+const buildTodoGenerationSection = ({
   configuration,
   todoSection,
   todoStateUnavailable
 }: {
   configuration: SummaryConfiguration;
-  todoSection: DailySummaryInput['todoSection'];
+  todoSection: ReturnType<typeof buildTodoSection>;
   todoStateUnavailable: boolean;
 }): DailySummaryInput['sections']['todo'] => {
   if (configuration.sectionPauses.todo) {
-    return { status: 'paused', label: 'Todo', detail: 'Todo is paused.' };
+    return { status: 'paused', detail: 'Todo is paused.' };
   }
 
   if (todoStateUnavailable) {
     return {
       status: 'unavailable',
-      label: 'Todo',
       reason: 'Todo data is temporarily unavailable.'
     };
   }
 
   return todoSection
-    ? { status: 'active', label: 'Todo' }
-    : { status: 'empty', label: 'Todo', detail: 'There are no active Todo Tasks.' };
+    ? { status: 'active', content: todoSection }
+    : { status: 'empty', detail: 'There are no active Todo Tasks.' };
 };
 
 const safeCalendarProviderReason = (reason: string) =>
