@@ -182,8 +182,8 @@ export const createScheduledDelivery = ({
           from: senderAddress(),
           subject: dailySummarySubject(
             'scheduled',
-            generated.input.generatedAt ?? processingStartedAt,
-            generated.input.configuration.userTimeZone
+            generated.input.generatedAt,
+            generated.input.userTimeZone
           ),
           html: generated.rendered.html,
           text: generated.rendered.text,

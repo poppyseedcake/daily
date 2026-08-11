@@ -377,10 +377,9 @@ describe('User Daily Summary generation', () => {
 
     expect(result.input.sections.todo).toEqual({
       status: 'unavailable',
-      label: 'Todo',
       reason: 'Todo data is temporarily unavailable.'
     });
-    expect(result.input.todoSection).toBeNull();
+    expect('content' in result.input.sections.todo).toBe(false);
     expect(result.rendered.text).toContain('Clear. Low 17C, high 26C.');
     expect(result.rendered.text).toContain(
       'Todo\nUnavailable\nTodo data is temporarily unavailable.'
@@ -402,7 +401,6 @@ describe('User Daily Summary generation', () => {
     expect(todoStore.load).not.toHaveBeenCalled();
     expect(result.input.sections.todo).toEqual({
       status: 'paused',
-      label: 'Todo',
       detail: 'Todo is paused.'
     });
     expect(result.rendered.text).not.toContain('should not load');

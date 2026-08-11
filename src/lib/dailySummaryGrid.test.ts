@@ -9,6 +9,9 @@ import {
 import { renderDailySummary } from './dailySummaryRenderer';
 
 const sectionKeys = ['weather', 'commute', 'calendar', 'todo'] as const;
+type SectionContent<Section> = Section extends { content?: infer Content } ? Content : never;
+const sectionContent = <Section extends object>(section: Section): SectionContent<Section> | null =>
+  ('content' in section ? section.content : null) as SectionContent<Section> | null;
 
 describe('Daily Grid renderer', () => {
   test('renders one fixed four-section presentation table in source and text order', () => {
@@ -88,8 +91,8 @@ describe('Daily Grid renderer', () => {
   test('authors plain text independently and preserves long non-ASCII values', () => {
     const fixture = buildDailySummaryExtremeContentFixture();
     const rendered = renderDailySummary(fixture);
-    const longTitle = fixture.todoSection?.uncategorizedTasks[0]?.title ?? '';
-    const calendarTitle = fixture.calendarSection?.today?.timedEvents[0]?.title ?? '';
+    const longTitle = sectionContent(fixture.sections.todo)?.uncategorizedTasks[0]?.title ?? '';
+    const calendarTitle = sectionContent(fixture.sections.calendar)?.today?.timedEvents[0]?.title ?? '';
 
     expect(rendered.html).toContain('&lt;script&gt;');
     expect(rendered.html).not.toContain('<script>');
@@ -114,15 +117,22 @@ describe('Daily Grid renderer', () => {
 
   test('keeps traffic descriptions hidden in HTML while stating them in plain text', () => {
     const fixture = buildDailySummaryFixture();
+    const commuteSection = sectionContent(fixture.sections.commute)!;
     const rendered = renderDailySummary({
       ...fixture,
-      commuteSection: {
-        ...fixture.commuteSection!,
-        estimates: [{
-          ...fixture.commuteSection!.estimates[0]!,
-          originLabel: 'Mokotów',
-          destinationLabel: 'Rondo Daszyńskiego'
-        }]
+      sections: {
+        ...fixture.sections,
+        commute: {
+          status: 'active',
+          content: {
+            ...commuteSection,
+            estimates: [{
+              ...commuteSection.estimates[0]!,
+              originLabel: 'Mokotów',
+              destinationLabel: 'Rondo Daszyńskiego'
+            }]
+          }
+        }
       }
     });
 

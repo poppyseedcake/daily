@@ -1,6 +1,5 @@
 import { Temporal } from '@js-temporal/polyfill';
 import { z } from 'zod';
-import type { DailySummarySectionStateFor } from './dailySummaryRenderer';
 import type { UserTimeZone } from './summaryConfiguration';
 import type { NormalizedWeatherSummaryInput } from './weatherSummaryContract';
 
@@ -36,6 +35,10 @@ export type WeatherDisplayForecast = {
   iconUrl: string;
   summary?: string;
 };
+
+type WeatherGenerationState =
+  | { status: 'active'; label: 'Weather'; detail: string }
+  | { status: 'unavailable'; label: 'Weather'; reason: string };
 
 export type DailyWeatherForecast = {
   dates: string[];
@@ -285,7 +288,7 @@ export const buildWeatherSection = ({
   now?: Date;
   summary?: string;
   assetOrigin?: string;
-}): DailySummarySectionStateFor<'weather'> => {
+}): WeatherGenerationState => {
   const isLegacyForecast = forecast.currentTemperatureCelsius === undefined;
 
   if (isLegacyForecast) {
@@ -538,7 +541,7 @@ const buildLegacyWeatherSection = (
   forecast: DailyWeatherForecast,
   userTimeZone: UserTimeZone,
   now: Date
-): DailySummarySectionStateFor<'weather'> => {
+): WeatherGenerationState => {
   const localDate = localDateFor(now, userTimeZone);
   const dayIndex = forecast.dates.indexOf(localDate);
   const weatherCode = forecast.weatherCodes[dayIndex];
@@ -582,7 +585,7 @@ const formatWeatherDetail = (display: WeatherDisplayForecast, summary?: string) 
 const formatMetric = (value: number) =>
   Number.isInteger(value) ? value.toString() : value.toFixed(1).replace(/\.0$/, '');
 
-const unavailableWeatherSection = (): DailySummarySectionStateFor<'weather'> => ({
+const unavailableWeatherSection = (): WeatherGenerationState => ({
   status: 'unavailable',
   label: 'Weather',
   reason: 'Live weather is unavailable right now.'

@@ -71,6 +71,11 @@ const generateDailySummaryInput = async (
   return (await generator.generate(undefined, { now, openDailyUrl })).input;
 };
 
+type SectionContent<Section> = Section extends { content?: infer Content } ? Content : never;
+
+const sectionContent = <Section extends object>(section: Section): SectionContent<Section> | null =>
+  ('content' in section ? section.content : null) as SectionContent<Section> | null;
+
 describe('Daily Summary generation', () => {
   test('generates a rendered Visitor Daily Summary from one Local Setup request', async () => {
     const result = await visitorDailySummaryGenerator.generate(createDefaultLocalSetup(), {
@@ -223,7 +228,7 @@ describe('Daily Summary generation', () => {
       now: new Date('2026-07-29T06:00:00.000Z')
     });
 
-    expect(input.commuteSection?.estimates).toEqual([
+    expect(sectionContent(input.sections.commute)?.estimates).toEqual([
       expect.objectContaining({ routeName: 'Office' })
     ]);
   });
@@ -321,7 +326,7 @@ describe('Daily Summary generation', () => {
     });
 
     expect(commuteEstimateProvider.estimateCommute).toHaveBeenCalledTimes(2);
-    expect(input.commuteSection?.estimates).toEqual([
+    expect(sectionContent(input.sections.commute)?.estimates).toEqual([
       {
         routeName: 'Office',
         originLabel: 'Mokotów',
@@ -378,7 +383,7 @@ describe('Daily Summary generation', () => {
       now: new Date('2026-07-08T06:00:00.000Z')
     });
 
-    expect(input.commuteSection?.estimates[0]).toEqual(expect.objectContaining({
+    expect(sectionContent(input.sections.commute)?.estimates[0]).toEqual(expect.objectContaining({
       outcome: 'available',
       durationMinutes: Math.round(durationMinutes),
       trafficLevel
@@ -421,7 +426,7 @@ describe('Daily Summary generation', () => {
     });
 
     expect(input.sections.commute.status).toBe('active');
-    expect(input.commuteSection?.estimates).toEqual([
+    expect(sectionContent(input.sections.commute)?.estimates).toEqual([
       { routeName: 'Office', originLabel: 'Home', destinationLabel: 'Office', outcome: 'unavailable' },
       expect.objectContaining({ routeName: 'School run', outcome: 'available', trafficLevel: 'moderate' })
     ]);
@@ -463,7 +468,7 @@ describe('Daily Summary generation', () => {
     });
 
     expect(input.sections.commute.status).toBe('active');
-    expect(input.commuteSection?.estimates).toEqual([
+    expect(sectionContent(input.sections.commute)?.estimates).toEqual([
       { routeName: 'Office', originLabel: 'Home', destinationLabel: 'Office', outcome: 'unavailable' },
       expect.objectContaining({ routeName: 'School run', outcome: 'available', trafficLevel: 'moderate' })
     ]);
@@ -494,10 +499,9 @@ describe('Daily Summary generation', () => {
 
     expect(input.sections.commute).toEqual({
       status: 'unavailable',
-      label: 'Commute',
       reason: 'Live Commute is unavailable right now.'
     });
-    expect(input.commuteSection).toBeNull();
+    expect(sectionContent(input.sections.commute)).toBeNull();
   });
 
   test.each([
@@ -651,10 +655,10 @@ describe('Daily Summary generation', () => {
     expect(rendered.html.indexOf('School drop-off')).toBeLessThan(rendered.html.indexOf('Team retro'));
     expect(rendered.text.indexOf('Weather')).toBeLessThan(rendered.text.indexOf('Calendar'));
     expect(rendered.text.indexOf('Calendar')).toBeLessThan(rendered.text.indexOf('Todo'));
-    expect(JSON.stringify(preview.calendarSection)).toContain('Team retro');
-    expect(JSON.stringify(preview.calendarSection)).not.toContain('Draft update');
-    expect(JSON.stringify(preview.todoSection)).toContain('Draft update');
-    expect(JSON.stringify(preview.todoSection)).not.toContain('Team retro');
+    expect(JSON.stringify(sectionContent(preview.sections.calendar))).toContain('Team retro');
+    expect(JSON.stringify(sectionContent(preview.sections.calendar))).not.toContain('Draft update');
+    expect(JSON.stringify(sectionContent(preview.sections.todo))).toContain('Draft update');
+    expect(JSON.stringify(sectionContent(preview.sections.todo))).not.toContain('Team retro');
   });
 
   test('keeps the seven-day Calendar structure when selected calendars have no eligible events', async () => {
@@ -670,13 +674,13 @@ describe('Daily Summary generation', () => {
     });
     const rendered = renderDailySummary(preview);
 
-    expect(preview.sections.calendar).toEqual({
+    expect(preview.sections.calendar).toMatchObject({
       status: 'empty',
-      label: 'Calendar',
       detail: 'No Calendar Events in the Week Ahead.'
     });
-    expect(preview.calendarSection).not.toBeNull();
-    expect([preview.calendarSection?.today, ...(preview.calendarSection?.weekAhead ?? [])]).toHaveLength(7);
+    const calendarSection = sectionContent(preview.sections.calendar);
+    expect(calendarSection).not.toBeNull();
+    expect([calendarSection?.today, ...(calendarSection?.weekAhead ?? [])]).toHaveLength(7);
     expect(rendered.text).toContain('Calendar\nNothing scheduled\nNo Calendar Events in the Week Ahead.');
     for (const label of ['Today', 'Thu, Jul 9', 'Fri, Jul 10', 'Sat, Jul 11', 'Sun, Jul 12', 'Mon, Jul 13', 'Tue, Jul 14']) {
       expect(rendered.text).toContain(label);
@@ -925,8 +929,8 @@ describe('Daily Summary generation', () => {
       nextTodoId: 3
     };
 
-    expect(preview.sections.commute).toMatchObject({ label: 'Commute' });
-    expect(preview.sections.calendar).toMatchObject({ label: 'Calendar' });
+    expect(preview.sections.commute.status).toBe('unconfigured');
+    expect(preview.sections.calendar.status).toBe('active');
     expect(persistedUserSetup).not.toHaveProperty('weather');
     expect(persistedUserSetup).not.toHaveProperty('commute');
     expect(persistedUserSetup).not.toHaveProperty('calendar');
@@ -958,10 +962,9 @@ describe('Daily Summary generation', () => {
     });
     const rendered = renderDailySummary(preview);
 
-    expect(preview.todoSection).toBeNull();
+    expect(sectionContent(preview.sections.todo)).toBeNull();
     expect(preview.sections.todo).toEqual({
       status: 'unavailable',
-      label: 'Todo',
       reason: 'Todo data is temporarily unavailable.'
     });
     expect(rendered.text).toContain(
@@ -984,7 +987,6 @@ describe('Daily Summary generation', () => {
 
     expect(preview.sections.todo).toEqual({
       status: 'paused',
-      label: 'Todo',
       detail: 'Todo is paused.'
     });
     expect(rendered.text).toContain('Todo\nPaused\nTodo is paused.');

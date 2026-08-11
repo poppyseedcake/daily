@@ -1,9 +1,5 @@
 import type { CalendarSection } from './calendar';
 import {
-  defaultSummaryConfiguration,
-  type SummaryConfiguration
-} from './summaryConfiguration';
-import {
   buildTodoSection,
   type TodoCategory,
   type TodoTask
@@ -11,57 +7,55 @@ import {
 import type { DailySummaryInput, RenderedDailySummary } from './dailySummaryRenderer';
 
 const fixtureGeneratedAt = new Date('2026-07-31T05:00:00.000Z');
+const fixtureUserTimeZone = 'Europe/Warsaw';
 
 export const buildDailySummaryFixture = (): DailySummaryInput => {
   const todoSection = buildTodoSection(fixtureTodoCategories, fixtureTodoTasks);
+  const commuteSection = {
+    label: 'Commute' as const,
+    estimates: [
+      {
+        routeName: 'Office',
+        outcome: 'available' as const,
+        durationMinutes: 24,
+        trafficLevel: 'light' as const,
+        trafficDescription: 'Light traffic'
+      },
+      {
+        routeName: 'School run',
+        outcome: 'available' as const,
+        durationMinutes: 41,
+        trafficLevel: 'heavy' as const,
+        trafficDescription: 'Heavy traffic'
+      }
+    ]
+  };
 
   return {
-    configuration: fixtureConfiguration,
+    userTimeZone: fixtureUserTimeZone,
     generatedAt: new Date(fixtureGeneratedAt),
     openDailyUrl: 'https://daily.example.test/?utm_source=fixture#fixture',
     sections: {
       weather: {
         status: 'active',
-        label: 'Weather',
         detail: 'Partly cloudy · Warsaw · 18°C now · Low 14°C · High 23°C · 20% chance of precipitation · Wind 6 km/h.'
       },
       commute: {
         status: 'active',
-        label: 'Commute',
-        detail: 'Two scheduled Commute Routes.'
+        detail: 'Two scheduled Commute Routes.',
+        content: commuteSection
       },
       calendar: {
         status: 'active',
-        label: 'Calendar',
-        detail: 'Calendar Events for the Week Ahead.'
+        detail: 'Calendar Events for the Week Ahead.',
+        content: fixtureCalendarSection
       },
       todo: {
         status: 'active',
-        label: 'Todo',
-        detail: 'Active Todo Tasks.'
+        detail: 'Active Todo Tasks.',
+        content: todoSection!
       }
-    },
-    commuteSection: {
-      label: 'Commute',
-      estimates: [
-        {
-          routeName: 'Office',
-          outcome: 'available',
-          durationMinutes: 24,
-          trafficLevel: 'light',
-          trafficDescription: 'Light traffic'
-        },
-        {
-          routeName: 'School run',
-          outcome: 'available',
-          durationMinutes: 41,
-          trafficLevel: 'heavy',
-          trafficDescription: 'Heavy traffic'
-        }
-      ]
-    },
-    calendarSection: fixtureCalendarSection,
-    todoSection
+    }
   };
 };
 
@@ -69,9 +63,17 @@ export const buildDailySummaryNarrowFixture = (): DailySummaryInput => buildDail
 
 export const buildDailySummaryBlockedImageFixture = (): DailySummaryInput => {
   // Decorative image metadata is intentionally absent from the presentation model.
+  const fixture = buildDailySummaryDenseAllActiveFixture();
+
   return {
-    ...buildDailySummaryDenseAllActiveFixture(),
-    weatherSection: null
+    ...fixture,
+    sections: {
+      ...fixture.sections,
+      weather: {
+        status: 'active',
+        detail: 'Partly cloudy · Warszawa · Żółć and long summer forecast context for the release candidate.'
+      }
+    }
   };
 };
 
@@ -81,37 +83,41 @@ export const buildDailySummaryExtremeContentFixture = (): DailySummaryInput => {
 
   return {
     ...fixture,
-    weatherSection: null,
     sections: {
       ...fixture.sections,
       weather: {
         status: 'active',
-        label: 'Weather <script>',
         detail: `${longValue} · 18°C now.`
-      }
-    },
-    calendarSection: {
-      ...fixture.calendarSection!,
-      today: {
-        ...fixture.calendarSection!.today!,
-        timedEvents: [
-          {
-            ...fixture.calendarSection!.today!.timedEvents[0]!,
-            title: longValue
+      },
+      calendar: {
+        status: 'active',
+        content: {
+          ...denseCalendarSection,
+          today: {
+            ...denseCalendarSection.today!,
+            timedEvents: [
+              {
+                ...denseCalendarSection.today!.timedEvents[0]!,
+                title: longValue
+              }
+            ]
           }
-        ]
-      }
-    },
-    todoSection: {
-      label: 'Todo Tasks',
-      uncategorizedTasks: [
-        {
-          ...fixture.todoSection!.uncategorizedTasks[0]!,
-          title: longValue,
-          urgency: 'high'
         }
-      ],
-      categoryGroups: []
+      },
+      todo: {
+        status: 'active',
+        content: {
+          label: 'Todo Tasks',
+          uncategorizedTasks: [
+            {
+              ...denseTodoTasks[0]!,
+              title: longValue,
+              urgency: 'high'
+            }
+          ],
+          categoryGroups: []
+        }
+      }
     }
   };
 };
@@ -124,72 +130,68 @@ export const buildDailySummaryDenseAllActiveFixture = (): DailySummaryInput => {
     sections: {
       weather: {
         status: 'active',
-        label: 'Weather',
-        detail: 'Partly cloudy · Warszawa · Żółć and long summer forecast context for the release candidate.'
+        detail: 'Partly cloudy · Warszawa · Żółć and long summer forecast context for the release candidate.',
+        content: {
+          observedAtLocal: '2026-07-31T07:00',
+          currentTemperatureCelsius: 18,
+          minimumTemperatureCelsius: 14,
+          maximumTemperatureCelsius: 27,
+          maximumPrecipitationProbabilityPercent: 35,
+          maximumWindSpeedKmh: 24,
+          dailyWeatherCode: 2,
+          conditionText: 'Partly cloudy',
+          conditionCategory: 'partly-cloudy',
+          iconUrl: 'https://daily.example.test/weather-icons/partly-cloudy.png',
+          summary: 'Żółć: chmury mogą ustąpić po południu; keep a light jacket for the evening.'
+        }
       },
       commute: {
         status: 'active',
-        label: 'Commute',
-        detail: 'Three scheduled routes with saved names, locations, traffic descriptions, and long labels.'
+        detail: 'Three scheduled routes with saved names, locations, traffic descriptions, and long labels.',
+        content: {
+          label: 'Commute',
+          estimates: [
+            {
+              routeName: 'Biuro i spotkania klientów',
+              originLabel: 'Mokotów',
+              destinationLabel: 'Rondo Daszyńskiego — centrum Warszawy',
+              outcome: 'available',
+              durationMinutes: 29,
+              trafficLevel: 'moderate',
+              trafficDescription: 'Moderate traffic'
+            },
+            {
+              routeName: 'Lotnisko Ławica',
+              originLabel: 'Jeżyce — Poznań',
+              destinationLabel: 'Port lotniczy Poznań-Ławica',
+              outcome: 'available',
+              durationMinutes: 48,
+              trafficLevel: 'heavy',
+              trafficDescription: 'Heavy traffic'
+            },
+            {
+              routeName: 'Żłobek i zakupy',
+              originLabel: 'Home',
+              destinationLabel: 'Rynek Starego Miasta',
+              outcome: 'available',
+              durationMinutes: 17,
+              trafficLevel: 'light',
+              trafficDescription: 'Light traffic'
+            }
+          ]
+        }
       },
       calendar: {
         status: 'active',
-        label: 'Calendar',
-        detail: 'Seven local dates with timed and all-day Calendar Events, including non-ASCII titles.'
+        detail: 'Seven local dates with timed and all-day Calendar Events, including non-ASCII titles.',
+        content: denseCalendarSection
       },
       todo: {
         status: 'active',
-        label: 'Todo',
-        detail: 'Uncategorized and categorized Todo Tasks with long titles and all urgency levels.'
+        detail: 'Uncategorized and categorized Todo Tasks with long titles and all urgency levels.',
+        content: buildTodoSection(denseTodoCategories, denseTodoTasks)!
       }
-    },
-    weatherSection: {
-      observedAtLocal: '2026-07-31T07:00',
-      currentTemperatureCelsius: 18,
-      minimumTemperatureCelsius: 14,
-      maximumTemperatureCelsius: 27,
-      maximumPrecipitationProbabilityPercent: 35,
-      maximumWindSpeedKmh: 24,
-      dailyWeatherCode: 2,
-      conditionText: 'Partly cloudy',
-      conditionCategory: 'partly-cloudy',
-      iconUrl: 'https://daily.example.test/weather-icons/partly-cloudy.png',
-      summary: 'Żółć: chmury mogą ustąpić po południu; keep a light jacket for the evening.'
-    },
-    commuteSection: {
-      label: 'Commute',
-      estimates: [
-        {
-          routeName: 'Biuro i spotkania klientów',
-          originLabel: 'Mokotów',
-          destinationLabel: 'Rondo Daszyńskiego — centrum Warszawy',
-          outcome: 'available',
-          durationMinutes: 29,
-          trafficLevel: 'moderate',
-          trafficDescription: 'Moderate traffic'
-        },
-        {
-          routeName: 'Lotnisko Ławica',
-          originLabel: 'Jeżyce — Poznań',
-          destinationLabel: 'Port lotniczy Poznań-Ławica',
-          outcome: 'available',
-          durationMinutes: 48,
-          trafficLevel: 'heavy',
-          trafficDescription: 'Heavy traffic'
-        },
-        {
-          routeName: 'Żłobek i zakupy',
-          originLabel: 'Home',
-          destinationLabel: 'Rynek Starego Miasta',
-          outcome: 'available',
-          durationMinutes: 17,
-          trafficLevel: 'light',
-          trafficDescription: 'Light traffic'
-        }
-      ]
-    },
-    calendarSection: denseCalendarSection,
-    todoSection: buildTodoSection(denseTodoCategories, denseTodoTasks)
+    }
   };
 };
 
@@ -252,23 +254,26 @@ const stateFixture = (
   baseFixture: DailySummaryInput = buildDailySummaryFixture()
 ): DailySummaryInput => {
   const fixture = baseFixture;
+  const calendarContent =
+    fixture.sections.calendar.status === 'active' && 'content' in fixture.sections.calendar
+      ? fixture.sections.calendar.content
+      : undefined;
   const nextSections = {
     weather: stateFor('weather', states.weather, fixture.sections.weather),
     commute: stateFor('commute', states.commute, fixture.sections.commute),
-    calendar: stateFor('calendar', states.calendar, fixture.sections.calendar),
+    calendar: states.calendar === 'empty' && calendarContent
+      ? {
+          status: 'empty' as const,
+          detail: 'Calendar empty',
+          content: emptyCalendarSectionFor(calendarContent)
+        }
+      : stateFor('calendar', states.calendar, fixture.sections.calendar),
     todo: stateFor('todo', states.todo, fixture.sections.todo)
   } as DailySummaryInput['sections'];
 
   return {
     ...fixture,
-    sections: nextSections,
-    commuteSection: states.commute === 'active' ? fixture.commuteSection : null,
-    calendarSection: states.calendar === 'active'
-      ? fixture.calendarSection
-      : states.calendar === 'empty'
-        ? emptyCalendarSectionFor(fixture.calendarSection!)
-        : null,
-    todoSection: states.todo === 'active' ? fixture.todoSection : null
+    sections: nextSections
   };
 };
 
@@ -282,8 +287,8 @@ const stateFor = <Section extends keyof StateMatrix>(
   const detail = `${capitalize(section)} ${status}`;
 
   return status === 'unavailable'
-    ? { status, label: capitalize(section), reason: `${detail}: provider unavailable.` }
-    : { status, label: capitalize(section), detail };
+    ? { status, reason: `${detail}: provider unavailable.` }
+    : { status, detail };
 };
 
 const stateCopy = {
@@ -315,12 +320,6 @@ const emptyCalendarSectionFor = (section: CalendarSection): CalendarSection => (
     timedEvents: []
   }))
 });
-
-const fixtureConfiguration: SummaryConfiguration = {
-  ...defaultSummaryConfiguration,
-  userTimeZone: 'Europe/Warsaw',
-  sectionPauses: { weather: false, commute: false, calendar: false, todo: false }
-};
 
 const fixtureTodoCategories: TodoCategory[] = [];
 const fixtureTodoTasks: TodoTask[] = [
