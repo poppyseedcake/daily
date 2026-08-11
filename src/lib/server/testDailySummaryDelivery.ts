@@ -1,11 +1,11 @@
 import type { DeliveryRecordInput } from '$lib/deliveryRecords';
+import type { DailySummaryGenerationResult } from '$lib/dailySummaryGeneration';
 import { dailySummarySubject } from '$lib/dailySummaryRenderer';
 import type {
   DailySummaryDeliveryErrorClassification,
   DailySummaryDeliveryProvider
 } from './dailySummaryDelivery';
 import { DailySummaryDeliveryError } from './dailySummaryDelivery';
-import type { ScheduledDailySummaryGenerationResult } from './scheduledDailySummaryGeneration';
 
 type TestDailySummaryDeliveryRecordStore = {
   recordAttempt(userId: string, record: DeliveryRecordInput): Promise<void>;
@@ -23,7 +23,7 @@ export type TestDailySummaryDeliveryRequest = {
   userId: string;
   summaryRecipient: string;
   requestedAt: string;
-  generated: ScheduledDailySummaryGenerationResult;
+  generated: DailySummaryGenerationResult;
 };
 
 const testDeliveryFailureMessage = (

@@ -15,8 +15,8 @@ import {
   dailySummaryDeliveryProvider,
   dailySummarySenderAddress
 } from '$lib/server/dailySummaryDelivery';
-import { buildCalendarGenerationResult } from '$lib/dailySummaryPreview';
 import { calendarReadinessForAuthMode } from '$lib/calendarReadiness';
+import { buildCalendarAgenda } from '$lib/calendar';
 import {
   googleCalendarEventProvider,
   googleCalendarListProvider,
@@ -33,18 +33,13 @@ import {
   summaryConfigurationSchema
 } from '$lib/summaryConfiguration';
 import { createDefaultTodoState } from '$lib/todo';
-import { googleMapsOperations } from '$lib/server/googleMapsOperations';
 import { toDeliveryHistoryRecord } from '$lib/deliveryRecords';
 import { userLifecycleStore } from '$lib/server/db/userLifecycleStore';
 import { accountDeletionStore } from '$lib/server/db/accountDeletionStore';
 import { accountDeletionConfirmation } from '$lib/accountDeletion';
 import { deleteDailyAccount } from '$lib/server/accountDeletion';
-import { openAiWeatherSummaryProvider } from '$lib/server/weatherSummaryProvider';
-import { openMeteoWeatherForecastProvider } from '$lib/weatherForecast';
-import {
-  createDailySummaryGenerator,
-  ScheduledDailySummaryUserNotActiveError
-} from '$lib/server/scheduledDailySummaryGeneration';
+import { createProductionUserDailySummaryGenerator } from '$lib/server/productionUserDailySummaryGeneration';
+import { UserDailySummaryNotActiveError } from '$lib/dailySummaryGeneration/server';
 import { createTestDailySummaryDelivery } from '$lib/server/testDailySummaryDelivery';
 import { defaultCommuteDays } from '$lib/commuteRoute';
 import { env } from '$env/dynamic/private';
@@ -65,14 +60,6 @@ const deletingUserTestDeliveryFailure = {
 const rejectTestDeliveryForInactiveUser = async (userId: string) =>
   (await userLifecycleStore.isActive(userId)) ? null : deletingUserTestDeliveryFailure;
 
-const commuteEstimateProviderFor = (userId: string) => {
-  try {
-    return googleMapsOperations.requestGateway({ mode: 'user', userId });
-  } catch {
-    return undefined;
-  }
-};
-
 const userCalendarEvents = createUserCalendarEvents({
   connectionStore: userCalendarConnectionStore,
   loadAccessToken: loadGoogleCalendarAccessToken,
@@ -81,17 +68,7 @@ const userCalendarEvents = createUserCalendarEvents({
   isAuthorizationFailure: isGoogleCalendarAuthorizationFailure
 });
 
-const dailySummaryGenerator = createDailySummaryGenerator({
-  userLifecycleStore,
-  configurationStore: userSummaryConfigurationStore,
-  todoStore: userTodoStore,
-  weatherLocationStore: userWeatherLocationStore,
-  commuteSetupStore: userCommuteSetupStore,
-  calendarEvents: userCalendarEvents,
-  weatherProvider: openMeteoWeatherForecastProvider,
-  weatherSummaryProvider: openAiWeatherSummaryProvider,
-  commuteEstimateProvider: (userId) => commuteEstimateProviderFor(userId)
-});
+const dailySummaryGenerator = createProductionUserDailySummaryGenerator(userCalendarEvents);
 
 const testDailySummaryDelivery = createTestDailySummaryDelivery({
   deliveryProvider: dailySummaryDeliveryProvider,
@@ -273,38 +250,37 @@ export const load = async ({ request }) => {
           }
           let generatedSummary;
           try {
-            generatedSummary = await dailySummaryGenerator.generate(authState.userId, {
-              configuration: validConfiguration.data,
-              openDailyUrl,
-              now: calendarNow,
-              calendarEvents: loadedPageCalendar?.calendarEvents
-            });
+            generatedSummary = await dailySummaryGenerator.generate(
+              {
+                userId: authState.userId,
+                ...(loadedPageCalendar
+                  ? {
+                      snapshot: {
+                        configuration: validConfiguration.data,
+                        calendarEvents: loadedPageCalendar.calendarEvents,
+                        generatedAt: calendarNow
+                      }
+                    }
+                  : {})
+              },
+              { openDailyUrl }
+            );
           } catch (error) {
-            if (error instanceof ScheduledDailySummaryUserNotActiveError) {
+            if (error instanceof UserDailySummaryNotActiveError) {
               return null;
             }
 
             throw error;
           }
-          // The dashboard Calendar agenda is independent from the Calendar
-          // Summary Section, so pausing the Summary must not hide page context.
-          const calendarAgenda = loadedPageCalendar
-            ? buildCalendarGenerationResult({
-                calendarEvents: loadedPageCalendar.calendarEvents,
-                configuration: {
-                  ...validConfiguration.data,
-                  sectionPauses: {
-                    ...validConfiguration.data.sectionPauses,
-                    calendar: false
-                  }
-                },
-                now: calendarNow
-              })
-            : null;
-
           return {
             html: generatedSummary.rendered.html,
-            calendarSection: calendarAgenda?.calendarSection ?? null
+            calendarSection: loadedPageCalendar
+              ? buildCalendarAgenda({
+                  calendarEvents: loadedPageCalendar.calendarEvents,
+                  userTimeZone: validConfiguration.data.userTimeZone,
+                  now: calendarNow
+                })
+              : null
           };
         })()
       : null;
@@ -410,12 +386,12 @@ export const actions = {
 
     let generatedSummary;
     try {
-      generatedSummary = await dailySummaryGenerator.generate(authState.userId, {
-        configuration: validConfiguration.data,
-        openDailyUrl
-      });
+      generatedSummary = await dailySummaryGenerator.generate(
+        { userId: authState.userId, configuration: validConfiguration.data },
+        { openDailyUrl }
+      );
     } catch (error) {
-      if (error instanceof ScheduledDailySummaryUserNotActiveError) {
+      if (error instanceof UserDailySummaryNotActiveError) {
         return deletingUserTestDeliveryFailure;
       }
 

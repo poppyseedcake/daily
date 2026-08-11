@@ -1,10 +1,17 @@
 import { describe, expect, test, vi } from 'vitest';
-import { buildDailySummaryInput } from './dailySummaryPreview';
+import {
+  createDailySummaryGenerator,
+  type DailySummaryGenerationContext,
+  type DailySummaryGenerationOptions
+} from './dailySummaryGeneration/internal';
+import { visitorDailySummaryGenerator } from './dailySummaryGeneration';
 import { renderDailySummary } from './dailySummaryRenderer';
+import { createDefaultLocalSetup } from './localSetup';
 import type { SummaryConfiguration } from './summaryConfiguration';
 import type { TodoCategory, TodoTask } from './todo';
 import type { CommuteRoute } from './commuteRoute';
 import type { CalendarProviderEvent, LoadedCalendarEvents } from './calendar';
+import { calendarReadinessForAuthMode } from './calendarReadiness';
 import type { SavedSelectedCalendar } from './selectedCalendars';
 
 const configuration: SummaryConfiguration = {
@@ -53,7 +60,29 @@ const connectedCalendarEvents = (
   eventResult
 });
 
-describe('Daily Summary preview input', () => {
+const generateDailySummaryInput = async (
+  setup: DailySummaryGenerationContext & DailySummaryGenerationOptions
+) => {
+  const { now, openDailyUrl, ...context } = setup;
+  const generator = createDailySummaryGenerator<void>({
+    source: { load: () => context }
+  });
+
+  return (await generator.generate(undefined, { now, openDailyUrl })).input;
+};
+
+describe('Daily Summary generation', () => {
+  test('generates a rendered Visitor Daily Summary from one Local Setup request', async () => {
+    const result = await visitorDailySummaryGenerator.generate(createDefaultLocalSetup(), {
+      now: new Date('2026-07-08T10:00:00.000Z'),
+      openDailyUrl: 'https://daily.example/'
+    });
+
+    expect(result.input.generatedAt).toEqual(new Date('2026-07-08T10:00:00.000Z'));
+    expect(result.rendered.text).toContain('Demo Calendar');
+    expect(result.rendered.html).toContain('href="https://daily.example/"');
+  });
+
   test('renders validated Weather facts and an optional Luna sentence without leaking location data', async () => {
     const summaryInput = {
       units: {
@@ -107,7 +136,7 @@ describe('Daily Summary preview input', () => {
       }
     };
 
-    const input = await buildDailySummaryInput({
+    const input = await generateDailySummaryInput({
       configuration: { ...configuration, userTimeZone: 'UTC' },
       todoCategories: [],
       todoTasks: [],
@@ -145,7 +174,7 @@ describe('Daily Summary preview input', () => {
       estimateCommute: vi.fn().mockRejectedValue(new Error('preview must not call Routes API'))
     };
 
-    const preview = await buildDailySummaryInput({
+    const preview = await generateDailySummaryInput({
       configuration,
       todoCategories,
       todoTasks,
@@ -185,7 +214,7 @@ describe('Daily Summary preview input', () => {
       }
     ];
 
-    const input = await buildDailySummaryInput({
+    const input = await generateDailySummaryInput({
       configuration: { ...configuration, userTimeZone: 'UTC' },
       todoCategories: [],
       todoTasks: [],
@@ -200,7 +229,7 @@ describe('Daily Summary preview input', () => {
   });
 
   test('keeps route-labeled Commute in fixed HTML and text order with the canonical appearance', async () => {
-    const preview = await buildDailySummaryInput({
+    const preview = await generateDailySummaryInput({
       configuration,
       todoCategories,
       todoTasks,
@@ -233,7 +262,7 @@ describe('Daily Summary preview input', () => {
       { id: 'school', name: 'School run', days: ['wednesday'], enabled: true, origin: { label: 'Home', latitude: 40.1, longitude: -73.9 }, destination: { label: 'School', latitude: 40.6, longitude: -73.7 } }
     ];
 
-    const preview = await buildDailySummaryInput({
+    const preview = await generateDailySummaryInput({
       configuration,
       todoCategories,
       todoTasks,
@@ -281,7 +310,7 @@ describe('Daily Summary preview input', () => {
       }
     ];
 
-    const input = await buildDailySummaryInput({
+    const input = await generateDailySummaryInput({
       configuration: { ...configuration, userTimeZone: 'UTC' },
       todoCategories: [],
       todoTasks,
@@ -327,7 +356,7 @@ describe('Daily Summary preview input', () => {
     staticDurationMinutes,
     trafficLevel
   ) => {
-    const input = await buildDailySummaryInput({
+    const input = await generateDailySummaryInput({
       configuration: { ...configuration, userTimeZone: 'UTC' },
       todoCategories: [],
       todoTasks: [],
@@ -357,7 +386,7 @@ describe('Daily Summary preview input', () => {
   });
 
   test('keeps one route failure local when another live route succeeds', async () => {
-    const input = await buildDailySummaryInput({
+    const input = await generateDailySummaryInput({
       configuration: { ...configuration, userTimeZone: 'UTC' },
       todoCategories: [],
       todoTasks: [],
@@ -399,7 +428,7 @@ describe('Daily Summary preview input', () => {
   });
 
   test('keeps a successful route when another route hits a systemic suspension', async () => {
-    const input = await buildDailySummaryInput({
+    const input = await generateDailySummaryInput({
       configuration: { ...configuration, userTimeZone: 'UTC' },
       todoCategories: [],
       todoTasks: [],
@@ -441,7 +470,7 @@ describe('Daily Summary preview input', () => {
   });
 
   test('turns an all-route systemic failure into unavailable Commute', async () => {
-    const input = await buildDailySummaryInput({
+    const input = await generateDailySummaryInput({
       configuration: { ...configuration, userTimeZone: 'UTC' },
       todoCategories: [],
       todoTasks: [],
@@ -477,7 +506,7 @@ describe('Daily Summary preview input', () => {
     ['empty weekday selection', {}, []]
   ] as const)('keeps the Commute state visible without estimate requests for %s', async (_case, configurationPatch, commuteDays) => {
     const commuteEstimateProvider = { estimateCommute: vi.fn() };
-    const preview = await buildDailySummaryInput({
+    const preview = await generateDailySummaryInput({
       configuration: { ...configuration, ...configurationPatch },
       todoCategories,
       todoTasks,
@@ -493,7 +522,7 @@ describe('Daily Summary preview input', () => {
   });
 
   test('keeps a protected estimate suspension local to the Commute Section', async () => {
-    const preview = await buildDailySummaryInput({
+    const preview = await generateDailySummaryInput({
       configuration,
       todoCategories,
       todoTasks,
@@ -510,7 +539,7 @@ describe('Daily Summary preview input', () => {
     expect(rendered.text).toContain('Todo\nUncategorized');
   });
   test('renders Visitor setup with Demo Calendar through the Daily Summary input shape', async () => {
-    const visitorPreview = await buildDailySummaryInput({
+    const visitorPreview = await generateDailySummaryInput({
       configuration,
       todoCategories,
       todoTasks
@@ -524,11 +553,15 @@ describe('Daily Summary preview input', () => {
   });
 
   test('renders signed-in User Calendar as unavailable until Calendar is connected', async () => {
-    const preview = await buildDailySummaryInput({
-      authMode: 'user',
+    const preview = await generateDailySummaryInput({
       configuration,
       todoCategories,
-      todoTasks
+      todoTasks,
+      calendarEvents: {
+        readiness: calendarReadinessForAuthMode('user'),
+        selectedCalendars: [],
+        eventResult: { outcome: 'not-requested' }
+      }
     });
     const rendered = renderDailySummary(preview);
 
@@ -539,7 +572,7 @@ describe('Daily Summary preview input', () => {
   });
 
   test('does not render a connected Calendar placeholder as available event data', async () => {
-    const preview = await buildDailySummaryInput({
+    const preview = await generateDailySummaryInput({
       configuration,
       todoCategories,
       todoTasks,
@@ -594,8 +627,7 @@ describe('Daily Summary preview input', () => {
           endDate: '2026-07-10'
         }];
 
-    const preview = await buildDailySummaryInput({
-      authMode: 'user',
+    const preview = await generateDailySummaryInput({
       configuration,
       todoCategories,
       todoTasks,
@@ -626,8 +658,7 @@ describe('Daily Summary preview input', () => {
   });
 
   test('keeps the seven-day Calendar structure when selected calendars have no eligible events', async () => {
-    const preview = await buildDailySummaryInput({
-      authMode: 'user',
+    const preview = await generateDailySummaryInput({
       configuration,
       todoCategories,
       todoTasks,
@@ -653,8 +684,7 @@ describe('Daily Summary preview input', () => {
   });
 
   test('renders an unconfigured Calendar state when no calendars are selected', async () => {
-    const preview = await buildDailySummaryInput({
-      authMode: 'user',
+    const preview = await generateDailySummaryInput({
       configuration,
       todoCategories,
       todoTasks,
@@ -669,8 +699,7 @@ describe('Daily Summary preview input', () => {
   });
 
   test('renders Calendar provider failures as unavailable without failing other Summary Sections', async () => {
-    const preview = await buildDailySummaryInput({
-      authMode: 'user',
+    const preview = await generateDailySummaryInput({
       configuration,
       todoCategories,
       todoTasks,
@@ -688,8 +717,7 @@ describe('Daily Summary preview input', () => {
   });
 
   test('renders the provider reconnect reason when Calendar credentials were revoked', async () => {
-    const preview = await buildDailySummaryInput({
-      authMode: 'user',
+    const preview = await generateDailySummaryInput({
       configuration,
       todoCategories,
       todoTasks,
@@ -709,8 +737,7 @@ describe('Daily Summary preview input', () => {
   });
 
   test('does not expose an arbitrary Calendar provider failure reason', async () => {
-    const preview = await buildDailySummaryInput({
-      authMode: 'user',
+    const preview = await generateDailySummaryInput({
       configuration,
       todoCategories,
       todoTasks,
@@ -731,8 +758,7 @@ describe('Daily Summary preview input', () => {
   });
 
   test('keeps signed-in User Calendar paused when the Summary Section is disabled', async () => {
-    const preview = await buildDailySummaryInput({
-      authMode: 'user',
+    const preview = await generateDailySummaryInput({
       configuration: {
         ...configuration,
         sectionPauses: { ...configuration.sectionPauses, calendar: true }
@@ -768,7 +794,7 @@ describe('Daily Summary preview input', () => {
       })
     };
 
-    const preview = await buildDailySummaryInput({
+    const preview = await generateDailySummaryInput({
       configuration,
       todoCategories,
       todoTasks,
@@ -810,7 +836,7 @@ describe('Daily Summary preview input', () => {
       summarize: vi.fn()
     };
 
-    const preview = await buildDailySummaryInput({
+    const preview = await generateDailySummaryInput({
       configuration: {
         ...configuration,
         sectionPauses: { ...configuration.sectionPauses, weather: true }
@@ -842,7 +868,7 @@ describe('Daily Summary preview input', () => {
       summarize: vi.fn()
     };
 
-    const preview = await buildDailySummaryInput({
+    const preview = await generateDailySummaryInput({
       configuration,
       todoCategories,
       todoTasks,
@@ -865,7 +891,7 @@ describe('Daily Summary preview input', () => {
       })
     };
 
-    const preview = await buildDailySummaryInput({
+    const preview = await generateDailySummaryInput({
       configuration,
       todoCategories,
       todoTasks,
@@ -886,7 +912,7 @@ describe('Daily Summary preview input', () => {
   });
 
   test('keeps provider placeholders out of the persisted User setup shape', async () => {
-    const preview = await buildDailySummaryInput({
+    const preview = await generateDailySummaryInput({
       configuration,
       todoCategories,
       todoTasks
@@ -908,7 +934,7 @@ describe('Daily Summary preview input', () => {
   });
 
   test('renders empty Todo content as an explicit state in preview', async () => {
-    const preview = await buildDailySummaryInput({
+    const preview = await generateDailySummaryInput({
       configuration: {
         ...configuration,
         sectionPauses: { weather: true, commute: true, calendar: true, todo: false }
@@ -924,7 +950,7 @@ describe('Daily Summary preview input', () => {
   });
 
   test('renders Todo as unavailable when its state cannot be loaded', async () => {
-    const preview = await buildDailySummaryInput({
+    const preview = await generateDailySummaryInput({
       configuration,
       todoCategories,
       todoTasks,
@@ -945,7 +971,7 @@ describe('Daily Summary preview input', () => {
   });
 
   test('keeps paused Todo ahead of an unavailable Todo state', async () => {
-    const preview = await buildDailySummaryInput({
+    const preview = await generateDailySummaryInput({
       configuration: {
         ...configuration,
         sectionPauses: { ...configuration.sectionPauses, todo: true }
