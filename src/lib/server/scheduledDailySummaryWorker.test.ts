@@ -557,6 +557,7 @@ describe('scheduled Daily Summary worker command', () => {
 
     const result = await runScheduledDailySummaryWorkerCommand({
       execute: vi.fn().mockResolvedValue({ exitCode: 1, counts }),
+      environment: { SCHEDULED_DELIVERY_ENABLED: 'true' },
       setExitCode
     });
 
@@ -564,29 +565,32 @@ describe('scheduled Daily Summary worker command', () => {
     expect(setExitCode).toHaveBeenCalledWith(1);
   });
 
-  test('does not load delivery dependencies when Scheduled Delivery is disabled', async () => {
-    const execute = vi.fn();
-    const setExitCode = vi.fn();
-    const lines: string[] = [];
+  test.each([undefined, '', 'false', 'yes', '1', 'enabled'])(
+    'does not load delivery dependencies unless Scheduled Delivery is explicitly true: %s',
+    async (configuredValue) => {
+      const execute = vi.fn();
+      const setExitCode = vi.fn();
+      const lines: string[] = [];
 
-    const result = await runScheduledDailySummaryWorkerCommand({
-      execute,
-      environment: {
-        DATABASE_URL: '/var/lib/daily/daily.db',
-        SCHEDULED_DELIVERY_ENABLED: 'false'
-      },
-      writeLine: (line) => lines.push(line),
-      setExitCode
-    });
+      const result = await runScheduledDailySummaryWorkerCommand({
+        execute,
+        environment: {
+          DATABASE_URL: '/var/lib/daily/daily.db',
+          SCHEDULED_DELIVERY_ENABLED: configuredValue
+        },
+        writeLine: (line) => lines.push(line),
+        setExitCode
+      });
 
-    expect(result).toEqual({
-      exitCode: 0,
-      counts: { due: 0, sent: 0, skipped: 0, retrying: 0, failed: 0, isolatedError: 0 }
-    });
-    expect(execute).not.toHaveBeenCalled();
-    expect(lines).toEqual(['Scheduled Delivery is disabled.']);
-    expect(setExitCode).toHaveBeenCalledWith(0);
-  });
+      expect(result).toEqual({
+        exitCode: 0,
+        counts: { due: 0, sent: 0, skipped: 0, retrying: 0, failed: 0, isolatedError: 0 }
+      });
+      expect(execute).not.toHaveBeenCalled();
+      expect(lines).toEqual(['Scheduled Delivery is disabled.']);
+      expect(setExitCode).toHaveBeenCalledWith(0);
+    }
+  );
 
   test('returns a successful skip when another production invocation owns the lock', async () => {
     const execute = vi.fn();

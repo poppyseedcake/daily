@@ -20,7 +20,7 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Configure temporary SQLite storage
         run: echo "DATABASE_URL=$RUNNER_TEMP/daily-ci.db" >> "$GITHUB_ENV"
@@ -58,7 +58,7 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Build production container without service secrets
         run: docker build --tag daily:ci .

@@ -274,10 +274,9 @@ export const runScheduledDailySummaryWorkerCommand = async ({
   writeLine?: (line: string) => void;
   setExitCode?: (exitCode: number) => void;
 } = {}) => {
-  const deliveryDisabled = ['0', 'false', 'no', 'off'].includes(
-    environment.SCHEDULED_DELIVERY_ENABLED?.trim().toLowerCase() ?? ''
-  );
-  if (deliveryDisabled) {
+  const deliveryEnabled =
+    environment.SCHEDULED_DELIVERY_ENABLED?.trim().toLowerCase() === 'true';
+  if (!deliveryEnabled) {
     const result = {
       exitCode: 0 as const,
       counts: emptyScheduledDailySummaryWorkerCounts()
