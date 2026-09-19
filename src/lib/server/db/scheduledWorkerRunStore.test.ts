@@ -25,7 +25,9 @@ describe('Scheduled Worker Run Store', () => {
   test('persists aggregate-only successful, isolated-error, and failed runs', async () => {
     const sqlite = new Database(':memory:');
     sqlite.exec(readFileSync('drizzle/0014_add_scheduled_worker_runs.sql', 'utf8'));
-    const store = createScheduledWorkerRunStore(drizzle(sqlite, { schema }));
+    const store = createScheduledWorkerRunStore(drizzle(sqlite, { schema }), {
+      now: () => new Date('2026-07-15T09:00:00.000Z')
+    });
 
     try {
       await store.persist(completedRun('2026-07-15T08:30:00.000Z', '2026-07-15T08:30:00.001Z'));

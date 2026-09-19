@@ -328,7 +328,6 @@ describe('Google Calendar list provider', () => {
     await expect(loadGoogleCalendarAccessToken('user-1')).resolves.toBe('refreshed-access-token');
     expect(refreshGoogleAccessToken).toHaveBeenCalledWith({
       body: {
-        providerId: 'google',
         accountId: 'google-subject-1',
         userId: 'user-1'
       }
@@ -348,7 +347,6 @@ describe('Google Calendar list provider', () => {
     await expect(loadGoogleCalendarAccessToken('user-1')).resolves.toBeNull();
     expect(refreshGoogleAccessToken).toHaveBeenCalledWith({
       body: {
-        providerId: 'google',
         accountId: 'google-subject-1',
         userId: 'user-1'
       }

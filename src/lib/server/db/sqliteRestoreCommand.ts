@@ -29,9 +29,9 @@ type ExecuteSqliteRestoreCommandOptions = {
   now?: () => Date;
   randomUUID?: () => string;
   migrate: () => Promise<void>;
-  startService: () => Promise<void>;
-  verifyServiceActive: () => Promise<void>;
-  verifyReadiness: () => Promise<void>;
+  startService?: () => Promise<void>;
+  verifyServiceActive?: () => Promise<void>;
+  verifyReadiness?: () => Promise<void>;
 };
 
 const checksumFile = (path: string) =>
@@ -155,16 +155,19 @@ export const executeSqliteRestoreCommand = async ({
   } catch {
     return { exitCode: 1, failureClassification: 'migration-failed', replacedDatabasePath };
   }
-  try {
-    await startService();
-    await verifyServiceActive();
-  } catch {
-    return { exitCode: 1, failureClassification: 'service-failed', replacedDatabasePath };
-  }
-  try {
-    await verifyReadiness();
-  } catch {
-    return { exitCode: 1, failureClassification: 'readiness-failed', replacedDatabasePath };
+  const lifecycleOperations = [startService, verifyServiceActive, verifyReadiness];
+  if (lifecycleOperations.every((operation) => operation)) {
+    try {
+      await startService!();
+      await verifyServiceActive!();
+    } catch {
+      return { exitCode: 1, failureClassification: 'service-failed', replacedDatabasePath };
+    }
+    try {
+      await verifyReadiness!();
+    } catch {
+      return { exitCode: 1, failureClassification: 'readiness-failed', replacedDatabasePath };
+    }
   }
   return { exitCode: 0, replacedDatabasePath };
 };

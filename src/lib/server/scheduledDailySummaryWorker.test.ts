@@ -87,8 +87,12 @@ describe('scheduled Daily Summary worker command', () => {
     sqlite.exec(readFileSync('drizzle/0013_add_technical_log_records.sql', 'utf8'));
     sqlite.exec(readFileSync('drizzle/0014_add_scheduled_worker_runs.sql', 'utf8'));
     const database = drizzle(sqlite, { schema });
-    const store = createTechnicalLogStore(database);
-    const runStore = createScheduledWorkerRunStore(database);
+    const store = createTechnicalLogStore(database, {
+      now: () => new Date('2026-07-15T12:00:00.000Z')
+    });
+    const runStore = createScheduledWorkerRunStore(database, {
+      now: () => new Date('2026-07-15T12:00:00.000Z')
+    });
     const lines: string[] = [];
     const recorder = createTechnicalEventRecorder({
       store,
@@ -506,8 +510,12 @@ describe('scheduled Daily Summary worker command', () => {
     sqlite.exec(readFileSync('drizzle/0013_add_technical_log_records.sql', 'utf8'));
     sqlite.exec(readFileSync('drizzle/0014_add_scheduled_worker_runs.sql', 'utf8'));
     const database = drizzle(sqlite, { schema });
-    const store = createTechnicalLogStore(database);
-    const runStore = createScheduledWorkerRunStore(database);
+    const store = createTechnicalLogStore(database, {
+      now: () => new Date('2026-07-15T12:00:00.000Z')
+    });
+    const runStore = createScheduledWorkerRunStore(database, {
+      now: () => new Date('2026-07-15T12:00:00.000Z')
+    });
     const recorder = createTechnicalEventRecorder({ store, writeLine: vi.fn() });
 
     try {
@@ -554,5 +562,51 @@ describe('scheduled Daily Summary worker command', () => {
 
     expect(result).toEqual({ exitCode: 1, counts });
     expect(setExitCode).toHaveBeenCalledWith(1);
+  });
+
+  test('does not load delivery dependencies when Scheduled Delivery is disabled', async () => {
+    const execute = vi.fn();
+    const setExitCode = vi.fn();
+    const lines: string[] = [];
+
+    const result = await runScheduledDailySummaryWorkerCommand({
+      execute,
+      environment: {
+        DATABASE_URL: '/var/lib/daily/daily.db',
+        SCHEDULED_DELIVERY_ENABLED: 'false'
+      },
+      writeLine: (line) => lines.push(line),
+      setExitCode
+    });
+
+    expect(result).toEqual({
+      exitCode: 0,
+      counts: { due: 0, sent: 0, skipped: 0, retrying: 0, failed: 0, isolatedError: 0 }
+    });
+    expect(execute).not.toHaveBeenCalled();
+    expect(lines).toEqual(['Scheduled Delivery is disabled.']);
+    expect(setExitCode).toHaveBeenCalledWith(0);
+  });
+
+  test('returns a successful skip when another production invocation owns the lock', async () => {
+    const execute = vi.fn();
+    const withLock = vi.fn().mockResolvedValue({ acquired: false });
+    const setExitCode = vi.fn();
+
+    const result = await runScheduledDailySummaryWorkerCommand({
+      execute,
+      environment: {
+        DATABASE_URL: '/var/lib/daily/daily.db',
+        SCHEDULED_DELIVERY_ENABLED: 'true'
+      },
+      withLock,
+      setExitCode,
+      writeLine: vi.fn()
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(execute).not.toHaveBeenCalled();
+    expect(withLock).toHaveBeenCalledWith('/var/lib/daily/daily.db', execute);
+    expect(setExitCode).toHaveBeenCalledWith(0);
   });
 });

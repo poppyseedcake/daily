@@ -10,6 +10,8 @@ import {
   technicalEventSchema
 } from './technicalEventRecorder';
 
+const testNow = () => new Date('2026-07-15T12:00:00.000Z');
+
 describe('Technical Event Recorder', () => {
   test('records an Admin Panel Maps control change with only previous and new state', async () => {
     const persist = vi.fn().mockResolvedValue(undefined);
@@ -45,7 +47,7 @@ describe('Technical Event Recorder', () => {
     const database = drizzle(sqlite, { schema });
     const writeLine = vi.fn();
     const recorder = createTechnicalEventRecorder({
-      store: createTechnicalLogStore(database),
+      store: createTechnicalLogStore(database, { now: testNow }),
       writeLine
     });
     const correlationId = createTechnicalCorrelationId();
@@ -85,7 +87,7 @@ describe('Technical Event Recorder', () => {
           isolatedErrorCount: 0
         }
       });
-      expect(await createTechnicalLogStore(database).loadRecent(10)).toEqual([
+      expect(await createTechnicalLogStore(database, { now: testNow }).loadRecent(10)).toEqual([
         expect.objectContaining(emitted)
       ]);
     } finally {
@@ -99,7 +101,7 @@ describe('Technical Event Recorder', () => {
     const database = drizzle(sqlite, { schema });
     const lines: string[] = [];
     const recorder = createTechnicalEventRecorder({
-      store: createTechnicalLogStore(database),
+      store: createTechnicalLogStore(database, { now: testNow }),
       writeLine: (line) => lines.push(line)
     });
     const canaries = [
@@ -129,7 +131,7 @@ describe('Technical Event Recorder', () => {
         failure
       });
 
-      const persisted = await createTechnicalLogStore(database).loadRecent(10);
+      const persisted = await createTechnicalLogStore(database, { now: testNow }).loadRecent(10);
       const serialized = [...lines, JSON.stringify(persisted)].join('\n');
       expect(lines.map((line) => technicalEventSchema.parse(JSON.parse(line)))).toEqual([
         expect.objectContaining({

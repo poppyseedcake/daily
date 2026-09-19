@@ -22,7 +22,11 @@ export default defineConfig({
       input: {
         runScheduledDailySummaryWorkerCommand:
           'src/lib/server/runScheduledDailySummaryWorkerCommand.ts',
-        runSqliteBackupCommand: 'src/lib/server/db/runSqliteBackupCommand.ts'
+        runSqliteBackupCommand: 'src/lib/server/db/runSqliteBackupCommand.ts',
+        runSqliteMigrateCommand: 'src/lib/server/db/runSqliteMigrateCommand.ts',
+        runSqliteRestoreCommand: 'src/lib/server/db/runSqliteRestoreCommand.ts',
+        runSqliteRestoreContainerCommand:
+          'src/lib/server/db/runSqliteRestoreContainerCommand.ts'
       },
       output: {
         entryFileNames: '[name].js'

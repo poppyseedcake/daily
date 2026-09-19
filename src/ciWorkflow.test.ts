@@ -58,6 +58,15 @@ describe('CI workflow contract', () => {
     );
   });
 
+  test('builds the production container in a separate networked job without secrets', () => {
+    const source = workflow();
+
+    expect(source).toContain('container-image:');
+    expect(source).toContain('docker build --tag daily:ci .');
+    expect(source).not.toContain('docker login');
+    expect(source).not.toContain('docker push');
+  });
+
   test('runs validation in a network namespace that only exposes loopback', () => {
     const isolationScript = readFileSync('scripts/run-without-network.sh', 'utf8');
 

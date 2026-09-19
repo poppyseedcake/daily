@@ -77,6 +77,7 @@ export const runSqliteBackupProductionCommand = async ({
   loadRecorder = loadRecorderWithStdoutFallback,
   recordRejected = stdoutOnlyTechnicalEventRecorder().record,
   execute = executeSqliteBackupCommand,
+  writeLine = (line: string) => console.log(line),
   setExitCode = (exitCode: number) => {
     process.exitCode = exitCode;
   }
@@ -87,6 +88,7 @@ export const runSqliteBackupProductionCommand = async ({
   loadRecorder?: typeof loadRecorderWithStdoutFallback;
   recordRejected?: ReturnType<typeof createTechnicalEventRecorder>['record'];
   execute?: typeof executeSqliteBackupCommand;
+  writeLine?: (line: string) => void;
   setExitCode?: (exitCode: number) => void;
 } = {}) => {
   const parsed = parseConfiguration(arguments_, environment);
@@ -105,6 +107,7 @@ export const runSqliteBackupProductionCommand = async ({
     ...parsed.configuration,
     recordTechnicalEvent: recorder.record
   });
+  if (result.exitCode === 0) writeLine(`SQLite backup completed: ${result.recoveryPointName}`);
   setExitCode(result.exitCode);
   return result;
 };

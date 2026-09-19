@@ -49,7 +49,9 @@ describe('Technical Log Store', () => {
     const sqlite = new Database(':memory:');
     sqlite.exec(readFileSync('drizzle/0013_add_technical_log_records.sql', 'utf8'));
     const database = drizzle(sqlite, { schema });
-    const store = createTechnicalLogStore(database);
+    const store = createTechnicalLogStore(database, {
+      now: () => new Date('2026-07-15T12:00:00.000Z')
+    });
 
     try {
       await store.persist(completedEvent('2026-07-15T08:00:00.000Z'));

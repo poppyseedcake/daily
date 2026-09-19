@@ -10,6 +10,7 @@ import type {
   ScheduledWorkerRun,
   ScheduledWorkerRunStore
 } from './db/scheduledWorkerRunStore';
+import { tryWithScheduledWorkerInvocationLock } from './scheduledWorkerInvocationLock';
 
 type WorkerDependencies = Pick<
   ScheduledDailySummaryWorkerDependencies,
@@ -260,14 +261,50 @@ export const executeScheduledDailySummaryWorkerCommand = async ({
 
 export const runScheduledDailySummaryWorkerCommand = async ({
   execute = executeScheduledDailySummaryWorkerCommand,
+  environment = process.env,
+  withLock = tryWithScheduledWorkerInvocationLock,
+  writeLine = (line: string) => console.log(line),
   setExitCode = (exitCode: number) => {
     process.exitCode = exitCode;
   }
 }: {
   execute?: typeof executeScheduledDailySummaryWorkerCommand;
+  environment?: NodeJS.ProcessEnv;
+  withLock?: typeof tryWithScheduledWorkerInvocationLock;
+  writeLine?: (line: string) => void;
   setExitCode?: (exitCode: number) => void;
 } = {}) => {
-  const result = await execute();
+  const deliveryDisabled = ['0', 'false', 'no', 'off'].includes(
+    environment.SCHEDULED_DELIVERY_ENABLED?.trim().toLowerCase() ?? ''
+  );
+  if (deliveryDisabled) {
+    const result = {
+      exitCode: 0 as const,
+      counts: emptyScheduledDailySummaryWorkerCounts()
+    };
+    writeLine('Scheduled Delivery is disabled.');
+    setExitCode(result.exitCode);
+    return result;
+  }
+
+  if (!environment.DATABASE_URL?.trim()) {
+    const result = await execute();
+    setExitCode(result.exitCode);
+    return result;
+  }
+
+  const lockResult = await withLock(environment.DATABASE_URL, execute);
+  if (!lockResult.acquired) {
+    const result = {
+      exitCode: 0 as const,
+      counts: emptyScheduledDailySummaryWorkerCounts()
+    };
+    writeLine('Scheduled Delivery is already running; this invocation was skipped.');
+    setExitCode(result.exitCode);
+    return result;
+  }
+
+  const result = lockResult.result;
   setExitCode(result.exitCode);
   return result;
 };

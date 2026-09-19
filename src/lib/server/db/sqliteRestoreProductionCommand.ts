@@ -1,5 +1,6 @@
 import { execFile as executeFileWithCallback } from 'node:child_process';
 import { promisify } from 'node:util';
+import { executeSqliteMigrateCommand } from './sqliteMigrateCommand';
 import { executeSqliteRestoreCommand } from './sqliteRestoreCommand';
 
 const executeFile = promisify(executeFileWithCallback);
@@ -8,31 +9,36 @@ type RestoreEnvironment = {
   DATABASE_URL?: string;
   DAILY_SERVICE_NAME?: string;
   READINESS_URL?: string;
+  MIGRATIONS_DIRECTORY?: string;
 };
 
-type ProductionOperations = Pick<
+type ProductionOperations = Required<Pick<
   Parameters<typeof executeSqliteRestoreCommand>[0],
   | 'isDestinationOffline'
   | 'migrate'
   | 'startService'
   | 'verifyServiceActive'
   | 'verifyReadiness'
->;
+>>;
 
 export const createProductionRestoreOperations = (
   {
     serviceName,
-    readinessUrl
+    readinessUrl,
+    migrationsDirectory
   }: {
     serviceName: string;
     readinessUrl: string;
+    migrationsDirectory?: string;
   },
   {
     executeProcess = executeFile,
-    request = fetch
+    request = fetch,
+    migrateCommand = executeSqliteMigrateCommand
   }: {
     executeProcess?: typeof executeFile;
     request?: typeof fetch;
+    migrateCommand?: typeof executeSqliteMigrateCommand;
   } = {}
 ): ProductionOperations => ({
   isDestinationOffline: async () => {
@@ -45,7 +51,11 @@ export const createProductionRestoreOperations = (
     return stdout.trim() === 'inactive';
   },
   migrate: async () => {
-    await executeProcess('npm', ['run', 'db:migrate']);
+    const result = migrateCommand({
+      databasePath: process.env.DATABASE_URL ?? '',
+      migrationsDirectory: migrationsDirectory ?? 'drizzle'
+    });
+    if (result.exitCode !== 0) throw new Error('SQLite migration failed.');
   },
   startService: async () => {
     await executeProcess('systemctl', ['start', serviceName]);
@@ -94,7 +104,8 @@ export const runSqliteRestoreProductionCommand = async ({
 
   const operations = createOperations({
     serviceName: environment.DAILY_SERVICE_NAME,
-    readinessUrl: environment.READINESS_URL
+    readinessUrl: environment.READINESS_URL,
+    migrationsDirectory: environment.MIGRATIONS_DIRECTORY
   });
   const result = await execute({
     recoveryPointDirectory,

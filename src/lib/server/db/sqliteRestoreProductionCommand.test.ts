@@ -77,7 +77,11 @@ describe('SQLite restore production command', () => {
         serviceName: 'daily-web.service',
         readinessUrl: 'http://127.0.0.1:3000/health'
       },
-      { executeProcess, request }
+      {
+        executeProcess,
+        request,
+        migrateCommand: vi.fn().mockReturnValue({ exitCode: 0 })
+      }
     );
 
     await expect(operations.isDestinationOffline()).resolves.toBe(true);
@@ -88,7 +92,6 @@ describe('SQLite restore production command', () => {
 
     expect(executeProcess.mock.calls).toEqual([
       ['systemctl', ['show', '--property=ActiveState', '--value', 'daily-web.service']],
-      ['npm', ['run', 'db:migrate']],
       ['systemctl', ['start', 'daily-web.service']],
       ['systemctl', ['is-active', '--quiet', 'daily-web.service']]
     ]);
