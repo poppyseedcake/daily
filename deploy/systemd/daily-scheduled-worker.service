@@ -11,7 +11,7 @@ Group=daily
 WorkingDirectory=/srv/daily/current
 Environment=NODE_ENV=production
 EnvironmentFile=/etc/daily/daily.env
-ExecStartPre=/usr/bin/node scripts/validate-production-environment.mjs
+ExecStartPre=/usr/bin/node scripts/validate-production-environment.mjs --context=worker
 ExecStart=/usr/bin/node build/worker/runScheduledDailySummaryWorkerCommand.js
 StandardOutput=journal
 StandardError=journal

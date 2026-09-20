@@ -58,11 +58,11 @@ describe('CI workflow contract', () => {
     );
   });
 
-  test('builds the production container in a separate networked job without secrets', () => {
+  test('builds and tests the production container in a separate networked job without secrets', () => {
     const source = workflow();
 
     expect(source).toContain('container-image:');
-    expect(source).toContain('docker build --tag daily:ci .');
+    expect(source).toContain('run: npm run test:container');
     expect(source).not.toContain('docker login');
     expect(source).not.toContain('docker push');
   });
