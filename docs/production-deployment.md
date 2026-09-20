@@ -1,6 +1,11 @@
-# Deploy Daily to production
+# Deploy Daily with systemd
 
-Daily uses one production topology: Node.js 22.15.0 and npm 10.9.2 on one VPS.
+This document defines the systemd deployment for a single Linux host. It does not
+define the Coolify deployment. For the home server and Coolify, use
+`docs/coolify-deployment.md` and do not mix its container operations with the
+systemd operations in this document.
+
+Daily uses one systemd topology: Node.js 22.23.2 and npm 10.9.8 on one VPS.
 The web process and scheduled jobs run under systemd. Run deployment as root from a
 trusted source checkout.
 

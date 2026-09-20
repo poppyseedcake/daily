@@ -22,7 +22,9 @@ describe('systemd daily backup contract', () => {
     expect(service).toContain('Environment=NODE_ENV=production');
     expect(service).toContain('EnvironmentFile=/etc/daily/daily.env');
     expect(service).toContain('Environment=DAILY_SYSTEMD_BACKUP_UNIT=true');
-    expect(service).toContain('ExecStartPre=/usr/bin/node scripts/validate-production-environment.mjs');
+    expect(service).toContain(
+      'ExecStartPre=/usr/bin/node scripts/validate-production-environment.mjs --context=backup'
+    );
     expect(service).toContain(
       'ExecStart=/usr/bin/node build/worker/runSqliteBackupCommand.js daily'
     );

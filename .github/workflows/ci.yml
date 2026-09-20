@@ -20,19 +20,19 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Configure temporary SQLite storage
         run: echo "DATABASE_URL=$RUNNER_TEMP/daily-ci.db" >> "$GITHUB_ENV"
 
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version-file: .nvmrc
           cache: npm
 
       - name: Pin npm
-        run: npm install --global npm@10.9.2
+        run: npm install --global npm@10.9.8
 
       - name: Install locked dependencies
         run: npm ci
@@ -51,3 +51,19 @@ jobs:
 
       - name: Build production adapter
         run: bash scripts/run-without-network.sh npm run build
+
+  container-image:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version-file: .nvmrc
+
+      - name: Build and test production container without service secrets
+        run: npm run test:container

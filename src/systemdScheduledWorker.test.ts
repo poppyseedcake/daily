@@ -20,7 +20,9 @@ describe('systemd scheduled worker contract', () => {
     expect(service).toContain('WorkingDirectory=/srv/daily/current');
     expect(service).toContain('Environment=NODE_ENV=production');
     expect(service).toContain('EnvironmentFile=/etc/daily/daily.env');
-    expect(service).toContain('ExecStartPre=/usr/bin/node scripts/validate-production-environment.mjs');
+    expect(service).toContain(
+      'ExecStartPre=/usr/bin/node scripts/validate-production-environment.mjs --context=worker'
+    );
     expect(service).toContain(
       'ExecStart=/usr/bin/node build/worker/runScheduledDailySummaryWorkerCommand.js'
     );

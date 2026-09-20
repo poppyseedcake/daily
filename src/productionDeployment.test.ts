@@ -344,7 +344,7 @@ describe('production deployment operator boundary', () => {
   test('documents prerequisites, failure semantics, rollback, and restoration', () => {
     const guide = readFileSync('docs/production-deployment.md', 'utf8');
 
-    expect(guide).toContain('Node.js 22.15.0 and npm 10.9.2');
+    expect(guide).toContain('Node.js 22.23.2 and npm 10.9.8');
     expect(guide).toContain('/srv/daily/releases');
     expect(guide).toContain('/var/lib/daily/daily.db');
     expect(guide).toContain('/var/backups/daily');

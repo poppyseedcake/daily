@@ -58,6 +58,24 @@ describe('CI workflow contract', () => {
     );
   });
 
+  test('builds and tests the production container in a separate networked job without secrets', () => {
+    const source = workflow();
+
+    expect(source).toContain('container-image:');
+    expect(source).toContain('run: npm run test:container');
+    expect(source).not.toContain('docker login');
+    expect(source).not.toContain('docker push');
+  });
+
+  test('pins the checkout action used by the production container build', () => {
+    const source = workflow();
+
+    expect(source).toContain(
+      'actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4'
+    );
+    expect(source).not.toContain('actions/checkout@v4');
+  });
+
   test('runs validation in a network namespace that only exposes loopback', () => {
     const isolationScript = readFileSync('scripts/run-without-network.sh', 'utf8');
 

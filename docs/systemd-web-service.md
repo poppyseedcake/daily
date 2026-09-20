@@ -1,5 +1,9 @@
 # Operate Daily with systemd
 
+This document is for the systemd deployment only. Do not use its unit files or
+`systemctl` restore procedure in the Coolify container deployment. Use
+`docs/coolify-deployment.md` for the home server.
+
 The production web process runs as the dedicated, unprivileged `daily` account. Keep
 replaceable release code in `/srv/daily`, persistent SQLite data in `/var/lib/daily`,
 configuration in `/etc/daily/daily.env`, and recovery points in

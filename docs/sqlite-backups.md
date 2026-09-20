@@ -1,5 +1,20 @@
 # SQLite backups
 
+This document covers the shared SQLite backup format and the systemd restore
+adapter. For Coolify, run the compiled commands inside the one production image:
+
+```sh
+node build/worker/runSqliteBackupCommand.js daily
+node build/worker/runSqliteBackupCommand.js pre-migration
+node build/worker/runSqliteRestoreContainerCommand.js /var/backups/daily/<recovery-point>
+```
+
+The Coolify restore command requires `DAILY_RESTORE_OFFLINE=true` and
+`SCHEDULED_DELIVERY_ENABLED=false`. It does not call systemd or start a service.
+Use `docs/coolify-deployment.md` for the complete stop, restore, start, and
+readiness sequence. The `npm run db:restore` command below remains for the
+systemd adapter only.
+
 Account deletion applies to the live Daily database only. Historical backups remain immutable,
 restricted recovery artifacts until normal retention removes them; they are not recalled or
 rewritten after an account is deleted. Likewise, an email already accepted by the delivery
