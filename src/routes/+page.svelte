@@ -2100,9 +2100,16 @@
           <strong id="visitor-preview-title">Visitor preview</strong>
           <p>Explore and configure Daily here. Sign in with Google to receive Daily Summaries by email.</p>
         </div>
-        <a class="daily-visitor-banner__action" href="/auth/google">
-          Sign in with Google <ArrowRight size={15} aria-hidden="true" />
-        </a>
+        <div class="daily-visitor-banner__actions">
+          <a class="daily-visitor-banner__action" href="/auth/google">
+            Sign in with Google <ArrowRight size={15} aria-hidden="true" />
+          </a>
+          <span class="daily-visitor-banner__links">
+            <a href="/privacy">Privacy</a>
+            <span aria-hidden="true">·</span>
+            <a href="/terms">Terms</a>
+          </span>
+        </div>
       </aside>
     {/if}
 
@@ -2408,6 +2415,13 @@
   </dialog>
 {/if}
 
+<footer class="daily-public-footer">
+  <span>Daily</span>
+  <a href="/privacy">Privacy Policy</a>
+  <a href="/terms">Terms of Service</a>
+  <a href="mailto:daily@dailykickoff.eu">daily@dailykickoff.eu</a>
+</footer>
+
 <style>
   :global(body) {
     background: #f7f8f5;
@@ -2628,6 +2642,50 @@
   .daily-visitor-banner__action:hover {
     border-color: #496238;
     background: #496238;
+  }
+
+  .daily-visitor-banner__actions {
+    display: grid;
+    justify-items: end;
+    gap: 6px;
+  }
+
+  .daily-visitor-banner__links {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: #657260;
+    font-size: 10px;
+  }
+
+  .daily-visitor-banner__links a {
+    color: #526d3f;
+    font-weight: 700;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+
+  .daily-public-footer {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 14px;
+    margin-top: 38px;
+    padding-top: 18px;
+    border-top: 1px solid #dfe3dc;
+    color: #697269;
+    font-size: 11px;
+  }
+
+  .daily-public-footer span {
+    color: #172d52;
+    font-weight: 750;
+  }
+
+  .daily-public-footer a {
+    color: #526d3f;
+    font-weight: 650;
   }
 
   .daily-delivery {
@@ -4834,8 +4892,12 @@
     }
 
     .daily-visitor-banner__action {
-      grid-column: 2;
       justify-self: start;
+    }
+
+    .daily-visitor-banner__actions {
+      grid-column: 2;
+      justify-items: start;
     }
 
     .daily-context-ribbon {

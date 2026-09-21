@@ -6,6 +6,7 @@ import { building, dev } from '$app/environment';
 import { env } from '$env/dynamic/private';
 import { db } from '$lib/server/db';
 import { dailyUserIdentityStore } from '$lib/server/db/dailyUserIdentityStore';
+import { parseLegalConfirmationCookie } from '$lib/server/legalConfirmation';
 import {
   persistDailyUserIdentity,
   type DailyUserIdentityOutcome
@@ -96,6 +97,13 @@ export const authOptions = {
     })
   },
   databaseHooks: {
+    user: {
+      create: {
+        async before(_user, context) {
+          return parseLegalConfirmationCookie(context?.headers) ? undefined : false;
+        }
+      }
+    },
     account: {
       create: {
         async after(account) {

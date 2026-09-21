@@ -17,7 +17,10 @@ export const users = sqliteTable(
     nextSummaryAt: text('next_summary_at'),
     lifecycleState: text('lifecycle_state', { enum: ['active', 'deleting'] })
       .notNull()
-      .default('active')
+      .default('active'),
+    ageConfirmedAt: text('age_confirmed_at'),
+    termsVersion: text('terms_version'),
+    termsAcceptedAt: text('terms_accepted_at')
   },
   (table) => ({
     googleSubjectIdx: uniqueIndex('users_google_subject_idx').on(table.googleSubject),

@@ -194,6 +194,19 @@ vi.mock('$lib/server/db/userLifecycleStore', () => ({
   }
 }));
 
+vi.mock('$lib/server/db/userLegalConfirmationStore', () => ({
+  userLegalConfirmationStore: {
+    async load() {
+      return {
+        ageConfirmedAt: '2026-09-21T00:00:00.000Z',
+        termsAcceptedAt: '2026-09-21T00:00:00.000Z',
+        termsVersion: '2026-09-21'
+      };
+    },
+    async save() {}
+  }
+}));
+
 vi.mock('$lib/server/db/accountDeletionStore', () => ({
   accountDeletionStore: {
     startDeleting: deletionStart,

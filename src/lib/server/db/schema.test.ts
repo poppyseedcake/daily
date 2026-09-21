@@ -146,6 +146,24 @@ describe('Daily database schema', () => {
     });
   });
 
+  test('ships nullable legal confirmation fields for new and existing Users', () => {
+    const migration = readFileSync('drizzle/0022_add_legal_confirmations.sql', 'utf8');
+    const journal = JSON.parse(readFileSync('drizzle/meta/_journal.json', 'utf8')) as {
+      entries: Array<{ idx: number; tag: string }>;
+    };
+
+    expect(Object.keys(getTableColumns(users))).toEqual(
+      expect.arrayContaining(['ageConfirmedAt', 'termsVersion', 'termsAcceptedAt'])
+    );
+    expect(migration).toContain('ADD `age_confirmed_at` text');
+    expect(migration).toContain('ADD `terms_version` text');
+    expect(migration).toContain('ADD `terms_accepted_at` text');
+    expect(journal.entries.find(({ idx }) => idx === 22)).toMatchObject({
+      idx: 22,
+      tag: '0022_add_legal_confirmations'
+    });
+  });
+
   test('ships an initial SQLite migration for the core schema', () => {
     const migrationPath = 'drizzle/0000_bootstrap_daily.sql';
 

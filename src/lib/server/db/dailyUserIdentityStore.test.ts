@@ -13,6 +13,7 @@ describe('SQLite Daily User identity store', () => {
     sqlite.exec(readFileSync('drizzle/0000_bootstrap_daily.sql', 'utf8'));
     sqlite.exec(readFileSync('drizzle/0011_add_next_summary_at.sql', 'utf8'));
     sqlite.exec(readFileSync('drizzle/0015_add_user_lifecycle.sql', 'utf8'));
+    sqlite.exec(readFileSync('drizzle/0022_add_legal_confirmations.sql', 'utf8'));
   });
 
   afterEach(() => sqlite.close());

@@ -14,6 +14,7 @@ const createTestDatabase = () => {
   sqlite.exec(readFileSync('drizzle/0005_add_selected_calendar_metadata.sql', 'utf8'));
   sqlite.exec(readFileSync('drizzle/0011_add_next_summary_at.sql', 'utf8'));
   sqlite.exec(readFileSync('drizzle/0015_add_user_lifecycle.sql', 'utf8'));
+  sqlite.exec(readFileSync('drizzle/0022_add_legal_confirmations.sql', 'utf8'));
 
   return {
     sqlite,

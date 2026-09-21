@@ -182,8 +182,17 @@ test.describe('new signed-in User time zone', () => {
       database.prepare(
         'insert into auth_account (id, account_id, provider_id, user_id, created_at, updated_at) values (?, ?, ?, ?, ?, ?)'
       ).run(crypto.randomUUID(), `google-${userId}`, 'google', userId, now, now);
-      database.prepare('insert into users (id, google_subject, email) values (?, ?, ?)')
-        .run(userId, `google-${userId}`, 'timezone@example.com');
+      database.prepare(`insert into users (
+        id, google_subject, email, age_confirmed_at, terms_version, terms_accepted_at
+      ) values (?, ?, ?, ?, ?, ?)`)
+        .run(
+          userId,
+          `google-${userId}`,
+          'timezone@example.com',
+          '2026-09-21T00:00:00.000Z',
+          '2026-09-21',
+          '2026-09-21T00:00:00.000Z'
+        );
 
       await page.context().addCookies([{
         name: 'better-auth.session_token',
@@ -238,8 +247,17 @@ test('connected User sees the week agenda and can change visible Google Calendar
       now,
       now
     );
-    database.prepare('insert into users (id, google_subject, email) values (?, ?, ?)')
-      .run(userId, googleSubject, 'calendar@example.com');
+    database.prepare(`insert into users (
+      id, google_subject, email, age_confirmed_at, terms_version, terms_accepted_at
+    ) values (?, ?, ?, ?, ?, ?)`)
+      .run(
+        userId,
+        googleSubject,
+        'calendar@example.com',
+        '2026-09-21T00:00:00.000Z',
+        '2026-09-21',
+        '2026-09-21T00:00:00.000Z'
+      );
     database.prepare('insert into summary_configurations (id, user_id) values (?, ?)')
       .run(crypto.randomUUID(), userId);
     database.prepare(`insert into calendar_connections (
@@ -308,8 +326,17 @@ test('signed-in User can inspect Delivery History and irreversibly delete the ac
     database.prepare(
       'insert into auth_account (id, account_id, provider_id, user_id, created_at, updated_at) values (?, ?, ?, ?, ?, ?)'
     ).run(crypto.randomUUID(), `google-${userId}`, 'google', userId, now, now);
-    database.prepare('insert into users (id, google_subject, email) values (?, ?, ?)')
-      .run(userId, `google-${userId}`, 'account@example.com');
+    database.prepare(`insert into users (
+      id, google_subject, email, age_confirmed_at, terms_version, terms_accepted_at
+    ) values (?, ?, ?, ?, ?, ?)`)
+      .run(
+        userId,
+        `google-${userId}`,
+        'account@example.com',
+        '2026-09-21T00:00:00.000Z',
+        '2026-09-21',
+        '2026-09-21T00:00:00.000Z'
+      );
     database.prepare('insert into summary_configurations (id, user_id) values (?, ?)')
       .run(crypto.randomUUID(), userId);
     database.prepare(`insert into delivery_records (
