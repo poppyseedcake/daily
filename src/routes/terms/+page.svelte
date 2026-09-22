@@ -3,21 +3,21 @@
 </script>
 
 <PublicPage
-  eyebrow="Daily Terms of Service · Draft for review"
+  eyebrow="Daily Terms of Service"
   title="Terms of Service"
-  intro="These draft terms describe the free Daily service and the rules for using it."
+  intro="These Terms describe the free Daily service and the rules for using it."
 >
   {#snippet children()}
     <div class="public-callout">
       <p>
-        This is a draft for legal review before public launch. It does not remove rights that the
-        law gives you and does not make a blanket exclusion of responsibility.
+        These Terms do not remove rights that the law gives you and do not make a blanket exclusion
+        of responsibility.
       </p>
     </div>
 
     <h2>1. Operator and service</h2>
     <p>
-      Daily is operated by Adam Kowalski, an individual in Poland. Daily is a free web service
+      Daily is operated by Wojciech Makowiec, an individual in Poland. Daily is a free web service
       that helps you prepare a personal Daily Summary from your chosen Todo, weather, commute, and
       Google Calendar settings. Daily is available at <a href="https://dailykickoff.eu">dailykickoff.eu</a>.
     </p>
@@ -85,7 +85,7 @@
 
     <h2>6. Suspension and account deletion</h2>
     <p>
-      Adam Kowalski may suspend or limit access when needed to protect Daily, its users, a provider,
+      Wojciech Makowiec may suspend or limit access when needed to protect Daily, its users, a provider,
       or the public; to address suspected misuse; or to comply with law. Daily may also suspend a
       feature when an external provider is unavailable or its requirements change.
     </p>
@@ -106,14 +106,12 @@
     <p>
       Send service complaints to
       <a href="mailto:daily@dailykickoff.eu">daily@dailykickoff.eu</a>. These Terms do not waive
-      consumer rights or other mandatory rights that apply to you. Provisions about suspension,
-      service changes, operator responsibility, and the legal status of a free service require legal
-      review before publication.
+      consumer rights or other mandatory rights that apply to you.
     </p>
 
     <h2>9. Contact</h2>
     <p>
-      Contact Adam Kowalski at <a href="mailto:daily@dailykickoff.eu">daily@dailykickoff.eu</a>.
+      Contact Wojciech Makowiec at <a href="mailto:daily@dailykickoff.eu">daily@dailykickoff.eu</a>.
     </p>
   {/snippet}
 </PublicPage>

@@ -3,21 +3,14 @@
 </script>
 
 <PublicPage
-  eyebrow="Daily Privacy Policy · Draft for review"
+  eyebrow="Daily Privacy Policy"
   title="Privacy Policy"
-  intro="This draft explains how Daily handles personal data when you use the free Daily service."
+  intro="This Privacy Policy explains how Daily handles personal data when you use the free Daily service."
 >
   {#snippet children()}
-    <div class="public-callout">
-      <p>
-        This is a draft for legal and operational review before public launch. It describes the
-        current application code. It is not a guarantee of GDPR compliance or Google approval.
-      </p>
-    </div>
-
     <h2>Who runs Daily</h2>
     <p>
-      Daily is operated by Adam Kowalski, an individual in Poland. Daily is free to use. For
+      Daily is operated by Wojciech Makowiec, an individual in Poland. Daily is free to use. For
       privacy questions or requests, contact <a href="mailto:daily@dailykickoff.eu">daily@dailykickoff.eu</a>.
     </p>
 
@@ -60,9 +53,9 @@
       </li>
     </ul>
 
-    <h2>Proposed legal bases</h2>
+    <h2>Legal bases</h2>
     <p>
-      The following are proposed legal bases for legal review. Google OAuth authorisation is not,
+      Daily processes personal data on the following legal bases. Google OAuth authorisation is not,
       by itself, a GDPR legal basis.
     </p>
     <ul>
@@ -72,12 +65,11 @@
       </li>
       <li>
         Service security, abuse prevention, privacy-safe operational logs, troubleshooting, and
-        account deletion controls: Daily's legitimate interests under Article 6(1)(f) GDPR, subject
-        to the required balancing review.
+        account deletion controls: Daily's legitimate interests under Article 6(1)(f) GDPR.
       </li>
       <li>
         Age and Terms records: contract administration and Daily's legitimate interest in keeping
-        a record of the access condition that you accepted, subject to legal review.
+        a record of the access condition that you accepted.
       </li>
     </ul>
 
@@ -157,8 +149,7 @@
       Before sign-in, Daily stores the visitor's local setup in browser local storage under
       <code>daily.visitorLocalSetup.v3</code>. This can include the local setup listed above. The
       application does not use the visitor setup cookie, session storage, IndexedDB, or a browser
-      database for this purpose. No analytics cookie is added by the application code reviewed for
-      this draft.
+      database for this purpose. The application does not add analytics cookies.
     </p>
 
     <h2>Retention</h2>
@@ -170,17 +161,15 @@
       </li>
       <li>
         The interface and health queries use a 30-day window for delivery records. The current
-        code does not contain a separate live-database purge for old delivery records; this is a
-        launch review item.
+        code does not contain a separate live-database purge for old delivery records.
       </li>
       <li>
         Technical logs and scheduled worker run records use a configurable operational retention
-        period with a 30-day default. The production value must be confirmed.
+        period with a 30-day default.
       </li>
       <li>
         Verified SQLite backups use a configurable retention period with a 30-day default. A
-        backup can still contain deleted account data until that backup expires. The production
-        backup location and value must be confirmed.
+        backup can still contain deleted account data until that backup expires.
       </li>
       <li>
         An email accepted by Resend or delivered to a recipient cannot be recalled by Daily. The
@@ -226,8 +215,8 @@
 
     <h2>Contact</h2>
     <p>
-      Contact Adam Kowalski at <a href="mailto:daily@dailykickoff.eu">daily@dailykickoff.eu</a>
-      about this draft, a privacy request, or a complaint about Daily.
+      Contact Wojciech Makowiec at <a href="mailto:daily@dailykickoff.eu">daily@dailykickoff.eu</a>
+      about this Privacy Policy, a privacy request, or a complaint about Daily.
     </p>
   {/snippet}
 </PublicPage>

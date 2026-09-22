@@ -2,7 +2,7 @@
 
 Status: not ready for public launch or Google OAuth verification.
 
-Operator: Adam Kowalski, individual, Poland  
+Operator: Wojciech Makowiec, individual, Poland<br>
 Contact: `daily@dailykickoff.eu`  
 Website: <https://dailykickoff.eu>  
 Service price: free  
