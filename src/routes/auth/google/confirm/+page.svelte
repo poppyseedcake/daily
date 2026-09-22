@@ -34,7 +34,7 @@
       <p class="legal-confirmation-error" role="alert">{data.error}</p>
     {/if}
 
-    <form method="POST" action="/auth/google/confirm" class="legal-confirmation-form">
+    <form method="POST" action="/auth/google/confirm/submit" class="legal-confirmation-form">
       <label>
         <input name="ageConfirmed" type="checkbox" required />
         <span>I confirm that I am at least {minimumUserAge} years old.</span>

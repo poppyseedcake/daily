@@ -2,7 +2,7 @@
 
 Status: not ready for public launch or Google OAuth verification.
 
-Operator: Adam Kowalski, individual, Poland  
+Operator: Wojciech Makowiec, individual, Poland<br>
 Contact: `daily@dailykickoff.eu`  
 Website: <https://dailykickoff.eu>  
 Service price: free  
@@ -16,7 +16,7 @@ production.
 
 | Source or feature | Data handled | Purpose and destination | Code reference and production note |
 | --- | --- | --- | --- |
-| Google sign-in | `openid`, `email`, `profile`; Google account ID, name, email, verification state, optional image | Create and use a Daily account. The email is the Daily Summary recipient. | [`auth.ts`](../src/lib/server/auth.ts), [`auth/google/confirm/+server.ts`](../src/routes/auth/google/confirm/+server.ts). Production OAuth status is unknown. |
+| Google sign-in | `openid`, `email`, `profile`; Google account ID, name, email, verification state, optional image | Create and use a Daily account. The email is the Daily Summary recipient. | [`auth.ts`](../src/lib/server/auth.ts), [`auth/google/confirm/submit/+server.ts`](../src/routes/auth/google/confirm/submit/+server.ts). Production OAuth status is unknown. |
 | OAuth storage | Google account ID, access token, refresh token, ID token, scope, and expiry values | Better Auth session and account operation; refresh live Calendar access. | [`schema.ts`](../src/lib/server/db/schema.ts), [`googleCalendarList.ts`](../src/lib/server/googleCalendarList.ts). Production encryption at rest is an open question. |
 | Calendar connection | One connection status, provider account ID, granted scopes, token-availability flags, expiry, and selected calendar IDs and labels | Read the selected calendars and show a live Calendar Section. | [`auth/google/calendar/+server.ts`](../src/routes/auth/google/calendar/+server.ts), [`calendarConnectionStore.ts`](../src/lib/server/db/calendarConnectionStore.ts), [`userCalendarEvents.ts`](../src/lib/server/userCalendarEvents.ts). |
 | Calendar events | Live event IDs, titles, start/end or all-day dates, calendar IDs, and calendar labels | Build the Calendar Section and the generated Daily Summary. Event content is not stored in the Daily database. | [`googleCalendarList.ts`](../src/lib/server/googleCalendarList.ts), summary generation modules. An email can contain the generated Calendar Section. |
