@@ -1,5 +1,5 @@
 import { and, desc, eq } from 'drizzle-orm';
-import { googleCalendarReadScope, parseGoogleProviderScopes } from '$lib/googleCalendarScopes';
+import { hasGoogleCalendarReadAccess, parseGoogleProviderScopes } from '$lib/googleCalendarScopes';
 import { db } from '$lib/server/db';
 import { authAccount } from '$lib/server/db/schema';
 import type { CalendarEventProvider, CalendarProviderEvent } from '$lib/calendar';
@@ -204,7 +204,7 @@ export const loadGoogleCalendarAccessToken = async (authUserId: string) => {
   });
 
   const account = accounts.find((row) =>
-    parseGoogleProviderScopes(row.scope).includes(googleCalendarReadScope)
+    hasGoogleCalendarReadAccess(parseGoogleProviderScopes(row.scope))
   );
 
   if (!account) {

@@ -243,7 +243,7 @@ test('connected User sees the week agenda and can change visible Google Calendar
       googleSubject,
       userId,
       now + 3600,
-      'openid email profile https://www.googleapis.com/auth/calendar.readonly',
+      'openid email profile https://www.googleapis.com/auth/calendar.calendarlist.readonly https://www.googleapis.com/auth/calendar.events.readonly',
       now,
       now
     );
@@ -267,7 +267,10 @@ test('connected User sees the week agenda and can change visible Google Calendar
       crypto.randomUUID(),
       userId,
       googleSubject,
-      JSON.stringify(['https://www.googleapis.com/auth/calendar.readonly']),
+      JSON.stringify([
+        'https://www.googleapis.com/auth/calendar.calendarlist.readonly',
+        'https://www.googleapis.com/auth/calendar.events.readonly'
+      ]),
       now + 3600,
       new Date().toISOString()
     );

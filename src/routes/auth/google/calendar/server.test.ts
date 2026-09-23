@@ -12,8 +12,10 @@ vi.mock('$lib/server/auth', () => ({
       linkSocialAccount
     }
   },
-  googleCalendarReadScope: 'https://www.googleapis.com/auth/calendar.readonly',
-  googleCalendarReadScopes: ['https://www.googleapis.com/auth/calendar.readonly'],
+  googleCalendarReadScopes: [
+    'https://www.googleapis.com/auth/calendar.calendarlist.readonly',
+    'https://www.googleapis.com/auth/calendar.events.readonly'
+  ],
   googleIdentityScopes: ['openid', 'email', 'profile']
 }));
 
@@ -48,14 +50,22 @@ describe('Google Calendar consent route', () => {
         provider: 'google',
         callbackURL: '/?calendarConnection=success',
         errorCallbackURL: '/?calendarConnection=failed',
-        scopes: ['openid', 'email', 'profile', 'https://www.googleapis.com/auth/calendar.readonly']
+        scopes: [
+          'openid',
+          'email',
+          'profile',
+          'https://www.googleapis.com/auth/calendar.calendarlist.readonly',
+          'https://www.googleapis.com/auth/calendar.events.readonly'
+        ]
       },
       returnHeaders: true
     });
     const requestedScopes = linkSocialAccount.mock.calls[0]?.[0].body.scopes as string[];
     expect(requestedScopes.filter((scope) => scope.includes('calendar'))).toEqual([
-      'https://www.googleapis.com/auth/calendar.readonly'
+      'https://www.googleapis.com/auth/calendar.calendarlist.readonly',
+      'https://www.googleapis.com/auth/calendar.events.readonly'
     ]);
+    expect(requestedScopes).not.toContain('https://www.googleapis.com/auth/calendar.readonly');
     expect(requestedScopes).not.toContain('https://www.googleapis.com/auth/calendar');
     expect(requestedScopes).not.toContain('https://www.googleapis.com/auth/calendar.events');
   });

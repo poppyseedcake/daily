@@ -60,7 +60,7 @@ const saveAuthGoogleAccount = (
       overrides.accessToken ?? `access-${userId}`,
       overrides.refreshToken ?? `refresh-${userId}`,
       1783521000,
-      overrides.scope ?? 'openid email profile https://www.googleapis.com/auth/calendar.readonly',
+      overrides.scope ?? 'openid email profile https://www.googleapis.com/auth/calendar.calendarlist.readonly https://www.googleapis.com/auth/calendar.events.readonly',
       overrides.createdAt ?? 1783519200000,
       overrides.updatedAt ?? 1783519200000
     );
@@ -87,7 +87,10 @@ describe('SQLite User Calendar Connection store', () => {
 
     await store.saveConnected('user-1', {
       providerAccountId: 'google-user-1',
-      grantedScopes: ['https://www.googleapis.com/auth/calendar.readonly'],
+      grantedScopes: [
+        'https://www.googleapis.com/auth/calendar.calendarlist.readonly',
+        'https://www.googleapis.com/auth/calendar.events.readonly'
+      ],
       accessTokenAvailable: true,
       refreshTokenAvailable: true,
       accessTokenExpiresAt: new Date('2026-07-08T14:30:00.000Z')
@@ -96,7 +99,10 @@ describe('SQLite User Calendar Connection store', () => {
     await expect(store.load('user-1')).resolves.toEqual({
       status: 'connected',
       providerAccountId: 'google-user-1',
-      grantedScopes: ['https://www.googleapis.com/auth/calendar.readonly'],
+      grantedScopes: [
+        'https://www.googleapis.com/auth/calendar.calendarlist.readonly',
+        'https://www.googleapis.com/auth/calendar.events.readonly'
+      ],
       accessTokenAvailable: true,
       refreshTokenAvailable: true,
       accessTokenExpiresAt: new Date('2026-07-08T14:30:00.000Z')
@@ -117,7 +123,8 @@ describe('SQLite User Calendar Connection store', () => {
         'openid',
         'email',
         'profile',
-        'https://www.googleapis.com/auth/calendar.readonly'
+        'https://www.googleapis.com/auth/calendar.calendarlist.readonly',
+        'https://www.googleapis.com/auth/calendar.events.readonly'
       ],
       accessTokenAvailable: true,
       refreshTokenAvailable: true,
@@ -140,6 +147,25 @@ describe('SQLite User Calendar Connection store', () => {
     });
   });
 
+  test('does not connect an account missing either required Calendar scope', async () => {
+    const store = createUserCalendarConnectionStore(database);
+    saveAuthGoogleAccount(sqlite, 'user-1', {
+      scope: 'openid email profile https://www.googleapis.com/auth/calendar.events.readonly'
+    });
+
+    await expect(store.saveConnectedFromGoogleAuthAccount('user-1')).resolves.toBe(false);
+    await expect(store.load('user-1')).resolves.toEqual({ status: 'not-connected' });
+  });
+
+  test('keeps an existing broad Calendar grant connected', async () => {
+    const store = createUserCalendarConnectionStore(database);
+    saveAuthGoogleAccount(sqlite, 'user-1', {
+      scope: 'openid email profile https://www.googleapis.com/auth/calendar.readonly'
+    });
+
+    await expect(store.saveConnectedFromGoogleAuthAccount('user-1')).resolves.toBe(true);
+  });
+
   test('uses the newest Calendar-scoped Google auth account for the signed-in auth user', async () => {
     const store = createUserCalendarConnectionStore(database);
     saveAuthGoogleAccount(sqlite, 'user-1', {
@@ -150,7 +176,7 @@ describe('SQLite User Calendar Connection store', () => {
     saveAuthGoogleAccount(sqlite, 'user-1', {
       id: 'account-user-1-calendar',
       accessToken: 'access-calendar',
-      scope: 'openid email profile https://www.googleapis.com/auth/calendar.readonly',
+      scope: 'openid email profile https://www.googleapis.com/auth/calendar.calendarlist.readonly https://www.googleapis.com/auth/calendar.events.readonly',
       updatedAt: 1783522800000
     });
 
@@ -159,7 +185,10 @@ describe('SQLite User Calendar Connection store', () => {
     await expect(store.load('user-1')).resolves.toMatchObject({
       status: 'connected',
       accessTokenAvailable: true,
-      grantedScopes: expect.arrayContaining(['https://www.googleapis.com/auth/calendar.readonly'])
+      grantedScopes: expect.arrayContaining([
+        'https://www.googleapis.com/auth/calendar.calendarlist.readonly',
+        'https://www.googleapis.com/auth/calendar.events.readonly'
+      ])
     });
   });
 
@@ -168,7 +197,7 @@ describe('SQLite User Calendar Connection store', () => {
     saveAuthGoogleAccount(sqlite, 'user-1', {
       id: 'account-user-1-calendar',
       accessToken: 'access-calendar',
-      scope: 'openid email profile https://www.googleapis.com/auth/calendar.readonly',
+      scope: 'openid email profile https://www.googleapis.com/auth/calendar.calendarlist.readonly https://www.googleapis.com/auth/calendar.events.readonly',
       updatedAt: 1783519200000
     });
     saveAuthGoogleAccount(sqlite, 'user-1', {
@@ -182,7 +211,10 @@ describe('SQLite User Calendar Connection store', () => {
     await expect(store.load('user-1')).resolves.toMatchObject({
       status: 'connected',
       accessTokenAvailable: true,
-      grantedScopes: expect.arrayContaining(['https://www.googleapis.com/auth/calendar.readonly'])
+      grantedScopes: expect.arrayContaining([
+        'https://www.googleapis.com/auth/calendar.calendarlist.readonly',
+        'https://www.googleapis.com/auth/calendar.events.readonly'
+      ])
     });
   });
 
@@ -270,7 +302,10 @@ describe('SQLite User Calendar Connection store', () => {
 
     await store.saveConnected('user-1', {
       providerAccountId: 'google-user-1',
-      grantedScopes: ['https://www.googleapis.com/auth/calendar.readonly'],
+      grantedScopes: [
+        'https://www.googleapis.com/auth/calendar.calendarlist.readonly',
+        'https://www.googleapis.com/auth/calendar.events.readonly'
+      ],
       accessTokenAvailable: true,
       refreshTokenAvailable: true,
       accessTokenExpiresAt: null
@@ -281,7 +316,10 @@ describe('SQLite User Calendar Connection store', () => {
     ]);
     await store.saveConnected('user-2', {
       providerAccountId: 'google-user-2',
-      grantedScopes: ['https://www.googleapis.com/auth/calendar.readonly'],
+      grantedScopes: [
+        'https://www.googleapis.com/auth/calendar.calendarlist.readonly',
+        'https://www.googleapis.com/auth/calendar.events.readonly'
+      ],
       accessTokenAvailable: true,
       refreshTokenAvailable: false,
       accessTokenExpiresAt: null

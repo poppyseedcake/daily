@@ -309,10 +309,30 @@ describe('Google Calendar list provider', () => {
     authAccounts.push({
       access_token: 'calendar-access-token',
       access_token_expires_at: new Date(Date.now() + 60_000),
-      scope: 'openid,email,https://www.googleapis.com/auth/calendar.readonly'
+      scope: 'openid,email,https://www.googleapis.com/auth/calendar.calendarlist.readonly,https://www.googleapis.com/auth/calendar.events.readonly'
     });
 
     await expect(loadGoogleCalendarAccessToken('user-1')).resolves.toBe('calendar-access-token');
+  });
+
+  test('ignores tokens with only one of the required Calendar scopes', async () => {
+    authAccounts.push({
+      access_token: 'partial-calendar-token',
+      access_token_expires_at: new Date(Date.now() + 60_000),
+      scope: 'openid email https://www.googleapis.com/auth/calendar.events.readonly'
+    });
+
+    await expect(loadGoogleCalendarAccessToken('user-1')).resolves.toBeNull();
+  });
+
+  test('keeps a token with an existing broad Calendar grant usable', async () => {
+    authAccounts.push({
+      access_token: 'legacy-calendar-token',
+      access_token_expires_at: new Date(Date.now() + 60_000),
+      scope: 'openid email https://www.googleapis.com/auth/calendar.readonly'
+    });
+
+    await expect(loadGoogleCalendarAccessToken('user-1')).resolves.toBe('legacy-calendar-token');
   });
 
   test('refreshes an expired Calendar access token when refresh credentials are available', async () => {
@@ -321,7 +341,7 @@ describe('Google Calendar list provider', () => {
       access_token: 'expired-access-token',
       access_token_expires_at: new Date(Date.now() - 60_000),
       refresh_token: 'stored-refresh-token',
-      scope: 'openid email https://www.googleapis.com/auth/calendar.readonly'
+      scope: 'openid email https://www.googleapis.com/auth/calendar.calendarlist.readonly https://www.googleapis.com/auth/calendar.events.readonly'
     });
     refreshGoogleAccessToken.mockResolvedValue({ accessToken: 'refreshed-access-token' });
 
@@ -340,7 +360,7 @@ describe('Google Calendar list provider', () => {
       access_token: 'expired-access-token',
       access_token_expires_at: new Date(Date.now() - 60_000),
       refresh_token: 'revoked-refresh-token',
-      scope: 'openid email https://www.googleapis.com/auth/calendar.readonly'
+      scope: 'openid email https://www.googleapis.com/auth/calendar.calendarlist.readonly https://www.googleapis.com/auth/calendar.events.readonly'
     });
     refreshGoogleAccessToken.mockRejectedValue(new Error('revoked-refresh-token'));
 
@@ -357,7 +377,7 @@ describe('Google Calendar list provider', () => {
     authAccounts.push({
       access_token: 'expired-access-token',
       access_token_expires_at: new Date(Date.now() - 60_000),
-      scope: 'openid email https://www.googleapis.com/auth/calendar.readonly'
+      scope: 'openid email https://www.googleapis.com/auth/calendar.calendarlist.readonly https://www.googleapis.com/auth/calendar.events.readonly'
     });
 
     await expect(loadGoogleCalendarAccessToken('user-1')).resolves.toBeNull();
@@ -365,7 +385,7 @@ describe('Google Calendar list provider', () => {
     authAccounts.splice(0, authAccounts.length, {
       access_token: null,
       access_token_expires_at: new Date(Date.now() + 60_000),
-      scope: 'openid email https://www.googleapis.com/auth/calendar.readonly'
+      scope: 'openid email https://www.googleapis.com/auth/calendar.calendarlist.readonly https://www.googleapis.com/auth/calendar.events.readonly'
     });
 
     await expect(loadGoogleCalendarAccessToken('user-1')).resolves.toBeNull();
@@ -375,7 +395,7 @@ describe('Google Calendar list provider', () => {
     authAccounts.push({
       access_token: 'calendar-access-token',
       access_token_expires_at: null,
-      scope: 'openid email https://www.googleapis.com/auth/calendar.readonly'
+      scope: 'openid email https://www.googleapis.com/auth/calendar.calendarlist.readonly https://www.googleapis.com/auth/calendar.events.readonly'
     });
 
     await expect(loadGoogleCalendarAccessToken('user-1')).resolves.toBe('calendar-access-token');
