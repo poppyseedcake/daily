@@ -78,9 +78,9 @@
       The Google sign-in request uses <code>openid</code>, <code>email</code>, and
       <code>profile</code>. These scopes support account sign-in and the account email address.
       Daily requests Calendar access in a separate connection flow using
-      <code>https://www.googleapis.com/auth/calendar.readonly</code>. This is read-only access;
-      Daily uses it to list calendars and read live events for the Calendar Section and Daily
-      Summary.
+      <code>https://www.googleapis.com/auth/calendar.calendarlist.readonly</code> to list calendars
+      and <code>https://www.googleapis.com/auth/calendar.events.readonly</code> to read live events
+      for the Calendar Section and Daily Summary.
     </p>
     <p>
       Daily requests only the Google permissions used by these features. Daily uses Google user

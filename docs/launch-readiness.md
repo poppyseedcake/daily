@@ -34,12 +34,21 @@ Daily currently has two code paths:
 
 - Sign-in requests `openid`, `email`, and `profile`.
 - The separate Calendar connection requests those identity scopes plus
-  `https://www.googleapis.com/auth/calendar.readonly`.
+  `https://www.googleapis.com/auth/calendar.calendarlist.readonly` and
+  `https://www.googleapis.com/auth/calendar.events.readonly`.
 
 The Calendar path calls `users/me/calendarList` and `calendars/{id}/events`. It requests read-only
-access and does not write events. The exact scope classification and whether a narrower combination
-works must be checked in the production Google Cloud project. The repository does not verify the
-project configuration.
+access and does not write events. Google's method authorization tables list the first scope for
+[`calendarList.list`](https://developers.google.com/workspace/calendar/api/v3/reference/calendarList/list)
+and the second for
+[`events.list`](https://developers.google.com/workspace/calendar/api/v3/reference/events/list).
+Existing grants of `calendar.readonly` remain usable, but new consent requests omit it. The exact
+scope classification and OAuth configuration must be checked in the Google Cloud project; the
+repository does not verify the project configuration. A public external app must complete Google's
+app verification, including review of any scopes Google classifies as sensitive. Prepare the
+consent screen, public homepage and privacy policy, domain verification, scope justifications, and
+demo video for the final scope set. See
+[Google's verification requirements](https://support.google.com/cloud/answer/13464321?hl=en).
 
 The official Google policy research is in
 [`docs/research/google-api-user-data-policy.md`](research/google-api-user-data-policy.md). It
@@ -79,8 +88,8 @@ Google Cloud OAuth configuration verification.
 - [ ] Resolve the missing operator details and all legal and operational questions.
 - [ ] Obtain legal review of the Privacy Policy, Terms of Service, and the age-confirmation approach.
 - [ ] Verify ownership of `dailykickoff.eu` in Google Search Console.
-- [ ] Check every requested OAuth scope against actual use and test the narrowest working Calendar
-      scope set.
+- [ ] Confirm the final scope set and classifications in Google Cloud and test consent with a live
+      Google account before verification submission.
 - [ ] Confirm the Cloud Console OAuth project is External and in the intended production state.
 - [ ] Confirm the homepage, `/privacy`, `/terms`, authorized domains, redirect URIs, JavaScript
       origins, support email, and developer contact.

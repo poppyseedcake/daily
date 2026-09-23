@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { and, asc, desc, eq } from 'drizzle-orm';
-import { googleCalendarReadScope, parseGoogleProviderScopes } from '$lib/googleCalendarScopes';
+import { hasGoogleCalendarReadAccess, parseGoogleProviderScopes } from '$lib/googleCalendarScopes';
 import type { SavedSelectedCalendar } from '$lib/selectedCalendars';
 import { db } from '$lib/server/db';
 import { authAccount, calendarConnections, selectedCalendars, users } from './schema';
@@ -101,7 +101,7 @@ export const createUserCalendarConnectionStore = (
         row,
         grantedScopes: parseGoogleProviderScopes(row.scope)
       }))
-      .find((account) => account.grantedScopes.includes(googleCalendarReadScope));
+      .find((account) => hasGoogleCalendarReadAccess(account.grantedScopes));
 
     if (!scopedAccount) {
       return false;

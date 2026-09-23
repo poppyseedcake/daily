@@ -43,11 +43,12 @@ resolved. The application code and the local environment do not prove the final 
    consent-screen branding, support email, authorised domains, origins, redirect URIs, and policy
    URLs.
 2. Confirm the Google classification of each exact scope in the current Cloud Console. The code
-   requests `openid`, `email`, `profile`, and
-   `https://www.googleapis.com/auth/calendar.readonly`.
-3. Confirm whether the Calendar list and event API calls can use a narrower scope set, such as a
-   Calendar list read scope plus an event read scope. Test the exact set before changing the code
-   or the verification explanation. Do not request a scope for a feature that is not implemented.
+   requests `openid`, `email`, `profile`,
+   `https://www.googleapis.com/auth/calendar.calendarlist.readonly`, and
+   `https://www.googleapis.com/auth/calendar.events.readonly`.
+3. Confirm the final scope set in the Google Cloud project and test a fresh Calendar connection
+   with a live Google account before submitting the verification explanation. Google's endpoint
+   authorization tables support this pair; the repository tests cannot prove live OAuth consent.
 4. Confirm whether Google Calendar data or data derived from it reaches Resend through a requested
    Daily Summary. If so, document the transfer and user-facing purpose under Google's Limited Use
    rules and review the provider terms.
