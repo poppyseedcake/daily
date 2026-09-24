@@ -19,6 +19,17 @@ describe('Daily page auth state', () => {
     });
   });
 
+  test('includes the Google account name when available', () => {
+    expect(authStateFromSession({
+      user: { id: 'user-1', name: 'Ada Lovelace', email: 'ada@example.com', emailVerified: true }
+    })).toEqual({
+      mode: 'user',
+      userId: 'user-1',
+      name: 'Ada Lovelace',
+      summaryRecipient: 'ada@example.com'
+    });
+  });
+
   test('keeps a verified session without a User id in Visitor mode', () => {
     expect(authStateFromSession({ user: { email: 'user@example.com', emailVerified: true } })).toEqual({
       mode: 'visitor'

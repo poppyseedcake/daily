@@ -371,15 +371,22 @@ test('signed-in User can inspect Delivery History and irreversibly delete the ac
     await expect(page.getByLabel('New Todo Task')).toBeEnabled();
     await expect(page.getByText('Todo state saved to your account.')).toHaveCount(0);
 
-    await page.getByRole('button', { name: 'Open delivery history' }).click();
-    const history = page.getByRole('dialog', { name: 'Delivery history' });
-    await expect(history).toBeVisible();
-    await expect(history.getByText('Scheduled Daily Summary')).toBeVisible();
-    await expect(history.getByText('Sent', { exact: true })).toBeVisible();
-    await expect(history).not.toContainText('private-message');
-    await history.getByRole('button', { name: 'Close panel' }).click();
-
-    await page.getByRole('button', { name: 'Open settings' }).click();
+    await page.getByLabel('Open account menu').click();
+    const accountMenu = page.locator('.daily-account-menu__panel');
+    await expect(accountMenu).toContainText('Account User');
+    await expect(accountMenu).toContainText('account@example.com');
+    await expect(accountMenu.getByRole('button', { name: 'Settings' })).toBeVisible();
+    await expect(accountMenu.getByRole('button', { name: 'Sign out' })).toBeVisible();
+    await expect(accountMenu.getByRole('link', { name: 'Admin Panel' })).toHaveCount(0);
+    await accountMenu.getByRole('button', { name: 'Settings' }).click();
+    const settings = page.getByRole('dialog', { name: 'Settings' });
+    await expect(settings.getByText('Scheduled Daily Summary')).toBeVisible();
+    await expect(settings.getByText('Sent', { exact: true })).toBeVisible();
+    await expect(settings).not.toContainText('private-message');
+    await expect(settings.getByLabel('Summary Time')).toHaveCount(0);
+    await expect(settings.getByLabel('User Time Zone')).toHaveCount(0);
+    await expect(settings.getByText('Daily Summary preview')).toHaveCount(0);
+    await expect(settings.getByRole('button', { name: 'Send Test Daily Summary' })).toHaveCount(0);
     await page.getByLabel('Enter DELETE MY ACCOUNT exactly to confirm')
       .fill('DELETE MY ACCOUNT');
     await page.getByRole('button', { name: 'Permanently delete my account' }).click();
