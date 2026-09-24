@@ -5,12 +5,14 @@ export type DailyPageAuthState =
   | {
       mode: 'user';
       userId: string;
+      name?: string;
       summaryRecipient: string;
     };
 
 export type DailyPageSession = {
   user?: {
     id?: string | null;
+    name?: string | null;
     email?: string | null;
     emailVerified?: boolean | null;
   } | null;
@@ -27,6 +29,7 @@ export const authStateFromSession = (session: DailyPageSession): DailyPageAuthSt
   return {
     mode: 'user',
     userId,
+    ...(session.user?.name?.trim() ? { name: session.user.name.trim() } : {}),
     summaryRecipient: email
   };
 };

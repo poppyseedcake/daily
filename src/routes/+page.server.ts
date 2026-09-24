@@ -109,8 +109,6 @@ const loadPageCommuteSetup = async (userId: string): Promise<{
 };
 
 export const load = async ({ request, cookies }) => {
-  const requestOrigin = env.ORIGIN ?? env.BETTER_AUTH_URL ?? new URL(request.url).origin;
-  const openDailyUrl = `${requestOrigin}/`;
   const session = await auth.api.getSession({
     headers: request.headers
   });
@@ -267,50 +265,14 @@ export const load = async ({ request, cookies }) => {
     calendarReadinessForAuthMode(authState.mode);
   const selectedCalendarConfiguration =
     loadedPageCalendar?.selectedCalendarConfiguration ?? null;
-  const renderedSummary =
-    authState.mode === 'user'
-      ? await (async () => {
-          const validConfiguration = summaryConfigurationSchema.safeParse(summaryConfiguration);
-
-          if (!validConfiguration.success) {
-            return null;
-          }
-          let generatedSummary;
-          try {
-            generatedSummary = await dailySummaryGenerator.generate(
-              {
-                userId: authState.userId,
-                ...(loadedPageCalendar
-                  ? {
-                      snapshot: {
-                        configuration: validConfiguration.data,
-                        calendarEvents: loadedPageCalendar.calendarEvents,
-                        generatedAt: calendarNow
-                      }
-                    }
-                  : {})
-              },
-              { openDailyUrl }
-            );
-          } catch (error) {
-            if (error instanceof UserDailySummaryNotActiveError) {
-              return null;
-            }
-
-            throw error;
-          }
-          return {
-            html: generatedSummary.rendered.html,
-            calendarSection: loadedPageCalendar
-              ? buildCalendarAgenda({
-                  calendarEvents: loadedPageCalendar.calendarEvents,
-                  userTimeZone: validConfiguration.data.userTimeZone,
-                  now: calendarNow
-                })
-              : null
-          };
-        })()
-      : null;
+  const validConfiguration = summaryConfigurationSchema.safeParse(summaryConfiguration);
+  const calendarSection = loadedPageCalendar && validConfiguration.success
+    ? buildCalendarAgenda({
+        calendarEvents: loadedPageCalendar.calendarEvents,
+        userTimeZone: validConfiguration.data.userTimeZone,
+        now: calendarNow
+      })
+    : null;
 
   return {
     authState,
@@ -327,8 +289,7 @@ export const load = async ({ request, cookies }) => {
     savedCommuteAddresses,
     deliveryRecords,
     selectedCalendarConfiguration,
-    renderedSummaryHtml: renderedSummary?.html ?? null,
-    calendarSection: renderedSummary?.calendarSection ?? null
+    calendarSection
   };
 };
 

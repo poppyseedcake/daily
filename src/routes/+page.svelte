@@ -37,7 +37,6 @@
     createBrowserSaveCoordinator,
     createJsonPutSaveAdapter
   } from '$lib/browserSaveCoordinator';
-  import { visitorDailySummaryGenerator } from '$lib/dailySummaryGeneration';
   import type { DeliveryHistoryRecord, DeliveryStatus } from '$lib/deliveryRecords';
   import {
     createDefaultLocalSetup,
@@ -50,7 +49,6 @@
   } from '$lib/localSetup';
   import {
     defaultSummaryConfiguration,
-    canPreviewDailySummary,
     summaryConfigurationSchema,
     summaryTimeSchema,
     type SummaryConfiguration,
@@ -289,8 +287,9 @@
   let calendarDialog = $state<HTMLDialogElement>();
   let calendarSettingsOpen = $state(false);
   let calendarSettingsDialog = $state<HTMLDialogElement>();
-  let secondaryPanel = $state<'settings' | 'history' | null>(null);
+  let secondaryPanel = $state(false);
   let secondaryDialog = $state<HTMLDialogElement>();
+  let accountMenu = $state<HTMLDetailsElement>();
   let categoryComposerOpen = $state(false);
   let newCategoryInput = $state<HTMLInputElement>();
   let categoryPendingDeletion = $state<TodoCategory | null>(null);
@@ -306,6 +305,32 @@
   let activeSummaryTimePart = $state<'hours' | 'minutes'>('hours');
   let summaryTimeZoneEditorOpen = $state(false);
   let calendarDisconnectConfirmation = $state(false);
+
+  const accountInitials = $derived.by(() => {
+    if (authState.mode !== 'user') return '';
+    const name = authState.name?.trim();
+    if (!name) return authState.summaryRecipient.slice(0, 1).toUpperCase();
+    const words = name.split(/\s+/);
+    return `${words[0]?.[0] ?? ''}${words.length > 1 ? words.at(-1)?.[0] ?? '' : ''}`.toUpperCase();
+  });
+
+  onMount(() => {
+    const closeAccountMenuOnOutsideClick = (event: PointerEvent) => {
+      if (accountMenu?.open && !accountMenu.contains(event.target as Node)) accountMenu.open = false;
+    };
+    const closeAccountMenuOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && accountMenu?.open) {
+        accountMenu.open = false;
+        accountMenu.querySelector('summary')?.focus();
+      }
+    };
+    document.addEventListener('pointerdown', closeAccountMenuOnOutsideClick);
+    document.addEventListener('keydown', closeAccountMenuOnEscape);
+    return () => {
+      document.removeEventListener('pointerdown', closeAccountMenuOnOutsideClick);
+      document.removeEventListener('keydown', closeAccountMenuOnEscape);
+    };
+  });
 
   onMount(() => {
     if (authState.mode === 'user') {
@@ -390,19 +415,6 @@
     }
 
     sectionPauses = { ...result.data.sectionPauses };
-  };
-
-  const updateSummaryTimeInput = (value: string) => {
-    summaryTimeInput = value;
-
-    const result = summaryConfigurationSchema.safeParse({
-      ...currentSummaryConfiguration(),
-      summaryTime: value
-    });
-
-    if (result.success) {
-      summaryTime = result.data.summaryTime;
-    }
   };
 
   const systemTimeZone = () => {
@@ -1524,8 +1536,9 @@
     await showDialog('calendar');
   };
 
-  const openSecondaryPanel = async (panel: 'settings' | 'history') => {
-    secondaryPanel = panel;
+  const openSecondaryPanel = async () => {
+    if (accountMenu) accountMenu.open = false;
+    secondaryPanel = true;
     await tick();
     secondaryDialog?.showModal();
     secondaryDialog?.focus();
@@ -1533,7 +1546,7 @@
 
   const closeSecondaryPanel = () => {
     secondaryDialog?.close();
-    secondaryPanel = null;
+    secondaryPanel = false;
   };
 
   const handleDialogBackdropClick = (event: MouseEvent, closeDialog: () => void) => {
@@ -1801,15 +1814,6 @@
   })
     .format(new Date())
     .toUpperCase();
-  const previewConfiguration: SummaryConfiguration = $derived({
-    summaryTime,
-    userTimeZone,
-    summaryDeliveryEnabled,
-    sectionPauses: { ...sectionPauses }
-  });
-  let renderedSummaryHtml = $state('');
-  let previewRenderVersion = 0;
-
   $effect(() => {
     const result = summaryConfigurationSchema.safeParse({
       ...currentSummaryConfiguration(),
@@ -1819,27 +1823,6 @@
     if (result.success && result.data.summaryTime !== summaryTime) {
       summaryTime = result.data.summaryTime;
     }
-  });
-
-  $effect(() => {
-    if (authState.mode === 'user') {
-      renderedSummaryHtml = data?.renderedSummaryHtml ?? '';
-      return;
-    }
-
-    const renderVersion = ++previewRenderVersion;
-
-    void visitorDailySummaryGenerator.generate(
-      {
-        ...currentLocalSetup(),
-        summaryConfiguration: previewConfiguration
-      },
-      { openDailyUrl: `${window.location.origin}/` }
-    ).then((generated) => {
-      if (renderVersion === previewRenderVersion) {
-        renderedSummaryHtml = generated.rendered.html;
-      }
-    });
   });
 
   $effect(() => {
@@ -2026,26 +2009,33 @@
   <aside class="daily-rail" aria-label="Primary navigation">
     <a class="daily-brand" href="/" aria-label="Daily home"><DailyLogo compact /></a>
     <nav class="daily-rail-bottom">
-      {#if authState.mode === 'user'}
-        <button type="button" aria-label="Open delivery history" onclick={() => void openSecondaryPanel('history')}><History size={20} /></button>
-      {/if}
-      {#if isAdministrator}
-        <a href="/admin" aria-label="Open Admin Panel" title="Open Admin Panel"><ShieldCheck size={20} /></a>
-      {/if}
-      <button
-        type="button"
-        aria-label="Open settings"
-        disabled={!localSetupHydrated}
-        onclick={() => void openSecondaryPanel('settings')}
-      ><Settings size={20} /></button>
       {#if authState.mode === 'visitor'}
+        <button
+          type="button"
+          aria-label="Open settings"
+          disabled={!localSetupHydrated}
+          onclick={() => void openSecondaryPanel()}
+        ><Settings size={20} /></button>
         <a href="/auth/google" aria-label="Sign in with Google" title="Sign in with Google">
           <LogIn size={19} />
         </a>
       {:else}
-        <form method="POST" action="/auth/sign-out">
-          <button type="submit" aria-label="Sign out" title="Sign out"><LogOut size={19} /></button>
-        </form>
+        <details class="daily-account-menu" bind:this={accountMenu}>
+          <summary aria-label="Open account menu" title="Account menu">{accountInitials}</summary>
+          <div class="daily-account-menu__panel">
+            <div class="daily-account-menu__identity">
+              <strong>{authState.name ?? authState.summaryRecipient}</strong>
+              {#if authState.name}<span>{authState.summaryRecipient}</span>{/if}
+            </div>
+            <button type="button" disabled={!localSetupHydrated} onclick={() => void openSecondaryPanel()}><Settings size={17} />Settings</button>
+            {#if isAdministrator}
+              <a href="/admin"><ShieldCheck size={17} />Admin Panel</a>
+            {/if}
+            <form method="POST" action="/auth/sign-out">
+              <button type="submit"><LogOut size={17} />Sign out</button>
+            </form>
+          </div>
+        </details>
       {/if}
     </nav>
   </aside>
@@ -2451,6 +2441,7 @@
   }
 
   .daily-board-shell :is(button, a, input, select):focus-visible,
+  .daily-account-menu > summary:focus-visible,
   .daily-dialog :is(button, a, input):focus-visible,
   .daily-secondary-dialog :is(button, a, input, select, summary):focus-visible {
     outline: 2px solid #617d49;
@@ -2525,9 +2516,93 @@
     margin: 0;
   }
 
+  .daily-account-menu {
+    position: relative;
+  }
+
+  .daily-account-menu > summary {
+    width: 40px;
+    height: 40px;
+    display: grid;
+    place-items: center;
+    border: 1px solid #d8ddd4;
+    border-radius: 9px;
+    background: #f0f5eb;
+    color: #425637;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 750;
+    list-style: none;
+  }
+
+  .daily-account-menu > summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .daily-account-menu > summary:hover,
+  .daily-account-menu[open] > summary {
+    border-color: #b9c9ad;
+    background: #e7efdf;
+  }
+
+  .daily-account-menu__panel {
+    position: absolute;
+    bottom: 0;
+    left: 52px;
+    width: min(250px, calc(100vw - 90px));
+    overflow: hidden;
+    border: 1px solid #d8ddd4;
+    border-radius: 12px;
+    background: #fff;
+    box-shadow: 0 12px 32px rgb(5 11 22 / 0.16);
+    padding: 6px;
+  }
+
+  .daily-account-menu__identity {
+    display: grid;
+    gap: 3px;
+    min-width: 0;
+    border-bottom: 1px solid #e3e6e0;
+    padding: 11px 10px 13px;
+  }
+
+  .daily-account-menu__identity strong,
+  .daily-account-menu__identity span {
+    overflow-wrap: anywhere;
+  }
+
+  .daily-account-menu__identity strong {
+    font-size: 12px;
+  }
+
+  .daily-account-menu__identity span {
+    color: #626d5e;
+    font-size: 11px;
+  }
+
+  .daily-rail nav .daily-account-menu__panel :is(button, a) {
+    width: 100%;
+    height: auto;
+    min-height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 10px;
+    border: 0;
+    padding: 0 10px;
+    color: #30382d;
+    cursor: pointer;
+    font-size: 12px;
+    text-align: left;
+  }
+
+  .daily-account-menu__panel form {
+    border-top: 1px solid #e3e6e0;
+    padding-top: 5px;
+  }
+
   .daily-rail-bottom > a:last-child,
-  .daily-rail-bottom > button:last-child,
-  .daily-rail-bottom > form:last-child button {
+  .daily-rail-bottom > button:last-child {
     border-color: #d8ddd4;
     background: #fff;
     color: #4b5048;
@@ -4678,22 +4753,6 @@
     line-height: 1.55;
   }
 
-  .daily-settings-grid {
-    display: grid;
-    grid-template-columns: 0.7fr 1.3fr;
-    gap: 10px;
-  }
-
-  .daily-settings-grid label > span {
-    display: block;
-    margin-bottom: 5px;
-    color: #697166;
-    font-size: 8px;
-    font-weight: 750;
-  }
-
-  .daily-settings-grid input,
-  .daily-settings-grid select,
   .daily-delete-account input {
     width: 100%;
     min-height: 40px;
@@ -4731,37 +4790,6 @@
     transform: translateY(-50%);
   }
 
-  .daily-preview-details {
-    border-bottom: 1px solid #dbe1d8;
-    padding: 18px 0;
-  }
-
-  .daily-preview-details summary {
-    cursor: pointer;
-    font-size: 11px;
-    font-weight: 750;
-  }
-
-  .daily-preview-details > div {
-    margin-top: 14px;
-    overflow: hidden;
-    border: 1px solid #e1e5de;
-    border-radius: 8px;
-    background: #fff;
-    padding: 10px;
-    font-size: 9px;
-  }
-
-  .daily-preview-details > div > span {
-    display: inline-block;
-    margin-bottom: 8px;
-    border-radius: 4px;
-    background: #eef2ea;
-    padding: 4px 6px;
-    color: #587542;
-  }
-
-  .daily-preview-details button,
   .daily-settings-section button,
   .daily-settings-section a {
     min-height: 40px;
@@ -4854,6 +4882,19 @@
     .daily-rail nav button {
       width: 44px;
       height: 44px;
+    }
+
+    .daily-account-menu > summary {
+      width: 44px;
+      height: 44px;
+    }
+
+    .daily-account-menu__panel {
+      position: fixed;
+      bottom: 72px;
+      right: 12px;
+      left: auto;
+      width: min(270px, calc(100vw - 24px));
     }
 
     .daily-board-main {
@@ -5004,9 +5045,6 @@
       padding: 22px 18px 90px;
     }
 
-    .daily-settings-grid {
-      grid-template-columns: 1fr;
-    }
   }
 
   @media (prefers-reduced-motion: reduce) {
@@ -5591,51 +5629,31 @@
     }}
   >
     <header>
-      <div><small>Daily</small><h2 id="secondary-panel-title">{secondaryPanel === 'settings' ? 'Settings' : 'Delivery history'}</h2></div>
+      <div><small>Daily</small><h2 id="secondary-panel-title">Settings</h2></div>
       <button type="button" aria-label="Close panel" onclick={closeSecondaryPanel}><X size={19} /></button>
     </header>
 
-    {#if secondaryPanel === 'history'}
-      {#if deliveryRecords.length}
-        <ul class="daily-history-list" aria-label="Delivery Record History">
-          {#each deliveryRecords as record}
-            {@const presentation = deliveryStatusPresentationFor(record.deliveryStatus)}
-            <li>
-              <div>
-                <strong>{deliveryAttemptLabel(record.attemptType)} Daily Summary</strong>
-                <small>{deliveryTimeLabel(record.attemptType === 'scheduled' ? record.scheduledAt : record.requestedAt)}</small>
-              </div>
-              <span>{presentation.label}</span>
-            </li>
-          {/each}
-        </ul>
-      {:else}
-        <div class="daily-dialog-empty"><History size={20} /><strong>No Delivery Records</strong><span>No Delivery Records in the last 30 days.</span></div>
+      {#if authState.mode === 'user'}
+        <section class="daily-settings-section">
+          <h3>Delivery history</h3>
+          {#if deliveryRecords.length}
+            <ul class="daily-history-list" aria-label="Delivery Record History">
+              {#each deliveryRecords as record}
+                {@const presentation = deliveryStatusPresentationFor(record.deliveryStatus)}
+                <li>
+                  <div>
+                    <strong>{deliveryAttemptLabel(record.attemptType)} Daily Summary</strong>
+                    <small>{deliveryTimeLabel(record.attemptType === 'scheduled' ? record.scheduledAt : record.requestedAt)}</small>
+                  </div>
+                  <span>{presentation.label}</span>
+                </li>
+              {/each}
+            </ul>
+          {:else}
+            <div class="daily-dialog-empty"><History size={20} /><strong>No Delivery Records</strong><span>No Delivery Records in the last 30 days.</span></div>
+          {/if}
+        </section>
       {/if}
-    {:else}
-      <section class="daily-settings-section">
-        <h3>Summary</h3>
-        <div class="daily-settings-grid">
-          <label>
-            <span>Summary Time</span>
-            <input
-              aria-label="Summary Time"
-              value={summaryTimeInput}
-              oninput={(event) => updateSummaryTimeInput(readInputValue(event))}
-            />
-          </label>
-          <label>
-            <span>User Time Zone</span>
-            <select
-              aria-label="User Time Zone"
-              bind:value={userTimeZone}
-              onchange={() => patchSummaryConfiguration({ userTimeZone })}
-            >
-              {#each supportedTimeZones as timeZone}<option value={timeZone}>{timeZone}</option>{/each}
-            </select>
-          </label>
-        </div>
-      </section>
       <section class="daily-settings-section">
         <h3>Summary Sections</h3>
         {#each summarySections as section}
@@ -5651,32 +5669,24 @@
           </label>
         {/each}
       </section>
-      <details class="daily-preview-details">
-        <summary>Daily Summary preview</summary>
-        <div>
-          <p>Next summary: {summaryTime} {userTimeZone}</p>
-          <span>Single-palette Daily Grid preview</span>
-          {@html renderedSummaryHtml}
-          <button type="button" disabled={!canPreviewDailySummary(previewConfiguration)}>Preview Daily Summary</button>
-        </div>
-      </details>
       {#if authState.mode === 'user'}
-        <section class="daily-settings-section">
-          <h3>Test delivery</h3>
-          <p>Send a test Daily Summary to {authState.summaryRecipient}.</p>
-          {#if testDeliveryStatus}
-            <p role={testDeliveryStatus.tone === 'success' ? 'status' : 'alert'}>
-              {testDeliveryStatus.message}
-            </p>
-          {/if}
-          <form method="POST" action="?/sendTestDailySummary">
-            <button type="submit"><Send size={16} />Send Test Daily Summary</button>
-          </form>
-        </section>
+        {#if isAdministrator}
+          <section class="daily-settings-section">
+            <h3>Test delivery</h3>
+            <p>Send a test Daily Summary to {authState.summaryRecipient}.</p>
+            {#if testDeliveryStatus}
+              <p role={testDeliveryStatus.tone === 'success' ? 'status' : 'alert'}>
+                {testDeliveryStatus.message}
+              </p>
+            {/if}
+            <form method="POST" action="?/sendTestDailySummary">
+              <button type="submit"><Send size={16} />Send Test Daily Summary</button>
+            </form>
+          </section>
+        {/if}
         <section class="daily-settings-section">
           <h3>Account</h3>
           <p>Summary Recipient: {authState.summaryRecipient}</p>
-          <form method="POST" action="/auth/sign-out"><button type="submit">Sign out</button></form>
           <form class="daily-delete-account" method="POST" action="?/deleteAccount">
             <h4>Delete Daily account</h4>
             <p>This is irreversible.</p>
@@ -5693,6 +5703,5 @@
           <a class="daily-google-button" href="/auth/google"><Mail size={17} />Sign in with Google</a>
         </section>
       {/if}
-    {/if}
   </dialog>
 {/if}
