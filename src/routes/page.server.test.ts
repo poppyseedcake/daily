@@ -638,7 +638,6 @@ describe('Daily page server load', () => {
       savedCommuteAddresses: [],
       deliveryRecords: [],
       selectedCalendarConfiguration: null,
-      renderedSummaryHtml: null,
       calendarSection: null
     });
   });
@@ -694,7 +693,7 @@ describe('Daily page server load', () => {
     );
   });
 
-  test('loads live selected Calendar Events into the signed-in User Daily Summary preview', async () => {
+  test('loads live selected Calendar Events into the signed-in User Calendar agenda', async () => {
     getSession.mockResolvedValue({
       user: { id: 'user-1', email: 'user@example.com', emailVerified: true }
     });
@@ -714,7 +713,6 @@ describe('Daily page server load', () => {
 
     await expect(loadPage()).resolves.toEqual(
       expect.objectContaining({
-        renderedSummaryHtml: expect.stringContaining('Planning'),
         calendarSection: expect.objectContaining({
           today: expect.objectContaining({
             timedEvents: expect.arrayContaining([
@@ -756,7 +754,6 @@ describe('Daily page server load', () => {
 
     await expect(loadPage()).resolves.toEqual(
       expect.objectContaining({
-        renderedSummaryHtml: expect.not.stringContaining('Planning'),
         calendarSection: expect.objectContaining({
           today: expect.objectContaining({
             timedEvents: expect.arrayContaining([
@@ -790,7 +787,6 @@ describe('Daily page server load', () => {
 
     await expect(loadPage()).resolves.toEqual(
       expect.objectContaining({
-        renderedSummaryHtml: expect.not.stringContaining('Planning'),
         calendarSection: expect.objectContaining({
           today: expect.objectContaining({
             timedEvents: expect.arrayContaining([
@@ -829,8 +825,7 @@ describe('Daily page server load', () => {
         unavailableReason: 'Live Calendar is unavailable right now.'
       })
     );
-    expect(result.renderedSummaryHtml).toContain('Live Calendar is unavailable right now.');
-    expect(result.renderedSummaryHtml).not.toContain('Therapy at 10:00 with secret-provider-token');
+    expect(JSON.stringify(result.calendarSection)).not.toContain('secret-provider-token');
     expect(sentCalendarEventRequests).toHaveLength(1);
   });
 
@@ -852,10 +847,7 @@ describe('Daily page server load', () => {
         calendarReadiness: expect.objectContaining({
           status: 'reconnect-required',
           unavailableReason: 'Reconnect Google Calendar to include Calendar Events.'
-        }),
-        renderedSummaryHtml: expect.stringContaining(
-          'Reconnect Google Calendar to include Calendar Events.'
-        )
+        })
       })
     );
     expect(savedSelectedCalendars.map((calendar) => calendar.id)).toEqual(['work']);
@@ -879,7 +871,13 @@ describe('Daily page server load', () => {
     await expect(loadPage()).resolves.toEqual(
       expect.objectContaining({
         selectedCalendarConfiguration: null,
-        renderedSummaryHtml: expect.stringContaining('Planning')
+        calendarSection: expect.objectContaining({
+          today: expect.objectContaining({
+            timedEvents: expect.arrayContaining([
+              expect.objectContaining({ title: 'Planning' })
+            ])
+          })
+        })
       })
     );
     expect(sentCalendarEventRequests).toEqual([
@@ -909,10 +907,7 @@ describe('Daily page server load', () => {
         calendarReadiness: expect.objectContaining({
           status: 'reconnect-required',
           unavailableReason: 'Reconnect Google Calendar to include Calendar Events.'
-        }),
-        renderedSummaryHtml: expect.stringContaining(
-          'Reconnect Google Calendar to include Calendar Events.'
-        )
+        })
       })
     );
     expect(sentCalendarEventRequests).toEqual([]);
@@ -978,12 +973,11 @@ describe('Daily page server load', () => {
       savedCommuteAddresses: [],
       deliveryRecords: savedDeliveryRecords,
       selectedCalendarConfiguration: null,
-      renderedSummaryHtml: expect.any(String),
       calendarSection: null
     });
   });
 
-  test('renders the signed-in User Commute preview through live production generation', async () => {
+  test('does not estimate Commute on a signed-in page load', async () => {
     getSession.mockResolvedValue({
       user: { id: 'user-1', email: 'user@example.com', emailVerified: true }
     });
@@ -991,25 +985,25 @@ describe('Daily page server load', () => {
 
     const result = await loadPage();
 
-    expect(result.renderedSummaryHtml).toContain('Office: 24 minutes');
-    expect(commuteUsageAdmissions).toHaveLength(1);
-    expect(sentCommuteEstimateRequests).toHaveLength(1);
+    expect(result.commuteSetup?.routes).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: 'Office' })
+    ]));
+    expect(commuteUsageAdmissions).toHaveLength(0);
+    expect(sentCommuteEstimateRequests).toHaveLength(0);
   });
 
-  test('keeps the signed-in User preview available when Summary Delivery is disabled', async () => {
+  test('loads disabled Summary Delivery without generating an email preview', async () => {
     getSession.mockResolvedValue({
       user: { id: 'user-1', email: 'user@example.com', emailVerified: true }
     });
     savedConfiguration.summaryDeliveryEnabled = false;
 
-    await expect(loadPage()).resolves.toEqual(
-      expect.objectContaining({
-        renderedSummaryHtml: expect.stringContaining('Good morning')
-      })
-    );
+    const result = await loadPage();
+    expect(result.summaryConfiguration?.summaryDeliveryEnabled).toBe(false);
+    expect(sentForecastRequests).toHaveLength(0);
   });
 
-  test('keeps the User preview available when Commute setup cannot be loaded', async () => {
+  test('keeps the page available when Commute setup cannot be loaded', async () => {
     getSession.mockResolvedValue({
       user: { id: 'user-1', email: 'user@example.com', emailVerified: true }
     });
@@ -1017,15 +1011,15 @@ describe('Daily page server load', () => {
 
     const result = await loadPage();
 
-    expect(result.renderedSummaryHtml).toContain('Live Commute is unavailable right now.');
-    expect(result.renderedSummaryHtml).toContain('Clear. Low 16C, high 23C.');
+    expect(result.commuteSetup).toEqual({ routes: [], days: expect.any(Array) });
+    expect(sentForecastRequests).toHaveLength(0);
     expect(console.warn).toHaveBeenCalledWith(
       'Failed to load User Commute setup.',
       expect.objectContaining({ userId: 'user-1' })
     );
   });
 
-  test('keeps the User preview available when Todo state cannot be loaded', async () => {
+  test('keeps the page available when Todo state cannot be loaded', async () => {
     getSession.mockResolvedValue({
       user: { id: 'user-1', email: 'user@example.com', emailVerified: true }
     });
@@ -1033,9 +1027,8 @@ describe('Daily page server load', () => {
 
     const result = await loadPage();
 
-    expect(result.renderedSummaryHtml).toContain('Todo data is temporarily unavailable.');
-    expect(result.renderedSummaryHtml).toContain('Clear. Low 16C, high 23C.');
-    expect(result.renderedSummaryHtml).not.toContain('Draft update');
+    expect(result.todoState.todoTasks).toEqual([]);
+    expect(sentForecastRequests).toHaveLength(0);
     expect(console.warn).toHaveBeenCalledWith(
       'Failed to load User Todo state.',
       expect.objectContaining({ userId: 'user-1' })
@@ -1158,7 +1151,6 @@ describe('Daily page server load', () => {
       savedCommuteAddresses: [],
       deliveryRecords: [],
       selectedCalendarConfiguration: null,
-      renderedSummaryHtml: expect.any(String),
       calendarSection: null
     });
   });
@@ -1198,7 +1190,6 @@ describe('Daily page server load', () => {
       savedCommuteAddresses: [],
       deliveryRecords: [],
       selectedCalendarConfiguration: null,
-      renderedSummaryHtml: null,
       calendarSection: null
     });
     expect(console.warn).toHaveBeenCalledWith(
@@ -1236,7 +1227,6 @@ describe('Daily page server load', () => {
       savedCommuteAddresses: [],
       deliveryRecords: [],
       selectedCalendarConfiguration: null,
-      renderedSummaryHtml: expect.any(String),
       calendarSection: null
     });
   });
@@ -1801,7 +1791,7 @@ describe('Daily page server load', () => {
     expect(recordedDeliveryRecords).toEqual([]);
   });
 
-  test('does not generate a preview or call its providers for a deleting User', async () => {
+  test('does not call providers for a deleting User', async () => {
     getSession.mockResolvedValue({
       user: { id: 'user-1', email: 'user@example.com', emailVerified: true }
     });
@@ -1810,7 +1800,6 @@ describe('Daily page server load', () => {
     const result = await loadPage();
 
     expect(result.authState).toEqual({ mode: 'visitor' });
-    expect(result.renderedSummaryHtml).toBeNull();
     expect(sentForecastRequests).toEqual([]);
     expect(sentCommuteEstimateRequests).toEqual([]);
     expect(sentCalendarEventRequests).toEqual([]);
@@ -1827,12 +1816,10 @@ describe('Daily page server load', () => {
     deletionFinish.mockRejectedValueOnce(new Error('database temporarily unavailable'));
 
     await expect(loadPage()).resolves.toEqual(expect.objectContaining({
-      authState: { mode: 'visitor' },
-      renderedSummaryHtml: null
+      authState: { mode: 'visitor' }
     }));
     await expect(loadPage()).resolves.toEqual(expect.objectContaining({
-      authState: { mode: 'visitor' },
-      renderedSummaryHtml: null
+      authState: { mode: 'visitor' }
     }));
 
     expect(deletionStart).toHaveBeenCalledTimes(2);
@@ -1868,17 +1855,4 @@ describe('Daily page server load', () => {
     expect(recordedDeliveryRecords).toEqual([]);
   });
 
-  test('keeps Preview available when deletion starts during generation', async () => {
-    getSession.mockResolvedValue({
-      user: { id: 'user-1', email: 'user@example.com', emailVerified: true }
-    });
-    lifecycleResponses.push(true, false);
-
-    await expect(loadPage()).resolves.toEqual(
-      expect.objectContaining({
-        renderedSummaryHtml: null,
-        calendarSection: null
-      })
-    );
-  });
 });

@@ -378,6 +378,12 @@ test('signed-in User can inspect Delivery History and irreversibly delete the ac
     await expect(accountMenu.getByRole('button', { name: 'Settings' })).toBeVisible();
     await expect(accountMenu.getByRole('button', { name: 'Sign out' })).toBeVisible();
     await expect(accountMenu.getByRole('link', { name: 'Admin Panel' })).toHaveCount(0);
+    await page.setViewportSize({ width: 375, height: 812 });
+    const mobileMenuBounds = await accountMenu.boundingBox();
+    expect(mobileMenuBounds).not.toBeNull();
+    expect(mobileMenuBounds!.x).toBeGreaterThanOrEqual(0);
+    expect(mobileMenuBounds!.x + mobileMenuBounds!.width).toBeLessThanOrEqual(375);
+    await page.setViewportSize({ width: 1280, height: 720 });
     await accountMenu.getByRole('button', { name: 'Settings' }).click();
     const settings = page.getByRole('dialog', { name: 'Settings' });
     await expect(settings.getByText('Scheduled Daily Summary')).toBeVisible();

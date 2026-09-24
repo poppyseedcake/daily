@@ -4890,8 +4890,9 @@
     }
 
     .daily-account-menu__panel {
-      bottom: 52px;
-      right: 0;
+      position: fixed;
+      bottom: 72px;
+      right: 12px;
       left: auto;
       width: min(270px, calc(100vw - 24px));
     }

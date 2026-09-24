@@ -65,15 +65,21 @@ test('Prototype route and calendar dialogs use the same close controls', async (
   await expect(calendarsDialog).not.toBeVisible();
 });
 
-test('Visitor Summary Configuration persists through the secondary Settings panel', async ({
+test('Visitor Summary Configuration persists through Settings and the delivery dialog', async ({
   page
 }) => {
   await openSettings(page);
 
-  await page.getByLabel('Summary Time').fill('18:45');
-  await page.getByLabel('User Time Zone').selectOption('America/New_York');
   await page.getByRole('checkbox', { name: 'Pause Weather Section' }).check();
   await closePanel(page);
+
+  await page.getByRole('button', { name: /Mail delivery/ }).click();
+  const delivery = page.getByRole('dialog', { name: 'Delivery time' });
+  await delivery.getByRole('spinbutton', { name: 'Hours' }).press('ArrowUp');
+  await delivery.getByRole('spinbutton', { name: 'Minutes' }).press('ArrowUp');
+  await delivery.getByRole('button', { name: 'Edit time zone' }).click();
+  await delivery.getByLabel('User Time Zone').selectOption('America/New_York');
+  await delivery.getByRole('button', { name: 'Save delivery time' }).click();
 
   await page.getByRole('checkbox', { name: /Preview only/ }).uncheck();
   await expect(page.getByText('Delivery paused', { exact: true })).toBeVisible();
@@ -81,10 +87,13 @@ test('Visitor Summary Configuration persists through the secondary Settings pane
   await page.reload();
   await expect(page.getByLabel('New Todo Task')).toBeEnabled();
   await expect(page.getByText('Delivery paused', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: /Mail delivery/ }).click();
+  await expect(page.getByRole('dialog', { name: 'Delivery time' }).getByRole('spinbutton', { name: 'Hours' })).toHaveText('08');
+  await expect(page.getByRole('dialog', { name: 'Delivery time' }).getByRole('spinbutton', { name: 'Minutes' })).toHaveText('01');
+  await expect(page.getByRole('dialog', { name: 'Delivery time' })).toContainText('America/New_York');
+  await page.getByRole('dialog', { name: 'Delivery time' }).getByRole('button', { name: 'Cancel delivery time' }).click();
   await openSettings(page);
 
-  await expect(page.getByLabel('Summary Time')).toHaveValue('18:45');
-  await expect(page.getByLabel('User Time Zone')).toHaveValue('America/New_York');
   await expect(page.getByRole('checkbox', { name: 'Pause Weather Section' })).toBeChecked();
 });
 
