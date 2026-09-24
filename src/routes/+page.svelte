@@ -1536,18 +1536,18 @@
     secondaryPanel = null;
   };
 
-  const handleSecondaryPanelClick = (event: MouseEvent) => {
-    const dialog = secondaryDialog;
-    if (!dialog) return;
+  const handleDialogBackdropClick = (event: MouseEvent, closeDialog: () => void) => {
+    if (event.target !== event.currentTarget) return;
 
-    const bounds = dialog.getBoundingClientRect();
+    const bounds = (event.currentTarget as HTMLDialogElement).getBoundingClientRect();
+    const margin = 24;
     const clickedOutside =
-      event.clientX < bounds.left ||
-      event.clientX > bounds.right ||
-      event.clientY < bounds.top ||
-      event.clientY > bounds.bottom;
+      event.clientX < bounds.left - margin ||
+      event.clientX > bounds.right + margin ||
+      event.clientY < bounds.top - margin ||
+      event.clientY > bounds.bottom + margin;
 
-    if (clickedOutside) closeSecondaryPanel();
+    if (clickedOutside) closeDialog();
   };
 
   const openSummaryDeliveryDialog = async () => {
@@ -2368,6 +2368,7 @@
     bind:this={todoDialog}
     class="daily-dialog daily-todo-dialog"
     aria-labelledby="todo-dialog-title"
+    onclick={(event) => handleDialogBackdropClick(event, closeTodoDialog)}
     oncancel={(event) => {
       event.preventDefault();
       closeTodoDialog();
@@ -5023,6 +5024,7 @@
     bind:this={categoryDeletionDialog}
     class="daily-dialog daily-confirm-dialog"
     aria-labelledby="category-deletion-title"
+    onclick={(event) => handleDialogBackdropClick(event, cancelTodoCategoryDeletion)}
     oncancel={(event) => {
       event.preventDefault();
       cancelTodoCategoryDeletion();
@@ -5049,6 +5051,7 @@
     bind:this={summaryDeliveryDialog}
     class="daily-dialog daily-delivery-dialog"
     aria-labelledby="summary-delivery-dialog-title"
+    onclick={(event) => handleDialogBackdropClick(event, closeSummaryDeliveryDialog)}
     oncancel={(event) => {
       event.preventDefault();
       closeSummaryDeliveryDialog();
@@ -5153,6 +5156,7 @@
     class="daily-dialog daily-placement-dialog"
     aria-labelledby="task-placement-title"
     tabindex="-1"
+    onclick={(event) => handleDialogBackdropClick(event, closeTaskPlacement)}
     onkeydown={handleTaskPlacementKeydown}
     oncancel={(event) => {
       event.preventDefault();
@@ -5188,6 +5192,7 @@
     bind:this={weatherDialog}
     class="daily-dialog daily-city-dialog"
     aria-labelledby="weather-dialog-title"
+    onclick={(event) => handleDialogBackdropClick(event, closeWeatherDialog)}
     oncancel={(event) => {
       event.preventDefault();
       closeWeatherDialog();
@@ -5287,6 +5292,7 @@
     bind:this={commuteDialog}
     class="daily-dialog daily-commute-dialog"
     aria-labelledby="commute-dialog-title"
+    onclick={(event) => handleDialogBackdropClick(event, closeCommuteDialog)}
     oncancel={(event) => {
       event.preventDefault();
       closeCommuteDialog();
@@ -5319,7 +5325,7 @@
       <header class="daily-dialog-heading">
         <button type="button" aria-label="Back to routes" onclick={clearCommuteRouteDraft}><ArrowLeft size={18} /></button>
         <div><span class="daily-dialog-kicker">Commute</span><h2 id="commute-dialog-title">{editingCommuteRouteId ? 'Edit route' : 'Add route'}</h2></div>
-        <span></span>
+        <button type="button" aria-label="Close route editor" onclick={closeCommuteDialog}><X size={18} /></button>
       </header>
       <form
         class="daily-route-editor"
@@ -5474,6 +5480,7 @@
     bind:this={calendarDialog}
     class="daily-dialog daily-calendar-dialog"
     aria-labelledby="calendar-dialog-title"
+    onclick={(event) => handleDialogBackdropClick(event, closeCalendarDialog)}
     oncancel={(event) => {
       event.preventDefault();
       closeCalendarDialog();
@@ -5528,6 +5535,7 @@
     bind:this={calendarSettingsDialog}
     class="daily-dialog daily-calendar-dialog"
     aria-labelledby="calendar-settings-title"
+    onclick={(event) => handleDialogBackdropClick(event, closeCalendarSettings)}
     oncancel={(event) => {
       event.preventDefault();
       void returnToCalendarAgenda();
@@ -5536,7 +5544,7 @@
     <header class="daily-dialog-heading">
       <button type="button" aria-label="Back to events" onclick={() => void returnToCalendarAgenda()}><ArrowLeft size={18} /></button>
       <div><span class="daily-dialog-kicker">Google Calendar</span><h2 id="calendar-settings-title">Calendars</h2></div>
-      <span></span>
+      <button type="button" aria-label="Close calendar selection" onclick={closeCalendarSettings}><X size={18} /></button>
     </header>
     <div class="daily-calendar-sources" role="group" aria-label="Selected Calendars">
       {#each selectedCalendarConfiguration?.calendars ?? [] as calendar}
@@ -5576,7 +5584,7 @@
     bind:this={secondaryDialog}
     class="daily-secondary-dialog"
     aria-labelledby="secondary-panel-title"
-    onclick={handleSecondaryPanelClick}
+    onclick={(event) => handleDialogBackdropClick(event, closeSecondaryPanel)}
     oncancel={(event) => {
       event.preventDefault();
       closeSecondaryPanel();

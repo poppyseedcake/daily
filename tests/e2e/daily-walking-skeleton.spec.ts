@@ -11,11 +11,58 @@ const closePanel = async (page: Page) => {
   await page.getByRole('button', { name: 'Close panel' }).click();
 };
 
+const clickBesideDialog = async (page: Page, dialog: ReturnType<Page['getByRole']>, distance: number) => {
+  const bounds = await dialog.boundingBox();
+  if (!bounds) throw new Error('Dialog is not visible');
+  await page.mouse.click(bounds.x - distance, bounds.y + bounds.height / 2);
+};
+
 test.beforeEach(async ({ page }) => {
   await page.goto('/');
   await page.evaluate(() => localStorage.clear());
   await page.reload();
   await expect(page.getByLabel('New Todo Task')).toBeEnabled();
+});
+
+test('Dialogs keep near-edge clicks and close on backdrop clicks', async ({ page }) => {
+  await page.getByRole('button', { name: 'Commute. 0 routes' }).click();
+  await page.getByRole('button', { name: 'Add route' }).click();
+  const routeDialog = page.getByRole('dialog', { name: 'Add route' });
+  await expect(routeDialog.getByRole('button', { name: 'Close route editor' })).toBeVisible();
+  await clickBesideDialog(page, routeDialog, 18);
+  await expect(routeDialog).toBeVisible();
+  await clickBesideDialog(page, routeDialog, 36);
+  await expect(routeDialog).not.toBeVisible();
+
+  await page.getByRole('button', { name: 'Calendar. Connect Google Calendar' }).click();
+  const calendarDialog = page.getByRole('dialog', { name: 'Connect your calendar' });
+  await clickBesideDialog(page, calendarDialog, 36);
+  await expect(calendarDialog).not.toBeVisible();
+
+  await openSettings(page);
+  const settingsDialog = page.getByRole('dialog', { name: 'Settings' });
+  await clickBesideDialog(page, settingsDialog, 18);
+  await expect(settingsDialog).toBeVisible();
+  await clickBesideDialog(page, settingsDialog, 36);
+  await expect(settingsDialog).not.toBeVisible();
+});
+
+test('Prototype route and calendar dialogs use the same close controls', async ({ page }) => {
+  await page.goto('/prototype/daily?variant=c');
+  await page.waitForLoadState('networkidle');
+  await page.getByRole('button', { name: /Configure commute routes/ }).click();
+  await expect(page.getByRole('dialog', { name: 'Your routes' })).toBeVisible({ timeout: 3000 });
+  await page.getByRole('button', { name: 'Add route' }).click();
+  const routeDialog = page.getByRole('dialog', { name: 'Add route' });
+  await routeDialog.getByRole('button', { name: 'Close route editor' }).click();
+  await expect(routeDialog).not.toBeVisible();
+
+  await page.getByRole('button', { name: 'Connect Google Calendar' }).click();
+  await page.getByRole('button', { name: 'Continue with Google' }).click();
+  await page.getByRole('button', { name: 'Calendar settings' }).click();
+  const calendarsDialog = page.getByRole('dialog', { name: 'Calendars' });
+  await clickBesideDialog(page, calendarsDialog, 36);
+  await expect(calendarsDialog).not.toBeVisible();
 });
 
 test('Visitor Summary Configuration persists through the secondary Settings panel', async ({

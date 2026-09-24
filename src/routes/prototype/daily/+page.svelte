@@ -63,6 +63,19 @@
   import { goto, replaceState } from '$app/navigation';
   import { tick } from 'svelte';
 
+  const handleDialogBackdropClick = (event: MouseEvent, closeDialog: () => void) => {
+    if (event.target !== event.currentTarget) return;
+
+    const bounds = (event.currentTarget as HTMLDialogElement).getBoundingClientRect();
+    const margin = 24;
+    if (
+      event.clientX < bounds.left - margin ||
+      event.clientX > bounds.right + margin ||
+      event.clientY < bounds.top - margin ||
+      event.clientY > bounds.bottom + margin
+    ) closeDialog();
+  };
+
   type Variant = 'a' | 'b' | 'c';
   type TaskStyle = 'a' | 'b' | 'c';
   type TaskCategory = string;
@@ -141,6 +154,12 @@
   let mobileMenuOpen = $state(false);
   let briefOpen = $state(false);
   let secondaryPanel = $state<'menu' | 'history' | 'settings' | null>(null);
+  let secondaryPanelDialog = $state<HTMLDialogElement>();
+
+  const handleSecondaryScrimClick = (event: MouseEvent) => {
+    const bounds = secondaryPanelDialog?.getBoundingClientRect();
+    if (bounds && event.clientX < bounds.left - 24) secondaryPanel = null;
+  };
   let placementOpen = $state(false);
   let placementCategory = $state<TaskCategory>('Ungrouped');
   let placementUrgency = $state<PrototypeTask['urgency']>('low');
@@ -1281,6 +1300,7 @@
     aria-labelledby="calendar-auth-title"
     aria-describedby="calendar-auth-description"
     tabindex="-1"
+    onclick={(event) => handleDialogBackdropClick(event, closeCalendarAuth)}
     oncancel={(event) => {
       event.preventDefault();
       closeCalendarAuth();
@@ -1314,6 +1334,7 @@
     class="placement-dialog calendar-dialog"
     aria-labelledby="calendar-agenda-title"
     tabindex="-1"
+    onclick={(event) => handleDialogBackdropClick(event, closeCalendarAgenda)}
     oncancel={(event) => {
       event.preventDefault();
       closeCalendarAgenda();
@@ -1383,6 +1404,7 @@
     class="placement-dialog calendar-dialog calendar-settings-dialog"
     aria-labelledby="calendar-settings-title"
     tabindex="-1"
+    onclick={(event) => handleDialogBackdropClick(event, closeCalendarSettings)}
     oncancel={(event) => {
       event.preventDefault();
       void returnToCalendarAgenda();
@@ -1396,7 +1418,7 @@
         <span class="placement-kicker">Google Calendar</span>
         <h2 id="calendar-settings-title">Calendars</h2>
       </div>
-      <span aria-hidden="true"></span>
+      <button type="button" aria-label="Close calendar selection" onclick={() => closeCalendarSettings()}><X size={18} /></button>
     </header>
 
     <div class="calendar-source-list" role="group" aria-label="Calendars shown in Daily">
@@ -1449,6 +1471,7 @@
     class="placement-dialog commute-dialog"
     aria-labelledby="commute-dialog-title"
     tabindex="-1"
+    onclick={(event) => handleDialogBackdropClick(event, closeCommuteDialog)}
     oncancel={(event) => {
       event.preventDefault();
       closeCommuteDialog();
@@ -1506,7 +1529,7 @@
             {editingCommuteId === 0 ? 'Add route' : 'Edit route'}
           </h2>
         </div>
-        <span aria-hidden="true"></span>
+        <button type="button" aria-label="Close route editor" onclick={closeCommuteDialog}><X size={18} /></button>
       </div>
 
       <form
@@ -1590,6 +1613,7 @@
     class="placement-dialog city-dialog"
     aria-labelledby="city-picker-title"
     tabindex="-1"
+    onclick={(event) => handleDialogBackdropClick(event, closeCityPicker)}
     oncancel={(event) => {
       event.preventDefault();
       closeCityPicker();
@@ -1673,6 +1697,7 @@
     aria-labelledby="placement-title"
     aria-describedby="placement-description"
     tabindex="-1"
+    onclick={(event) => handleDialogBackdropClick(event, closePlacement)}
     oncancel={(event) => {
       event.preventDefault();
       closePlacement();
@@ -1728,8 +1753,9 @@
 
 {#if secondaryPanel}
   <div class="secondary-backdrop">
-    <button class="secondary-scrim" type="button" aria-label="Close panel" onclick={() => (secondaryPanel = null)}></button>
+    <button class="secondary-scrim" type="button" aria-label="Close panel" onclick={handleSecondaryScrimClick}></button>
     <dialog
+      bind:this={secondaryPanelDialog}
       open
       class="secondary-panel"
       aria-label={secondaryPanel === 'history' ? 'Delivery history' : secondaryPanel === 'settings' ? 'Settings' : 'More'}
