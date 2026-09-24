@@ -64,7 +64,7 @@
   import { tick } from 'svelte';
 
   const handleDialogBackdropClick = (event: MouseEvent, closeDialog: () => void) => {
-    if (event.target !== event.currentTarget) return;
+    if (event.target !== event.currentTarget || event.detail > 1) return;
 
     const bounds = (event.currentTarget as HTMLDialogElement).getBoundingClientRect();
     const margin = 24;

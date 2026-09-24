@@ -157,7 +157,9 @@ test('the Settings panel closes when the user clicks outside it', async ({ page 
 
   const bounds = await settings.boundingBox();
   expect(bounds).not.toBeNull();
-  await page.mouse.click(Math.max(8, bounds!.x - 16), bounds!.y + bounds!.height / 2);
+  await page.mouse.click(Math.max(8, bounds!.x - 18), bounds!.y + bounds!.height / 2);
+  await expect(settings).toBeVisible();
+  await page.mouse.click(Math.max(8, bounds!.x - 36), bounds!.y + bounds!.height / 2);
 
   await expect(settings).toBeHidden();
 });
