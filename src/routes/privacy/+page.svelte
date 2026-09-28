@@ -8,6 +8,8 @@
   intro="This Privacy Policy explains how Daily handles personal data when you use the free Daily service."
 >
   {#snippet children()}
+    <p>Last updated: 28 September 2026.</p>
+
     <h2>Who runs Daily</h2>
     <p>
       Daily is operated by Wojciech Makowiec, an individual in Poland. Daily is free to use. For
@@ -94,6 +96,52 @@
       Google data is protected by the Google API Services User Data Policy and its Limited Use
       requirements. Daily must keep the published policy and OAuth configuration accurate and must
       use the minimum permissions needed.
+    </p>
+
+    <h2 id="data-protection">Data protection and security</h2>
+    <p>
+      Daily uses the following safeguards to protect personal and sensitive data, including Google
+      account information, Google Calendar data, and OAuth credentials:
+    </p>
+    <ul>
+      <li>
+        <strong>Encryption in transit:</strong> the public Daily website uses HTTPS to encrypt
+        data sent between your browser and the website. Daily communicates with Google's OAuth
+        and Calendar API endpoints over HTTPS to protect credentials and Calendar data in transit.
+      </li>
+      <li>
+        <strong>Access controls:</strong> account features require an authenticated session, and
+        Daily uses the signed-in user's identifier to access their saved settings and connected
+        Calendar data. Administrative features are restricted to explicitly allowed administrator
+        accounts.
+      </li>
+      <li>
+        <strong>Session protection:</strong> session cookies are HTTP-only to prevent browser
+        scripts from reading them, use same-site restrictions, and use the Secure attribute on
+        HTTPS. The Google sign-in flow checks temporary OAuth state to protect the sign-in process.
+      </li>
+      <li>
+        <strong>Limited permissions:</strong> Daily uses Google OAuth so you do not provide your
+        Google password to Daily. Calendar access requires a separate authorisation and uses
+        read-only permissions; Daily cannot create, change, or delete your Calendar events.
+      </li>
+      <li>
+        <strong>Data minimisation:</strong> Calendar events are fetched when needed and their
+        content is not stored in Daily's database. Delivery records do not contain the generated
+        email body. Daily's structured operational logs contain status and diagnostic metadata,
+        rather than Calendar event content, email bodies, or OAuth tokens. A requested summary
+        is shared with the email delivery provider as described below.
+      </li>
+      <li>
+        <strong>Deletion controls:</strong> deleting your account stops further Daily work,
+        attempts to revoke Google tokens, and removes your account and linked OAuth records from
+        the live database. Backup retention and the limits of token revocation are explained below.
+      </li>
+    </ul>
+    <p>
+      Daily does not use data obtained through Google Workspace APIs, including Google Calendar
+      data, to develop, improve, or train general-purpose or non-personalised AI or machine-learning
+      models.
     </p>
 
     <h2>External providers</h2>
