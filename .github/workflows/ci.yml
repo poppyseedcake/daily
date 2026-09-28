@@ -40,6 +40,9 @@ jobs:
       - name: Check Svelte and TypeScript
         run: bash scripts/run-without-network.sh npm run check
 
+      - name: Test host deployment failure handling
+        run: python3 -m unittest discover -s scripts -p 'test_coolify_cd.py'
+
       - name: Run Vitest
         run: bash scripts/run-without-network.sh npm run test:unit
 
@@ -67,3 +70,58 @@ jobs:
 
       - name: Build and test production container without service secrets
         run: npm run test:container
+
+  publish-image:
+    needs: [quality-gate, container-image]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Check out tested commit
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version-file: .nvmrc
+
+      - name: Sign in to GHCR
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: printf '%s' "$GHCR_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+
+      - name: Build and test the release image
+        env:
+          DAILY_CONTAINER_TEST_IMAGE: ghcr.io/poppyseedcake/daily:build-${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          # Add release identity after the same container acceptance test used by CI.
+          npm run test:container
+          release_context=$(mktemp -d)
+          printf 'FROM %s\nLABEL org.opencontainers.image.source="https://github.com/poppyseedcake/daily"\nLABEL org.opencontainers.image.revision="%s"\n' \
+            "$DAILY_CONTAINER_TEST_IMAGE" "$GITHUB_SHA" > "$release_context/Dockerfile"
+          docker build --tag "ghcr.io/poppyseedcake/daily:sha-$GITHUB_SHA-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" "$release_context"
+
+      - name: Publish immutable release tag and update deployment channel
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          release="ghcr.io/poppyseedcake/daily:sha-$GITHUB_SHA-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          docker push "$release"
+          # A slow older workflow must not move the channel backwards.
+          # The host also checks main before maintenance and immediately before stop:
+          # a new push can arrive between this best-effort check and channel publication.
+          head=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq '.object.sha')
+          if [ "$head" != "$GITHUB_SHA" ]; then
+            echo 'A newer main commit exists; leaving the deployment channel unchanged.'
+            exit 0
+          fi
+          docker tag "$release" ghcr.io/poppyseedcake/daily:cd
+          docker push ghcr.io/poppyseedcake/daily:cd
+          echo "Published tested revision $GITHUB_SHA to the cd channel." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Sign out of GHCR
+        if: always()
+        run: docker logout ghcr.io

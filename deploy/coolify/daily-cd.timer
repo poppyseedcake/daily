@@ -1,0 +1,11 @@
+[Unit]
+Description=Check for a tested Daily release every five minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitInactiveSec=5min
+RandomizedDelaySec=20s
+Unit=daily-cd.service
+
+[Install]
+WantedBy=timers.target

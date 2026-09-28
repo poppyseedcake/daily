@@ -1,0 +1,12 @@
+{
+  "coolify_url": "http://100.118.76.98:8000",
+  "application_uuid": "7ajsgxxzxnmmjbindde7a2xr",
+  "delivery_task_uuid": "otlxvs4fp4noiaeq8vq5sx3j",
+  "container": "7ajsgxxzxnmmjbindde7a2xr",
+  "image": "ghcr.io/poppyseedcake/daily",
+  "data": "/srv/daily/data",
+  "backups": "/srv/daily/backups",
+  "health_url": "https://dailykickoff.eu/health",
+  "token_file": "/etc/daily-cd/token",
+  "state_directory": "/var/lib/daily-cd"
+}

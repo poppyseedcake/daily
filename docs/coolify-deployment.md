@@ -1,5 +1,9 @@
 # Deploy Daily with Coolify
 
+For the automated release path on the existing homelab installation, see
+[Continuous deployment](continuous-deployment.md). The manual procedures below
+remain the recovery and operator-acceptance reference.
+
 This document is the operator guide for the home server. It prepares Daily for
 Coolify, but it does not deploy to the server, change Cloudflare, change DNS, change
 firewall rules, send real messages, or publish code.
