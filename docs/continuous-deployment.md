@@ -19,11 +19,20 @@ It replaces the previously proposed GitHub-to-Tailscale deployment trigger.
    Pull requests cannot publish. Existing workflow concurrency serializes main runs.
 4. The host pulls `cd` while the old application is still serving requests. The
    channel is only discovery: deployment pins the resolved SHA-256 digest in Coolify.
+   The publication-side head check is best effort: a push can arrive between that
+   check and the registry update. Before changing tasks, the host independently
+   compares the image revision with the current GitHub `main` ref. A stale channel
+   is skipped; an unavailable or rate-limited GitHub API blocks maintenance.
 5. If the running image already matches, the host exits without changing anything.
 6. The host records a maintenance journal, disables all Daily scheduled tasks, and
    waits for active executions and the mail worker to finish. A full quiet minute
    allows an already-started scheduler tick to settle. The web app remains online
    during this wait.
+   Immediately before stopping web, the host checks `main` again. If it advanced
+   while draining, the old web stays running and the original task states are
+   restored. This final check freezes release selection for this deployment;
+   pushes arriving afterward are handled by a later timer run, without interrupting
+   an already-started migration.
 7. The host synchronously stops the web container, checks for other containers with
    write access to the database directory, and makes a verified pre-migration backup
    using the current image. It requires a newly finalized recovery point.
@@ -49,7 +58,19 @@ existing GHCR package, grant this repository Actions write access in the package
 settings if it does not already inherit access. A public Git repository does not
 automatically make its package public. Keep the package readable by the host: make
 it public deliberately, or configure a separate read-only registry credential in
-root's Docker configuration on homelab. Do not reuse that credential in the image.
+`/etc/daily-cd/docker` on homelab. The service uses that `DOCKER_CONFIG` path because
+`ProtectHome=true` hides `/root/.docker`. After the installer creates the directory,
+use another host terminal to run:
+
+```sh
+sudo docker --config /etc/daily-cd/docker login ghcr.io
+```
+
+Enter a token with `read:packages` at the hidden password prompt. Do not put it in
+command arguments, chat, Git, or the image. Coolify's own image-pull credentials are
+separate and must also retain access to a private package. The installer verifies
+its host-side credentials by pulling and validating `cd` before enabling the timer;
+wait for the first successful main publication before that check.
 
 On **homelab**, from a checkout containing these changes:
 
@@ -76,10 +97,12 @@ Installed files:
 | `/etc/daily-cd/config.json` | Application/task identifiers and paths |
 | `/etc/daily-cd/token` | Root-only Coolify API token |
 | `/etc/daily-cd/setup.env` | Root-only wizard state containing the same token |
+| `/etc/daily-cd/docker/config.json` | Optional root-only GHCR pull credential |
 | `/etc/systemd/system/daily-cd.service` | One deployment attempt |
 | `/etc/systemd/system/daily-cd.timer` | Five-minute polling |
 | `/var/lib/daily-cd/maintenance.json` | In-progress or failed deployment journal |
 | `/var/lib/daily-cd/last-success.json` | Last accepted image and recovery point |
+| `/var/lib/daily-cd/last-skipped.json` | Release superseded while draining; no database change |
 
 The example config contains the identifiers observed on 2026-09-28. Preflight checks
 the image application, non-rolling mode, empty hooks, task, mounted paths, container
@@ -94,12 +117,15 @@ a controlled end-to-end release.
 
 ```sh
 sudo python3 /usr/local/lib/daily-cd/coolify_cd.py --check
+sudo python3 /usr/local/lib/daily-cd/coolify_cd.py --check-registry
 sudo systemctl status daily-cd.timer
 sudo journalctl -u daily-cd.service -n 80 --no-pager
 ```
 
 `--check` does not pull images, deploy, stop containers, or change tasks. It writes
-only local lock/state-directory housekeeping. The first `cd` image may contain the
+only local lock/state-directory housekeeping. `--check-registry` additionally pulls
+and validates the image using the same Docker configuration path as the service;
+it does not deploy or change tasks. The first `cd` image may contain the
 same application source as the manually deployed image but have a different image
 ID because of release labels; this is still a real first automated deployment.
 

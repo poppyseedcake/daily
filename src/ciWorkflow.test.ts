@@ -3,6 +3,11 @@ import { describe, expect, test } from 'vitest';
 
 const workflowPath = '.github/workflows/ci.yml';
 const workflow = () => readFileSync(workflowPath, 'utf8');
+const job = (name: string) => {
+  const block = workflow().match(new RegExp(`^  ${name}:\\n[\\s\\S]*?(?=^  [\\w-]+:|$(?![\\s\\S]))`, 'm'));
+  expect(block, `Missing workflow job: ${name}`).not.toBeNull();
+  return block![0];
+};
 
 describe('CI workflow contract', () => {
   test('gates pull requests and main pushes without cancelling main results', () => {
@@ -45,7 +50,7 @@ describe('CI workflow contract', () => {
   });
 
   test('uses temporary SQLite storage without production providers or secrets', () => {
-    const source = workflow();
+    const source = job('quality-gate');
 
     expect(source).toContain('echo "DATABASE_URL=$RUNNER_TEMP/daily-ci.db" >> "$GITHUB_ENV"');
     expect(source).not.toContain('${{ runner.temp }}');
@@ -59,12 +64,26 @@ describe('CI workflow contract', () => {
   });
 
   test('builds and tests the production container in a separate networked job without secrets', () => {
-    const source = workflow();
+    const source = job('container-image');
 
     expect(source).toContain('container-image:');
     expect(source).toContain('run: npm run test:container');
     expect(source).not.toContain('docker login');
     expect(source).not.toContain('docker push');
+    expect(source).not.toContain('secrets.');
+  });
+
+  test('allows registry credentials only in CI-gated main publication', () => {
+    const source = job('publish-image');
+    expect(source).toContain('needs: [quality-gate, container-image]');
+    expect(source).toContain("if: github.event_name == 'push' && github.ref == 'refs/heads/main'");
+    expect(source).toContain('packages: write');
+    expect(source).toContain('docker login ghcr.io');
+    expect(source).toContain('docker push');
+    const secretReferences = [...workflow().matchAll(/secrets\.([A-Za-z_][A-Za-z0-9_]*)/g)]
+      .map((match) => match[1]);
+    expect(secretReferences.length).toBeGreaterThan(0);
+    expect(new Set(secretReferences)).toEqual(new Set(['GITHUB_TOKEN']));
   });
 
   test('pins the checkout action used by the production container build', () => {

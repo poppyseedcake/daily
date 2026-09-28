@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Host deployment safety tests. No Docker, network, or production credentials."""
 import json
+import io
 from pathlib import Path
 import tempfile
 import unittest
@@ -48,6 +49,7 @@ class DeploymentTests(unittest.TestCase):
         self.addCleanup(patch.stopall)
         patch.object(self.job, 'candidate', return_value=(
             'new-image', 'ghcr.io/poppyseedcake/daily@sha256:' + 'a' * 64, 'b' * 40)).start()
+        self.main_revision = patch.object(self.job, 'main_revision', create=True, return_value='b' * 40).start()
         self.drain = patch.object(self.job, 'drain').start()
         self.offline = patch.object(self.job, 'offline').start()
         self.acceptance = patch.object(self.job, 'acceptance').start()
@@ -80,6 +82,30 @@ class DeploymentTests(unittest.TestCase):
         self.assertFalse(self.job.journal.exists())
         self.assertEqual(self.api.calls, [])
         self.command.assert_not_called()
+
+    def test_stale_channel_never_pauses_the_application(self):
+        self.main_revision.return_value = 'c' * 40
+        self.job.run(True)
+        self.assertEqual(self.api.calls, [])
+        self.command.assert_not_called()
+        self.offline.assert_not_called()
+        self.assertFalse(self.job.journal.exists())
+
+    def test_main_advancing_during_drain_restores_tasks_without_stopping_web(self):
+        self.main_revision.side_effect = ['b' * 40, 'c' * 40]
+        self.job.run()
+        self.command.assert_not_called()
+        self.offline.assert_not_called()
+        self.assertIn(('/applications/app/scheduled-tasks/delivery', 'PATCH', {'enabled': True}), self.api.calls)
+        self.assertNotIn(('/applications/app/scheduled-tasks/backup', 'PATCH', {'enabled': True}), self.api.calls)
+        self.assertFalse(self.job.journal.exists())
+
+    def test_unavailable_main_does_not_start_maintenance(self):
+        self.main_revision.side_effect = cd.DeploymentError('GitHub unavailable')
+        with self.assertRaises(cd.DeploymentError):
+            self.job.run(True)
+        self.assertEqual(self.api.calls, [])
+        self.assertFalse(self.job.journal.exists())
 
     def test_backup_failure_never_migrates_or_deploys(self):
         self.offline.side_effect = cd.DeploymentError('backup failed')
@@ -144,6 +170,58 @@ class DeploymentTests(unittest.TestCase):
             with patch.object(cd, 'command', side_effect=['', json.dumps([image])]):
                 with self.assertRaises(cd.DeploymentError):
                     cd.Deployment.candidate(self.job)
+
+
+class ReleaseIdentityTests(unittest.TestCase):
+    def setUp(self):
+        self.directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self.directory.cleanup)
+        self.config = {'application_uuid': 'app', 'container': 'app',
+                       'image': 'ghcr.io/poppyseedcake/daily', 'data': '/srv/daily/data',
+                       'backups': '/srv/daily/backups', 'health_url': 'https://dailykickoff.eu/health'}
+        self.job = cd.Deployment(self.config, FakeAPI(), self.directory.name)
+        self.digest = self.config['image'] + '@sha256:' + 'a' * 64
+        self.image_id = 'sha256:' + 'd' * 64  # Config ID is different from registry manifest digest.
+        self.image = {'Id': self.image_id, 'RepoDigests': [self.digest], 'Config': {'Labels': {
+            'org.opencontainers.image.source': 'https://github.com/poppyseedcake/daily',
+            'org.opencontainers.image.revision': 'b' * 40}}}
+        self.container = {'Id': 'container-id', 'Name': '/app', 'Image': self.image_id,
+                          'State': {'Running': True, 'Health': {'Status': 'healthy'}},
+                          'Config': {'User': '10001:10001'}, 'HostConfig': {'PortBindings': {}},
+                          'Mounts': [{'Source': '/srv/daily/data', 'Destination': '/var/lib/daily', 'RW': True},
+                                     {'Source': '/srv/daily/backups', 'Destination': '/var/backups/daily', 'RW': True}]}
+
+    def test_successful_candidate_is_accepted_using_config_id_not_manifest_digest(self):
+        response = io.BytesIO(b'{"status":"ok"}')
+        response.status = 200
+        with patch.object(cd, 'command', side_effect=['', json.dumps([self.image]),
+                                                    json.dumps([self.container]), '', '']) as docker:
+            with patch.object(cd.urllib.request, 'urlopen', return_value=response):
+                image_id, digest, revision = self.job.candidate()
+                self.assertEqual((image_id, digest, revision), (self.image_id, self.digest, 'b' * 40))
+                self.job.acceptance(image_id)
+        self.assertEqual(docker.call_args_list[0].args, ('docker', 'pull', self.config['image'] + ':cd'))
+
+    def test_healthy_wrong_image_is_rejected_before_public_health_check(self):
+        self.container['Image'] = 'sha256:' + 'e' * 64
+        with patch.object(cd, 'command', return_value=json.dumps([self.container])):
+            with patch.object(cd.urllib.request, 'urlopen') as http:
+                with self.assertRaisesRegex(cd.DeploymentError, 'Running image differs'):
+                    self.job.acceptance(self.image_id)
+                http.assert_not_called()
+
+
+class ServiceConfigurationTests(unittest.TestCase):
+    def test_private_registry_config_is_accessible_outside_protected_home(self):
+        root = Path(__file__).resolve().parent.parent
+        unit = (root / 'deploy/coolify/daily-cd.service').read_text()
+        installer = (root / 'scripts/setup-daily-cd.sh').read_text()
+        self.assertIn('ProtectHome=true', unit)
+        self.assertIn('Environment=DOCKER_CONFIG=/etc/daily-cd/docker', unit)
+        self.assertIn('export DOCKER_CONFIG=/etc/daily-cd/docker', installer)
+        self.assertIn('install -d -m 0700 "$DOCKER_CONFIG"', installer)
+        self.assertIn('docker --config /etc/daily-cd/docker login ghcr.io', installer)
+        self.assertIn('--check-registry', installer)
 
 
 if __name__ == '__main__':

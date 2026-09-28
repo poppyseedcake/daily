@@ -8,6 +8,7 @@ RequiresMountsFor=/srv/daily/data /srv/daily/backups
 [Service]
 Type=oneshot
 UMask=0077
+Environment=DOCKER_CONFIG=/etc/daily-cd/docker
 ExecStart=/usr/bin/python3 /usr/local/lib/daily-cd/coolify_cd.py
 TimeoutStartSec=90min
 # Keep interrupted maintenance latched for manual inspection after reboot/failure.

@@ -111,6 +111,8 @@ jobs:
           release="ghcr.io/poppyseedcake/daily:sha-$GITHUB_SHA-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
           docker push "$release"
           # A slow older workflow must not move the channel backwards.
+          # The host also checks main before maintenance and immediately before stop:
+          # a new push can arrive between this best-effort check and channel publication.
           head=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq '.object.sha')
           if [ "$head" != "$GITHUB_SHA" ]; then
             echo 'A newer main commit exists; leaving the deployment channel unchanged.'

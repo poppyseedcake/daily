@@ -158,6 +158,21 @@ class Deployment:
         require(re.fullmatch(r'.+@sha256:[0-9a-f]{64}', digests[0]), 'Invalid candidate digest.')
         return image['Id'], digests[0], revision
 
+    def main_revision(self):
+        request = urllib.request.Request(
+            'https://api.github.com/repos/poppyseedcake/daily/git/ref/heads/main',
+            headers={'Accept': 'application/vnd.github+json', 'User-Agent': 'daily-cd',
+                     'Cache-Control': 'no-cache'},
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=30) as response:
+                revision = json.load(response)['object']['sha']
+        except (OSError, ValueError, KeyError, TypeError):
+            raise DeploymentError('Cannot verify current main revision; refusing deployment.') from None
+        require(isinstance(revision, str) and re.fullmatch(r'[0-9a-f]{40}', revision),
+                'GitHub returned an invalid main revision.')
+        return revision
+
     def drain(self, tasks):
         # Keep serving the old web app while draining. A scheduler tick already in
         # flight can enqueue a job after disable; require a full quiet minute too.
@@ -235,6 +250,9 @@ class Deployment:
         if current['Image'] == image_id:
             print('Daily CD: current image is already deployed.')
             return
+        if self.main_revision() != revision:
+            print('Daily CD: channel revision is behind main; waiting for its tested image.')
+            return
         # Pull and validate the image before beginning maintenance.
         require(Path(self.config['data'], 'daily.db').is_file(), 'Existing database is required.')
         self.record = {'previous_image_id': current['Image'], 'previous_tag': app['docker_registry_image_tag'],
@@ -247,6 +265,15 @@ class Deployment:
             self.set_task(task['uuid'], False)
         self.mark('drain-tasks')
         self.drain(tasks)
+        # Freeze release selection immediately before stopping web. Later pushes are
+        # handled on the next run; never abandon a migration already in progress.
+        if self.main_revision() != revision:
+            self.mark('superseded-before-stop')
+            for uuid in self.record['enabled_tasks']:
+                self.set_task(uuid, True)
+            self.journal.replace(self.state_dir / 'last-skipped.json')
+            print('Daily CD: main advanced during drain; old web and schedules retained.')
+            return
         self.mark('stop-web')
         # Synchronous Docker stop avoids an asynchronous Coolify stop racing a later deploy.
         command('docker', 'stop', '--time', '60', self.config['container'])
@@ -290,11 +317,15 @@ class Deployment:
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--config', default='/etc/daily-cd/config.json')
-    parser.add_argument('--check', action='store_true', help='Read-only configuration preflight; do not pull/deploy.')
+    checks = parser.add_mutually_exclusive_group()
+    checks.add_argument('--check', action='store_true', help='Read-only configuration preflight; do not pull/deploy.')
+    checks.add_argument('--check-registry', action='store_true',
+                        help='Preflight and pull/validate the cd image; do not change the application.')
     parser.add_argument('--resume-delivery', action='store_true',
                         help='Restore previously enabled tasks after automated acceptance (operator opt-in).')
     args = parser.parse_args()
     os.umask(0o077)
+    os.environ.setdefault('DOCKER_CONFIG', '/etc/daily-cd/docker')
     config = json.loads(Path(args.config).read_text())
     state = Path(config.get('state_directory', '/var/lib/daily-cd'))
     state.mkdir(parents=True, exist_ok=True)
@@ -307,8 +338,11 @@ def main():
         token = Path(config['token_file']).read_text().strip()
         require(bool(token), 'Coolify API token is empty.')
         deployment = Deployment(config, Coolify(config['coolify_url'], token), state)
-        if args.check:
+        if args.check or args.check_registry:
             deployment.preflight()
+            if args.check_registry:
+                deployment.candidate()
+                print('Daily CD: registry pull and image identity checks passed.')
             print('Daily CD: preflight passed; no application changes made.')
         else:
             try:

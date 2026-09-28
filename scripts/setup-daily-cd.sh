@@ -221,6 +221,8 @@ chmod 0600 /etc/daily-cd/token /etc/daily-cd/setup.env
 unset COOLIFY_TOKEN
 
 stage "Install files and run a read-only preflight"
+export DOCKER_CONFIG=/etc/daily-cd/docker
+install -d -m 0700 "$DOCKER_CONFIG"
 install -d -m 0755 /usr/local/lib/daily-cd
 install -d -m 0700 /var/lib/daily-cd
 install -m 0755 "$REPOSITORY_DIRECTORY/scripts/coolify_cd.py" /usr/local/lib/daily-cd/coolify_cd.py
@@ -233,8 +235,12 @@ systemctl daemon-reload
 python3 /usr/local/lib/daily-cd/coolify_cd.py --check
 say "Preflight passed. No application deployment has been started."
 say "GHCR must permit this host to pull ghcr.io/poppyseedcake/daily:cd."
-say "If the package is private, configure root's Docker registry login separately."
-pause "Press Enter after confirming registry access and the publishing workflow is merged."
+say "For a private package, use a separate read-only registry credential. In another host terminal run:"
+say "sudo docker --config /etc/daily-cd/docker login ghcr.io"
+say "Use a token with read:packages at the hidden password prompt; do not pass it in command arguments."
+say "The service cannot read /root/.docker because ProtectHome is enabled."
+pause "Press Enter after registry login (if needed) and the first successful main publication."
+python3 /usr/local/lib/daily-cd/coolify_cd.py --check-registry
 
 stage "Enable automatic releases"
 say "Every five minutes the host will pull the tested cd channel and deploy a changed image."
