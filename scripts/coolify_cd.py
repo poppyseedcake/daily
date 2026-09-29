@@ -228,7 +228,7 @@ class Deployment:
 
     def acceptance(self, image_id):
         deadline = time.monotonic() + 180
-        public_ready = False
+        public_failure = None
         while time.monotonic() < deadline:
             container = inspect_container(self.config['container'])
             if container['State'].get('Health', {}).get('Status') == 'healthy':
@@ -238,15 +238,24 @@ class Deployment:
                         'scripts/validate-production-environment.mjs', '--context=web')
                 try:
                     with urllib.request.urlopen(self.config['health_url'], timeout=15) as response:
-                        public_ready = response.status == 200 and json.load(response) == {'status': 'ok'}
-                except (OSError, ValueError):
+                        if response.status == 200:
+                            if json.load(response) == {'status': 'ok'}:
+                                return
+                            public_failure = 'unexpected response'
+                        else:
+                            public_failure = f'HTTP {response.status}'
+                except urllib.error.HTTPError as error:
+                    public_failure = f'HTTP {error.code}'
+                except OSError:
                     # The proxy can briefly return 502 or refuse connections while
                     # routing switches to the healthy replacement container.
-                    public_ready = False
-                if public_ready:
-                    return
+                    public_failure = 'connection error'
+                except ValueError:
+                    public_failure = 'invalid JSON'
             time.sleep(5)
-        raise DeploymentError('Candidate did not pass Docker, local, and public health checks within 180 seconds.')
+        if public_failure:
+            raise DeploymentError(f'Public readiness check failed within 180 seconds ({public_failure}).')
+        raise DeploymentError('Candidate did not become Docker-healthy within 180 seconds.')
 
     def run(self, resume_delivery=False):
         self.preflight()
