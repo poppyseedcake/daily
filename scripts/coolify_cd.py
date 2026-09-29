@@ -228,6 +228,7 @@ class Deployment:
 
     def acceptance(self, image_id):
         deadline = time.monotonic() + 180
+        public_ready = False
         while time.monotonic() < deadline:
             container = inspect_container(self.config['container'])
             if container['State'].get('Health', {}).get('Status') == 'healthy':
@@ -235,12 +236,17 @@ class Deployment:
                 command('docker', 'exec', self.config['container'], 'node', 'scripts/container-healthcheck.mjs')
                 command('docker', 'exec', self.config['container'], 'node',
                         'scripts/validate-production-environment.mjs', '--context=web')
-                with urllib.request.urlopen(self.config['health_url'], timeout=15) as response:
-                    require(response.status == 200 and json.load(response) == {'status': 'ok'},
-                            'Public readiness check failed.')
-                return
+                try:
+                    with urllib.request.urlopen(self.config['health_url'], timeout=15) as response:
+                        public_ready = response.status == 200 and json.load(response) == {'status': 'ok'}
+                except (OSError, ValueError):
+                    # The proxy can briefly return 502 or refuse connections while
+                    # routing switches to the healthy replacement container.
+                    public_ready = False
+                if public_ready:
+                    return
             time.sleep(5)
-        raise DeploymentError('Candidate did not become healthy.')
+        raise DeploymentError('Candidate did not pass Docker, local, and public health checks within 180 seconds.')
 
     def run(self, resume_delivery=False):
         self.preflight()
