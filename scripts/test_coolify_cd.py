@@ -173,7 +173,7 @@ class DeploymentTests(unittest.TestCase):
 
 
 class DrainTests(unittest.TestCase):
-    def test_docker_top_includes_pid_and_waits_for_worker_then_quiet_period(self):
+    def test_docker_top_includes_pid_and_args_and_waits_for_worker_then_quiet_period(self):
         with tempfile.TemporaryDirectory() as directory:
             job = cd.Deployment({'application_uuid': 'app', 'container': 'app'}, FakeAPI(), directory)
             clock = [0]
@@ -184,6 +184,8 @@ class DrainTests(unittest.TestCase):
                 # Docker needs PID to map host ps rows to container processes.
                 if 'pid' not in args[-1].split(','):
                     raise cd.DeploymentError("Couldn't find PID field in ps output")
+                self.assertIn('args', args[-1].split(','),
+                              'Worker detection requires the command arguments column')
                 if clock[0] < 10:
                     return 'PID COMMAND\n123 node build/worker/runScheduledDailySummaryWorkerCommand.js\n'
                 return 'PID COMMAND\n122 node build\n'
