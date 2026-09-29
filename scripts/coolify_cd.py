@@ -186,7 +186,8 @@ class Deployment:
                 require(all(e.get('status') in ('success', 'failed', 'running') for e in executions),
                         'Unknown execution status; refusing to stop an active worker.')
                 running |= any(e['status'] == 'running' for e in executions)
-            processes = command('docker', 'top', self.config['container'], '-eo', 'args')
+            # Docker uses PID to select the container's rows from host ps output.
+            processes = command('docker', 'top', self.config['container'], '-eo', 'pid,args')
             running |= 'runScheduledDailySummaryWorkerCommand' in processes
             if running:
                 quiet_since = None
