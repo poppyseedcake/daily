@@ -239,6 +239,48 @@ class ReleaseIdentityTests(unittest.TestCase):
                     self.job.acceptance(self.image_id)
                 http.assert_not_called()
 
+    def test_transient_public_proxy_error_is_retried_before_acceptance(self):
+        response = io.BytesIO(b'{"status":"ok"}')
+        response.status = 200
+        clock = [0]
+        with patch.object(cd, 'command', side_effect=lambda *args: json.dumps([self.container])
+                          if args[:2] == ('docker', 'inspect') else ''), \
+                patch.object(cd.urllib.request, 'urlopen', side_effect=[
+                    cd.urllib.error.HTTPError(self.config['health_url'], 502, 'Bad Gateway', None, None),
+                    response]) as http, \
+                patch.object(cd.time, 'monotonic', side_effect=lambda: clock[0]), \
+                patch.object(cd.time, 'sleep', side_effect=lambda seconds: clock.__setitem__(0, clock[0] + seconds)):
+            self.job.acceptance(self.image_id)
+        self.assertEqual(http.call_count, 2)
+        self.assertEqual(clock[0], 5)
+
+    def test_persistent_public_failure_never_accepts_candidate(self):
+        clock = [0]
+        with patch.object(cd, 'command', side_effect=lambda *args: json.dumps([self.container])
+                          if args[:2] == ('docker', 'inspect') else ''), \
+                patch.object(cd.urllib.request, 'urlopen', side_effect=OSError('proxy unavailable')) as http, \
+                patch.object(cd.time, 'monotonic', side_effect=lambda: clock[0]), \
+                patch.object(cd.time, 'sleep', side_effect=lambda seconds: clock.__setitem__(0, clock[0] + seconds)):
+            with self.assertRaisesRegex(cd.DeploymentError,
+                                        'Public readiness check failed within 180 seconds \\(connection error\\)'):
+                self.job.acceptance(self.image_id)
+        self.assertEqual(clock[0], 180)
+        self.assertEqual(http.call_count, 36)
+
+    def test_invalid_public_responses_are_retried(self):
+        responses = [io.BytesIO(body) for body in (b'not-json', b'{"status":"starting"}', b'{"status":"ok"}')]
+        for response in responses:
+            response.status = 200
+        clock = [0]
+        with patch.object(cd, 'command', side_effect=lambda *args: json.dumps([self.container])
+                          if args[:2] == ('docker', 'inspect') else ''), \
+                patch.object(cd.urllib.request, 'urlopen', side_effect=responses) as http, \
+                patch.object(cd.time, 'monotonic', side_effect=lambda: clock[0]), \
+                patch.object(cd.time, 'sleep', side_effect=lambda seconds: clock.__setitem__(0, clock[0] + seconds)):
+            self.job.acceptance(self.image_id)
+        self.assertEqual(http.call_count, 3)
+        self.assertEqual(clock[0], 10)
+
 
 class ServiceConfigurationTests(unittest.TestCase):
     def test_private_registry_config_is_accessible_outside_protected_home(self):
