@@ -2363,7 +2363,7 @@
         </p>
       {/if}
     </section>
-    <footer class="daily-public-footer">
+    <footer class="daily-public-footer" role="contentinfo">
       <span>Daily</span>
       <a href="/privacy">Privacy Policy</a>
       <a href="/terms">Terms of Service</a>

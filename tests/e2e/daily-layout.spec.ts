@@ -26,10 +26,13 @@ for (const width of [390, 1280]) {
       expect(rail!.y + rail!.height).toBeGreaterThanOrEqual(height - 1);
       expect(rail!.y + rail!.height).toBeLessThanOrEqual(height + 1);
       await expect(page.getByRole('link', { name: 'Privacy Policy', exact: true }).last()).toBeVisible();
-      const footer = await page.locator('.daily-public-footer').boundingBox();
+      const footer = await page.getByRole('contentinfo').boundingBox();
       expect(footer).not.toBeNull();
       if (width < 820) {
         expect(footer!.y + footer!.height).toBeLessThanOrEqual(rail!.y);
+        if (taskCount === 0) {
+          expect(footer!.y + footer!.height).toBeCloseTo(height - 100, 0);
+        }
       } else {
         expect(footer!.y + footer!.height).toBeCloseTo(height - 24, 0);
       }
