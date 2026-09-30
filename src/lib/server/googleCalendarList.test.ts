@@ -1,7 +1,13 @@
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { betterAuth } from 'better-auth';
+import { memoryAdapter } from 'better-auth/adapters/memory';
+import { createDailySummaryGenerator } from '$lib/dailySummaryGeneration/internal';
+import { defaultSummaryConfiguration } from '$lib/summaryConfiguration';
+import { createUserCalendarEvents } from './userCalendarEvents';
 
 const { authAccounts, refreshGoogleAccessToken } = vi.hoisted(() => ({
   authAccounts: [] as Array<{
+    id?: string;
     account_id?: string;
     access_token: string | null;
     access_token_expires_at: Date | null;
@@ -39,6 +45,7 @@ describe('Google Calendar list provider', () => {
   afterEach(() => {
     authAccounts.length = 0;
     refreshGoogleAccessToken.mockReset();
+    vi.unstubAllGlobals();
     vi.restoreAllMocks();
   });
 
@@ -337,6 +344,7 @@ describe('Google Calendar list provider', () => {
 
   test('refreshes an expired Calendar access token when refresh credentials are available', async () => {
     authAccounts.push({
+      id: 'auth-account-row-1',
       account_id: 'google-subject-1',
       access_token: 'expired-access-token',
       access_token_expires_at: new Date(Date.now() - 60_000),
@@ -348,14 +356,106 @@ describe('Google Calendar list provider', () => {
     await expect(loadGoogleCalendarAccessToken('user-1')).resolves.toBe('refreshed-access-token');
     expect(refreshGoogleAccessToken).toHaveBeenCalledWith({
       body: {
-        accountId: 'google-subject-1',
+        accountId: 'auth-account-row-1',
         userId: 'user-1'
       }
     });
   });
 
+  test('loads scheduled Calendar Events after token expiry using the real Better Auth refresh API', async () => {
+    const scopes = 'openid email https://www.googleapis.com/auth/calendar.calendarlist.readonly https://www.googleapis.com/auth/calendar.events.readonly';
+    const expiredAt = new Date('2020-01-01T00:00:00Z');
+    const refreshedAt = new Date('2099-01-01T00:00:00Z');
+    const account = {
+      id: 'auth-account-row-1',
+      accountId: 'google-subject-1',
+      providerId: 'google',
+      userId: 'user-1',
+      accessToken: 'expired-access-token',
+      accessTokenExpiresAt: expiredAt,
+      refreshToken: 'stored-refresh-token',
+      scope: scopes,
+      createdAt: expiredAt,
+      updatedAt: expiredAt
+    };
+    const database = { user: [], session: [], account: [account] };
+    const refreshAccessToken = vi.fn().mockResolvedValue({
+      accessToken: 'refreshed-access-token',
+      accessTokenExpiresAt: refreshedAt
+    });
+    const realAuth = betterAuth({
+      database: memoryAdapter(database),
+      secret: 'calendar-regression-test-secret-at-least-32-characters',
+      baseURL: 'http://localhost:5174',
+      socialProviders: {
+        google: { clientId: 'test-client', clientSecret: 'test-secret', refreshAccessToken }
+      }
+    });
+    refreshGoogleAccessToken.mockImplementation((input) => realAuth.api.refreshToken(input));
+    authAccounts.push({
+      id: account.id,
+      account_id: account.accountId,
+      access_token: account.accessToken,
+      access_token_expires_at: expiredAt,
+      refresh_token: account.refreshToken,
+      scope: scopes
+    });
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ items: [{
+      id: 'planning',
+      summary: 'Planning',
+      start: { dateTime: '2026-09-30T10:00:00Z' },
+      end: { dateTime: '2026-09-30T11:00:00Z' }
+    }] })));
+    vi.stubGlobal('fetch', fetchMock);
+    const calendarEvents = createUserCalendarEvents({
+      connectionStore: {
+        load: vi.fn().mockResolvedValue({ status: 'connected' }),
+        loadSelectedCalendars: vi.fn().mockResolvedValue([
+          { id: 'work', summary: 'Work', primary: true, backgroundColor: null }
+        ]),
+        saveSelectedCalendars: vi.fn()
+      },
+      loadAccessToken: loadGoogleCalendarAccessToken,
+      eventProvider: googleCalendarEventProvider,
+      calendarListProvider: googleCalendarListProvider,
+      isAuthorizationFailure: () => false
+    });
+
+    const result = await calendarEvents.load({
+      userId: 'user-1',
+      userTimeZone: 'Europe/Warsaw',
+      now: new Date('2026-09-30T05:00:00Z')
+    });
+
+    expect(result.calendarEvents.eventResult).toMatchObject({
+      outcome: 'available',
+      events: [expect.objectContaining({ id: 'planning', summary: 'Planning' })]
+    });
+    expect(refreshAccessToken).toHaveBeenCalledWith('stored-refresh-token', expect.anything());
+    expect(database.account[0].accessToken).toBe('refreshed-access-token');
+    expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining('/calendars/work/events?'), {
+      headers: { authorization: 'Bearer refreshed-access-token' }
+    });
+
+    const summary = await createDailySummaryGenerator<void>({
+      source: {
+        load: () => ({
+          configuration: { ...defaultSummaryConfiguration, userTimeZone: 'Europe/Warsaw' },
+          calendarEvents: result.calendarEvents,
+          todoCategories: [],
+          todoTasks: []
+        })
+      }
+    }).generate(undefined, { now: new Date('2026-09-30T05:00:00Z') });
+
+    expect(summary.rendered.html).toContain('Planning');
+    expect(summary.rendered.text).toContain('12:00 Planning (Work)');
+    expect(summary.rendered.text).not.toContain('Reconnect Google Calendar');
+  });
+
   test('returns an unavailable token when refresh credentials are rejected', async () => {
     authAccounts.push({
+      id: 'auth-account-row-1',
       account_id: 'google-subject-1',
       access_token: 'expired-access-token',
       access_token_expires_at: new Date(Date.now() - 60_000),
@@ -367,7 +467,7 @@ describe('Google Calendar list provider', () => {
     await expect(loadGoogleCalendarAccessToken('user-1')).resolves.toBeNull();
     expect(refreshGoogleAccessToken).toHaveBeenCalledWith({
       body: {
-        accountId: 'google-subject-1',
+        accountId: 'auth-account-row-1',
         userId: 'user-1'
       }
     });
