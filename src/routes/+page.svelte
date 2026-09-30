@@ -2363,6 +2363,12 @@
         </p>
       {/if}
     </section>
+    <footer class="daily-public-footer" role="contentinfo">
+      <span>Daily</span>
+      <a href="/privacy">Privacy Policy</a>
+      <a href="/terms">Terms of Service</a>
+      <a href="mailto:daily@dailykickoff.eu">daily@dailykickoff.eu</a>
+    </footer>
   </section>
 </main>
 
@@ -2418,13 +2424,6 @@
     {/if}
   </dialog>
 {/if}
-
-<footer class="daily-public-footer">
-  <span>Daily</span>
-  <a href="/privacy">Privacy Policy</a>
-  <a href="/terms">Terms of Service</a>
-  <a href="mailto:daily@dailykickoff.eu">daily@dailykickoff.eu</a>
-</footer>
 
 <style>
   :global(body) {
@@ -2633,8 +2632,15 @@
   }
 
   .daily-board-main {
+    display: flex;
+    flex-direction: column;
+    min-height: 100dvh;
     min-width: 0;
-    padding: 28px clamp(22px, 3.5vw, 58px) 72px;
+    padding: 28px clamp(22px, 3.5vw, 58px) 24px;
+  }
+
+  .daily-board-main > * {
+    flex-shrink: 0;
   }
 
   .daily-notice {
@@ -2787,7 +2793,7 @@
     justify-content: center;
     flex-wrap: wrap;
     gap: 14px;
-    margin-top: 38px;
+    margin-top: auto;
     padding-top: 18px;
     border-top: 1px solid #dfe3dc;
     color: #697269;
@@ -3081,6 +3087,7 @@
 
   .daily-todo-workspace {
     margin-top: 31px;
+    margin-bottom: 38px;
     border-top: 1px solid #cfd6cc;
     padding-top: 24px;
   }
