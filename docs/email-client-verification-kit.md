@@ -14,10 +14,11 @@ The source of truth is `src/lib/dailySummaryFixtures.ts`.
 - `npm run verify:email-client-kit` renders the five named fixtures, measures their UTF-8
   HTML and plain-text size.
 
-The automated delivery-path test also sends every fixture through the production Daily
-Summary generator, shared renderer, Test Delivery service, Resend adapter, Summary Recipient,
-and metadata-only Test Delivery Record store. Its fetch stub replaces only the external Resend
-network call.
+The automated delivery-path test renders each fixture with the shared renderer, then passes
+it through the Test Delivery service and Resend adapter to a test Summary Recipient and
+in-memory metadata-only Delivery Record store. It stubs the external Resend network call
+and supplies the generated input directly; it does not prove production generation, real
+delivery, or email-client behavior.
 
 The four rotations cover every supported state. Weather has no Empty state. Todo has no
 Unconfigured state. This is the accepted Summary Section contract.
@@ -103,6 +104,10 @@ complete content.
 
 Store the evidence outside the application database. Keep the evidence directory tied to the
 immutable release SHA.
+
+Copy [the verification record template](email-client-verification-record.md) into that
+directory. Complete all eight client rows and all forty client/fixture inspections. The
+template is unfilled and is not evidence of a passing release.
 
 - [ ] Release commit SHA, package-lock checksum, test date, and operator.
 - [ ] Exact client, browser, application, and operating-system versions for every row.
