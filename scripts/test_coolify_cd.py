@@ -231,6 +231,26 @@ class ReleaseIdentityTests(unittest.TestCase):
                 self.job.acceptance(image_id)
         self.assertEqual(docker.call_args_list[0].args, ('docker', 'pull', self.config['image'] + ':cd'))
 
+    def test_public_health_identifies_cd_client_to_proxy(self):
+        clock = [0]
+
+        def public_health(request, timeout):
+            if not isinstance(request, cd.urllib.request.Request) or request.get_header('User-agent') != 'daily-cd':
+                raise cd.urllib.error.HTTPError(self.config['health_url'], 403, 'Forbidden', None, None)
+            self.assertEqual(request.full_url, self.config['health_url'])
+            self.assertEqual(request.get_header('Accept'), 'application/json')
+            response = io.BytesIO(b'{"status":"ok"}')
+            response.status = 200
+            return response
+
+        with patch.object(cd, 'command', side_effect=lambda *args: json.dumps([self.container])
+                          if args[:2] == ('docker', 'inspect') else ''), \
+                patch.object(cd.urllib.request, 'urlopen', side_effect=public_health), \
+                patch.object(cd.time, 'monotonic', side_effect=lambda: clock[0]), \
+                patch.object(cd.time, 'sleep', side_effect=lambda seconds: clock.__setitem__(0, clock[0] + seconds)):
+            self.job.acceptance(self.image_id)
+        self.assertEqual(clock[0], 0)
+
     def test_healthy_wrong_image_is_rejected_before_public_health_check(self):
         self.container['Image'] = 'sha256:' + 'e' * 64
         with patch.object(cd, 'command', return_value=json.dumps([self.container])):
