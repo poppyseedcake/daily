@@ -229,6 +229,12 @@ class Deployment:
     def acceptance(self, image_id):
         deadline = time.monotonic() + 180
         public_failure = None
+        try:
+            public_request = urllib.request.Request(
+                self.config['health_url'], headers={'User-Agent': 'daily-cd', 'Accept': 'application/json'},
+            )
+        except ValueError:
+            raise DeploymentError('Public readiness check: invalid health_url configuration.') from None
         while time.monotonic() < deadline:
             container = inspect_container(self.config['container'])
             if container['State'].get('Health', {}).get('Status') == 'healthy':
@@ -237,7 +243,7 @@ class Deployment:
                 command('docker', 'exec', self.config['container'], 'node',
                         'scripts/validate-production-environment.mjs', '--context=web')
                 try:
-                    with urllib.request.urlopen(self.config['health_url'], timeout=15) as response:
+                    with urllib.request.urlopen(public_request, timeout=15) as response:
                         if response.status == 200:
                             if json.load(response) == {'status': 'ok'}:
                                 return
