@@ -223,7 +223,7 @@ export const loadGoogleCalendarAccessToken = async (authUserId: string) => {
     const { auth } = await import('$lib/server/auth');
     const refreshedTokens = await auth.api.refreshToken({
       body: {
-        accountId: account.account_id,
+        accountId: account.id,
         userId: authUserId
       }
     });
