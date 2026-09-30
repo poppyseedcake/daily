@@ -1,9 +1,11 @@
 <script lang="ts">
+  import { asset } from '$app/paths';
+
   let { compact = false }: { compact?: boolean } = $props();
 </script>
 
 <span class="daily-logo" aria-hidden="true">
-  <img class="daily-logo__mark" src="/daily-mark.svg" alt="" width="34" height="34" />
+  <img class="daily-logo__mark" src={asset('/daily-mark.svg')} alt="" width="34" height="34" />
   {#if !compact}<strong>Daily</strong>{/if}
 </span>
 
@@ -13,7 +15,7 @@
     align-items: center;
     gap: 10px;
     color: #172d52;
-    font-family: Arial, Helvetica, sans-serif;
+    font-family: inherit;
     font-size: 26px;
     font-weight: 760;
     letter-spacing: -0.04em;

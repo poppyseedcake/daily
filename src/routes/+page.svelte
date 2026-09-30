@@ -92,6 +92,7 @@
   import type { SelectedCalendarConfiguration, SelectedCalendarOption } from '$lib/selectedCalendars';
   import { accountDeletionConfirmation } from '$lib/accountDeletion';
   import DailyLogo from '$lib/components/DailyLogo.svelte';
+  import { workspaceGreeting } from '$lib/workspaceGreeting';
 
   const visitorAuthState = { mode: 'visitor' } as const;
   type CommuteAddressSuggestion = { placeId: string; label: string };
@@ -1807,13 +1808,22 @@
       ? todoCategories.find((category) => category.id === newTodoCategoryId)?.name ?? 'Ungrouped'
       : 'Ungrouped'
   );
-  const boardDateLabel = new Intl.DateTimeFormat('en-US', {
-    weekday: 'short',
-    day: 'numeric',
-    month: 'short'
-  })
-    .format(new Date())
-    .toUpperCase();
+  let boardNow = $state<Date>();
+  const boardGreeting = $derived(workspaceGreeting(
+    boardNow ?? new Date(data?.currentTime ?? Date.now()),
+    userTimeZone,
+    authState.mode === 'user' ? authState.name : undefined
+  ));
+  onMount(() => {
+    const updateBoardClock = () => { boardNow = new Date(); };
+    updateBoardClock();
+    const timer = setInterval(updateBoardClock, 60_000);
+    window.addEventListener('focus', updateBoardClock);
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener('focus', updateBoardClock);
+    };
+  });
   $effect(() => {
     const result = summaryConfigurationSchema.safeParse({
       ...currentSummaryConfiguration(),
@@ -2007,7 +2017,10 @@
 
 <main class="daily-board-shell">
   <aside class="daily-rail" aria-label="Primary navigation">
-    <a class="daily-brand" href="/" aria-label="Daily home"><DailyLogo compact /></a>
+    <a class="daily-brand" href="/" aria-label="Daily home">
+      <DailyLogo compact />
+      <span class="daily-brand__name" aria-hidden="true">Daily</span>
+    </a>
     <nav class="daily-rail-bottom">
       {#if authState.mode === 'visitor'}
         <button
@@ -2050,9 +2063,9 @@
     <header class="daily-board-header">
       <div class="daily-board-heading">
         <a class="daily-mobile-brand" href="/" aria-label="Daily home"><DailyLogo /></a>
-        <div>
-          <span>DAILY / {boardDateLabel}</span>
-          <h1 class="sr-only">Daily</h1>
+        <div class="daily-greeting">
+          <h1>{boardGreeting.greeting}</h1>
+          <p>{boardGreeting.dateLabel}</p>
         </div>
       </div>
       <div class="daily-header-actions">
@@ -2470,10 +2483,21 @@
 
   .daily-brand {
     width: 42px;
-    height: 42px;
-    display: grid;
-    place-items: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+    padding-top: 4px;
     text-decoration: none;
+  }
+
+  .daily-brand__name {
+    writing-mode: vertical-rl;
+    color: #172d52;
+    font-size: 26px;
+    font-weight: 750;
+    letter-spacing: -0.04em;
+    line-height: 1;
   }
 
   .daily-mobile-brand {
@@ -2637,11 +2661,27 @@
     min-width: 0;
   }
 
-  .daily-board-heading > div > span {
-    color: #71776e;
-    font-size: 10px;
-    font-weight: 650;
-    letter-spacing: 0.06em;
+  .daily-greeting {
+    min-width: 0;
+  }
+
+  .daily-greeting h1 {
+    margin: 0;
+    color: #243025;
+    font-family: inherit;
+    font-size: 40px;
+    font-weight: 400;
+    letter-spacing: -0.04em;
+    line-height: 1.05;
+    overflow-wrap: anywhere;
+  }
+
+  .daily-greeting p {
+    margin: 8px 0 0;
+    color: #6b7668;
+    font-family: inherit;
+    font-size: 18px;
+    line-height: 1.3;
   }
 
   .daily-header-actions {
@@ -4920,7 +4960,17 @@
     }
 
     .daily-board-heading {
-      gap: 12px;
+      align-items: flex-start;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .daily-greeting h1 {
+      font-size: 32px;
+    }
+
+    .daily-greeting p {
+      font-size: 15px;
     }
 
     .daily-header-actions {

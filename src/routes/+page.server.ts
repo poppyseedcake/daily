@@ -276,6 +276,7 @@ export const load = async ({ request, cookies }) => {
 
   return {
     authState,
+    currentTime: new Date().toISOString(),
     isAdministrator: isAdministratorAuthState(authState),
     calendarReadiness,
     summaryConfiguration,
