@@ -229,9 +229,12 @@ class Deployment:
     def acceptance(self, image_id):
         deadline = time.monotonic() + 180
         public_failure = None
-        public_request = urllib.request.Request(
-            self.config['health_url'], headers={'User-Agent': 'daily-cd', 'Accept': 'application/json'},
-        )
+        try:
+            public_request = urllib.request.Request(
+                self.config['health_url'], headers={'User-Agent': 'daily-cd', 'Accept': 'application/json'},
+            )
+        except ValueError:
+            raise DeploymentError('Public readiness check: invalid health_url configuration.') from None
         while time.monotonic() < deadline:
             container = inspect_container(self.config['container'])
             if container['State'].get('Health', {}).get('Status') == 'healthy':

@@ -251,6 +251,13 @@ class ReleaseIdentityTests(unittest.TestCase):
             self.job.acceptance(self.image_id)
         self.assertEqual(clock[0], 0)
 
+    def test_malformed_health_url_reports_readiness_configuration_error(self):
+        self.config['health_url'] = 'dailykickoff.eu/health'
+        with patch.object(cd.urllib.request, 'urlopen') as http:
+            with self.assertRaisesRegex(cd.DeploymentError, 'Public readiness check: invalid health_url'):
+                self.job.acceptance(self.image_id)
+            http.assert_not_called()
+
     def test_healthy_wrong_image_is_rejected_before_public_health_check(self):
         self.container['Image'] = 'sha256:' + 'e' * 64
         with patch.object(cd, 'command', return_value=json.dumps([self.container])):
