@@ -3,6 +3,16 @@ import { expect, test } from '@playwright/test';
 import { buildDailySummaryPrototypeFixture, buildDailySummaryDenseAllActiveFixture } from '../../src/lib/dailySummaryFixtures';
 import { renderDailySummary } from '../../src/lib/dailySummaryRenderer';
 
+test('blocked commute arrow images retain the direction as alternative text', async ({ page }) => {
+  await page.route('https://daily.example.test/email-icons/*.png', (route) => route.abort());
+  await page.setViewportSize({ width: 1280, height: 844 });
+  await page.setContent(renderDailySummary(buildDailySummaryPrototypeFixture()).html);
+  const arrow = page.locator('img[src$="/commute-arrow.png"]');
+  await expect(arrow).toHaveAttribute('alt', '→');
+  expect(await arrow.evaluate((image: HTMLImageElement) => image.complete && image.naturalWidth === 0)).toBe(true);
+  await expect(page.getByRole('img', { name: '→', exact: true })).toBeVisible();
+});
+
 test('commute direction is one continuous arrow at narrow and desktop widths', async ({ page }) => {
   await page.route('https://daily.example.test/email-icons/*.png', async (route) => {
     const name = new URL(route.request().url()).pathname.split('/').at(-1)!;
