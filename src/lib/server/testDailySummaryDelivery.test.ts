@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { buildDailySummaryVerificationFixtures } from '$lib/dailySummaryFixtures';
+import type { DeliveryRecordInput } from '$lib/deliveryRecords';
 import { renderDailySummary } from '$lib/dailySummaryRenderer';
 
 const { env } = vi.hoisted(() => ({
@@ -21,7 +22,7 @@ describe('production Test Delivery path', () => {
   });
 
   test('sends every verification fixture through Resend and records exactly one Test Delivery Record', async () => {
-    const records: Array<{ userId: string; record: unknown }> = [];
+    const records: Array<{ userId: string; record: DeliveryRecordInput }> = [];
     const fetch = vi.fn().mockImplementation(async () =>
       new Response(JSON.stringify({ id: `resend-message-${fetch.mock.calls.length}` }), {
         status: 200,
@@ -59,7 +60,7 @@ describe('production Test Delivery path', () => {
       expect(payload).toEqual({
         from: env.RESEND_FROM_EMAIL,
         to: ['verification-recipient@example.com'],
-        subject: 'Test · Your Daily Summary · Friday, 31 July',
+        subject: `Test · Your Daily Summary · Friday, 31 July · 07:00:00 · #${records.at(-1)!.record.id}`,
         html: generated.rendered.html,
         text: generated.rendered.text
       });
@@ -68,6 +69,9 @@ describe('production Test Delivery path', () => {
       expect(payload.html).not.toContain('<svg');
     }
 
+    const subjects = fetch.mock.calls.map(([, request]) => JSON.parse(request.body).subject);
+    expect(new Set(subjects).size).toBe(5);
+    expect(new Set(records.map(({ record }) => record.id)).size).toBe(5);
     expect(fetch).toHaveBeenCalledTimes(5);
     expect(records).toHaveLength(5);
     expect(records).toEqual(

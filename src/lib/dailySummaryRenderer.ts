@@ -5,7 +5,8 @@ import {
   type CommuteTrafficLevel
 } from './commuteTraffic';
 import type { SummarySection, UserTimeZone } from './summaryConfiguration';
-import type { WeatherDisplayForecast } from './weatherForecast';
+import { weatherPrecipitationIntensityForCode, type WeatherDisplayForecast } from './weatherForecast';
+import { workspaceGreeting } from './workspaceGreeting';
 import type {
   SummarySectionPresentationState,
   SummarySectionPresentationStateFor
@@ -47,6 +48,7 @@ type CalendarSummarySectionInput =
     >>;
 
 export type DailySummaryInput = {
+  userName?: string;
   userTimeZone: UserTimeZone;
   generatedAt: Date;
   openDailyUrl: string;
@@ -80,11 +82,14 @@ export type RenderedDailySummary = {
 
 export type DailySummaryDeliveryKind = 'scheduled' | 'test';
 
-export const dailySummarySubject = (
+export function dailySummarySubject(kind: 'scheduled', generatedAt: Date, userTimeZone: string): string;
+export function dailySummarySubject(kind: 'test', generatedAt: Date, userTimeZone: string, attemptId: string): string;
+export function dailySummarySubject(
   kind: DailySummaryDeliveryKind,
   generatedAt: Date,
-  userTimeZone: string
-) => {
+  userTimeZone: string,
+  attemptId?: string
+) {
   const weekday = new Intl.DateTimeFormat('en-US', {
     weekday: 'long',
     timeZone: userTimeZone
@@ -95,8 +100,16 @@ export const dailySummarySubject = (
     timeZone: userTimeZone
   }).format(generatedAt);
 
-  return `${kind === 'test' ? 'Test · ' : ''}Your Daily Summary · ${weekday}, ${dayAndMonth}`;
-};
+  const testTime = kind === 'test' ? ` · ${new Intl.DateTimeFormat('en-GB', {
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23',
+    timeZone: userTimeZone
+  }).format(generatedAt)}` : '';
+
+  // Repeated test messages must start separate Gmail conversations, otherwise
+  // Gmail hides unchanged sections as quoted content behind its ellipsis.
+  const testReference = kind === 'test' ? ` · #${attemptId}` : '';
+  return `${kind === 'test' ? 'Test · ' : ''}Your Daily Summary · ${weekday}, ${dayAndMonth}${testTime}${testReference}`;
+}
 
 type SummarySectionContent = {
   weather: WeatherDisplayForecast;
@@ -153,17 +166,20 @@ export const renderDailySummary = (input: DailySummaryInput): RenderedDailySumma
   const generatedAt = input.generatedAt;
   const generatedTimestamp = formatGeneratedTimestamp(generatedAt, input.userTimeZone);
   const openDailyUrl = canonicalOpenDailyUrl(input.openDailyUrl);
+  const { greeting } = workspaceGreeting(generatedAt, input.userTimeZone, input.userName);
 
   return {
     html: renderHtml({
       sections,
       generatedAt,
+      greeting,
       generatedTimestamp,
       userTimeZone: input.userTimeZone,
       openDailyUrl
     }),
     text: renderText({
       sections,
+      greeting,
       generatedTimestamp,
       userTimeZone: input.userTimeZone,
       openDailyUrl
@@ -214,6 +230,7 @@ const localGenerationDate = (context: EmailContext) =>
 const renderHtml = (context: EmailContext & {
   sections: RenderedSection[];
   generatedTimestamp: string;
+  greeting: string;
 }) => {
   const { sections, generatedAt, userTimeZone, openDailyUrl } = context;
   const weekday = new Intl.DateTimeFormat('en-GB', { weekday: 'long', timeZone: userTimeZone }).format(generatedAt);
@@ -231,7 +248,7 @@ const renderHtml = (context: EmailContext & {
       @media only screen and (min-width: 701px) {
         .daily-grid-row { display:table !important; width:100% !important; table-layout:fixed !important; }
         .daily-grid-cell { display:table-cell !important; width:50% !important; max-width:none !important; }
-        .daily-grid-cell:first-child { border-right:1px solid #dfe5dc !important; }
+        .daily-grid-cell-left { border-right:1px solid #dfe5dc !important; }
       }
       @media only screen and (max-width: 700px) {
         .daily-grid-cell { display: block !important; width: 100% !important; max-width:none !important; box-sizing: border-box !important; border-right:0 !important; }
@@ -257,17 +274,17 @@ const renderHtml = (context: EmailContext & {
           <tr><td class="daily-header" style="padding:28px 40px;border-bottom:1px solid #dfe5dc;">
             <table class="daily-header-table" role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;border-collapse:collapse;">
               <tr>
-                <td class="daily-brand" width="30%" valign="top" style="width:30%;padding-top:2px;">
+                <td class="daily-brand" width="22%" valign="top" style="width:22%;padding-top:2px;">
                   <table data-daily-brand role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
                     <td align="center" width="25" height="25" style="width:25px;height:25px;border-radius:7px;background-color:#587542;color:#ffffff;font-size:14px;line-height:25px;font-weight:800;">D</td>
                     <td style="padding-left:9px;color:#243025;font-size:14px;line-height:25px;font-weight:800;">Daily</td>
                   </tr></table>
                 </td>
-                <td class="daily-greeting" width="40%" valign="top" align="center" style="width:40%;text-align:center;">
-                  <h1 style="margin:0;color:#243025;font-size:25px;line-height:1.05;font-weight:500;letter-spacing:-0.04em;">Good morning</h1>
+                <td class="daily-greeting" width="56%" valign="top" align="center" style="width:56%;text-align:center;">
+                  <h1 style="margin:0;color:#243025;font-size:25px;line-height:1.15;font-weight:500;letter-spacing:-0.04em;overflow-wrap:anywhere;word-break:break-word;word-wrap:break-word;">${escapeHtml(context.greeting)}</h1>
                   <p style="margin:6px 0 0;color:#748074;font-size:11px;line-height:1.5;"><time datetime="${escapeHtml(generatedAt.toISOString())}">${escapeHtml(date)}</time></p>
                 </td>
-                <td class="daily-time" width="30%" valign="top" align="right" style="width:30%;color:#8b9489;font-size:10px;line-height:1.5;">${escapeHtml(time)}</td>
+                <td class="daily-time" width="22%" valign="top" align="right" style="width:22%;color:#8b9489;font-size:10px;line-height:1.5;">${escapeHtml(time)}</td>
               </tr>
             </table>
           </td></tr>
@@ -294,17 +311,17 @@ const renderHtml = (context: EmailContext & {
 const renderGridRow = (sections: RenderedSection[], context: EmailContext) =>
   `<div class="daily-grid-row" style="width:100%;column-count:2;column-width:395px;column-gap:0;column-rule:1px solid #dfe5dc;border-bottom:1px solid #dfe5dc;">
     <!--[if mso]><table role="presentation" width="790" cellpadding="0" cellspacing="0" border="0" style="table-layout:fixed;"><tr><![endif]-->
-    ${sections.map((section) => `<!--[if mso]><td width="395" valign="top"><![endif]-->${renderSectionCell(section, context)}<!--[if mso]></td><![endif]-->`).join('')}
+    ${sections.map((section, index) => `<!--[if mso]><td width="395" valign="top"${index === 0 ? ' style="border-right:1px solid #dfe5dc;"' : ''}><![endif]-->${renderSectionCell(section, context, index === 0)}<!--[if mso]></td><![endif]-->`).join('')}
     <!--[if mso]></tr></table><![endif]-->
   </div>`;
 
-const renderSectionCell = (section: RenderedSection, context: EmailContext) => {
+const renderSectionCell = (section: RenderedSection, context: EmailContext, left: boolean) => {
   const accentColor = sectionAccentColors[section.key];
   const week = section.key === 'calendar'
     ? `<td align="right" style="color:#8c958a;font-size:8px;line-height:18px;font-weight:800;letter-spacing:0.08em;">WEEK ${localGenerationDate(context).weekOfYear}</td>`
     : '';
   const contentGap = section.key === 'weather' || section.key === 'commute' ? 31 : 24;
-  return `<div class="daily-grid-cell" data-summary-section="${section.key}" style="display:block;break-inside:avoid;vertical-align:top;width:100%;box-sizing:border-box;padding:27px 30px;font-size:11px;line-height:1.5;background-color:transparent;">
+  return `<div class="daily-grid-cell${left ? ' daily-grid-cell-left' : ''}" data-summary-section="${section.key}" style="display:block;break-inside:avoid;vertical-align:top;width:100%;box-sizing:border-box;padding:27px 30px;font-size:11px;line-height:1.5;background-color:transparent;">
     <div class="daily-grid-cell-inner" role="region" aria-labelledby="daily-${section.key}-heading" style="min-height:182px;overflow-wrap:anywhere;word-break:break-word;">
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;border-collapse:collapse;"><tr>
         <td width="18" style="width:18px;padding-right:8px;">${emailIcon(section.key, 18, context.openDailyUrl)}</td>
@@ -350,7 +367,8 @@ const renderWeatherHtml = (weather: WeatherDisplayForecast, context: EmailContex
       <td valign="middle" style="padding-left:13px;border-left:1px solid #d8e0d6;">
         ${weather.locationLabel ? `<p style="margin:0 0 5px;font-size:12px;line-height:1.3;font-weight:700;">${escapeHtml(weather.locationLabel)}</p>` : ''}
         <p style="margin:0 0 5px;color:#798479;font-size:10px;line-height:1.4;">Wind ${escapeHtml(formatMetric(weather.maximumWindSpeedKmh))} km/h</p>
-        <p style="margin:0;color:#798479;font-size:10px;line-height:1.4;">${escapeHtml(weather.conditionText)}</p>
+        <p style="margin:0 0 5px;color:#798479;font-size:10px;line-height:1.4;">${escapeHtml(weather.conditionText)}</p>
+        <p style="margin:0;color:#798479;font-size:10px;line-height:1.4;">Precip. ${escapeHtml(formatMetric(weather.maximumPrecipitationProbabilityPercent))}% (${weatherPrecipitationIntensityForCode(weather.dailyWeatherCode)})</p>
       </td>
     </tr>
     <tr><td colspan="2" align="center" style="padding-top:8px;font-size:11px;line-height:1.4;font-weight:700;">
@@ -358,7 +376,6 @@ const renderWeatherHtml = (weather: WeatherDisplayForecast, context: EmailContex
       &nbsp;&nbsp;&nbsp; <span aria-label="Low ${escapeHtml(formatMetric(weather.minimumTemperatureCelsius))} degrees Celsius" style="color:#657ea6;">${hiddenText('Low ')}↓ ${escapeHtml(formatMetric(weather.minimumTemperatureCelsius))}°</span>
     </td><td></td></tr>
   </table>
-  <p style="margin:16px 0 0;color:#798479;font-size:10px;line-height:1.5;">Chance of precipitation ${escapeHtml(formatMetric(weather.maximumPrecipitationProbabilityPercent))}%.</p>
   ${weather.summary ? `<p style="margin:8px 0 0;color:#748074;font-size:11px;line-height:1.5;">${escapeHtml(weather.summary)}</p>` : ''}`;
 
 const renderStateHtml = (section: RenderedSection) => {
@@ -430,16 +447,18 @@ const renderUrgencyHtml = (urgency: TodoUrgency) =>
 
 const renderText = ({
   sections,
+  greeting,
   generatedTimestamp,
   userTimeZone,
   openDailyUrl
 }: {
   sections: RenderedSection[];
+  greeting: string;
   generatedTimestamp: string;
   userTimeZone: string;
   openDailyUrl: string;
 }) => [
-  'Good morning',
+  greeting,
   `Generated: ${generatedTimestamp} (${userTimeZone})`,
   '',
   ...sections.flatMap((section) => [section.label, renderSectionTextContent(section), '']),
@@ -487,7 +506,7 @@ const renderWeatherText = (weather: WeatherDisplayForecast) => [
   ...(weather.locationLabel ? [weather.locationLabel] : []),
   `Current ${formatMetric(weather.currentTemperatureCelsius)}C · ${weather.conditionText}`,
   `Low ${formatMetric(weather.minimumTemperatureCelsius)}C, high ${formatMetric(weather.maximumTemperatureCelsius)}C.`,
-  `Chance of precipitation ${formatMetric(weather.maximumPrecipitationProbabilityPercent)}%.`,
+  `Chance of precipitation ${formatMetric(weather.maximumPrecipitationProbabilityPercent)}% (${weatherPrecipitationIntensityForCode(weather.dailyWeatherCode)}).`,
   `Wind up to ${formatMetric(weather.maximumWindSpeedKmh)} km/h.`,
   ...(weather.summary ? [weather.summary] : [])
 ].join('\n');

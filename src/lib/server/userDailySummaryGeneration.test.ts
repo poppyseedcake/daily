@@ -93,6 +93,30 @@ describe('User Daily Summary generation', () => {
     expect(dependencies.commuteEstimateProvider).not.toHaveBeenCalled();
   });
 
+  test('scheduled and test generation load the current Google name into the shared greeting', async () => {
+    const userNameStore = { load: vi.fn().mockResolvedValue('Wojtek M.') };
+    const generator = createUserDailySummaryGenerator(createProviderIsolationDependencies(configuration, {
+      userNameStore,
+      now: () => new Date('2026-10-01T17:06:00Z')
+    }));
+    const { input, rendered } = await generator.generate({ userId: 'user-1' });
+    expect(userNameStore.load).toHaveBeenCalledWith('user-1');
+    expect(input.userName).toBe('Wojtek M.');
+    expect(rendered.html).toContain('>Good evening, Wojtek</h1>');
+    expect(rendered.text).toMatch(/^Good evening, Wojtek\n/);
+  });
+
+  test('a profile-name read failure keeps the summary deliverable with a nameless greeting', async () => {
+    const generator = createUserDailySummaryGenerator(createProviderIsolationDependencies(configuration, {
+      userNameStore: { load: vi.fn().mockRejectedValue(new Error('profile unavailable')) },
+      now: () => new Date('2026-10-01T17:06:00Z')
+    }));
+    const { input, rendered } = await generator.generate({ userId: 'user-1' });
+    expect(input.userName).toBeUndefined();
+    expect(rendered.html).toContain('>Good evening</h1>');
+    expect(rendered.text).toMatch(/^Good evening\n/);
+  });
+
   test('accepts a request-scoped public URL for the shared production path', async () => {
     const generator = createUserDailySummaryGenerator(
       createProviderIsolationDependencies(configuration, {})

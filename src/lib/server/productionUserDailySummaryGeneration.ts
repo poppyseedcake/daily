@@ -4,6 +4,7 @@ import { userSummaryConfigurationStore } from './db/summaryConfigurationStore';
 import { userTodoStore } from './db/todoStore';
 import { userWeatherLocationStore } from './db/weatherLocationStore';
 import { userLifecycleStore } from './db/userLifecycleStore';
+import { userNameStore } from './db/userNameStore';
 import { googleMapsOperations } from './googleMapsOperations';
 import { openAiWeatherSummaryProvider, writeWeatherSummaryDiagnostic } from './weatherSummaryProvider';
 import { createUserDailySummaryGenerator } from '$lib/dailySummaryGeneration/server';
@@ -13,6 +14,7 @@ export const createProductionUserDailySummaryGenerator = (
   calendarEvents: Pick<UserCalendarEventsModule, 'load'>
 ) =>
   createUserDailySummaryGenerator({
+    userNameStore,
     userLifecycleStore,
     configurationStore: userSummaryConfigurationStore,
     todoStore: userTodoStore,

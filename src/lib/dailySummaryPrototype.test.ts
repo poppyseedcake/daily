@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest';
 import { buildDailySummaryDenseAllActiveFixture } from './dailySummaryFixtures';
-import { renderDailySummary } from './dailySummaryRenderer';
+import { dailySummarySubject, renderDailySummary, type DailySummaryInput } from './dailySummaryRenderer';
 
 test('the delivered template preserves the Daily Grid hierarchy even without head CSS', () => {
   const { html } = renderDailySummary(buildDailySummaryDenseAllActiveFixture());
@@ -36,4 +36,29 @@ test('the date strip and ISO week follow the User Time Zone at year boundaries',
   expect(html).toContain('WEEK 53');
   expect(html).toContain('Friday, 1 January');
   expect(html).toContain('>08:30</td>');
+});
+
+
+test.each([
+  ['2026-10-01T03:00:00Z', 'Good morning, Wojtek'],
+  ['2026-10-01T10:00:00Z', 'Good afternoon, Wojtek'],
+  ['2026-10-01T17:06:00Z', 'Good evening, Wojtek'],
+  ['2026-10-01T02:00:00Z', 'Good evening, Wojtek']
+])('email greeting follows the workspace at %s', (time, greeting) => {
+  const input: DailySummaryInput = buildDailySummaryDenseAllActiveFixture();
+  input.generatedAt = new Date(time);
+  input.userName = '  Wojtek   M. ';
+  const { html, text } = renderDailySummary(input);
+  expect(html).toContain(`>${greeting}</h1>`);
+  expect(text.split('\n')[0]).toBe(greeting);
+});
+
+test('repeated test summaries have different subjects to avoid Gmail trimming in conversations', () => {
+  const first = dailySummarySubject('test', new Date('2026-10-01T17:06:00Z'), 'Europe/Warsaw', 'attempt-1');
+  const next = dailySummarySubject('test', new Date('2026-10-01T17:06:00Z'), 'Europe/Warsaw', 'attempt-2');
+  expect(first).not.toBe(next);
+  expect(first).toContain('19:06:00');
+  expect(next).toContain('19:06:00');
+  expect(first).toContain('#attempt-1');
+  expect(next).toContain('#attempt-2');
 });

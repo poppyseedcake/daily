@@ -14,6 +14,7 @@ test('Daily Grid stays readable at Gmail widths with and without head styles', a
     for (const withoutHeadStyles of [false, true]) {
       for (const temperature of [18, 20.7, -20.7]) {
         const input = buildDailySummaryPrototypeFixture();
+        input.userName = 'Wojtek M.';
         if (input.sections.weather.status !== 'active' || !input.sections.weather.content) throw new Error('Fixture must have weather.');
         input.sections.weather.content.currentTemperatureCelsius = temperature;
         const { html } = renderDailySummary(input);
@@ -23,6 +24,7 @@ test('Daily Grid stays readable at Gmail widths with and without head styles', a
           const bounds = section.getBoundingClientRect();
           return { x: bounds.x, y: bounds.y, width: bounds.width };
         }));
+        await expect(page.getByRole('heading', { level: 1, name: 'Good morning, Wojtek' })).toBeVisible();
         expect(geometry).toHaveLength(4);
         if (width < 700) {
           expect(geometry.map((section) => section.y)).toEqual(geometry.map((section) => section.y).toSorted((a, b) => a - b));
@@ -75,4 +77,48 @@ test('stripped styles and ARIA retain descriptions and continuous dense-grid sep
     expect(box?.height ?? 0).toBe(0);
   }
   await session.detach();
+});
+
+
+test('Gmail-safe selectors keep the center divider and precipitation beside weather details', async ({ page }) => {
+  const input = buildDailySummaryPrototypeFixture();
+  if (input.sections.weather.status !== 'active' || !input.sections.weather.content) throw new Error('Fixture must have weather.');
+  input.sections.weather.content.dailyWeatherCode = 63;
+  input.sections.weather.content.maximumPrecipitationProbabilityPercent = 30;
+  const { html } = renderDailySummary(input);
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.setContent(html);
+  // Gmail only supports a subset of CSS selectors. Drop pseudo-class rules,
+  // just as the delivered message does, rather than testing full browser CSS.
+  await page.evaluate(() => {
+    const sanitize = (sheet: CSSStyleSheet | CSSGroupingRule) => {
+      for (let index = sheet.cssRules.length - 1; index >= 0; index--) {
+        const rule = sheet.cssRules[index]!;
+        if (rule instanceof CSSStyleRule && rule.selectorText.includes(':')) sheet.deleteRule(index);
+        else if (rule instanceof CSSGroupingRule) sanitize(rule);
+      }
+    };
+    for (const sheet of document.styleSheets) sanitize(sheet);
+  });
+  const dividers = await page.locator('.daily-grid-row').evaluateAll((rows) => rows.map((row) => {
+    const cells = row.querySelectorAll('.daily-grid-cell');
+    return { left: getComputedStyle(cells[0]!).borderRightWidth, right: getComputedStyle(cells[1]!).borderRightWidth };
+  }));
+  expect(dividers).toEqual([{ left: '1px', right: '0px' }, { left: '1px', right: '0px' }]);
+  const weatherDetails = page.getByText('Wind 6 km/h', { exact: true }).locator('..');
+  await expect(weatherDetails).toContainText('Precip. 30% (Moderate)');
+  expect(await weatherDetails.locator('p').allTextContents()).toEqual(['Warsaw', 'Wind 6 km/h', 'Partly cloudy', 'Precip. 30% (Moderate)']);
+});
+
+
+test('long first names wrap using properties that Gmail preserves', async ({ page }) => {
+  const input = buildDailySummaryPrototypeFixture();
+  input.userName = 'Alexandertheverylongfirstnamewithmanycharacterswithoutspaces';
+  const { html } = renderDailySummary(input);
+  for (const width of [320, 390]) {
+    await page.setViewportSize({ width, height: 844 });
+    await page.setContent(html.replace(/overflow-wrap:anywhere;?/g, ''));
+    await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  }
 });
