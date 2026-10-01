@@ -18,7 +18,12 @@ test('commute direction is one continuous arrow at narrow and desktop widths', a
     const name = new URL(route.request().url()).pathname.split('/').at(-1)!;
     await route.fulfill({ contentType: 'image/png', body: readFileSync(`static/email-icons/${name}`) });
   });
-  const { html } = renderDailySummary(buildDailySummaryPrototypeFixture());
+  const input = buildDailySummaryPrototypeFixture();
+  if (input.sections.commute.status !== 'active') throw new Error('Fixture must have commute.');
+  input.sections.commute.content.estimates[0]!.routeName = 'Volvo';
+  input.sections.commute.content.estimates[0]!.originLabel = 'Granitowa';
+  input.sections.commute.content.estimates[0]!.destinationLabel = 'Mydlana';
+  const { html } = renderDailySummary(input);
   for (const width of [1280, 390, 320]) {
     await page.setViewportSize({ width, height: 844 });
     for (const withoutHeadStyles of [false, true]) {
@@ -36,6 +41,25 @@ test('commute direction is one continuous arrow at narrow and desktop widths', a
       expect(await cell.textContent()).not.toContain('→');
       const bounds = await cell.boundingBox();
       expect(Math.abs(box!.y + box!.height / 2 - (bounds!.y + bounds!.height / 2))).toBeLessThan(1);
+      const spacing = await route.evaluate((group) => {
+        const routeRow = group.querySelector('table')!.rows[0]!;
+        const origin = routeRow.cells[0]!;
+        const image = routeRow.cells[1]!.querySelector('img')!.getBoundingClientRect();
+        const destination = routeRow.cells[2]!.querySelector('img')!.getBoundingClientRect();
+        const textRight = Math.max(...[...origin.querySelectorAll('p')].flatMap((paragraph) => {
+          const range = document.createRange();
+          range.selectNodeContents(paragraph);
+          return [...range.getClientRects()].map((rect) => rect.right);
+        }));
+        return { left: image.left - textRight, right: destination.left - image.right };
+      });
+      expect(Math.abs(spacing.left - spacing.right)).toBeLessThan(2);
+      const lineCounts = await route.locator('p').evaluateAll((paragraphs) => paragraphs.map((paragraph) => {
+        const range = document.createRange();
+        range.selectNodeContents(paragraph);
+        return range.getClientRects().length;
+      }));
+      expect(lineCounts).toEqual([1, 1, 1, 1]);
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     }
   }

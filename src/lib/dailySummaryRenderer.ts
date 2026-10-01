@@ -250,6 +250,7 @@ const renderHtml = (context: EmailContext & {
         .daily-grid-row { display:table !important; width:100% !important; table-layout:fixed !important; }
         .daily-grid-cell { display:table-cell !important; width:50% !important; max-width:none !important; }
         .daily-grid-cell-left { border-right:1px solid #dfe5dc !important; }
+        .daily-commute-stop-text { max-width:72px !important; }
       }
       @media only screen and (max-width: 700px) {
         .daily-grid-cell { display: block !important; width: 100% !important; max-width:none !important; box-sizing: border-box !important; border-right:0 !important; }
@@ -416,11 +417,11 @@ const renderCommuteRouteHierarchyHtml = (estimate: CommuteSection['estimates'][n
   const destinationLabel = compactLocationLabel(estimate.destinationLabel ?? estimate.routeName);
   const arrowUrl = context.openDailyUrl.startsWith('/') ? '/email-icons/commute-arrow.png'
     : new URL('email-icons/commute-arrow.png', context.openDailyUrl).toString();
-  const stop = (name: string, address: string, icon: string) => `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;table-layout:fixed;border-collapse:collapse;"><tr><td width="28" valign="middle" style="width:28px;padding-right:7px;">${emailIcon(icon, 21, context.openDailyUrl)}</td><td><p style="margin:0;color:#354239;font-size:11px;line-height:1.3;font-weight:700;">${escapeHtml(name)}</p><p style="margin:3px 0 0;color:#8b958b;font-size:9px;line-height:1.4;">${escapeHtml(address)}</p></td></tr></table>`;
-  return `<div role="group" aria-label="${escapeHtml(`Home: ${originLabel} → ${estimate.routeName}: ${destinationLabel}`)}"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;table-layout:fixed;border-collapse:collapse;"><tr>
-    <td width="39%" valign="middle" style="width:39%;">${stop('Home', originLabel, 'house')}</td>
-    <td width="22%" align="center" valign="middle" style="width:22%;padding:0 4px;"><img src="${escapeHtml(arrowUrl)}" alt="→" width="64" height="12" style="display:block;border:0;width:100%;max-width:64px;height:auto;" /></td>
-    <td width="39%" valign="middle" style="width:39%;">${stop(estimate.routeName, destinationLabel, 'destination')}</td>
+  const stop = (name: string, address: string, icon: string) => `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="width:auto;border-collapse:collapse;"><tr><td width="28" valign="middle" style="width:28px;padding-right:7px;">${emailIcon(icon, 21, context.openDailyUrl)}</td><td style="white-space:nowrap;"><div class="daily-commute-stop-text" style="display:inline-block;max-width:50px;white-space:normal;word-break:normal;word-wrap:break-word;"><p style="margin:0;color:#354239;font-size:11px;line-height:1.3;font-weight:700;">${escapeHtml(name)}</p><p style="margin:3px 0 0;color:#8b958b;font-size:9px;line-height:1.4;">${escapeHtml(address)}</p></div></td></tr></table>`;
+  return `<div role="group" aria-label="${escapeHtml(`Home: ${originLabel} → ${estimate.routeName}: ${destinationLabel}`)}"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;table-layout:auto;border-collapse:collapse;"><tr>
+    <td width="1%" valign="middle" style="width:1%;">${stop('Home', originLabel, 'house')}</td>
+    <td width="98%" align="center" valign="middle" style="width:98%;padding:0 10px;"><img src="${escapeHtml(arrowUrl)}" alt="→" width="64" height="12" style="display:block;border:0;width:64px;max-width:100%;height:auto;" /></td>
+    <td width="1%" valign="middle" style="width:1%;">${stop(estimate.routeName, destinationLabel, 'destination')}</td>
   </tr></table></div>`;
 };
 
