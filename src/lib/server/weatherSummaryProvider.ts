@@ -46,6 +46,7 @@ type OpenAiWeatherSummaryProviderOptions = {
   maxCharacters?: number;
   maxOutputTokens?: number;
   timeoutMilliseconds?: number;
+  prompt?: string;
   onDiagnostic?: (diagnostic: WeatherSummaryDiagnostic) => void;
 };
 
@@ -89,14 +90,19 @@ const structuredSummarySchema = z.object({
   summary: z.string()
 });
 
-const weatherSummaryDeveloperInstruction = (maxCharacters: number) => [
+const defaultWeatherSummaryPrompt = [
   'Write exactly one factual English weather sentence on one line.',
   'Use only the normalized weather values supplied by the user.',
-  `Use at most ${maxCharacters} characters, including spaces and punctuation.`,
+  'Use at most {{maxCharacters}} characters, including spaces and punctuation.',
   'Prioritize unusual or actionable conditions and their local time of day.',
   'Do not mention a location, identity, greeting, recommendation, action, or unsupported fact.',
   'End the sentence with one period.'
 ].join(' ');
+
+const weatherSummaryDeveloperInstruction = (prompt: string, maxCharacters: number) =>
+  prompt.includes('{{maxCharacters}}')
+    ? prompt.replaceAll('{{maxCharacters}}', String(maxCharacters))
+    : `${prompt} Use at most ${maxCharacters} characters, including spaces and punctuation.`;
 
 const weatherSummaryLeadPattern = /^(?:after|around|at|before|becomes?|by|chance|clear(?:er|ing)?|cloud(?:y|s)?|cold|conditions?|cool|drizzle|dry|expect(?:ed)?|fog(?:gy)?|freezing|gusts?|hail|heavy|hot|later|likely|light|mainly|mild|mostly|no|overcast|partly|possible|precipitation|rain(?:y)?|showers?|snow(?:y)?|some|storms?|strong|sun(?:ny)?|temperatures?|thunderstorms?|today|unsettled|variable|visibility|warm|weather|wet|winds?)\b/i;
 const unsupportedSummaryTermsPattern = /\b(?:advised|avoid|bring|carry|coat|grab|jacket|pack|recommend(?:ed)?|should|suggest(?:ed)?|sunscreen|take|umbrella|wear)\b/i;
@@ -126,6 +132,7 @@ export const createOpenAiWeatherSummaryProvider = ({
     (reasoningEffort === 'none' ? Math.max(256, maxCharacters + 32) : 25_000),
   timeoutMilliseconds = optionalEnvironmentInteger(env.OPENAI_WEATHER_TIMEOUT_MS) ??
     (reasoningEffort === 'none' ? defaultSummaryTimeoutMilliseconds : 30_000),
+  prompt = env.OPENAI_WEATHER_PROMPT,
   onDiagnostic = () => {}
 }: OpenAiWeatherSummaryProviderOptions = {}): WeatherSummaryProvider => ({
   async summarize(input) {
@@ -186,6 +193,7 @@ export const createOpenAiWeatherSummaryProvider = ({
                 {
                   role: 'developer',
                   content: weatherSummaryDeveloperInstruction(
+                    prompt?.trim() || defaultWeatherSummaryPrompt,
                     attempt === 1 ? maxCharacters : Math.max(1, Math.floor(maxCharacters * 0.7))
                   )
                 },

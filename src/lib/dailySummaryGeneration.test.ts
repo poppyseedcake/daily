@@ -165,7 +165,7 @@ describe('Daily Summary generation', () => {
     expect(rendered.html).toContain('Clouds clear by noon.');
     expect(rendered.html).toContain('https://daily.example.com/email-icons/partly-cloudy.png');
     expect(rendered.text).toContain('Clouds clear by noon.');
-    expect(rendered.text).toContain('Chance of precipitation 35% (None).');
+    expect(rendered.text).toContain('Chance of precipitation 35%.');
     expect(rendered.html).toContain('Private City');
     expect(rendered.text).toContain('Private City');
   });
