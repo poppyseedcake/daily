@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { google } from 'better-auth/social-providers';
 
 const { getSession, linkSocialAccount } = vi.hoisted(() => ({
   getSession: vi.fn(),
@@ -56,7 +57,8 @@ describe('Google Calendar consent route', () => {
           'profile',
           'https://www.googleapis.com/auth/calendar.calendarlist.readonly',
           'https://www.googleapis.com/auth/calendar.events.readonly'
-        ]
+        ],
+        additionalParams: { access_type: 'offline', prompt: 'consent' }
       },
       returnHeaders: true
     });
@@ -68,6 +70,41 @@ describe('Google Calendar consent route', () => {
     expect(requestedScopes).not.toContain('https://www.googleapis.com/auth/calendar.readonly');
     expect(requestedScopes).not.toContain('https://www.googleapis.com/auth/calendar');
     expect(requestedScopes).not.toContain('https://www.googleapis.com/auth/calendar.events');
+  });
+
+  test('requests offline access and renewed consent in the real Google Calendar authorization URL', async () => {
+    const { googleProviderOptions } = await vi.importActual<typeof import('$lib/server/auth')>(
+      '$lib/server/auth'
+    );
+    const provider = google(googleProviderOptions({
+      GOOGLE_CLIENT_ID: 'test-client',
+      GOOGLE_CLIENT_SECRET: 'test-secret'
+    }));
+    getSession.mockResolvedValue({ user: { id: 'user-1' } });
+    linkSocialAccount.mockImplementation(async ({ body }) => ({
+      response: {
+        url: (await provider.createAuthorizationURL({
+          state: 'test-state',
+          codeVerifier: 'test-code-verifier',
+          redirectURI: 'http://localhost:5174/api/auth/callback/google',
+          scopes: body.scopes,
+          additionalParams: body.additionalParams
+        })).toString()
+      },
+      headers: new Headers()
+    }));
+
+    const response = await GET({
+      request: new Request('http://localhost/auth/google/calendar')
+    } as Parameters<typeof GET>[0]);
+
+    const authorizationUrl = new URL(response.headers.get('location')!);
+    expect(authorizationUrl.origin).toBe('https://accounts.google.com');
+    expect(authorizationUrl.searchParams.get('access_type')).toBe('offline');
+    expect(authorizationUrl.searchParams.get('prompt')).toBe('consent');
+    expect(authorizationUrl.searchParams.get('scope')).toContain(
+      'https://www.googleapis.com/auth/calendar.events.readonly'
+    );
   });
 
   test('does not start Calendar consent for a Visitor', async () => {
