@@ -237,7 +237,7 @@ describe('User Daily Summary generation', () => {
     expect(second.rendered.text).toContain('Prepare current update — High urgency');
     expect(second.rendered.text).toContain('Clear. Low 17C, high 28C. Chance of precipitation 10%.');
     expect(second.rendered.text).toContain('Office: 31 minutes');
-    expect(second.rendered.text).toContain('10:00 Current planning (Work)');
+    expect(second.rendered.text).toContain('10:00 Current planning');
     expect(second.rendered.text.indexOf('Weather')).toBeLessThan(second.rendered.text.indexOf('Commute'));
     expect(second.rendered.text.indexOf('Commute')).toBeLessThan(second.rendered.text.indexOf('Calendar'));
     expect(second.rendered.text.indexOf('Calendar')).toBeLessThan(second.rendered.text.indexOf('Todo'));

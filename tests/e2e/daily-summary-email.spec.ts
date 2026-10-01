@@ -55,7 +55,13 @@ test('Daily Grid stays readable at Gmail widths with and without head styles', a
         input.userName = 'Wojtek M.';
         if (input.sections.weather.status !== 'active' || !input.sections.weather.content) throw new Error('Fixture must have weather.');
         input.sections.weather.content.currentTemperatureCelsius = temperature;
-        const { html } = renderDailySummary(input);
+        input.sections.weather.content.locationLabel = 'Warsaw, Masovian Voivodeship, Poland';
+        if (input.sections.commute.status !== 'active') throw new Error('Fixture must have commute.');
+        input.sections.commute.content.estimates[0]!.originLabel = 'Mokotów, Warsaw, Poland';
+        input.sections.commute.content.estimates[0]!.destinationLabel = 'Rondo Daszyńskiego, Warsaw, Poland';
+        const { html, text } = renderDailySummary(input);
+        expect(text).toContain('Home: Mokotów\n→\nOffice\nRondo Daszyńskiego');
+        expect(text).not.toMatch(/Masovian|Poland|\(Work\)|\(Personal\)/);
         await page.setContent(withoutHeadStyles ? html.replace(/<style>[\s\S]*?<\/style>/, '') : html);
 
         const geometry = await page.locator('[data-summary-section]').evaluateAll((sections) => sections.map((section) => {
@@ -76,6 +82,18 @@ test('Daily Grid stays readable at Gmail widths with and without head styles', a
         const weather = page.locator('[data-summary-section="weather"]');
         await expect(weather.locator(`[aria-label="Current ${temperature} degrees Celsius"]`)).toBeVisible();
         await expect(weather.getByText('Warsaw', { exact: true })).toBeVisible();
+        await expect(page.getByText('Mokotów', { exact: true })).toBeVisible();
+        await expect(page.getByText('Rondo Daszyńskiego', { exact: true })).toBeVisible();
+        expect(await page.locator('body').innerText()).not.toMatch(/Masovian|Poland/);
+        for (const direction of ['↑', '↓']) {
+          const symbol = weather.getByText(direction, { exact: true });
+          await expect(symbol).toHaveCSS('font-size', '18px');
+          await expect(symbol).toHaveAttribute('aria-hidden', 'true');
+        }
+        const calendar = page.locator('[data-summary-section="calendar"]');
+        expect(await calendar.locator('h3').allTextContents()).toEqual(['Friday', 'Sunday', 'Wednesday']);
+        expect(await calendar.innerText()).not.toMatch(/Aug|\(Work\)|\(Personal\)/);
+        await expect(calendar.locator('[role="img"][title="Work"]')).toBeVisible();
         await expect(page.locator('[data-urgency="high"]')).toBeVisible();
         await expect(page.locator('[aria-label="Office: 24 minutes — Light traffic"]')).toBeVisible();
         await expect(page.getByText('High urgency', { exact: true })).toBeHidden();

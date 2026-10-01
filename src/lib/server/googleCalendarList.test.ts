@@ -449,7 +449,7 @@ describe('Google Calendar list provider', () => {
     }).generate(undefined, { now: new Date('2026-09-30T05:00:00Z') });
 
     expect(summary.rendered.html).toContain('Planning');
-    expect(summary.rendered.text).toContain('12:00 Planning (Work)');
+    expect(summary.rendered.text).toContain('12:00 Planning');
     expect(summary.rendered.text).not.toContain('Reconnect Google Calendar');
   });
 
