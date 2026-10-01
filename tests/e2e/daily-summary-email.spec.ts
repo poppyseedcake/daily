@@ -47,6 +47,7 @@ test('commute direction is one continuous arrow at narrow and desktop widths', a
         expect(await cell.textContent()).not.toContain('→');
         const bounds = await cell.boundingBox();
         expect(Math.abs(box!.y + box!.height / 2 - (bounds!.y + bounds!.height / 2))).toBeLessThan(1);
+        expect(Math.abs(box!.x + box!.width / 2 - (bounds!.x + bounds!.width / 2))).toBeLessThan(1);
         const spacing = await route.evaluate((group) => {
           const routeRow = group.querySelector('table')!.rows[0]!;
           const origin = routeRow.cells[0]!;
@@ -59,7 +60,10 @@ test('commute direction is one continuous arrow at narrow and desktop widths', a
           }));
           return { left: image.left - textRight, right: destination.left - image.right };
         });
-        expect(Math.abs(spacing.left - spacing.right)).toBeLessThan(2);
+        // A wrapped label fills its capped box; its longest rendered line can
+        // end a few pixels earlier depending on the available fallback font.
+        const tolerance = labels.short ? 2 : 4;
+        expect(Math.abs(spacing.left - spacing.right), JSON.stringify({ labels, width, withoutHeadStyles, spacing })).toBeLessThan(tolerance);
         const lineCounts = await route.locator('p').evaluateAll((paragraphs) => paragraphs.map((paragraph) => {
           const range = document.createRange();
           range.selectNodeContents(paragraph);
