@@ -359,6 +359,12 @@ const weatherTemperatureWidth = (temperature: number) => {
   return Math.ceil([...value].reduce((width, character) => width + (character === '.' ? 12 : character === '-' ? 16 : 25), 30) * weatherTemperatureFontSize(temperature) / 45);
 };
 
+const weatherPrecipitationIntensitySuffix = (weather: WeatherDisplayForecast) => {
+  const intensity = weatherPrecipitationIntensityForCode(weather.dailyWeatherCode);
+  return weather.maximumPrecipitationProbabilityPercent > 0 && intensity !== 'None' && intensity !== 'Unknown'
+    ? ` (${intensity})` : '';
+};
+
 const renderWeatherHtml = (weather: WeatherDisplayForecast, context: EmailContext) => `
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;table-layout:fixed;border-collapse:collapse;">
     <tr>
@@ -368,7 +374,7 @@ const renderWeatherHtml = (weather: WeatherDisplayForecast, context: EmailContex
         ${weather.locationLabel ? `<p style="margin:0 0 5px;font-size:12px;line-height:1.3;font-weight:700;">${escapeHtml(weather.locationLabel)}</p>` : ''}
         <p style="margin:0 0 5px;color:#798479;font-size:10px;line-height:1.4;">Wind ${escapeHtml(formatMetric(weather.maximumWindSpeedKmh))} km/h</p>
         <p style="margin:0 0 5px;color:#798479;font-size:10px;line-height:1.4;">${escapeHtml(weather.conditionText)}</p>
-        <p style="margin:0;color:#798479;font-size:10px;line-height:1.4;">Precip. ${escapeHtml(formatMetric(weather.maximumPrecipitationProbabilityPercent))}% (${weatherPrecipitationIntensityForCode(weather.dailyWeatherCode)})</p>
+        <p style="margin:0;color:#798479;font-size:10px;line-height:1.4;">Precip. ${escapeHtml(formatMetric(weather.maximumPrecipitationProbabilityPercent))}%${weatherPrecipitationIntensitySuffix(weather)}</p>
       </td>
     </tr>
     <tr><td colspan="2" align="center" style="padding-top:8px;font-size:11px;line-height:1.4;font-weight:700;">
@@ -397,11 +403,13 @@ const renderCommuteHtml = (section: CommuteSection, context: EmailContext) => {
 const renderCommuteRouteHierarchyHtml = (estimate: CommuteSection['estimates'][number], context: EmailContext) => {
   const originLabel = estimate.originLabel ?? 'Home';
   const destinationLabel = estimate.destinationLabel ?? estimate.routeName;
+  const arrowUrl = context.openDailyUrl.startsWith('/') ? '/email-icons/commute-arrow.png'
+    : new URL('email-icons/commute-arrow.png', context.openDailyUrl).toString();
   const stop = (name: string, address: string, icon: string) => `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;table-layout:fixed;border-collapse:collapse;"><tr><td width="28" valign="middle" style="width:28px;padding-right:7px;">${emailIcon(icon, 21, context.openDailyUrl)}</td><td><p style="margin:0;color:#354239;font-size:11px;line-height:1.3;font-weight:700;">${escapeHtml(name)}</p><p style="margin:3px 0 0;color:#8b958b;font-size:9px;line-height:1.4;">${escapeHtml(address)}</p></td></tr></table>`;
   return `<div role="group" aria-label="${escapeHtml(`Home: ${originLabel} → ${estimate.routeName}: ${destinationLabel}`)}"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;table-layout:fixed;border-collapse:collapse;"><tr>
-    <td width="43%" valign="middle" style="width:43%;">${stop('Home', originLabel, 'house')}</td>
-    <td width="14%" valign="middle" style="width:14%;padding:0 8px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td width="100%" valign="middle" style="width:100%;padding:0;"><div style="height:0;border-top:1px solid #cbd6e5;font-size:0;line-height:0;"></div></td><td aria-hidden="true" style="color:#5f7eb4;font-size:17px;line-height:1;">→</td></tr></table></td>
-    <td width="43%" valign="middle" style="width:43%;">${stop(estimate.routeName, destinationLabel, 'destination')}</td>
+    <td width="39%" valign="middle" style="width:39%;">${stop('Home', originLabel, 'house')}</td>
+    <td width="22%" align="center" valign="middle" style="width:22%;padding:0 4px;"><img src="${escapeHtml(arrowUrl)}" alt="" width="64" height="12" style="display:block;border:0;width:100%;max-width:64px;height:auto;" /></td>
+    <td width="39%" valign="middle" style="width:39%;">${stop(estimate.routeName, destinationLabel, 'destination')}</td>
   </tr></table></div>`;
 };
 
@@ -506,7 +514,7 @@ const renderWeatherText = (weather: WeatherDisplayForecast) => [
   ...(weather.locationLabel ? [weather.locationLabel] : []),
   `Current ${formatMetric(weather.currentTemperatureCelsius)}C · ${weather.conditionText}`,
   `Low ${formatMetric(weather.minimumTemperatureCelsius)}C, high ${formatMetric(weather.maximumTemperatureCelsius)}C.`,
-  `Chance of precipitation ${formatMetric(weather.maximumPrecipitationProbabilityPercent)}% (${weatherPrecipitationIntensityForCode(weather.dailyWeatherCode)}).`,
+  `Chance of precipitation ${formatMetric(weather.maximumPrecipitationProbabilityPercent)}%${weatherPrecipitationIntensitySuffix(weather)}.`,
   `Wind up to ${formatMetric(weather.maximumWindSpeedKmh)} km/h.`,
   ...(weather.summary ? [weather.summary] : [])
 ].join('\n');

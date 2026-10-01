@@ -3,6 +3,34 @@ import { expect, test } from '@playwright/test';
 import { buildDailySummaryPrototypeFixture, buildDailySummaryDenseAllActiveFixture } from '../../src/lib/dailySummaryFixtures';
 import { renderDailySummary } from '../../src/lib/dailySummaryRenderer';
 
+test('commute direction is one continuous arrow at narrow and desktop widths', async ({ page }) => {
+  await page.route('https://daily.example.test/email-icons/*.png', async (route) => {
+    const name = new URL(route.request().url()).pathname.split('/').at(-1)!;
+    await route.fulfill({ contentType: 'image/png', body: readFileSync(`static/email-icons/${name}`) });
+  });
+  const { html } = renderDailySummary(buildDailySummaryPrototypeFixture());
+  for (const width of [1280, 390, 320]) {
+    await page.setViewportSize({ width, height: 844 });
+    for (const withoutHeadStyles of [false, true]) {
+      await page.setContent(withoutHeadStyles ? html.replace(/<style>[\s\S]*?<\/style>/, '') : html);
+      const route = page.locator('[data-summary-section="commute"] [role="group"]');
+      const arrow = route.locator('img[src$="/commute-arrow.png"]');
+      await expect(arrow).toHaveCount(1);
+      await expect(arrow).toBeVisible();
+      expect(await arrow.evaluate((image: HTMLImageElement) => image.complete && image.naturalWidth > 0)).toBe(true);
+      const box = await arrow.boundingBox();
+      expect(box!.width).toBeGreaterThan(44);
+      expect(box!.width / box!.height).toBeCloseTo(128 / 24, 1);
+      const cell = arrow.locator('..');
+      expect(await cell.locator('table,div').count()).toBe(0);
+      expect(await cell.textContent()).not.toContain('→');
+      const bounds = await cell.boundingBox();
+      expect(Math.abs(box!.y + box!.height / 2 - (bounds!.y + bounds!.height / 2))).toBeLessThan(1);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    }
+  }
+});
+
 test('Daily Grid stays readable at Gmail widths with and without head styles', async ({ page }) => {
   await page.route('https://daily.example.test/email-icons/*.png', async (route) => {
     const name = new URL(route.request().url()).pathname.split('/').at(-1)!;

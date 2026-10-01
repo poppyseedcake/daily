@@ -36,6 +36,48 @@ const normalizedInput: NormalizedWeatherSummaryInput = {
 };
 
 describe('OpenAI Weather Summary provider', () => {
+  test.each(['', '   '])('keeps the default instruction when the environment prompt is blank: %j', async (prompt) => {
+    vi.stubEnv('OPENAI_WEATHER_PROMPT', prompt);
+    try {
+      const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+        status: 'completed', output_text: JSON.stringify({ summary: 'Cloudy conditions today.' })
+      })));
+      await createOpenAiWeatherSummaryProvider({ apiKey: 'test-key', fetcher }).summarize(normalizedInput);
+      const body = JSON.parse(String(fetcher.mock.calls[0]?.[1]?.body));
+      expect(body.input[0].content).toContain('Write exactly one factual English weather sentence on one line.');
+      expect(body.input[0].content).toContain('at most 160 characters');
+      expect(body.input[0].content).not.toContain('{{maxCharacters}}');
+    } finally { vi.unstubAllEnvs(); }
+  });
+
+  test('appends the character target to a prompt without a placeholder', async () => {
+    vi.stubEnv('OPENAI_WEATHER_PROMPT', 'Describe wind before temperature.');
+    try {
+      const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+        status: 'completed', output_text: JSON.stringify({ summary: 'Cloudy conditions today.' })
+      })));
+      await createOpenAiWeatherSummaryProvider({ apiKey: 'test-key', fetcher, maxCharacters: 80 }).summarize(normalizedInput);
+      const body = JSON.parse(String(fetcher.mock.calls[0]?.[1]?.body));
+      expect(body.input[0].content).toBe('Describe wind before temperature. Use at most 80 characters, including spaces and punctuation.');
+    } finally { vi.unstubAllEnvs(); }
+  });
+
+  test('uses the environment prompt on both requests and substitutes the shorter retry limit', async () => {
+    vi.stubEnv('OPENAI_WEATHER_PROMPT', 'Describe the wind first. Use at most {{maxCharacters}} characters.');
+    try {
+      const sentences = ['Today will be cloudy, with temperatures around 18°C, no rain, and winds up to 12 km/h.', 'Cloudy conditions today.'];
+      const fetcher = vi.fn().mockImplementation(async () => new Response(JSON.stringify({
+        status: 'completed', output_text: JSON.stringify({ summary: sentences.shift() })
+      })));
+      const provider = createOpenAiWeatherSummaryProvider({ apiKey: 'test-key', fetcher, maxCharacters: 60 });
+      await expect(provider.summarize(normalizedInput)).resolves.toEqual({ outcome: 'available', sentence: 'Cloudy conditions today.' });
+      const bodies = fetcher.mock.calls.map(([, init]) => JSON.parse(init.body));
+      expect(bodies[0].input[0].content).toBe('Describe the wind first. Use at most 60 characters.');
+      expect(bodies[1].input[0].content).toBe('Describe the wind first. Use at most 42 characters.');
+      expect(bodies[1].input[1]).toEqual(bodies[0].input[1]);
+    } finally { vi.unstubAllEnvs(); }
+  });
+
   test('uses environment configuration for model, reasoning, and the character limit', async () => {
     vi.stubEnv('OPENAI_WEATHER_MODEL', 'gpt-5.6-terra');
     vi.stubEnv('OPENAI_WEATHER_REASONING_EFFORT', 'low');

@@ -188,6 +188,7 @@ any of them. Test and Scheduled Daily Summaries use the same configuration.
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
+| `OPENAI_WEATHER_PROMPT` | Existing factual English prompt | Developer instruction sent to the LLM. Use `{{maxCharacters}}` for the current character target; blank uses the default. |
 | `OPENAI_WEATHER_MODEL` | `gpt-5.6-luna` | OpenAI model ID; must support Responses API and structured JSON output. |
 | `OPENAI_WEATHER_REASONING_EFFORT` | `none` | `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, or `max`; the selected model must support the chosen level. |
 | `OPENAI_WEATHER_MAX_CHARACTERS` | `160` | Maximum sentence length, from 1 to 2000 Unicode characters, including spaces and punctuation. Surrounding whitespace is removed. |
@@ -199,6 +200,20 @@ Blank or absent settings use the defaults. The character limit replaces the old
 oversized sentence gets one fresh generation with a shorter character target and
 the original weather facts. It is never cut mid-sentence. If the second sentence
 still fails validation, the email contains weather facts without the LLM sentence.
+
+Edit `OPENAI_WEATHER_PROMPT` in Coolify's runtime environment variables to change
+what the weather sentence prioritizes. The complete default is in
+`deploy/coolify/daily.env.example`. For example:
+
+```dotenv
+OPENAI_WEATHER_PROMPT="Write one factual English sentence using only the supplied weather values. Prioritize rain and wind, then temperature. Use at most {{maxCharacters}} characters. End with a period."
+```
+
+The placeholder is replaced for each request, including the shorter retry. Without
+it, the character target is appended. Forecast values remain in the separate user
+message; do not embed them in the prompt. JSON output, character limits and local
+factual/sentence validation still apply. Redeploy after editing the variable;
+changing the prompt does not require a code change or image rebuild.
 
 With `none`, the automatic timeout is 3000 ms and the output budget is at least
 256 tokens, increasing with the character limit. With reasoning enabled, the

@@ -2,6 +2,7 @@ import { describe, expect, test } from 'vitest';
 import { dailySummarySubject, renderDailySummary, type DailySummaryInput } from './dailySummaryRenderer';
 import { buildDemoCalendarSection } from './demoCalendar';
 import { buildTodoSection } from './todo';
+import { buildDailySummaryPrototypeFixture } from './dailySummaryFixtures';
 
 const pausedSections = {
   weather: { status: 'paused', detail: 'Weather is paused.' },
@@ -18,6 +19,21 @@ const renderSections = (sections: DailySummaryInput['sections']) => renderDailyS
 });
 
 describe('Daily Summary renderer', () => {
+  test.each([
+    [0, 2, '0%'], [0, 61, '0%'], [30, 2, '30%'], [80, 95, '80%'],
+    [30, 61, '30% (Light)'], [60, 63, '60% (Moderate)'], [90, 65, '90% (Heavy)']
+  ])('shows intensity only for forecast precipitation: %s%%, code %s', (probability, code, label) => {
+    const input = buildDailySummaryPrototypeFixture();
+    if (input.sections.weather.status !== 'active' || !input.sections.weather.content) throw new Error('Weather fixture required.');
+    input.sections.weather.content.maximumPrecipitationProbabilityPercent = probability;
+    input.sections.weather.content.dailyWeatherCode = code;
+    const rendered = renderDailySummary(input);
+    expect(rendered.html).toContain(`>Precip. ${label}</p>`);
+    expect(rendered.text).toContain(`Chance of precipitation ${label}.`);
+    expect(rendered.html).not.toContain('(None)');
+    expect(rendered.html).not.toContain('(Unknown)');
+  });
+
   test('renders each Summary Section from one state-and-content value', () => {
     const rendered = renderSections({
       weather: { status: 'active', detail: '18C and clear.' },

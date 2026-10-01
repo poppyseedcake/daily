@@ -28,3 +28,7 @@ for (const [name, [icon, color, stroke]] of Object.entries(icons)) {
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="${stroke}" stroke-linecap="round" stroke-linejoin="round">${body}</svg>`;
   writeFileSync(new URL(`${name}.png`, output), new Resvg(svg).render().asPng());
 }
+
+// One continuous shaft and arrowhead; separate text and CSS lines drift in Gmail.
+const arrow = '<svg xmlns="http://www.w3.org/2000/svg" width="128" height="24" viewBox="0 0 128 24" fill="none" stroke="#5f7eb4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12H124M114 2L124 12L114 22"/></svg>';
+writeFileSync(new URL('commute-arrow.png', output), new Resvg(arrow).render().asPng());
