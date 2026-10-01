@@ -277,7 +277,7 @@ const renderHtml = (context: EmailContext & {
                   </tr></table>
                 </td>
                 <td class="daily-greeting" width="56%" valign="top" align="center" style="width:56%;text-align:center;">
-                  <h1 style="margin:0;color:#243025;font-size:25px;line-height:1.15;font-weight:500;letter-spacing:-0.04em;overflow-wrap:anywhere;">${escapeHtml(context.greeting)}</h1>
+                  <h1 style="margin:0;color:#243025;font-size:25px;line-height:1.15;font-weight:500;letter-spacing:-0.04em;overflow-wrap:anywhere;word-break:break-word;word-wrap:break-word;">${escapeHtml(context.greeting)}</h1>
                   <p style="margin:6px 0 0;color:#748074;font-size:11px;line-height:1.5;"><time datetime="${escapeHtml(generatedAt.toISOString())}">${escapeHtml(date)}</time></p>
                 </td>
                 <td class="daily-time" width="22%" valign="top" align="right" style="width:22%;color:#8b9489;font-size:10px;line-height:1.5;">${escapeHtml(time)}</td>

@@ -68,7 +68,7 @@ the stripped-head fallback; they do not substitute for a border in table layout.
 
 Weather shows `Precip. <percent>% (<intensity>)` under wind and condition text.
 Intensity is derived from the daily forecast’s
-[WMO weather code](https://open-meteo.com/en/docs?past_days=1#weathervariables),
+[WMO weather code](https://open-meteo.com/en/docs#weathervariables),
 independently of probability. The labels are None, Light, Moderate, Heavy or
 Unknown when the code does not establish one intensity.
 

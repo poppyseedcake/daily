@@ -3,6 +3,7 @@ import {
   buildWeatherSection,
   buildWeatherDisplayForecast,
   weatherPrecipitationIntensityForCode,
+  weatherConditionCategoryForCode,
   createOpenMeteoWeatherForecastProvider,
   weatherCodeDescription,
   weatherIconUrlForCategory
@@ -455,7 +456,13 @@ describe('Weather forecast mapping', () => {
 test.each([
   [3, 'None'], [48, 'None'], [51, 'Light'], [61, 'Light'], [63, 'Moderate'],
   [65, 'Heavy'], [71, 'Light'], [73, 'Moderate'], [75, 'Heavy'],
-  [82, 'Heavy'], [95, 'Unknown'], [99, 'Heavy'], [123, 'Unknown']
+  [82, 'Heavy'], [95, 'Unknown'], [97, 'Heavy'], [99, 'Heavy'], [123, 'Unknown']
 ])('precipitation intensity comes from WMO forecast code %i', (code, expected) => {
   expect(weatherPrecipitationIntensityForCode(code)).toBe(expected);
+});
+
+
+test('the heavy-thunderstorm forecast code keeps its condition and icon category', () => {
+  expect(weatherConditionCategoryForCode(97)).toBe('thunderstorm');
+  expect(weatherCodeDescription(97)).toBe('Thunderstorm');
 });

@@ -109,3 +109,16 @@ test('Gmail-safe selectors keep the center divider and precipitation beside weat
   await expect(weatherDetails).toContainText('Precip. 30% (Moderate)');
   expect(await weatherDetails.locator('p').allTextContents()).toEqual(['Warsaw', 'Wind 6 km/h', 'Partly cloudy', 'Precip. 30% (Moderate)']);
 });
+
+
+test('long first names wrap using properties that Gmail preserves', async ({ page }) => {
+  const input = buildDailySummaryPrototypeFixture();
+  input.userName = 'Alexandertheverylongfirstnamewithmanycharacterswithoutspaces';
+  const { html } = renderDailySummary(input);
+  for (const width of [320, 390]) {
+    await page.setViewportSize({ width, height: 844 });
+    await page.setContent(html.replace(/overflow-wrap:anywhere;?/g, ''));
+    await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  }
+});
