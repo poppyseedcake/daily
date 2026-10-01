@@ -29,7 +29,11 @@ export const GET = async ({ request }) => {
         provider: 'google',
         callbackURL: calendarConnectionSuccessPath,
         errorCallbackURL: calendarConnectionFailedPath,
-        scopes: [...googleIdentityScopes, ...googleCalendarReadScopes]
+        scopes: [...googleIdentityScopes, ...googleCalendarReadScopes],
+        additionalParams: {
+          access_type: 'offline',
+          prompt: 'consent'
+        }
       },
       returnHeaders: true
     });
