@@ -21,10 +21,13 @@ export const createProductionUserDailySummaryGenerator = (
     calendarEvents,
     weatherProvider: {
       async fetchDailyForecast(request) {
+        const startedAt = performance.now();
         const result = await openMeteoWeatherForecastProvider.fetchDailyForecast(request);
         if (result.outcome === 'available' && !result.forecast.summaryInput) {
           writeWeatherSummaryDiagnostic({
-            reason: 'missing-weather-context', durationMilliseconds: 0, attempt: 0
+            reason: 'missing-weather-context',
+            durationMilliseconds: Math.round(performance.now() - startedAt),
+            attempt: 0
           });
         }
         return result;
