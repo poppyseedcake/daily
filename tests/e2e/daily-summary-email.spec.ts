@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { expect, test } from '@playwright/test';
-import { buildDailySummaryPrototypeFixture } from '../../src/lib/dailySummaryFixtures';
+import { buildDailySummaryPrototypeFixture, buildDailySummaryDenseAllActiveFixture } from '../../src/lib/dailySummaryFixtures';
 import { renderDailySummary } from '../../src/lib/dailySummaryRenderer';
 
 test('Daily Grid stays readable at Gmail widths with and without head styles', async ({ page }) => {
@@ -34,10 +34,10 @@ test('Daily Grid stays readable at Gmail widths with and without head styles', a
         }
         expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
         const weather = page.locator('[data-summary-section="weather"]');
-        await expect(weather.getByRole('img', { name: `Current ${temperature} degrees Celsius`, exact: true })).toBeVisible();
+        await expect(weather.locator(`[aria-label="Current ${temperature} degrees Celsius"]`)).toBeVisible();
         await expect(weather.getByText('Warsaw', { exact: true })).toBeVisible();
-        await expect(page.getByRole('img', { name: 'High urgency', exact: true })).toBeVisible();
-        await expect(page.getByRole('img', { name: 'Office: 24 minutes — Light traffic', exact: true })).toBeVisible();
+        await expect(page.locator('[data-urgency="high"]')).toBeVisible();
+        await expect(page.locator('[aria-label="Office: 24 minutes — Light traffic"]')).toBeVisible();
         await expect(page.getByText('High urgency', { exact: true })).toBeHidden();
         await expect(page.getByText('Light traffic', { exact: true })).toBeHidden();
         await expect(page.locator('[data-calendar-date]')).toHaveCount(7);
@@ -46,4 +46,33 @@ test('Daily Grid stays readable at Gmail widths with and without head styles', a
       }
     }
   }
+});
+
+test('stripped styles and ARIA retain descriptions and continuous dense-grid separators', async ({ page }) => {
+  const { html } = renderDailySummary(buildDailySummaryDenseAllActiveFixture());
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.setContent(html.replace(/<style>[\s\S]*?<\/style>/, '').replace(/\saria-[a-z-]+="[^"]*"/g, ''));
+
+  // Borders belong to the entire row, so short and tall sections cannot put their
+  // horizontal separators at different heights in the head-CSS-free fallback.
+  const borders = await page.locator('.daily-grid-row').evaluateAll((rows) => rows.map((row) => ({
+    bottom: getComputedStyle(row).borderBottomWidth,
+    divider: getComputedStyle(row).columnRuleWidth,
+    cellBottoms: [...row.querySelectorAll('.daily-grid-cell')].map((cell) => getComputedStyle(cell).borderBottomWidth)
+  })));
+  expect(borders).toEqual([
+    { bottom: '1px', divider: '1px', cellBottoms: ['0px', '0px'] },
+    { bottom: '1px', divider: '1px', cellBottoms: ['0px', '0px'] }
+  ]);
+
+  const session = await page.context().newCDPSession(page);
+  const { nodes } = await session.send('Accessibility.getFullAXTree');
+  const descriptions = nodes.filter((node) => !node.ignored && node.role?.value === 'StaticText').map((node) => node.name?.value);
+  expect(descriptions).toEqual(expect.arrayContaining(['High urgency', 'Medium urgency', 'Low urgency', 'Moderate traffic', 'Heavy traffic', 'Light traffic', 'Celsius']));
+  for (const label of ['High urgency', 'Medium urgency', 'Low urgency', 'Moderate traffic', 'Heavy traffic', 'Light traffic']) {
+    const box = await page.getByText(label, { exact: true }).boundingBox();
+    expect(box?.width ?? 0).toBe(0);
+    expect(box?.height ?? 0).toBe(0);
+  }
+  await session.detach();
 });

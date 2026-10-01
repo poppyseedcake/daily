@@ -18,8 +18,9 @@ test('the delivered template preserves the Daily Grid hierarchy even without hea
   expect(mail).not.toContain('<svg');
   expect(mail).not.toContain('>Generated:');
   for (const span of mail.matchAll(/<span class="daily-screen-reader-only"([^>]*)>/g)) {
-    expect(span[1]).toContain('display:none');
-    expect(span[1]).toContain('mso-hide:all');
+    expect(span[1]).toContain('width:0;height:0');
+    expect(span[1]).toContain('overflow:hidden;font-size:0');
+    expect(span[1]).not.toContain('display:none');
   }
   const todo = mail.slice(mail.indexOf('data-summary-section="todo"'));
   expect(todo.indexOf('data-urgency="high"')).toBeLessThan(todo.indexOf('Przygotować plan wdrożenia'));

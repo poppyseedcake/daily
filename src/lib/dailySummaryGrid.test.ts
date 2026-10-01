@@ -138,7 +138,7 @@ describe('Daily Grid renderer', () => {
       }
     });
 
-    expect(rendered.html).toMatch(/class="daily-screen-reader-only" style="[^"]*display:none[^"]*">Light traffic<\/span>/);
+    expect(rendered.html).toMatch(/class="daily-screen-reader-only" style="[^"]*width:0;height:0[^"]*">Light traffic<\/span>/);
     expect(rendered.html).toContain('color:#4f8a57');
     expect(rendered.html).toContain('aria-label="Office: 24 minutes — Light traffic"');
     expect(rendered.html).toContain('Home: Mokotów');

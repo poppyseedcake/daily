@@ -197,7 +197,7 @@ const resolveSection = (input: DailySummaryInput, key: SummarySection): Rendered
 };
 
 // Critical presentation and hidden text stay inline: Gmail can discard head CSS.
-const hiddenText = (value: string) => `<span class="daily-screen-reader-only" style="display:none!important;mso-hide:all;max-height:0;max-width:0;overflow:hidden;font-size:0;line-height:0;">${escapeHtml(value)}</span>`;
+const hiddenText = (value: string) => `<span class="daily-screen-reader-only" style="display:inline-block;width:0;height:0;max-height:0;max-width:0;padding:0;margin:0;overflow:hidden;font-size:0;line-height:0;white-space:nowrap;vertical-align:top;">${escapeHtml(value)}</span>`;
 
 const emailIcon = (name: string, size: number, openDailyUrl: string) => {
   const url = openDailyUrl.startsWith('/') ? `/email-icons/${name}.png`
@@ -231,6 +231,7 @@ const renderHtml = (context: EmailContext & {
       @media only screen and (min-width: 701px) {
         .daily-grid-row { display:table !important; width:100% !important; table-layout:fixed !important; }
         .daily-grid-cell { display:table-cell !important; width:50% !important; max-width:none !important; }
+        .daily-grid-cell:first-child { border-right:1px solid #dfe5dc !important; }
       }
       @media only screen and (max-width: 700px) {
         .daily-grid-cell { display: block !important; width: 100% !important; max-width:none !important; box-sizing: border-box !important; border-right:0 !important; }
@@ -242,7 +243,8 @@ const renderHtml = (context: EmailContext & {
         .daily-brand { display:block !important; width:100% !important; }
         .daily-greeting { display:block !important; width:100% !important; text-align:left !important; padding-top:20px !important; }
         .daily-time { display:block !important; position:absolute !important; top:0 !important; right:0 !important; width:auto !important; }
-        .daily-grid-cell { padding:24px 22px !important; }
+        .daily-grid-row { border-bottom:0 !important; }
+        .daily-grid-cell { padding:24px 22px !important; border-bottom:1px solid #dfe5dc !important; }
         .daily-footer { padding:20px 22px !important; }
       }
     </style>
@@ -287,9 +289,10 @@ const renderHtml = (context: EmailContext & {
 </html>`;
 };
 
-// Fluid-hybrid fallback stacks without media queries; Outlook gets a fixed table.
+// Column width stacks without media queries; row-owned separators remain continuous.
+// These column properties are supported by Gmail; Outlook gets conditional tables.
 const renderGridRow = (sections: RenderedSection[], context: EmailContext) =>
-  `<div class="daily-grid-row" style="width:100%;font-size:0;line-height:0;">
+  `<div class="daily-grid-row" style="width:100%;column-count:2;column-width:395px;column-gap:0;column-rule:1px solid #dfe5dc;border-bottom:1px solid #dfe5dc;">
     <!--[if mso]><table role="presentation" width="790" cellpadding="0" cellspacing="0" border="0" style="table-layout:fixed;"><tr><![endif]-->
     ${sections.map((section) => `<!--[if mso]><td width="395" valign="top"><![endif]-->${renderSectionCell(section, context)}<!--[if mso]></td><![endif]-->`).join('')}
     <!--[if mso]></tr></table><![endif]-->
@@ -301,7 +304,7 @@ const renderSectionCell = (section: RenderedSection, context: EmailContext) => {
     ? `<td align="right" style="color:#8c958a;font-size:8px;line-height:18px;font-weight:800;letter-spacing:0.08em;">WEEK ${localGenerationDate(context).weekOfYear}</td>`
     : '';
   const contentGap = section.key === 'weather' || section.key === 'commute' ? 31 : 24;
-  return `<div class="daily-grid-cell" data-summary-section="${section.key}" style="display:inline-block;vertical-align:top;width:100%;max-width:395px;box-sizing:border-box;padding:27px 30px;font-size:11px;line-height:1.5;border-bottom:1px solid #dfe5dc;${section.key === 'weather' || section.key === 'calendar' ? 'border-right:1px solid #dfe5dc;' : ''}background-color:#fbfcfa;">
+  return `<div class="daily-grid-cell" data-summary-section="${section.key}" style="display:block;break-inside:avoid;vertical-align:top;width:100%;box-sizing:border-box;padding:27px 30px;font-size:11px;line-height:1.5;background-color:transparent;">
     <div class="daily-grid-cell-inner" role="region" aria-labelledby="daily-${section.key}-heading" style="min-height:182px;overflow-wrap:anywhere;word-break:break-word;">
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;border-collapse:collapse;"><tr>
         <td width="18" style="width:18px;padding-right:8px;">${emailIcon(section.key, 18, context.openDailyUrl)}</td>
@@ -343,7 +346,7 @@ const renderWeatherHtml = (weather: WeatherDisplayForecast, context: EmailContex
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;table-layout:fixed;border-collapse:collapse;">
     <tr>
       <td width="52" valign="middle" style="width:52px;padding-right:10px;">${emailIcon(weather.conditionCategory, 46, context.openDailyUrl)}</td>
-      <td width="${weatherTemperatureWidth(weather.currentTemperatureCelsius)}" valign="middle" role="img" aria-label="Current ${escapeHtml(formatMetric(weather.currentTemperatureCelsius))} degrees Celsius" style="width:${weatherTemperatureWidth(weather.currentTemperatureCelsius)}px;padding-right:13px;white-space:nowrap;color:#263923;font-size:${weatherTemperatureFontSize(weather.currentTemperatureCelsius)}px;line-height:1.15;font-weight:700;letter-spacing:-0.04em;">${hiddenText('Current ')}${escapeHtml(formatMetric(weather.currentTemperatureCelsius))}°${hiddenText(' Celsius')}</td>
+      <td width="${weatherTemperatureWidth(weather.currentTemperatureCelsius)}" valign="middle" aria-label="Current ${escapeHtml(formatMetric(weather.currentTemperatureCelsius))} degrees Celsius" style="width:${weatherTemperatureWidth(weather.currentTemperatureCelsius)}px;padding-right:13px;white-space:nowrap;color:#263923;font-size:${weatherTemperatureFontSize(weather.currentTemperatureCelsius)}px;line-height:1.15;font-weight:700;letter-spacing:-0.04em;">${hiddenText('Current ')}${escapeHtml(formatMetric(weather.currentTemperatureCelsius))}°${hiddenText(' Celsius')}</td>
       <td valign="middle" style="padding-left:13px;border-left:1px solid #d8e0d6;">
         ${weather.locationLabel ? `<p style="margin:0 0 5px;font-size:12px;line-height:1.3;font-weight:700;">${escapeHtml(weather.locationLabel)}</p>` : ''}
         <p style="margin:0 0 5px;color:#798479;font-size:10px;line-height:1.4;">Wind ${escapeHtml(formatMetric(weather.maximumWindSpeedKmh))} km/h</p>
@@ -351,8 +354,8 @@ const renderWeatherHtml = (weather: WeatherDisplayForecast, context: EmailContex
       </td>
     </tr>
     <tr><td colspan="2" align="center" style="padding-top:8px;font-size:11px;line-height:1.4;font-weight:700;">
-      <span role="img" aria-label="High ${escapeHtml(formatMetric(weather.maximumTemperatureCelsius))} degrees Celsius" style="color:#b96553;">${hiddenText('High ')}↑ ${escapeHtml(formatMetric(weather.maximumTemperatureCelsius))}°</span>
-      &nbsp;&nbsp;&nbsp; <span role="img" aria-label="Low ${escapeHtml(formatMetric(weather.minimumTemperatureCelsius))} degrees Celsius" style="color:#657ea6;">${hiddenText('Low ')}↓ ${escapeHtml(formatMetric(weather.minimumTemperatureCelsius))}°</span>
+      <span aria-label="High ${escapeHtml(formatMetric(weather.maximumTemperatureCelsius))} degrees Celsius" style="color:#b96553;">${hiddenText('High ')}↑ ${escapeHtml(formatMetric(weather.maximumTemperatureCelsius))}°</span>
+      &nbsp;&nbsp;&nbsp; <span aria-label="Low ${escapeHtml(formatMetric(weather.minimumTemperatureCelsius))} degrees Celsius" style="color:#657ea6;">${hiddenText('Low ')}↓ ${escapeHtml(formatMetric(weather.minimumTemperatureCelsius))}°</span>
     </td><td></td></tr>
   </table>
   <p style="margin:16px 0 0;color:#798479;font-size:10px;line-height:1.5;">Chance of precipitation ${escapeHtml(formatMetric(weather.maximumPrecipitationProbabilityPercent))}%.</p>
@@ -368,7 +371,7 @@ const renderCommuteHtml = (section: CommuteSection, context: EmailContext) => {
   return section.estimates.map((estimate, index) => {
     const color = estimate.trafficLevel ? commuteTrafficColors[estimate.trafficLevel] : '#354239';
     const result = estimate.outcome === 'available'
-      ? `<p role="img" style="margin:6px 0 8px;color:${color};white-space:nowrap;line-height:1;" aria-label="${escapeHtml(`${estimate.routeName}: ${formatMinutes(estimate.durationMinutes)}${trafficDescriptionFor(estimate) ? ` — ${trafficDescriptionFor(estimate)}` : ''}`)}"><strong style="font-size:50px;line-height:0.85;font-weight:700;letter-spacing:-0.04em;">${Number.isFinite(estimate.durationMinutes) ? Math.round(estimate.durationMinutes!) : '—'}</strong><span style="font-size:13px;font-weight:700;"> min</span>${hiddenText(trafficDescriptionFor(estimate) ?? '')}</p>`
+      ? `<p style="margin:6px 0 8px;color:${color};white-space:nowrap;line-height:1;" aria-label="${escapeHtml(`${estimate.routeName}: ${formatMinutes(estimate.durationMinutes)}${trafficDescriptionFor(estimate) ? ` — ${trafficDescriptionFor(estimate)}` : ''}`)}"><strong style="font-size:50px;line-height:0.85;font-weight:700;letter-spacing:-0.04em;">${Number.isFinite(estimate.durationMinutes) ? Math.round(estimate.durationMinutes!) : '—'}</strong><span style="font-size:13px;font-weight:700;"> min</span>${hiddenText(trafficDescriptionFor(estimate) ?? '')}</p>`
       : `<p aria-label="${escapeHtml(estimate.routeName)}: Commute estimate unavailable." style="margin:0 0 8px;color:#748074;font-size:11px;line-height:1.5;">Commute estimate unavailable.</p>`;
     return `<div style="${index > 0 ? 'margin-top:22px;padding-top:16px;border-top:1px solid #dfe5dc;' : ''}">${result}${renderCommuteRouteHierarchyHtml(estimate, context)}</div>`;
   }).join('');
@@ -423,7 +426,7 @@ const renderTodoHtml = (section: TodoSection) => {
 };
 
 const renderUrgencyHtml = (urgency: TodoUrgency) =>
-  `<span data-urgency="${urgency}" role="img" aria-label="${escapeHtml(urgencyLabel(urgency))}" style="color:${urgencyDotColors[urgency]};font-size:12px;line-height:15px;">${urgencyDotGlyphs[urgency]}</span>${hiddenText(urgencyLabel(urgency))}`;
+  `<span data-urgency="${urgency}" aria-hidden="true" style="color:${urgencyDotColors[urgency]};font-size:12px;line-height:15px;">${urgencyDotGlyphs[urgency]}</span>${hiddenText(urgencyLabel(urgency))}`;
 
 const renderText = ({
   sections,

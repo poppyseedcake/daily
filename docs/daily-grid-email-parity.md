@@ -6,7 +6,10 @@ centered greeting, local date/time, four connected sections, prominent Weather
 and Commute values, a seven-date Calendar strip, and grouped Todo rows.
 
 The renderer uses inline critical styles, PNG versions of the prototype's Lucide
-icons, and a fluid hybrid fallback that stacks sections even without head styles.
+icons, and a column-width fallback that stacks sections even without head styles.
+The row owns its horizontal border and full-height column rule, so unequal content
+lengths cannot leave floating separators. The column CSS properties are listed in
+[Gmail’s supported CSS](https://developers.google.com/workspace/gmail/design/css).
 Classic Outlook receives conditional presentation tables. Responsive clients use
 equal-height table cells on desktop and full-width sections on narrow screens.
 The PNG assets are generated with `node scripts/generate-email-icons.mjs`.
@@ -37,6 +40,9 @@ Validation:
   Resend and metadata-only Delivery Records.
 - `tests/e2e/daily-summary-email.spec.ts` checks widths 1280, 390, and 320px,
   with/without head styles and temperatures 18°, 20.7°, and −20.7°.
+  It also verifies dense-grid separators and accessible urgency, traffic and units
+  after removing head styles and all ARIA attributes. Hidden descriptions use inline
+  zero-sized spans and stay in the accessibility tree; they do not use `display:none`.
 - Independent visual review passed for desktop, narrow, and stripped-style HTML.
 
 These checks establish renderer parity, not real Gmail delivery. After deployment,
