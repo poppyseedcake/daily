@@ -181,6 +181,39 @@ to show as verified, then set `RESEND_FROM_EMAIL` to an address at that verified
 domain. Cloudflare domain activation does not verify a Resend sending domain. Do not
 enable Scheduled Delivery until Resend shows the domain as verified.
 
+### Weather LLM configuration
+
+Set these runtime variables in Coolify and redeploy the application after changing
+any of them. Test and Scheduled Daily Summaries use the same configuration.
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `OPENAI_WEATHER_MODEL` | `gpt-5.6-luna` | OpenAI model ID; must support Responses API and structured JSON output. |
+| `OPENAI_WEATHER_REASONING_EFFORT` | `none` | `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, or `max`; the selected model must support the chosen level. |
+| `OPENAI_WEATHER_MAX_CHARACTERS` | `160` | Maximum sentence length, from 1 to 2000 Unicode characters, including spaces and punctuation. Surrounding whitespace is removed. |
+| `OPENAI_WEATHER_MAX_OUTPUT_TOKENS` | Automatic | Total generation budget, from 16 to 128000 tokens, subject to the model's own limits. |
+| `OPENAI_WEATHER_TIMEOUT_MS` | Automatic | Request timeout, from 1 to 120000 milliseconds. |
+
+Blank or absent settings use the defaults. The character limit replaces the old
+15-word limit and is checked locally before the sentence enters the email. An
+oversized sentence gets one fresh generation with a shorter character target and
+the original weather facts. It is never cut mid-sentence. If the second sentence
+still fails validation, the email contains weather facts without the LLM sentence.
+
+With `none`, the automatic timeout is 3000 ms and the output budget is at least
+256 tokens, increasing with the character limit. With reasoning enabled, the
+automatic timeout is 30000 ms and the output budget is 25000 tokens.
+[OpenAI counts reasoning tokens in `max_output_tokens`](https://developers.openai.com/api/docs/guides/reasoning#controlling-costs),
+so this budget is separate from the visible character limit. A retry can make
+up to two API requests, each with the configured timeout and token budget.
+
+Invalid settings are rejected by the production environment validator. At
+runtime, invalid settings omit the optional sentence and produce an
+`invalid-configuration` diagnostic. Other outcomes appear in Coolify application
+logs with `eventCode: "weather-summary"`. These logs contain only the reason,
+request attempt, elapsed time, and optional HTTP status; no API key, weather
+location, forecast, or generated sentence is logged.
+
 ## 5. First deployment
 
 Keep the application stopped while preparing the empty database. The exact image
