@@ -116,7 +116,9 @@ export const createUserDailySummaryGenerator = ({
                       now: generatedAt
                     })
                     .then((result) => result.calendarEvents),
-            userNameStore?.load(userId)
+            userNameStore
+              ? Promise.resolve().then(() => userNameStore.load(userId)).catch(() => undefined)
+              : undefined
           ]);
 
         return {
