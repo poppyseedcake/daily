@@ -159,8 +159,8 @@ describe('Daily Summary generation', () => {
 
     expect(weatherProvider.weatherSummaryProvider.summarize).toHaveBeenCalledWith(summaryInput);
     expect(rendered.html).toContain('18°');
-    expect(rendered.html).toContain('↑ 22°');
-    expect(rendered.html).toContain('↓ 12°');
+    expect(rendered.html.replace(/<[^>]*>/g, '')).toContain('↑ 22°');
+    expect(rendered.html.replace(/<[^>]*>/g, '')).toContain('↓ 12°');
     expect(rendered.html).toContain('Wind 24 km/h');
     expect(rendered.html).toContain('Clouds clear by noon.');
     expect(rendered.html).toContain('https://daily.example.com/email-icons/partly-cloudy.png');

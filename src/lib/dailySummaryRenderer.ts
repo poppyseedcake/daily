@@ -365,21 +365,27 @@ const weatherPrecipitationIntensitySuffix = (weather: WeatherDisplayForecast) =>
     ? ` (${intensity})` : '';
 };
 
+// Stored locations retain the full address; summaries need only the first label.
+const compactLocationLabel = (label: string) => label.split(',').map((part) => part.trim()).find(Boolean) ?? label.trim();
+
+const temperatureArrow = (direction: '↑' | '↓') =>
+  `<span aria-hidden="true" style="display:inline-block;font-size:18px;line-height:1;font-weight:900;vertical-align:middle;">${direction}</span>`;
+
 const renderWeatherHtml = (weather: WeatherDisplayForecast, context: EmailContext) => `
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;table-layout:fixed;border-collapse:collapse;">
     <tr>
       <td width="52" valign="middle" style="width:52px;padding-right:10px;">${emailIcon(weather.conditionCategory, 46, context.openDailyUrl)}</td>
       <td width="${weatherTemperatureWidth(weather.currentTemperatureCelsius)}" valign="middle" aria-label="Current ${escapeHtml(formatMetric(weather.currentTemperatureCelsius))} degrees Celsius" style="width:${weatherTemperatureWidth(weather.currentTemperatureCelsius)}px;padding-right:13px;white-space:nowrap;color:#263923;font-size:${weatherTemperatureFontSize(weather.currentTemperatureCelsius)}px;line-height:1.15;font-weight:700;letter-spacing:-0.04em;">${hiddenText('Current ')}${escapeHtml(formatMetric(weather.currentTemperatureCelsius))}°${hiddenText(' Celsius')}</td>
       <td valign="middle" style="padding-left:13px;border-left:1px solid #d8e0d6;">
-        ${weather.locationLabel ? `<p style="margin:0 0 5px;font-size:12px;line-height:1.3;font-weight:700;">${escapeHtml(weather.locationLabel)}</p>` : ''}
+        ${weather.locationLabel ? `<p style="margin:0 0 5px;font-size:12px;line-height:1.3;font-weight:700;">${escapeHtml(compactLocationLabel(weather.locationLabel))}</p>` : ''}
         <p style="margin:0 0 5px;color:#798479;font-size:10px;line-height:1.4;">Wind ${escapeHtml(formatMetric(weather.maximumWindSpeedKmh))} km/h</p>
         <p style="margin:0 0 5px;color:#798479;font-size:10px;line-height:1.4;">${escapeHtml(weather.conditionText)}</p>
         <p style="margin:0;color:#798479;font-size:10px;line-height:1.4;">Precip. ${escapeHtml(formatMetric(weather.maximumPrecipitationProbabilityPercent))}%${weatherPrecipitationIntensitySuffix(weather)}</p>
       </td>
     </tr>
     <tr><td colspan="2" align="center" style="padding-top:8px;font-size:11px;line-height:1.4;font-weight:700;">
-      <span aria-label="High ${escapeHtml(formatMetric(weather.maximumTemperatureCelsius))} degrees Celsius" style="color:#b96553;">${hiddenText('High ')}↑ ${escapeHtml(formatMetric(weather.maximumTemperatureCelsius))}°</span>
-      &nbsp;&nbsp;&nbsp; <span aria-label="Low ${escapeHtml(formatMetric(weather.minimumTemperatureCelsius))} degrees Celsius" style="color:#657ea6;">${hiddenText('Low ')}↓ ${escapeHtml(formatMetric(weather.minimumTemperatureCelsius))}°</span>
+      <span aria-label="High ${escapeHtml(formatMetric(weather.maximumTemperatureCelsius))} degrees Celsius" style="color:#b96553;">${hiddenText('High ')}${temperatureArrow('↑')} ${escapeHtml(formatMetric(weather.maximumTemperatureCelsius))}°</span>
+      &nbsp;&nbsp;&nbsp; <span aria-label="Low ${escapeHtml(formatMetric(weather.minimumTemperatureCelsius))} degrees Celsius" style="color:#657ea6;">${hiddenText('Low ')}${temperatureArrow('↓')} ${escapeHtml(formatMetric(weather.minimumTemperatureCelsius))}°</span>
     </td><td></td></tr>
   </table>
   ${weather.summary ? `<p style="margin:8px 0 0;color:#748074;font-size:11px;line-height:1.5;">${escapeHtml(weather.summary)}</p>` : ''}`;
@@ -401,8 +407,8 @@ const renderCommuteHtml = (section: CommuteSection, context: EmailContext) => {
 };
 
 const renderCommuteRouteHierarchyHtml = (estimate: CommuteSection['estimates'][number], context: EmailContext) => {
-  const originLabel = estimate.originLabel ?? 'Home';
-  const destinationLabel = estimate.destinationLabel ?? estimate.routeName;
+  const originLabel = compactLocationLabel(estimate.originLabel ?? 'Home');
+  const destinationLabel = compactLocationLabel(estimate.destinationLabel ?? estimate.routeName);
   const arrowUrl = context.openDailyUrl.startsWith('/') ? '/email-icons/commute-arrow.png'
     : new URL('email-icons/commute-arrow.png', context.openDailyUrl).toString();
   const stop = (name: string, address: string, icon: string) => `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;table-layout:fixed;border-collapse:collapse;"><tr><td width="28" valign="middle" style="width:28px;padding-right:7px;">${emailIcon(icon, 21, context.openDailyUrl)}</td><td><p style="margin:0;color:#354239;font-size:11px;line-height:1.3;font-weight:700;">${escapeHtml(name)}</p><p style="margin:3px 0 0;color:#8b958b;font-size:9px;line-height:1.4;">${escapeHtml(address)}</p></td></tr></table>`;
@@ -511,7 +517,7 @@ const renderSectionTextContent = (section: RenderedSection): string => {
 };
 
 const renderWeatherText = (weather: WeatherDisplayForecast) => [
-  ...(weather.locationLabel ? [weather.locationLabel] : []),
+  ...(weather.locationLabel ? [compactLocationLabel(weather.locationLabel)] : []),
   `Current ${formatMetric(weather.currentTemperatureCelsius)}C · ${weather.conditionText}`,
   `Low ${formatMetric(weather.minimumTemperatureCelsius)}C, high ${formatMetric(weather.maximumTemperatureCelsius)}C.`,
   `Chance of precipitation ${formatMetric(weather.maximumPrecipitationProbabilityPercent)}%${weatherPrecipitationIntensitySuffix(weather)}.`,
@@ -526,10 +532,10 @@ const renderCommuteText = (section: CommuteSection) => {
   const routeHierarchy = section.estimates
     .filter((estimate) => estimate.originLabel || estimate.destinationLabel)
     .map((estimate) => [
-      `Home: ${estimate.originLabel ?? 'Home'}`,
+      `Home: ${compactLocationLabel(estimate.originLabel ?? 'Home')}`,
       '→',
       estimate.routeName,
-      estimate.destinationLabel ?? estimate.routeName
+      compactLocationLabel(estimate.destinationLabel ?? estimate.routeName)
     ].join('\n'));
 
   return [

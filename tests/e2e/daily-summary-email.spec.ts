@@ -55,6 +55,10 @@ test('Daily Grid stays readable at Gmail widths with and without head styles', a
         input.userName = 'Wojtek M.';
         if (input.sections.weather.status !== 'active' || !input.sections.weather.content) throw new Error('Fixture must have weather.');
         input.sections.weather.content.currentTemperatureCelsius = temperature;
+        input.sections.weather.content.locationLabel = 'Warsaw, Masovian Voivodeship, Poland';
+        if (input.sections.commute.status !== 'active') throw new Error('Fixture must have commute.');
+        input.sections.commute.content.estimates[0]!.originLabel = 'Mokotów, Warsaw, Poland';
+        input.sections.commute.content.estimates[0]!.destinationLabel = 'Rondo Daszyńskiego, Warsaw, Poland';
         const { html } = renderDailySummary(input);
         await page.setContent(withoutHeadStyles ? html.replace(/<style>[\s\S]*?<\/style>/, '') : html);
 
@@ -76,6 +80,9 @@ test('Daily Grid stays readable at Gmail widths with and without head styles', a
         const weather = page.locator('[data-summary-section="weather"]');
         await expect(weather.locator(`[aria-label="Current ${temperature} degrees Celsius"]`)).toBeVisible();
         await expect(weather.getByText('Warsaw', { exact: true })).toBeVisible();
+        await expect(page.getByText('Mokotów', { exact: true })).toBeVisible();
+        await expect(page.getByText('Rondo Daszyńskiego', { exact: true })).toBeVisible();
+        expect(await page.locator('body').innerText()).not.toMatch(/Masovian|Poland/);
         await expect(page.locator('[data-urgency="high"]')).toBeVisible();
         await expect(page.locator('[aria-label="Office: 24 minutes — Light traffic"]')).toBeVisible();
         await expect(page.getByText('High urgency', { exact: true })).toBeHidden();
