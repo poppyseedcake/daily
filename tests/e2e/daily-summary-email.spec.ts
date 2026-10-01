@@ -18,49 +18,71 @@ test('commute direction is one continuous arrow at narrow and desktop widths', a
     const name = new URL(route.request().url()).pathname.split('/').at(-1)!;
     await route.fulfill({ contentType: 'image/png', body: readFileSync(`static/email-icons/${name}`) });
   });
-  const input = buildDailySummaryPrototypeFixture();
-  if (input.sections.commute.status !== 'active') throw new Error('Fixture must have commute.');
-  input.sections.commute.content.estimates[0]!.routeName = 'Volvo';
-  input.sections.commute.content.estimates[0]!.originLabel = 'Granitowa';
-  input.sections.commute.content.estimates[0]!.destinationLabel = 'Mydlana';
-  const { html } = renderDailySummary(input);
-  for (const width of [1280, 390, 320]) {
-    await page.setViewportSize({ width, height: 844 });
-    for (const withoutHeadStyles of [false, true]) {
-      await page.setContent(withoutHeadStyles ? html.replace(/<style>[\s\S]*?<\/style>/, '') : html);
-      const route = page.locator('[data-summary-section="commute"] [role="group"]');
-      const arrow = route.locator('img[src$="/commute-arrow.png"]');
-      await expect(arrow).toHaveCount(1);
-      await expect(arrow).toBeVisible();
-      expect(await arrow.evaluate((image: HTMLImageElement) => image.complete && image.naturalWidth > 0)).toBe(true);
-      const box = await arrow.boundingBox();
-      expect(box!.width).toBeGreaterThan(44);
-      expect(box!.width / box!.height).toBeCloseTo(128 / 24, 1);
-      const cell = arrow.locator('..');
-      expect(await cell.locator('table,div').count()).toBe(0);
-      expect(await cell.textContent()).not.toContain('→');
-      const bounds = await cell.boundingBox();
-      expect(Math.abs(box!.y + box!.height / 2 - (bounds!.y + bounds!.height / 2))).toBeLessThan(1);
-      const spacing = await route.evaluate((group) => {
-        const routeRow = group.querySelector('table')!.rows[0]!;
-        const origin = routeRow.cells[0]!;
-        const image = routeRow.cells[1]!.querySelector('img')!.getBoundingClientRect();
-        const destination = routeRow.cells[2]!.querySelector('img')!.getBoundingClientRect();
-        const textRight = Math.max(...[...origin.querySelectorAll('p')].flatMap((paragraph) => {
+  const cases = [
+    { routeName: 'Volvo', originLabel: 'Granitowa', destinationLabel: 'Mydlana', short: true },
+    { routeName: 'Office with a very long route name', originLabel: 'Aleja Niepodległości 123, Warsaw, Poland', destinationLabel: 'Rondo Daszyńskiego 999, Warsaw, Poland', short: false },
+    { routeName: 'Office with a very long route name', originLabel: '52.2296756, 21.0122287', destinationLabel: '51.1078852, 17.0385376', short: false }
+  ];
+  for (const labels of cases) {
+    const input = buildDailySummaryPrototypeFixture();
+    if (input.sections.commute.status !== 'active') throw new Error('Fixture must have commute.');
+    Object.assign(input.sections.commute.content.estimates[0]!, {
+      routeName: labels.routeName, originLabel: labels.originLabel, destinationLabel: labels.destinationLabel
+    });
+    const { html } = renderDailySummary(input);
+    for (const width of [1280, 390, 320]) {
+      await page.setViewportSize({ width, height: 844 });
+      for (const withoutHeadStyles of [false, true]) {
+        await page.setContent(withoutHeadStyles ? html.replace(/<style>[\s\S]*?<\/style>/, '') : html);
+        const route = page.locator('[data-summary-section="commute"] [role="group"]');
+        const arrow = route.locator('img[src$="/commute-arrow.png"]');
+        await expect(arrow).toHaveCount(1);
+        await expect(arrow).toBeVisible();
+        expect(await arrow.evaluate((image: HTMLImageElement) => image.complete && image.naturalWidth > 0)).toBe(true);
+        const box = await arrow.boundingBox();
+        expect(box!.width).toBeGreaterThan(44);
+        expect(box!.width / box!.height).toBeCloseTo(128 / 24, 1);
+        const cell = arrow.locator('..');
+        expect(await cell.locator('table,div').count()).toBe(0);
+        expect(await cell.textContent()).not.toContain('→');
+        const bounds = await cell.boundingBox();
+        expect(Math.abs(box!.y + box!.height / 2 - (bounds!.y + bounds!.height / 2))).toBeLessThan(1);
+        const spacing = await route.evaluate((group) => {
+          const routeRow = group.querySelector('table')!.rows[0]!;
+          const origin = routeRow.cells[0]!;
+          const image = routeRow.cells[1]!.querySelector('img')!.getBoundingClientRect();
+          const destination = routeRow.cells[2]!.querySelector('img')!.getBoundingClientRect();
+          const textRight = Math.max(...[...origin.querySelectorAll('p')].flatMap((paragraph) => {
+            const range = document.createRange();
+            range.selectNodeContents(paragraph);
+            return [...range.getClientRects()].map((rect) => rect.right);
+          }));
+          return { left: image.left - textRight, right: destination.left - image.right };
+        });
+        expect(Math.abs(spacing.left - spacing.right)).toBeLessThan(2);
+        const lineCounts = await route.locator('p').evaluateAll((paragraphs) => paragraphs.map((paragraph) => {
           const range = document.createRange();
           range.selectNodeContents(paragraph);
-          return [...range.getClientRects()].map((rect) => rect.right);
+          return range.getClientRects().length;
         }));
-        return { left: image.left - textRight, right: destination.left - image.right };
-      });
-      expect(Math.abs(spacing.left - spacing.right)).toBeLessThan(2);
-      const lineCounts = await route.locator('p').evaluateAll((paragraphs) => paragraphs.map((paragraph) => {
-        const range = document.createRange();
-        range.selectNodeContents(paragraph);
-        return range.getClientRects().length;
-      }));
-      expect(lineCounts).toEqual([1, 1, 1, 1]);
-      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+        if (labels.short) expect(lineCounts).toEqual([1, 1, 1, 1]);
+        else expect(Math.max(...lineCounts)).toBeGreaterThan(1);
+        const contained = await route.evaluate((group) => {
+          const row = group.querySelector('table')!.rows[0]!;
+          return [...row.cells].every((cell) => {
+            const bounds = cell.getBoundingClientRect();
+            const rectangles = [...cell.querySelectorAll('p')].flatMap((paragraph) => {
+              const range = document.createRange();
+              range.selectNodeContents(paragraph);
+              return [...range.getClientRects()];
+            });
+            rectangles.push(...[...cell.querySelectorAll('img')].map((image) => image.getBoundingClientRect()));
+            return rectangles.every((rect) => rect.left >= bounds.left - 1 && rect.right <= bounds.right + 1);
+          });
+        });
+        expect(contained).toBe(true);
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+      }
     }
   }
 });
