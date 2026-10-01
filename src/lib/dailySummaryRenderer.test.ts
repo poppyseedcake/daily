@@ -19,6 +19,17 @@ const renderSections = (sections: DailySummaryInput['sections']) => renderDailyS
 });
 
 describe('Daily Summary renderer', () => {
+  test('keeps both coordinates when a Commute stop has no street address', () => {
+    const input = buildDailySummaryPrototypeFixture();
+    if (input.sections.commute.status !== 'active') throw new Error('Commute fixture required.');
+    input.sections.commute.content.estimates[0]!.originLabel = 'Selected map point near 52.1234, 21.5678';
+    input.sections.commute.content.estimates[0]!.destinationLabel = 'Selected map point near 52.1234, -18.5432';
+    const rendered = renderDailySummary(input);
+    for (const label of ['Selected map point near 52.1234, 21.5678', 'Selected map point near 52.1234, -18.5432']) {
+      expect(rendered.html).toContain(label);
+      expect(rendered.text).toContain(label);
+    }
+  });
   test.each([
     [0, 2, '0%'], [0, 61, '0%'], [30, 2, '30%'], [80, 95, '80%'],
     [30, 61, '30% (Light)'], [60, 63, '60% (Moderate)'], [90, 65, '90% (Heavy)']
@@ -139,8 +150,8 @@ describe('Daily Summary renderer', () => {
     });
 
     expect(rendered.text).toContain('Calendar\nNothing scheduled\nNo Calendar Events in the Week Ahead.');
-    expect(rendered.text).toContain('Today');
-    expect(rendered.text).toContain('Tomorrow');
+    expect(rendered.text).toContain('Tuesday');
+    expect(rendered.text).toContain('Wednesday');
   });
 
   test.each([null, 'not-a-color', '#0b8043'])(
@@ -171,7 +182,9 @@ describe('Daily Summary renderer', () => {
       expect(rendered.html).toContain('Work &amp; Focus');
       expect(rendered.html).toContain('<time>10:00</time>');
       expect(rendered.html).toContain('>Planning</strong>');
-      expect(rendered.text).toContain('10:00 Planning (Work & Focus)');
+      expect(rendered.text).toContain('10:00 Planning');
+      expect(rendered.text).not.toContain('(Work & Focus)');
+      expect(rendered.html).toContain('title="Work &amp; Focus"');
       if (calendarColor === '#0b8043') {
         expect(rendered.html).toContain('background-color:#0b8043');
       }

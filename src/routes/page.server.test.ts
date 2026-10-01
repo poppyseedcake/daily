@@ -1498,7 +1498,7 @@ describe('Daily page server load', () => {
     expect(sentMessages).toEqual([
       expect.objectContaining({
         html: expect.stringContaining('Planning'),
-        text: expect.stringContaining('Today\n11:00 Planning (Work)')
+        text: expect.stringContaining('Tuesday\n11:00 Planning')
       })
     ]);
     expect(recordedDeliveryRecords).toEqual([

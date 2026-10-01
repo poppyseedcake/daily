@@ -179,6 +179,7 @@ export const renderDailySummary = (input: DailySummaryInput): RenderedDailySumma
     }),
     text: renderText({
       sections,
+      generatedAt,
       greeting,
       generatedTimestamp,
       userTimeZone: input.userTimeZone,
@@ -366,7 +367,11 @@ const weatherPrecipitationIntensitySuffix = (weather: WeatherDisplayForecast) =>
 };
 
 // Stored locations retain the full address; summaries need only the first label.
-const compactLocationLabel = (label: string) => label.split(',').map((part) => part.trim()).find(Boolean) ?? label.trim();
+const compactLocationLabel = (label: string) => {
+  const trimmed = label.trim();
+  if (/^(?:Selected map point near )?-?\d+(?:\.\d+)?,\s*-?\d+(?:\.\d+)?$/.test(trimmed)) return trimmed;
+  return label.split(',').map((part) => part.trim()).find(Boolean) ?? trimmed;
+};
 
 const temperatureArrow = (direction: '↑' | '↓') =>
   `<span aria-hidden="true" style="display:inline-block;font-size:18px;line-height:1;font-weight:900;vertical-align:middle;">${direction}</span>`;
@@ -430,15 +435,28 @@ const renderCalendarStrip = (context: EmailContext) => {
 };
 
 const renderCalendarHtml = (section: CalendarSection, context: EmailContext) =>
-  `${renderCalendarStrip(context)}${[...(section.today ? [section.today] : []), ...section.weekAhead].filter((day) => day.allDayEvents.length + day.timedEvents.length > 0).map((day, index, days) => renderCalendarDayHtml(day, index === days.length - 1)).join('')}`;
+  `${renderCalendarStrip(context)}${[...(section.today ? [section.today] : []), ...section.weekAhead].filter((day) => day.allDayEvents.length + day.timedEvents.length > 0).map((day, index, days) => renderCalendarDayHtml(day, index === days.length - 1, context)).join('')}`;
 
-const renderCalendarDayHtml = (day: NonNullable<CalendarSection['today']>, last: boolean) => {
+const calendarWeekdayLabel = (label: string, context: EmailContext) => {
+  if (label === 'Today' || label === 'Tomorrow') {
+    return localGenerationDate(context).add({ days: label === 'Tomorrow' ? 1 : 0 })
+      .toLocaleString('en-US', { weekday: 'long' });
+  }
+  const weekdays: Record<string, string> = {
+    Mon: 'Monday', Tue: 'Tuesday', Wed: 'Wednesday', Thu: 'Thursday',
+    Fri: 'Friday', Sat: 'Saturday', Sun: 'Sunday'
+  };
+  const name = compactLocationLabel(label);
+  return Object.hasOwn(weekdays, name) ? weekdays[name]! : name;
+};
+
+const renderCalendarDayHtml = (day: NonNullable<CalendarSection['today']>, last: boolean, context: EmailContext) => {
   const events = [
     ...day.allDayEvents.map((event) => ({ ...event, time: 'All day' })),
     ...day.timedEvents.map((event) => ({ ...event, time: event.localStartTime }))
   ];
   if (events.length === 0) return '';
-  return `<div style="margin:0 0 ${last ? 0 : 12}px;"><h3 style="margin:0 0 4px;color:#8c958a;font-size:8px;line-height:1.3;font-weight:800;letter-spacing:0.08em;text-transform:uppercase;">${escapeHtml(day.label)}</h3><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;table-layout:fixed;border-collapse:collapse;">${events.map((event) => `<tr><td width="42" valign="top" style="width:42px;padding:0 8px 0 0;color:#7b877a;font-size:9px;line-height:1.5;white-space:nowrap;"><time>${escapeHtml(event.time)}</time></td><td valign="top" style="padding:0;font-size:10px;line-height:1.5;">${calendarEventMarkerHtml(event.calendarColor)}<strong style="font-weight:600;">${escapeHtml(event.title)}</strong><span style="color:#798479;font-size:9px;"> (${escapeHtml(event.calendarLabel)})</span></td></tr>`).join('')}</table></div>`;
+  return `<div style="margin:0 0 ${last ? 0 : 12}px;"><h3 style="margin:0 0 4px;color:#8c958a;font-size:8px;line-height:1.3;font-weight:800;letter-spacing:0.08em;text-transform:uppercase;">${escapeHtml(calendarWeekdayLabel(day.label, context))}</h3><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;table-layout:fixed;border-collapse:collapse;">${events.map((event) => `<tr><td width="42" valign="top" style="width:42px;padding:0 8px 0 0;color:#7b877a;font-size:9px;line-height:1.5;white-space:nowrap;"><time>${escapeHtml(event.time)}</time></td><td valign="top" style="padding:0;font-size:10px;line-height:1.5;">${calendarEventMarkerHtml(event.calendarColor, event.calendarLabel)}<strong style="font-weight:600;">${escapeHtml(event.title)}</strong></td></tr>`).join('')}</table></div>`;
 };
 
 const renderTodoHtml = (section: TodoSection) => {
@@ -463,29 +481,31 @@ const renderText = ({
   sections,
   greeting,
   generatedTimestamp,
+  generatedAt,
   userTimeZone,
   openDailyUrl
 }: {
   sections: RenderedSection[];
   greeting: string;
   generatedTimestamp: string;
+  generatedAt: Date;
   userTimeZone: string;
   openDailyUrl: string;
 }) => [
   greeting,
   `Generated: ${generatedTimestamp} (${userTimeZone})`,
   '',
-  ...sections.flatMap((section) => [section.label, renderSectionTextContent(section), '']),
+  ...sections.flatMap((section) => [section.label, renderSectionTextContent(section, { generatedAt, userTimeZone, openDailyUrl }), '']),
   `Daily · ${userTimeZone}`,
   `Open Daily: ${openDailyUrl}`
 ].join('\n').trim();
 
-const renderSectionTextContent = (section: RenderedSection): string => {
+const renderSectionTextContent = (section: RenderedSection, context: EmailContext): string => {
   if (section.status !== 'active') {
     const stateText = renderStateText(section);
 
     return section.key === 'calendar' && section.status === 'empty' && section.content
-      ? `${stateText}\n\n${renderCalendarText(section.content)}`
+      ? `${stateText}\n\n${renderCalendarText(section.content, context)}`
       : stateText;
   }
 
@@ -505,7 +525,7 @@ const renderSectionTextContent = (section: RenderedSection): string => {
       return [
         ...detail,
         section.content && calendarSectionHasEvents(section.content)
-          ? renderCalendarText(section.content)
+          ? renderCalendarText(section.content, context)
           : ''
       ].filter(Boolean).join('\n');
     case 'todo':
@@ -544,17 +564,17 @@ const renderCommuteText = (section: CommuteSection) => {
   ].join('\n');
 };
 
-const renderCalendarText = (section: CalendarSection) => [
-  ...(section.today ? [renderCalendarDayText(section.today)] : []),
+const renderCalendarText = (section: CalendarSection, context: EmailContext) => [
+  ...(section.today ? [renderCalendarDayText(section.today, context)] : []),
   ...(section.weekAhead.length > 0
-    ? [`Week Ahead\n${section.weekAhead.map(renderCalendarDayText).join('\n\n')}`]
+    ? [`Week Ahead\n${section.weekAhead.map((day) => renderCalendarDayText(day, context)).join('\n\n')}`]
     : [])
 ].join('\n\n');
 
-const renderCalendarDayText = (day: NonNullable<CalendarSection['today']>) => [
-    day.label,
-    ...day.allDayEvents.map((event) => `All day ${event.title} (${event.calendarLabel})`),
-    ...day.timedEvents.map((event) => `${event.localStartTime} ${event.title} (${event.calendarLabel})`)
+const renderCalendarDayText = (day: NonNullable<CalendarSection['today']>, context: EmailContext) => [
+    calendarWeekdayLabel(day.label, context),
+    ...day.allDayEvents.map((event) => `All day ${event.title}`),
+    ...day.timedEvents.map((event) => `${event.localStartTime} ${event.title}`)
   ].join('\n');
 
 const renderStateText = (section: RenderedSection) => {
@@ -596,9 +616,9 @@ const urgencyDotGlyphs: Record<TodoUrgency, string> = {
   low: '○'
 };
 
-const calendarEventMarkerHtml = (calendarColor: string | null | undefined) => {
+const calendarEventMarkerHtml = (calendarColor: string | null | undefined, calendarLabel: string) => {
   const color = /^#[0-9a-f]{6}$/i.test(calendarColor ?? '') ? calendarColor : '#d9ded8';
-  return `<span aria-hidden="true" style="display:inline-block;width:8px;height:8px;background-color:${color};"></span> `;
+  return `<span role="img" aria-label="Calendar: ${escapeHtml(calendarLabel)}" title="${escapeHtml(calendarLabel)}" style="display:inline-block;width:8px;height:8px;background-color:${color};"></span> `;
 };
 
 const formatGeneratedTimestamp = (date: Date, userTimeZone: string) => {
