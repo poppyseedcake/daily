@@ -45,7 +45,7 @@ test.each([
   ['2026-10-01T17:06:00Z', 'Good evening, Wojtek'],
   ['2026-10-01T02:00:00Z', 'Good evening, Wojtek']
 ])('email greeting follows the workspace at %s', (time, greeting) => {
-  const input: DailySummaryInput & { userName?: string } = buildDailySummaryDenseAllActiveFixture();
+  const input: DailySummaryInput = buildDailySummaryDenseAllActiveFixture();
   input.generatedAt = new Date(time);
   input.userName = '  Wojtek   M. ';
   const { html, text } = renderDailySummary(input);
@@ -54,9 +54,11 @@ test.each([
 });
 
 test('repeated test summaries have different subjects to avoid Gmail trimming in conversations', () => {
-  const first = dailySummarySubject('test', new Date('2026-10-01T17:06:00Z'), 'Europe/Warsaw');
-  const next = dailySummarySubject('test', new Date('2026-10-01T17:06:01Z'), 'Europe/Warsaw');
+  const first = dailySummarySubject('test', new Date('2026-10-01T17:06:00Z'), 'Europe/Warsaw', 'attempt-1');
+  const next = dailySummarySubject('test', new Date('2026-10-01T17:06:00Z'), 'Europe/Warsaw', 'attempt-2');
   expect(first).not.toBe(next);
   expect(first).toContain('19:06:00');
-  expect(next).toContain('19:06:01');
+  expect(next).toContain('19:06:00');
+  expect(first).toContain('#attempt-1');
+  expect(next).toContain('#attempt-2');
 });

@@ -56,7 +56,8 @@ Real email-client verification is recorded separately using
 Repeated Test Deliveries previously used the same dated subject. Gmail grouped
 those messages and hid unchanged Commute, Calendar and Todo content as quoted
 text behind “Show trimmed content”. Test subjects now include the local generation
-time through seconds to create separate conversations, following
+time through seconds and the unique Delivery Record ID to create separate
+conversations even for simultaneous tests, following
 [Google’s guidance](https://support.google.com/mail/answer/5900?hl=en).
 Scheduled subjects already vary by local date.
 

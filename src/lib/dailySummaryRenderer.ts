@@ -82,11 +82,14 @@ export type RenderedDailySummary = {
 
 export type DailySummaryDeliveryKind = 'scheduled' | 'test';
 
-export const dailySummarySubject = (
+export function dailySummarySubject(kind: 'scheduled', generatedAt: Date, userTimeZone: string): string;
+export function dailySummarySubject(kind: 'test', generatedAt: Date, userTimeZone: string, attemptId: string): string;
+export function dailySummarySubject(
   kind: DailySummaryDeliveryKind,
   generatedAt: Date,
-  userTimeZone: string
-) => {
+  userTimeZone: string,
+  attemptId?: string
+) {
   const weekday = new Intl.DateTimeFormat('en-US', {
     weekday: 'long',
     timeZone: userTimeZone
@@ -104,8 +107,9 @@ export const dailySummarySubject = (
 
   // Repeated test messages must start separate Gmail conversations, otherwise
   // Gmail hides unchanged sections as quoted content behind its ellipsis.
-  return `${kind === 'test' ? 'Test · ' : ''}Your Daily Summary · ${weekday}, ${dayAndMonth}${testTime}`;
-};
+  const testReference = kind === 'test' ? ` · #${attemptId}` : '';
+  return `${kind === 'test' ? 'Test · ' : ''}Your Daily Summary · ${weekday}, ${dayAndMonth}${testTime}${testReference}`;
+}
 
 type SummarySectionContent = {
   weather: WeatherDisplayForecast;

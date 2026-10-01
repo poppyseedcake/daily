@@ -55,13 +55,14 @@ export const createTestDailySummaryDelivery = ({
   createRecordId = () => crypto.randomUUID()
 }: TestDailySummaryDeliveryDependencies) => ({
   async send({ userId, summaryRecipient, requestedAt, generated }: TestDailySummaryDeliveryRequest) {
+    const attemptId = createRecordId();
     const completedAt = () => now().toISOString();
     const record = async (
       input: Omit<DeliveryRecordInput, 'id' | 'attemptType' | 'deliveryStatus'> & {
         deliveryStatus: DeliveryRecordInput['deliveryStatus'];
       }
     ) => recordAttempt(userId, {
-      id: createRecordId(),
+      id: attemptId,
       attemptType: 'test',
       ...input
     });
@@ -71,7 +72,8 @@ export const createTestDailySummaryDelivery = ({
       subject: dailySummarySubject(
         'test',
         generated.input.generatedAt,
-        generated.input.userTimeZone
+        generated.input.userTimeZone,
+        attemptId
       ),
       html: generated.rendered.html,
       text: generated.rendered.text

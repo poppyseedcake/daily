@@ -38,8 +38,8 @@ describe('Daily Summary renderer', () => {
     expect(dailySummarySubject('scheduled', generatedAt, 'America/New_York')).toBe(
       'Your Daily Summary · Tuesday, 7 July'
     );
-    expect(dailySummarySubject('test', generatedAt, 'America/New_York')).toBe(
-      'Test · Your Daily Summary · Tuesday, 7 July · 08:00:00'
+    expect(dailySummarySubject('test', generatedAt, 'America/New_York', 'test-attempt')).toBe(
+      'Test · Your Daily Summary · Tuesday, 7 July · 08:00:00 · #test-attempt'
     );
   });
 
