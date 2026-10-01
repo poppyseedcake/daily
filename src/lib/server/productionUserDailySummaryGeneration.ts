@@ -5,7 +5,7 @@ import { userTodoStore } from './db/todoStore';
 import { userWeatherLocationStore } from './db/weatherLocationStore';
 import { userLifecycleStore } from './db/userLifecycleStore';
 import { googleMapsOperations } from './googleMapsOperations';
-import { openAiWeatherSummaryProvider } from './weatherSummaryProvider';
+import { openAiWeatherSummaryProvider, writeWeatherSummaryDiagnostic } from './weatherSummaryProvider';
 import { createUserDailySummaryGenerator } from '$lib/dailySummaryGeneration/server';
 import type { UserCalendarEventsModule } from './userCalendarEvents';
 
@@ -19,7 +19,17 @@ export const createProductionUserDailySummaryGenerator = (
     weatherLocationStore: userWeatherLocationStore,
     commuteSetupStore: userCommuteSetupStore,
     calendarEvents,
-    weatherProvider: openMeteoWeatherForecastProvider,
+    weatherProvider: {
+      async fetchDailyForecast(request) {
+        const result = await openMeteoWeatherForecastProvider.fetchDailyForecast(request);
+        if (result.outcome === 'available' && !result.forecast.summaryInput) {
+          writeWeatherSummaryDiagnostic({
+            reason: 'missing-weather-context', durationMilliseconds: 0, attempt: 0
+          });
+        }
+        return result;
+      }
+    },
     weatherSummaryProvider: openAiWeatherSummaryProvider,
     commuteEstimateProvider: (userId) =>
       googleMapsOperations.requestGateway({ mode: 'user', userId })
