@@ -17,11 +17,11 @@ describe('Daily Grid renderer', () => {
   test('renders one fixed four-section presentation table in source and text order', () => {
     const rendered = renderDailySummary(buildDailySummaryFixture());
 
-    expect(rendered.html).toContain('max-width:680px');
+    expect(rendered.html).toContain('max-width:790px');
     expect(rendered.html).toContain('role="presentation"');
     expect(rendered.html).toContain('class="daily-grid-cell"');
     expect(rendered.html).not.toMatch(/display\s*:\s*(grid|flex)/i);
-    expect(rendered.html).not.toContain('border-radius');
+    expect(rendered.html).toContain('border-radius:7px');
 
     for (const output of [rendered.html, rendered.text]) {
       const positions = sectionKeys.map((section) => output.indexOf(sectionLabel(section)));
@@ -42,7 +42,9 @@ describe('Daily Grid renderer', () => {
 
     expect(rendered.html).toContain('Good morning');
     expect(rendered.html).not.toContain('Good morning,');
-    expect(rendered.html).toContain('Friday, July 31, 2026 at 07:00');
+    expect(rendered.html).toContain('Friday, 31 July');
+    expect(rendered.html).toContain('>07:00</td>');
+    expect(rendered.html).toContain('datetime="2026-07-31T05:00:00.000Z"');
     expect(rendered.html).toContain('Daily · Europe/Warsaw');
     expect(rendered.html).toContain('href="https://daily.example.test/"');
     expect(rendered.html).not.toContain('utm_');
@@ -80,8 +82,8 @@ describe('Daily Grid renderer', () => {
   test('defines the narrow-client stack without changing source order or adding horizontal scrolling', () => {
     const rendered = renderDailySummary(buildDailySummaryNarrowFixture());
 
-    expect(rendered.html).toContain('@media only screen and (max-width: 620px)');
-    expect(rendered.html).toContain('.daily-grid-cell { display: block !important; width: 100% !important; }');
+    expect(rendered.html).toContain('@media only screen and (max-width: 700px)');
+    expect(rendered.html).toContain('.daily-grid-cell { display: block !important; width: 100% !important;');
     expect(rendered.html).not.toMatch(/overflow-x\s*:\s*(auto|scroll)/i);
     expect(rendered.html.indexOf('>Weather</h2>')).toBeLessThan(rendered.html.indexOf('>Commute</h2>'));
     expect(rendered.html.indexOf('>Commute</h2>')).toBeLessThan(rendered.html.indexOf('>Calendar</h2>'));
@@ -136,9 +138,9 @@ describe('Daily Grid renderer', () => {
       }
     });
 
-    expect(rendered.html).toContain('class="daily-screen-reader-only">Light traffic</span>');
-    expect(rendered.html).toContain('color:#4d7a53');
-    expect(rendered.html).not.toContain(' — Light traffic');
+    expect(rendered.html).toMatch(/class="daily-screen-reader-only" style="[^"]*display:none[^"]*">Light traffic<\/span>/);
+    expect(rendered.html).toContain('color:#4f8a57');
+    expect(rendered.html).toContain('aria-label="Office: 24 minutes — Light traffic"');
     expect(rendered.html).toContain('Home: Mokotów');
     expect(rendered.html).toContain('Office: Rondo Daszyńskiego');
     expect(rendered.text).toContain('Office: 24 minutes — Light traffic');

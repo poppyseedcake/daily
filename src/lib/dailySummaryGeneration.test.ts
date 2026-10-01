@@ -88,7 +88,7 @@ describe('Daily Summary generation', () => {
     expect(result.rendered.html).toContain('href="https://daily.example/"');
   });
 
-  test('renders validated Weather facts and an optional Luna sentence without leaking location data', async () => {
+  test('renders validated Weather facts and an optional Luna sentence while keeping location out of the summary provider request', async () => {
     const summaryInput = {
       units: {
         temperature: 'celsius' as const,
@@ -158,15 +158,16 @@ describe('Daily Summary generation', () => {
     const rendered = renderDailySummary(input);
 
     expect(weatherProvider.weatherSummaryProvider.summarize).toHaveBeenCalledWith(summaryInput);
-    expect(rendered.html).toContain('>18C</p>');
-    expect(rendered.html).toContain('Low 12C, high 22C');
-    expect(rendered.html).toContain('Wind up to 24 km/h');
+    expect(rendered.html).toContain('18°');
+    expect(rendered.html).toContain('↑ 22°');
+    expect(rendered.html).toContain('↓ 12°');
+    expect(rendered.html).toContain('Wind 24 km/h');
     expect(rendered.html).toContain('Clouds clear by noon.');
-    expect(rendered.html).toContain('https://daily.example.com/weather-icons/partly-cloudy.png');
+    expect(rendered.html).toContain('https://daily.example.com/email-icons/partly-cloudy.png');
     expect(rendered.text).toContain('Clouds clear by noon.');
     expect(rendered.text).toContain('Chance of precipitation 35%.');
-    expect(rendered.html).not.toContain('Private City');
-    expect(rendered.text).not.toContain('Private City');
+    expect(rendered.html).toContain('Private City');
+    expect(rendered.text).toContain('Private City');
   });
 
   test('renders saved baseline estimates without provider requests on the local Commute Day', async () => {

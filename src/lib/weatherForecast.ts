@@ -23,6 +23,7 @@ export type WeatherConditionCategory =
   | 'unknown';
 
 export type WeatherDisplayForecast = {
+  locationLabel?: string;
   observedAtLocal: string;
   currentTemperatureCelsius: number;
   minimumTemperatureCelsius: number;

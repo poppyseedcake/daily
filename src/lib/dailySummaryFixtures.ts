@@ -9,6 +9,46 @@ import type { DailySummaryInput, RenderedDailySummary } from './dailySummaryRend
 const fixtureGeneratedAt = new Date('2026-07-31T05:00:00.000Z');
 const fixtureUserTimeZone = 'Europe/Warsaw';
 
+// Same content density as prototype B, rendered by the production email template.
+export const buildDailySummaryPrototypeFixture = (): DailySummaryInput => ({
+  userTimeZone: fixtureUserTimeZone,
+  generatedAt: new Date(fixtureGeneratedAt),
+  openDailyUrl: 'https://daily.example.test/',
+  sections: {
+    weather: { status: 'active', content: {
+      locationLabel: 'Warsaw', observedAtLocal: '2026-07-31T07:00',
+      currentTemperatureCelsius: 18, minimumTemperatureCelsius: 14,
+      maximumTemperatureCelsius: 23, maximumPrecipitationProbabilityPercent: 20,
+      maximumWindSpeedKmh: 6, dailyWeatherCode: 2, conditionText: 'Partly cloudy',
+      conditionCategory: 'partly-cloudy', iconUrl: 'https://daily.example.test/weather-icons/partly-cloudy.png'
+    } },
+    commute: { status: 'active', content: { label: 'Commute', estimates: [{
+      routeName: 'Office', originLabel: 'Mokotów', destinationLabel: 'Rondo Daszyńskiego',
+      outcome: 'available', durationMinutes: 24, trafficLevel: 'light'
+    }] } },
+    calendar: { status: 'active', content: {
+      label: 'Calendar',
+      today: { label: 'Today', allDayEvents: [], timedEvents: [{
+        id: 'design', title: 'Design sync', calendarLabel: 'Work', localStartTime: '09:30'
+      }] },
+      weekAhead: Array.from({ length: 6 }, (_, index) => ({
+        label: ['Sat, Aug 1', 'Sun, Aug 2', 'Mon, Aug 3', 'Tue, Aug 4', 'Wed, Aug 5', 'Thu, Aug 6'][index]!,
+        allDayEvents: [],
+        timedEvents: index === 1 ? [{ id: 'dentist', title: 'Dentist appointment', calendarLabel: 'Personal', localStartTime: '14:00' }]
+          : index === 4 ? [{ id: 'dinner', title: 'Dinner with Marta', calendarLabel: 'Personal', localStartTime: '18:30' }] : []
+      }))
+    } },
+    todo: { status: 'active', content: buildTodoSection(
+      ['Work', 'Personal', 'Errands'].map((name, position) => ({ id: name, name, position })),
+      [
+        { id: 'proposal', categoryId: 'Work', title: 'Send revised proposal', urgency: 'high', position: 0 },
+        { id: 'dentist', categoryId: 'Personal', title: 'Book dentist appointment', urgency: 'medium', position: 0 },
+        { id: 'parcel', categoryId: 'Errands', title: 'Pick up the parcel', urgency: 'low', position: 0 }
+      ]
+    )! }
+  }
+});
+
 export const buildDailySummaryFixture = (): DailySummaryInput => {
   const todoSection = buildTodoSection(fixtureTodoCategories, fixtureTodoTasks);
   const commuteSection = {
@@ -132,6 +172,7 @@ export const buildDailySummaryDenseAllActiveFixture = (): DailySummaryInput => {
         status: 'active',
         detail: 'Partly cloudy · Warszawa · Żółć and long summer forecast context for the release candidate.',
         content: {
+          locationLabel: 'Warszawa — Śródmieście',
           observedAtLocal: '2026-07-31T07:00',
           currentTemperatureCelsius: 18,
           minimumTemperatureCelsius: 14,
