@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest';
-import { google } from 'better-auth/social-providers';
+import { betterAuth } from 'better-auth';
+import { memoryAdapter } from 'better-auth/adapters/memory';
 
 const { getSession, linkSocialAccount } = vi.hoisted(() => ({
   getSession: vi.fn(),
@@ -72,32 +73,39 @@ describe('Google Calendar consent route', () => {
     expect(requestedScopes).not.toContain('https://www.googleapis.com/auth/calendar.events');
   });
 
-  test('requests offline access and renewed consent in the real Google Calendar authorization URL', async () => {
-    const { googleProviderOptions } = await vi.importActual<typeof import('$lib/server/auth')>(
+  test('requests offline access and renewed consent through the real account-link API', async () => {
+    const { authOptions, googleProviderOptions } = await vi.importActual<typeof import('$lib/server/auth')>(
       '$lib/server/auth'
     );
-    const provider = google(googleProviderOptions({
-      GOOGLE_CLIENT_ID: 'test-client',
-      GOOGLE_CLIENT_SECRET: 'test-secret'
-    }));
-    getSession.mockResolvedValue({ user: { id: 'user-1' } });
-    linkSocialAccount.mockImplementation(async ({ body }) => ({
-      response: {
-        url: (await provider.createAuthorizationURL({
-          state: 'test-state',
-          codeVerifier: 'test-code-verifier',
-          redirectURI: 'http://localhost:5174/api/auth/callback/google',
-          scopes: body.scopes,
-          additionalParams: body.additionalParams
-        })).toString()
+    const realAuth = betterAuth({
+      ...authOptions,
+      database: memoryAdapter({ user: [], account: [], session: [], verification: [] }),
+      databaseHooks: {},
+      secret: 'calendar-consent-test-secret-at-least-32-characters',
+      baseURL: 'http://localhost:5174',
+      emailAndPassword: { enabled: true },
+      socialProviders: {
+        google: googleProviderOptions({
+          GOOGLE_CLIENT_ID: 'test-client',
+          GOOGLE_CLIENT_SECRET: 'test-secret'
+        })
       },
-      headers: new Headers()
-    }));
+    });
+    const signedIn = await realAuth.api.signUpEmail({
+      body: { name: 'Daily User', email: 'user@example.com', password: 'calendar-test-password' },
+      returnHeaders: true
+    });
+    const cookie = signedIn.headers.getSetCookie().map((value) => value.split(';')[0]).join('; ');
+    getSession.mockImplementation((input) => realAuth.api.getSession(input));
+    linkSocialAccount.mockImplementation((input) => realAuth.api.linkSocialAccount(input));
 
     const response = await GET({
-      request: new Request('http://localhost/auth/google/calendar')
+      request: new Request('http://localhost:5174/auth/google/calendar', {
+        headers: { cookie }
+      })
     } as Parameters<typeof GET>[0]);
 
+    expect(response.status).toBe(303);
     const authorizationUrl = new URL(response.headers.get('location')!);
     expect(authorizationUrl.origin).toBe('https://accounts.google.com');
     expect(authorizationUrl.searchParams.get('access_type')).toBe('offline');
