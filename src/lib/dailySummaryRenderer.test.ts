@@ -39,7 +39,7 @@ describe('Daily Summary renderer', () => {
       'Your Daily Summary · Tuesday, 7 July'
     );
     expect(dailySummarySubject('test', generatedAt, 'America/New_York')).toBe(
-      'Test · Your Daily Summary · Tuesday, 7 July'
+      'Test · Your Daily Summary · Tuesday, 7 July · 08:00:00'
     );
   });
 

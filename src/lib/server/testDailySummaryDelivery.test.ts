@@ -59,7 +59,7 @@ describe('production Test Delivery path', () => {
       expect(payload).toEqual({
         from: env.RESEND_FROM_EMAIL,
         to: ['verification-recipient@example.com'],
-        subject: 'Test · Your Daily Summary · Friday, 31 July',
+        subject: 'Test · Your Daily Summary · Friday, 31 July · 07:00:00',
         html: generated.rendered.html,
         text: generated.rendered.text
       });

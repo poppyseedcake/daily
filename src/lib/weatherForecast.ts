@@ -365,6 +365,17 @@ export const weatherCodeDescription = (code: number) => {
   }
 };
 
+// Intensity comes from the forecast's WMO code, not precipitation probability.
+// https://open-meteo.com/en/docs#weathervariables
+export const weatherPrecipitationIntensityForCode = (code: number) => {
+  if ([0, 1, 2, 3, 45, 48].includes(code)) return 'None';
+  if ([51, 56, 61, 66, 71, 80, 85, 96].includes(code)) return 'Light';
+  if ([53, 63, 73, 81].includes(code)) return 'Moderate';
+  if ([55, 57, 65, 67, 75, 82, 86, 99].includes(code)) return 'Heavy';
+  // Snow grains and slight-or-moderate thunderstorms do not specify one intensity.
+  return 'Unknown';
+};
+
 const buildNormalizedWeatherSummaryInput = ({
   parsed,
   targetDate,

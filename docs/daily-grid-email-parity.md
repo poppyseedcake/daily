@@ -14,8 +14,8 @@ Classic Outlook receives conditional presentation tables. Responsive clients use
 equal-height table cells on desktop and full-width sections on narrow screens.
 The PNG assets are generated with `node scripts/generate-email-icons.mjs`.
 
-Live content takes precedence over synthetic prototype copy. The greeting remains
-`Good morning`; Weather includes the configured city, precipitation and forecast
+Live content takes precedence over synthetic prototype copy. The greeting uses the same time-of-day and first-name rules as the workspace,
+based on generation time in the User Time Zone. Weather includes the configured city, precipitation and forecast
 summary; Calendar includes all events and their Selected Calendar names; Todo
 includes all tasks without the prototype's JavaScript pagination. Plain text
 retains the full section content and urgency/traffic descriptions.
@@ -49,3 +49,31 @@ These checks establish renderer parity, not real Gmail delivery. After deploymen
 send a Test Delivery through Daily and inspect its received Gmail HTML and appearance.
 Real email-client verification is recorded separately using
 `docs/email-client-verification-record.md`.
+
+
+## Gmail follow-up
+
+Repeated Test Deliveries previously used the same dated subject. Gmail grouped
+those messages and hid unchanged Commute, Calendar and Todo content as quoted
+text behind “Show trimmed content”. Test subjects now include the local generation
+time through seconds to create separate conversations, following
+[Google’s guidance](https://support.google.com/mail/answer/5900?hl=en).
+Scheduled subjects already vary by local date.
+
+Gmail’s supported selector subset does not retain the previous `:first-child`
+border rule. The desktop center divider now uses an explicit left-cell class;
+classic Outlook uses an inline cell border. The browser regression removes
+pseudo-class selector rules before checking the actual borders. Column rules remain
+the stripped-head fallback; they do not substitute for a border in table layout.
+
+Weather shows `Precip. <percent>% (<intensity>)` under wind and condition text.
+Intensity is derived from the daily forecast’s
+[WMO weather code](https://open-meteo.com/en/docs?past_days=1#weathervariables),
+independently of probability. The labels are None, Light, Moderate, Heavy or
+Unknown when the code does not establish one intensity.
+
+Received Gmail acceptance must inspect the initial message before clicking any
+ellipsis: all four section headings and contents have positive geometry, no
+Gmail-added hidden quoted-content ancestor, and a real border on both left cells.
+The previous received-message assessment inspected expanded content and missed
+these two Gmail-specific failures; it does not establish this follow-up’s acceptance.

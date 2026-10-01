@@ -1325,7 +1325,7 @@ describe('Daily page server load', () => {
 
     expect(sentMessages).toEqual([
       expect.objectContaining({
-        subject: 'Test · Your Daily Summary · Tuesday, 7 July',
+        subject: 'Test · Your Daily Summary · Tuesday, 7 July · 08:00:00',
         to: 'user@example.com'
       })
     ]);

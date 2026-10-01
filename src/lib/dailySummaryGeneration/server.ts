@@ -38,6 +38,7 @@ export type UserDailySummaryGenerationOptions = {
 };
 
 export type UserDailySummaryGenerationDependencies = {
+  userNameStore?: { load(userId: string): Promise<string | undefined> };
   userLifecycleStore: { isActive(userId: string): Promise<boolean> };
   configurationStore: Pick<UserSummaryConfigurationStore, 'load'>;
   todoStore: Pick<UserTodoPersistenceStore, 'load'>;
@@ -54,6 +55,7 @@ export type UserDailySummaryGenerationDependencies = {
 };
 
 export const createUserDailySummaryGenerator = ({
+  userNameStore,
   userLifecycleStore,
   configurationStore,
   todoStore,
@@ -84,7 +86,7 @@ export const createUserDailySummaryGenerator = ({
         const generatedAt = snapshot?.generatedAt ?? requestedAt;
         const configuration = snapshot?.configuration ?? requestedConfiguration ??
           (await loadUserSummaryConfiguration(configurationStore, userId));
-        const [todoContext, weatherContext, commuteContext, loadedCalendarEvents] =
+        const [todoContext, weatherContext, commuteContext, loadedCalendarEvents, userName] =
           await Promise.all([
             loadUserTodoStateSafely(todoStore, userId, {
               enabled: !configuration.sectionPauses.todo
@@ -113,12 +115,14 @@ export const createUserDailySummaryGenerator = ({
                       userTimeZone: configuration.userTimeZone,
                       now: generatedAt
                     })
-                    .then((result) => result.calendarEvents)
+                    .then((result) => result.calendarEvents),
+            userNameStore?.load(userId)
           ]);
 
         return {
           generatedAt,
           context: {
+            userName,
             configuration,
             todoCategories: todoContext.state.todoCategories,
             todoTasks: todoContext.state.todoTasks,
