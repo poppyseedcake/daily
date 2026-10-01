@@ -494,7 +494,7 @@ const buildWeatherGenerationState = async ({
       : displayWeatherSection;
 
     return content
-      ? { status: 'active', detail: state.detail, content }
+      ? { status: 'active', detail: state.detail, content: { ...content, locationLabel: weatherLocation.label } }
       : { status: 'active', detail: state.detail };
   } catch {
     return {

@@ -50,6 +50,22 @@ describe('production Test Delivery path', () => {
         requestedAt: '2026-07-31T05:00:00.000Z',
         generated
       })).resolves.toEqual({ outcome: 'sent' });
+
+      // Assert the actual provider submission, so a separate legacy email template
+      // cannot pass a renderer-only visual regression check.
+      const [url, request] = fetch.mock.calls.at(-1)!;
+      expect(url).toBe('https://api.resend.com/emails');
+      const payload = JSON.parse(request.body);
+      expect(payload).toEqual({
+        from: env.RESEND_FROM_EMAIL,
+        to: ['verification-recipient@example.com'],
+        subject: 'Test · Your Daily Summary · Friday, 31 July',
+        html: generated.rendered.html,
+        text: generated.rendered.text
+      });
+      expect(payload.html).toContain('data-daily-brand');
+      expect(payload.html).toContain('max-width:790px');
+      expect(payload.html).not.toContain('<svg');
     }
 
     expect(fetch).toHaveBeenCalledTimes(5);

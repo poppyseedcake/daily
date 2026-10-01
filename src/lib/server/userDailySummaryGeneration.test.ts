@@ -217,7 +217,7 @@ describe('User Daily Summary generation', () => {
     expect(second.rendered.text.indexOf('Weather')).toBeLessThan(second.rendered.text.indexOf('Commute'));
     expect(second.rendered.text.indexOf('Commute')).toBeLessThan(second.rendered.text.indexOf('Calendar'));
     expect(second.rendered.text.indexOf('Calendar')).toBeLessThan(second.rendered.text.indexOf('Todo'));
-    expect(second.rendered.html).toContain('max-width:680px');
+    expect(second.rendered.html).toContain('max-width:790px');
     expect(second.rendered.html).not.toContain('background-color:#111827');
     expect(weatherProvider.fetchDailyForecast).toHaveBeenCalledTimes(2);
     expect(loadCalendarEvents).toHaveBeenCalledTimes(2);

@@ -68,7 +68,7 @@ describe('Daily Summary renderer', () => {
       expect(output.indexOf('Commute')).toBeLessThan(output.indexOf('Calendar'));
       expect(output.indexOf('Calendar')).toBeLessThan(output.indexOf('Todo'));
     }
-    expect(rendered.html).toContain('max-width:680px');
+    expect(rendered.html).toContain('max-width:790px');
     expect(rendered.html).not.toContain('background-color:#111827');
   });
 
@@ -153,7 +153,8 @@ describe('Daily Summary renderer', () => {
       });
 
       expect(rendered.html).toContain('Work &amp; Focus');
-      expect(rendered.html).toContain('<time>10:00</time> Planning');
+      expect(rendered.html).toContain('<time>10:00</time>');
+      expect(rendered.html).toContain('>Planning</strong>');
       expect(rendered.text).toContain('10:00 Planning (Work & Focus)');
       if (calendarColor === '#0b8043') {
         expect(rendered.html).toContain('background-color:#0b8043');
