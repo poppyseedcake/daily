@@ -103,21 +103,50 @@ describe('Google authentication HTTP flow', () => {
     expect(response.headers.get('location')).toContain('error=');
     expect(cookieList(response).some(value => value.includes('session_token='))).toBe(false);
   });
-  test('registration persists Terms and a returning user signs in without them', async () => {
+  test('keeps the validated acceptance when the Terms cookie expires during account creation', async () => {
+    signInSocial.mockImplementation(realSignIn);
+    const start = await submit({ intent: 'signup', termsAccepted: 'on' });
+    const { auth, authOptions } = await server.ssrLoadModule('/src/lib/server/auth.ts');
+    const gate = authOptions.databaseHooks.user.create;
+    const before = gate.before;
+    const validated = vi.spyOn(gate, 'before').mockImplementation(async (...args) => {
+      const result = await before(...args);
+      vi.useFakeTimers({ toFake: ['Date'] });
+      vi.setSystemTime(Date.now() + 16 * 60 * 1000);
+      return result;
+    });
+    try {
+      const registered = await finishGoogle(start);
+      expect(validated).toHaveBeenCalledOnce();
+      expect(registered.headers.get('location')).toBe('/?localSetupImport=1');
+      const session = await auth.api.getSession({ headers: new Headers({ cookie: cookieHeader(registered) }) });
+      const { userLegalConfirmationStore } = await server.ssrLoadModule('/src/lib/server/db/userLegalConfirmationStore.ts');
+      const { parseLegalConfirmationCookie } = await server.ssrLoadModule('/src/lib/server/legalConfirmation.ts');
+      expect(parseLegalConfirmationCookie(new Headers({ cookie: cookieHeader(start) }))).toBeNull();
+      expect(await userLegalConfirmationStore.load(session.user.id)).toEqual({
+        termsVersion: '2026-10-02', termsAcceptedAt: expect.any(String)
+      });
+    } finally {
+      validated.mockRestore();
+      vi.useRealTimers();
+    }
+  });
+  test('registration persists Terms before any workspace load and preserves them on later sign-in', async () => {
     signInSocial.mockImplementation(realSignIn);
     const start = await submit({ intent: 'signup', termsAccepted: 'on' });
     const registered = await finishGoogle(start);
     expect(registered.headers.get('location')).toBe('/?localSetupImport=1');
     expect(cookieList(registered).some(value => value.includes('session_token='))).toBe(true);
-    const landing = await fetch(`${serverOrigin}/?localSetupImport=1`, { headers: { cookie: `${cookieHeader(start)}; ${cookieHeader(registered)}` } });
-    expect(landing.status).toBe(200);
-    expect(await landing.text()).not.toContain('Confirm your Daily account');
     const { auth } = await server.ssrLoadModule('/src/lib/server/auth.ts');
     const session = await auth.api.getSession({ headers: new Headers({ cookie: cookieHeader(registered) }) });
     const { userLegalConfirmationStore } = await server.ssrLoadModule('/src/lib/server/db/userLegalConfirmationStore.ts');
-    expect(await userLegalConfirmationStore.load(session.user.id)).toEqual({ termsVersion: '2026-10-02', termsAcceptedAt: expect.any(String) });
+    const accepted = await userLegalConfirmationStore.load(session.user.id);
+    expect(accepted).toEqual({ termsVersion: '2026-10-02', termsAcceptedAt: expect.any(String) });
+    // Never load the workspace; abandon its redirect and discard the Terms cookie.
+    // This is also what remains in the browser once that cookie has expired.
     const returned = await finishGoogle(await submit({ intent: 'signin' }));
     expect(returned.headers.get('location')).toBe('/?localSetupImport=1');
     expect(cookieList(returned).some(value => value.includes('session_token='))).toBe(true);
-  }, 15_000);
+    expect(await userLegalConfirmationStore.load(session.user.id)).toEqual(accepted);
+  });
 });

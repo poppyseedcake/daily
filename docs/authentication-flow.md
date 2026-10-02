@@ -31,8 +31,11 @@ through Sign in returns to the registration modal. The user-creation hook still
 rejects registration without a valid Terms cookie. Existing accounts can sign in
 without that cookie. Google cancellation/errors reopen the relevant modal.
 
-The authenticated landing stores new Terms acceptance only when no record exists,
-then clears the temporary cookie. Visitor Local Setup import and Calendar's separate
+The account-creation callback inserts the Daily User and validated Terms acceptance
+in the same SQLite statement before successful session creation. Request-scoped
+acceptance is captured at the creation gate so cookie expiry later in the callback
+cannot lose it. The workspace only clears the temporary cookie; no workspace load
+is required to preserve acceptance. Visitor Local Setup import and Calendar's separate
 permission flow retain their existing behavior. New consent records hold Terms time
 and version; the old nullable age column is retained as historical data and receives
 no new values. There is no destructive database migration.
@@ -47,9 +50,11 @@ this change does not claim legal certification.
 ## Verification
 
 HTTP integration exercises the real Better Auth OAuth callback, account/session
-creation and authenticated landing with a simulated Google provider. It covers signup,
+creation with a simulated Google provider, without rendering the workspace. It covers signup,
 returning sign-in, implicit signup rejection, missing/tampered/expired consent and
-cross-origin submissions. Browser coverage checks intent switching, native form
+cross-origin submissions. Regression coverage abandons the workspace redirect and
+discards the Terms cookie before another sign-in; a separate test expires the cookie
+between the creation gate and the account hook. Browser coverage checks intent switching, native form
 submission, errors, dialog handoffs, keyboard behavior, task-draft preservation,
 mobile layout and the no-JavaScript fallback. Live Google authorization is not
 performed in the automated tests.

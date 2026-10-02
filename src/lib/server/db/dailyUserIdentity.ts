@@ -1,6 +1,7 @@
 import type { Temporal } from '@js-temporal/polyfill';
 import { calculateNextSummaryAt } from '$lib/nextSummarySchedule';
 import { defaultSummaryConfiguration } from '$lib/summaryConfiguration';
+import type { LegalConfirmation } from '$lib/legalConfirmation';
 
 export type DailyUserIdentity = {
   id: string;
@@ -9,7 +10,7 @@ export type DailyUserIdentity = {
 };
 
 export type DailyUserIdentityStore = {
-  upsertGoogleUser: (identity: DailyUserIdentity, initialNextSummaryAt: string) => Promise<void>;
+  upsertGoogleUser: (identity: DailyUserIdentity, initialNextSummaryAt: string, confirmation?: LegalConfirmation) => Promise<void>;
 };
 
 export type DailyUserIdentityOutcome =
@@ -33,7 +34,8 @@ const hasRequiredIdentity = (identity: DailyUserIdentity) =>
 export const persistDailyUserIdentity = async (
   store: DailyUserIdentityStore,
   identity: DailyUserIdentity,
-  referenceInstant: Temporal.Instant
+  referenceInstant: Temporal.Instant,
+  confirmation?: LegalConfirmation
 ): Promise<{ outcome: DailyUserIdentityOutcome }> => {
   if (!hasRequiredIdentity(identity)) {
     return { outcome: 'invalid-identity' };
@@ -44,7 +46,7 @@ export const persistDailyUserIdentity = async (
       defaultSummaryConfiguration,
       referenceInstant
     )!.toString();
-    await store.upsertGoogleUser(identity, initialNextSummaryAt);
+    await store.upsertGoogleUser(identity, initialNextSummaryAt, confirmation);
   } catch (error) {
     if (error instanceof DailyUserIdentityEmailConflictError) {
       return { outcome: 'email-already-owned' };

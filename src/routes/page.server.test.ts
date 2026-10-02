@@ -194,19 +194,6 @@ vi.mock('$lib/server/db/userLifecycleStore', () => ({
   }
 }));
 
-vi.mock('$lib/server/db/userLegalConfirmationStore', () => ({
-  userLegalConfirmationStore: {
-    async load() {
-      return {
-        ageConfirmedAt: '2026-09-21T00:00:00.000Z',
-        termsAcceptedAt: '2026-09-21T00:00:00.000Z',
-        termsVersion: '2026-09-21'
-      };
-    },
-    async save() {}
-  }
-}));
-
 vi.mock('$lib/server/db/accountDeletionStore', () => ({
   accountDeletionStore: {
     startDeleting: deletionStart,
@@ -544,13 +531,15 @@ const { actions, load } = await import('./+page.server');
 
 const loadPage = () =>
   load({
-    request: new Request('http://localhost/')
-  } as Parameters<typeof load>[0]);
+    request: new Request('http://localhost/'),
+    cookies: { get: () => undefined, delete: vi.fn() }
+  } as unknown as Parameters<typeof load>[0]);
 
 const loadPageAt = (url: string) =>
   load({
-    request: new Request(url)
-  } as Parameters<typeof load>[0]);
+    request: new Request(url),
+    cookies: { get: () => undefined, delete: vi.fn() }
+  } as unknown as Parameters<typeof load>[0]);
 
 const sendTestDailySummary = () =>
   actions.sendTestDailySummary({

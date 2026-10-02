@@ -47,8 +47,6 @@ import { fail } from '@sveltejs/kit';
 import {
   legalConfirmationCookieName
 } from '$lib/legalConfirmation';
-import { userLegalConfirmationStore } from '$lib/server/db/userLegalConfirmationStore';
-import { parseLegalConfirmationCookie } from '$lib/server/legalConfirmation';
 
 const validationFailureResponse = {
   outcome: 'failed',
@@ -131,15 +129,8 @@ export const load = async ({ request, cookies }) => {
     authState = { mode: 'visitor' };
   }
 
-  if (authState.mode === 'user') {
-    const pendingLegalConfirmation = parseLegalConfirmationCookie(request.headers);
-    if (pendingLegalConfirmation) {
-      const storedLegalConfirmation = await userLegalConfirmationStore.load(authState.userId);
-      if (!storedLegalConfirmation) {
-        await userLegalConfirmationStore.save(authState.userId, pendingLegalConfirmation);
-      }
-      cookies.delete(legalConfirmationCookieName, { path: '/' });
-    }
+  if (authState.mode === 'user' && cookies.get(legalConfirmationCookieName)) {
+    cookies.delete(legalConfirmationCookieName, { path: '/' });
   }
 
   const calendarConnectionResult = new URL(request.url).searchParams.get('calendarConnection');

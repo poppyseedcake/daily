@@ -40,6 +40,32 @@ describe('SQLite Daily User identity store', () => {
     });
   });
 
+  test('inserts registration acceptance with the User and preserves it on later identity updates', async () => {
+    const store = createDailyUserIdentityStore(drizzle(sqlite, { schema }));
+    const identity = { id: 'user-1', googleSubject: 'google-user-1', email: 'user-1@example.com' };
+    const confirmation = { termsAcceptedAt: '2026-10-02T07:00:00.000Z', termsVersion: '2026-10-02' };
+
+    await store.upsertGoogleUser(identity, '2026-10-03T07:00:00Z', confirmation);
+    const acceptance = () => sqlite.prepare(
+      'select terms_accepted_at, terms_version, age_confirmed_at from users where id = ?'
+    ).get(identity.id);
+    expect(acceptance()).toEqual({
+      terms_accepted_at: confirmation.termsAcceptedAt,
+      terms_version: confirmation.termsVersion,
+      age_confirmed_at: null
+    });
+
+    await store.upsertGoogleUser(identity, '2026-10-04T07:00:00Z');
+    await store.upsertGoogleUser(identity, '2026-10-04T07:00:00Z', {
+      termsAcceptedAt: '2026-10-03T07:00:00.000Z', termsVersion: 'another-version'
+    });
+    expect(acceptance()).toEqual({
+      terms_accepted_at: confirmation.termsAcceptedAt,
+      terms_version: confirmation.termsVersion,
+      age_confirmed_at: null
+    });
+  });
+
   test('does not update or reschedule a deleting User during a repeated sign-in callback', async () => {
     sqlite.prepare(
       "insert into users (id, google_subject, email, lifecycle_state) values (?, ?, ?, 'deleting')"
