@@ -6,6 +6,8 @@ The welcome screen explains that Daily combines Todo, Weather, Commute and Googl
 
 “Show me” starts a five-stop tour of the actual board: task capture, Weather, Commute, Calendar and Mail delivery. Each stop has the feature name, a short explanation, progress, Skip, Back (after the first step) and Next (Done on the final step). Headlines describe the product or feature directly; there are no slogan headings, extra feature badges, prototype labels or decorative step icons.
 
+Weather, Commute and Calendar also show a short example of that section's email content beneath their explanation. They reuse the welcome email's sample content and styling, with a single “Example email” label and no repeated feature heading.
+
 The introduction opens once per browser on the first visit to `/`. Skip, Done and Escape dismiss it and remember dismissal independently of Visitor Local Setup. Settings → Show me around reopens the welcome screen. Clearing browser storage allows automatic onboarding again. If reading browser storage is blocked, auto-opening is skipped; manual replay remains available. This preference is local to the browser, not synchronised to the account.
 
 The tour only explains the interface. It does not change tasks, configuration, connections or delivery, and never initiates sign-in or sends an email. The native dialog provides modal keyboard focus; closing restores scrolling and focus. On mobile, the highlighted feature sits above the guide, which stays within the viewport. No motion is required.

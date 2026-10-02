@@ -24,6 +24,7 @@
       : 'Set the delivery time and time zone for your email. You can pause delivery at any time.' }
   ]);
   const current = $derived(steps[step]);
+  const exampleSection = $derived(step === 1 ? 'weather' : step === 2 ? 'commute' : step === 3 ? 'calendar' : null);
   const features = [
     { icon: ListTodo, name: 'Todo', text: 'Your open tasks' },
     { icon: CloudSun, name: 'Weather', text: 'A forecast for your city' },
@@ -112,6 +113,7 @@
     <section bind:this={guide} class="guide" style:left={`${guidePosition.left}px`} style:top={`${guidePosition.top}px`}>
       <h2 id="onboarding-title" tabindex="-1" bind:this={heading}>{current.title}</h2>
       <p>{current.text}</p>
+      {#if exampleSection}<div class="guide__example"><SummaryExample section={exampleSection} /></div>{/if}
       <footer><button class="secondary" onclick={onfinish}>Skip</button><span class="progress" aria-label={`Step ${step + 1} of ${steps.length}`}>{step + 1} / {steps.length}</span><div>{#if step > 0}<button class="secondary" onclick={() => step -= 1}>Back</button>{/if}<button class="primary" onclick={() => step < steps.length - 1 ? step += 1 : onfinish()}>{step === steps.length - 1 ? 'Done' : 'Next'}</button></div></footer>
     </section>
   {/if}
@@ -149,6 +151,7 @@
   .guide { position: fixed; width: 360px; max-width: calc(100vw - 32px); padding: 24px; background: #fff; border-radius: 12px; box-shadow: 0 12px 40px #18201c29; }
   .guide h2 { font-size: 23px; margin-bottom: 12px; }
   .guide p { font-size: 14px; }
+  .guide__example { margin-top: 16px; border-top: 1px solid #dfe3dc; padding-top: 12px; }
   .guide footer { margin-top: 20px; gap: 8px; }
   .guide footer .secondary { padding-inline: 8px; }
   .progress { color: #626c5c; font-size: 11px; margin-right: auto; }

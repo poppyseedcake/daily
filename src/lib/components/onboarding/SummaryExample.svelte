@@ -1,15 +1,16 @@
 <script lang="ts">
   import { CalendarDays, CloudSun, ListTodo, MapPin } from '@lucide/svelte';
+  let { section = null }: { section?: 'weather' | 'commute' | 'calendar' | null } = $props();
 </script>
 
-<article aria-label="Example Daily Summary" class="summary-example">
-  <header><strong>Daily</strong><span>Example email</span></header>
+<article aria-label={section ? `Example ${section} email section` : 'Example Daily Summary'} class="summary-example" class:summary-example--excerpt={section !== null}>
+  <header>{#if !section}<strong>Daily</strong>{/if}<span>Example email</span></header>
   <div class="summary-example__body">
-    <h3>Daily Summary</h3>
-    <section><h4><CloudSun size={17} aria-hidden="true" />Weather</h4><p><strong>16°</strong> Partly cloudy · Warsaw</p></section>
-    <section><h4><MapPin size={17} aria-hidden="true" />Commute</h4><p>Home → Office <strong>25 min</strong></p><small>Moderate traffic</small></section>
-    <section><h4><CalendarDays size={17} aria-hidden="true" />Calendar</h4><p><time>09:30</time> Team meeting</p><p><time>14:00</time> Project review</p></section>
-    <section><h4><ListTodo size={17} aria-hidden="true" />Todo</h4><p>Finish the proposal</p><p>Book a dentist appointment</p></section>
+    {#if !section}<h3>Daily Summary</h3>{/if}
+    {#if !section || section === 'weather'}<section class="weather">{#if !section}<h4><CloudSun size={17} aria-hidden="true" />Weather</h4>{/if}<p><strong>16°</strong> Partly cloudy · Warsaw</p></section>{/if}
+    {#if !section || section === 'commute'}<section>{#if !section}<h4><MapPin size={17} aria-hidden="true" />Commute</h4>{/if}<p>Home → Office <strong>25 min</strong></p><small>Moderate traffic</small></section>{/if}
+    {#if !section || section === 'calendar'}<section class="calendar">{#if !section}<h4><CalendarDays size={17} aria-hidden="true" />Calendar</h4>{/if}<p><time>09:30</time> Team meeting</p><p><time>14:00</time> Project review</p></section>{/if}
+    {#if !section}<section class="todo"><h4><ListTodo size={17} aria-hidden="true" />Todo</h4><p>Finish the proposal</p><p>Book a dentist appointment</p></section>{/if}
   </div>
 </article>
 
@@ -24,10 +25,15 @@
   section:last-child { padding-bottom: 0; }
   h4 { display: flex; align-items: center; gap: 9px; margin: 0 0 9px; color: #496238; font-size: 12px; font-weight: 650; line-height: 1.4; }
   p { display: flex; align-items: baseline; gap: 10px; justify-content: space-between; margin: 5px 0 0; font-size: 12px; line-height: 1.5; }
-  section:first-of-type p { justify-content: start; }
-  section:first-of-type p strong { font-size: 27px; line-height: 1.1; font-weight: 500; }
+  .weather p { justify-content: start; }
+  .weather p strong { font-size: 27px; line-height: 1.1; font-weight: 500; }
   time, small { color: #626c5c; font-size: 11px; }
   small { display: block; margin-top: 5px; }
   time { min-width: 34px; }
-  section:nth-of-type(3) p, section:nth-of-type(4) p { justify-content: start; }
+  .calendar p, .todo p { justify-content: start; }
+  .summary-example--excerpt { border: 0; border-radius: 0; background: #f7f8f5; }
+  .summary-example--excerpt header { padding: 12px 14px 0; border: 0; }
+  .summary-example--excerpt header span { font-size: 10px; }
+  .summary-example--excerpt .summary-example__body { padding: 10px 14px 14px; }
+  .summary-example--excerpt section { padding: 0; border: 0; }
 </style>
