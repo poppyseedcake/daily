@@ -9,7 +9,7 @@ test('first visit explains Daily, then tours real features without changing setu
   const intro = page.getByRole('dialog', { name: 'Your daily summary, by email.' });
   await expect(intro).toBeVisible();
   await expect(intro.getByRole('article', { name: 'Example Daily Summary' })).toBeVisible();
-  await expect(intro.locator('.daily-logo img')).toHaveAttribute('src', /daily-mark\.svg$/);
+  await expect(intro.locator('.welcome__intro .daily-logo img')).toHaveAttribute('src', /daily-mark\.svg$/);
   await expect(page.getByLabel('New Todo Task')).toBeEnabled();
   const setup = await page.evaluate(() => localStorage.getItem('daily.visitorLocalSetup.v3'));
   await intro.getByRole('button', { name: 'Show me', exact: true }).click();

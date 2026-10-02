@@ -125,7 +125,7 @@
   .daily-onboarding::backdrop { background: #18201c70; }
   .daily-onboarding--tour { padding: 0; overflow: hidden; }
   .daily-onboarding--tour::backdrop { background: transparent; }
-  .welcome { width: min(900px, 100%); display: grid; grid-template-columns: 1fr 1fr; border-radius: 16px; overflow: hidden; background: #fff; box-shadow: 0 20px 64px #18201c29; }
+  .welcome { width: min(1160px, 100%); display: grid; grid-template-columns: minmax(340px, .9fr) minmax(0, 1.7fr); border-radius: 16px; overflow: hidden; background: #fff; box-shadow: 0 20px 64px #18201c29; }
   .welcome__intro { padding: 32px; }
   h2 { margin: 0; color: #172d52; letter-spacing: -.025em; font-weight: 650; line-height: 1.2; }
   h2:focus { outline: none; }
@@ -148,13 +148,16 @@
   .secondary:hover { background: #f2f5ee; color: #18201c; }
   button:focus-visible { outline: 2px solid #587542; outline-offset: 3px; }
   .spotlight { position: fixed; border: 2px solid #587542; border-radius: 10px; box-shadow: 0 0 0 300vmax #18201c66; pointer-events: none; }
-  .guide { position: fixed; width: 360px; max-width: calc(100vw - 32px); padding: 24px; background: #fff; border-radius: 12px; box-shadow: 0 12px 40px #18201c29; }
+  .guide { position: fixed; width: 420px; max-width: calc(100vw - 32px); padding: 24px; background: #fff; border-radius: 12px; box-shadow: 0 12px 40px #18201c29; }
   .guide h2 { font-size: 23px; margin-bottom: 12px; }
   .guide p { font-size: 14px; }
-  .guide__example { margin-top: 16px; border-top: 1px solid #dfe3dc; padding-top: 12px; }
+  .guide__example { margin-top: 16px; }
   .guide footer { margin-top: 20px; gap: 8px; }
   .guide footer .secondary { padding-inline: 8px; }
   .progress { color: #626c5c; font-size: 11px; margin-right: auto; }
+  @media (max-width: 1000px) {
+    .welcome { grid-template-columns: 1fr; width: min(720px, 100%); }
+  }
   @media (max-width: 759px) {
     :global(body:has(.daily-onboarding--tour[open]) .daily-board-shell) { padding-bottom: 60vh; }
     .guide { width: calc(100vw - 32px); max-height: calc(100dvh - 160px); overflow: auto; padding: 20px; }
