@@ -151,6 +151,90 @@ describe('OpenAI Weather Summary provider', () => {
     });
   });
 
+  test.each([
+    'A cloudy day with mild winds.',
+    'The day stays cloudy with mild winds.',
+    'It stays cloudy throughout the day.',
+    'This afternoon remains cloudy.',
+    'Cloudy skies with no rain expected.',
+    'Cloudy skies without rain or snow.',
+    'Rain is not expected under cloudy skies.',
+    'Cloudy skies with rain unlikely.',
+    'Cloudy skies with no heavy rain expected.'
+  ])('accepts natural weather wording and grounded negative claims: %s', async (summary) => {
+    const provider = createOpenAiWeatherSummaryProvider({
+      apiKey: 'test-key',
+      fetcher: vi.fn().mockResolvedValue(new Response(JSON.stringify({
+        status: 'completed', output_text: JSON.stringify({ summary })
+      })))
+    });
+
+    await expect(provider.summarize(normalizedInput)).resolves.toEqual({
+      outcome: 'available', sentence: summary
+    });
+  });
+
+  test.each([
+    'Cloudy skies with no rain, but snow expected.',
+    'No rain expected, with heavy snow later.',
+    'No rain expected and snow showers later.',
+    'A rainy day with mild winds.',
+    'This message has been delivered.',
+    'Hello, cloudy skies today.',
+    'Warsaw is cloudy today.',
+    'The cloudy weather means you should carry an umbrella.'
+  ])('still rejects unsupported claims and non-weather content: %s', async (summary) => {
+    const provider = createOpenAiWeatherSummaryProvider({
+      apiKey: 'test-key',
+      fetcher: vi.fn().mockResolvedValue(new Response(JSON.stringify({
+        status: 'completed', output_text: JSON.stringify({ summary })
+      })))
+    });
+
+    await expect(provider.summarize(normalizedInput)).resolves.toEqual({ outcome: 'unavailable' });
+  });
+
+  test.each([
+    'Rain expected today, with no snow.',
+    'No snow expected, but rain later.',
+    'No snow expected and rain later.',
+    'Rain is expected with snow unlikely.'
+  ])('checks positive and negative claims independently: %s', async (summary) => {
+    const input = {
+      ...normalizedInput,
+      day: { ...normalizedInput.day, weatherCode: 61 },
+      remainingHours: normalizedInput.remainingHours.map((hour) => ({ ...hour, weatherCode: 61 }))
+    };
+    const provider = createOpenAiWeatherSummaryProvider({
+      apiKey: 'test-key',
+      fetcher: vi.fn().mockResolvedValue(new Response(JSON.stringify({
+        status: 'completed', output_text: JSON.stringify({ summary })
+      })))
+    });
+
+    await expect(provider.summarize(input)).resolves.toEqual({ outcome: 'available', sentence: summary });
+  });
+
+  test.each([
+    ['No rain expected today.', { weatherCode: 61 }],
+    ['Rain is not expected today.', { weatherCode: 61 }],
+    ['Cloudy skies with no rain expected.', { precipitation: 1 }],
+    ['Cloudy skies without snow.', { snowfall: 1 }]
+  ])('rejects negative claims contradicted by forecast values: %s', async (summary, changes) => {
+    const input = {
+      ...normalizedInput,
+      remainingHours: normalizedInput.remainingHours.map((hour) => ({ ...hour, ...changes }))
+    };
+    const provider = createOpenAiWeatherSummaryProvider({
+      apiKey: 'test-key',
+      fetcher: vi.fn().mockResolvedValue(new Response(JSON.stringify({
+        status: 'completed', output_text: JSON.stringify({ summary })
+      })))
+    });
+
+    await expect(provider.summarize(input)).resolves.toEqual({ outcome: 'unavailable' });
+  });
+
   test('accepts a grounded short sentence beginning with Cloudy', async () => {
     const provider = createOpenAiWeatherSummaryProvider({
       apiKey: 'test-key',

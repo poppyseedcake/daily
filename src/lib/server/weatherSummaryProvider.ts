@@ -104,7 +104,8 @@ const weatherSummaryDeveloperInstruction = (prompt: string, maxCharacters: numbe
     ? prompt.replaceAll('{{maxCharacters}}', String(maxCharacters))
     : `${prompt} Use at most ${maxCharacters} characters, including spaces and punctuation.`;
 
-const weatherSummaryLeadPattern = /^(?:after|around|at|before|becomes?|by|chance|clear(?:er|ing)?|cloud(?:y|s)?|cold|conditions?|cool|drizzle|dry|expect(?:ed)?|fog(?:gy)?|freezing|gusts?|hail|heavy|hot|later|likely|light|mainly|mild|mostly|no|overcast|partly|possible|precipitation|rain(?:y)?|showers?|snow(?:y)?|some|storms?|strong|sun(?:ny)?|temperatures?|thunderstorms?|today|unsettled|variable|visibility|warm|weather|wet|winds?)\b/i;
+const weatherSummaryLeadPattern = /^(?:a|an|the|this|it|there|during|throughout|overall|after|around|at|before|becomes?|by|chance|clear(?:er|ing)?|cloud(?:y|s)?|cold|conditions?|cool|drizzle|dry|expect(?:ed)?|fog(?:gy)?|freezing|gusts?|hail|heavy|hot|later|likely|light|mainly|mild|mostly|no|overcast|partly|possible|precipitation|rain(?:y)?|showers?|snow(?:y)?|some|storms?|strong|sun(?:ny)?|temperatures?|thunderstorms?|today|unsettled|variable|visibility|warm|weather|wet|winds?)\b/i;
+const weatherSummaryTopicPattern = /\b(?:weather|conditions?|temperatures?|winds?|gusts?|clear|cloud(?:y|s)?|overcast|sun(?:ny|shine)?|rain(?:y)?|drizzle|showers?|snow(?:y|fall)?|flurr(?:y|ies)|fog(?:gy)?|mist(?:y)?|hail|lightning|storms?|thunderstorms?|precipitation|dry|wet|cold|cool|mild|warm|hot|freezing|visibility)\b/i;
 const unsupportedSummaryTermsPattern = /\b(?:advised|avoid|bring|carry|coat|grab|jacket|pack|recommend(?:ed)?|should|suggest(?:ed)?|sunscreen|take|umbrella|wear)\b/i;
 
 type WeatherClaimFamily = Exclude<WeatherConditionCategory, 'unknown'>;
@@ -121,6 +122,10 @@ const weatherClaimPatterns: ReadonlyArray<{
   { pattern: /\b(?:flurr(?:y|ies)|snow(?:fall|y)?)\b/i, families: ['snow'] },
   { pattern: /\b(?:hail|lightning|storm(?:s)?|thunder(?:storm)?s?)\b/i, families: ['thunderstorm'] }
 ];
+
+// Negation applies to the adjacent condition or a coordinated list, not a whole sentence.
+const negativeWeatherClaimPrefix = /\b(?:no|without)\s+(?:(?:any|light|heavy|moderate|persistent|significant|and|or|nor|rain|showers?|drizzle|snow|flurries|fog|mist|hail|lightning|storms?|thunderstorms?|clouds?)\s+)*$/i;
+const negativeWeatherClaimSuffix = /^(?:[- ]free\b|\s+(?:(?:is|are|will be)\s+)?(?:not\s+(?:expected|forecast|likely|present)|unlikely|absent)\b)/i;
 
 export const createOpenAiWeatherSummaryProvider = ({
   apiKey = env.OPENAI_API_KEY,
@@ -299,6 +304,7 @@ const validateWeatherSummarySentence = (
     !/[.!?]$/.test(sentence) ||
     sentence.split(/[.!?]+(?=\s|$)/).filter(Boolean).length !== 1 ||
     !weatherSummaryLeadPattern.test(sentence) ||
+    !weatherSummaryTopicPattern.test(sentence) ||
     unsupportedSummaryTermsPattern.test(sentence) ||
     !hasGroundedWeatherClaims(sentence, input)
   ) {
@@ -326,9 +332,22 @@ const hasGroundedWeatherClaims = (
       .flatMap(weatherClaimFamiliesForCode)
   );
 
-  return weatherClaimPatterns.every(({ pattern, families }) =>
-    !pattern.test(sentence) || families.some((family) => supportedFamilies.has(family))
-  );
+  return weatherClaimPatterns.every(({ pattern, families }) => {
+    const matches = sentence.matchAll(new RegExp(pattern.source, 'gi'));
+    return Array.from(matches).every((match) => {
+      const negated = negativeWeatherClaimPrefix.test(sentence.slice(0, match.index)) ||
+        negativeWeatherClaimSuffix.test(sentence.slice(match.index + match[0].length));
+      const supported = families.some((family) => supportedFamilies.has(family));
+      if (!negated) return supported;
+
+      // Codes and measured precipitation can both contradict an absence claim.
+      const precipitationContradicts = input.remainingHours.some((hour) =>
+        (families.includes('rain') && hour.precipitation > 0 && hour.snowfall === 0) ||
+        (families.includes('snow') && hour.snowfall > 0)
+      );
+      return !supported && !precipitationContradicts;
+    });
+  });
 };
 
 const weatherClaimFamiliesForCode = (code: number): WeatherClaimFamily[] => {
