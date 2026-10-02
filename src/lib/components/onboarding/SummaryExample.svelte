@@ -51,8 +51,8 @@
     {#if !section || section === 'calendar'}
       <section class="email-cell calendar">
         <h4><CalendarDays size={18} aria-hidden="true" />Calendar<span class="week-number">Week 40</span></h4>
-        <div class="week" aria-label="Next seven days, Friday 2 to Thursday 8 October">
-          {#each days as day, index}<div class:today={index === 0}><span>{day}</span><strong aria-current={index === 0 ? 'date' : undefined}>{index + 2}</strong></div>{/each}
+        <div class="week" aria-label="Sample week, Friday 2 to Thursday 8 October">
+          {#each days as day, index}<div class:today={index === 0}><span>{day}</span><strong>{index + 2}</strong></div>{/each}
         </div>
         <div class="events">
           {#each calendar as day}
