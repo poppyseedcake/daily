@@ -23,6 +23,7 @@ export type WeatherConditionCategory =
   | 'unknown';
 
 export type WeatherDisplayForecast = {
+  locationLabel?: string;
   observedAtLocal: string;
   currentTemperatureCelsius: number;
   minimumTemperatureCelsius: number;
@@ -320,7 +321,7 @@ export const weatherConditionCategoryForCode = (code: number): WeatherConditionC
   if ([45, 48].includes(code)) return 'fog';
   if ([51, 53, 55, 56, 57, 61, 63, 65, 66, 67, 80, 81, 82].includes(code)) return 'rain';
   if ([71, 73, 75, 77, 85, 86].includes(code)) return 'snow';
-  if ([95, 96, 99].includes(code)) return 'thunderstorm';
+  if ([95, 96, 97, 99].includes(code)) return 'thunderstorm';
   return 'unknown';
 };
 
@@ -362,6 +363,17 @@ export const weatherCodeDescription = (code: number) => {
     case 'unknown':
       return 'Unknown weather';
   }
+};
+
+// Intensity comes from the forecast's WMO code, not precipitation probability.
+// https://open-meteo.com/en/docs#weathervariables
+export const weatherPrecipitationIntensityForCode = (code: number) => {
+  if ([0, 1, 2, 3, 45, 48].includes(code)) return 'None';
+  if ([51, 56, 61, 66, 71, 80, 85, 96].includes(code)) return 'Light';
+  if ([53, 63, 73, 81].includes(code)) return 'Moderate';
+  if ([55, 57, 65, 67, 75, 82, 86, 97, 99].includes(code)) return 'Heavy';
+  // Snow grains and generic thunderstorms do not specify one intensity.
+  return 'Unknown';
 };
 
 const buildNormalizedWeatherSummaryInput = ({

@@ -51,6 +51,7 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.53.1",
+    "@resvg/resvg-js": "^2.6.2",
     "@sveltejs/vite-plugin-svelte": "^5.1.0",
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^24.0.3",

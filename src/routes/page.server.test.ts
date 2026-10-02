@@ -623,6 +623,7 @@ describe('Daily page server load', () => {
     getSession.mockResolvedValue(null);
 
     await expect(loadPage()).resolves.toEqual({
+      currentTime: '2026-07-07T12:00:00.000Z',
       authState: { mode: 'visitor' },
       isAdministrator: false,
       calendarReadiness: visitorCalendarReadiness,
@@ -957,6 +958,7 @@ describe('Daily page server load', () => {
     });
 
     await expect(loadPage()).resolves.toEqual({
+      currentTime: '2026-07-07T12:00:00.000Z',
       authState: {
         mode: 'user',
         userId: 'user-1',
@@ -1128,6 +1130,7 @@ describe('Daily page server load', () => {
     });
 
     await expect(loadPage()).resolves.toEqual({
+      currentTime: '2026-07-07T12:00:00.000Z',
       authState: {
         mode: 'user',
         userId: 'user-2',
@@ -1162,6 +1165,7 @@ describe('Daily page server load', () => {
     loadFailure.enabled = true;
 
     await expect(loadPage()).resolves.toEqual({
+      currentTime: '2026-07-07T12:00:00.000Z',
       authState: {
         mode: 'user',
         userId: 'user-1',
@@ -1204,6 +1208,7 @@ describe('Daily page server load', () => {
     });
 
     await expect(loadPage()).resolves.toEqual({
+      currentTime: '2026-07-07T12:00:00.000Z',
       authState: {
         mode: 'user',
         userId: 'admin-1',
@@ -1320,7 +1325,7 @@ describe('Daily page server load', () => {
 
     expect(sentMessages).toEqual([
       expect.objectContaining({
-        subject: 'Test · Your Daily Summary · Tuesday, 7 July',
+        subject: expect.stringMatching(/^Test · Your Daily Summary · Tuesday, 7 July · 08:00:00 · #[a-f0-9-]{36}$/),
         to: 'user@example.com'
       })
     ]);
@@ -1493,7 +1498,7 @@ describe('Daily page server load', () => {
     expect(sentMessages).toEqual([
       expect.objectContaining({
         html: expect.stringContaining('Planning'),
-        text: expect.stringContaining('Today\n11:00 Planning (Work)')
+        text: expect.stringContaining('Tuesday\n11:00 Planning')
       })
     ]);
     expect(recordedDeliveryRecords).toEqual([

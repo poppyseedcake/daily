@@ -93,6 +93,30 @@ describe('User Daily Summary generation', () => {
     expect(dependencies.commuteEstimateProvider).not.toHaveBeenCalled();
   });
 
+  test('scheduled and test generation load the current Google name into the shared greeting', async () => {
+    const userNameStore = { load: vi.fn().mockResolvedValue('Wojtek M.') };
+    const generator = createUserDailySummaryGenerator(createProviderIsolationDependencies(configuration, {
+      userNameStore,
+      now: () => new Date('2026-10-01T17:06:00Z')
+    }));
+    const { input, rendered } = await generator.generate({ userId: 'user-1' });
+    expect(userNameStore.load).toHaveBeenCalledWith('user-1');
+    expect(input.userName).toBe('Wojtek M.');
+    expect(rendered.html).toContain('>Good evening, Wojtek</h1>');
+    expect(rendered.text).toMatch(/^Good evening, Wojtek\n/);
+  });
+
+  test('a profile-name read failure keeps the summary deliverable with a nameless greeting', async () => {
+    const generator = createUserDailySummaryGenerator(createProviderIsolationDependencies(configuration, {
+      userNameStore: { load: vi.fn().mockRejectedValue(new Error('profile unavailable')) },
+      now: () => new Date('2026-10-01T17:06:00Z')
+    }));
+    const { input, rendered } = await generator.generate({ userId: 'user-1' });
+    expect(input.userName).toBeUndefined();
+    expect(rendered.html).toContain('>Good evening</h1>');
+    expect(rendered.text).toMatch(/^Good evening\n/);
+  });
+
   test('accepts a request-scoped public URL for the shared production path', async () => {
     const generator = createUserDailySummaryGenerator(
       createProviderIsolationDependencies(configuration, {})
@@ -213,11 +237,11 @@ describe('User Daily Summary generation', () => {
     expect(second.rendered.text).toContain('Prepare current update — High urgency');
     expect(second.rendered.text).toContain('Clear. Low 17C, high 28C. Chance of precipitation 10%.');
     expect(second.rendered.text).toContain('Office: 31 minutes');
-    expect(second.rendered.text).toContain('10:00 Current planning (Work)');
+    expect(second.rendered.text).toContain('10:00 Current planning');
     expect(second.rendered.text.indexOf('Weather')).toBeLessThan(second.rendered.text.indexOf('Commute'));
     expect(second.rendered.text.indexOf('Commute')).toBeLessThan(second.rendered.text.indexOf('Calendar'));
     expect(second.rendered.text.indexOf('Calendar')).toBeLessThan(second.rendered.text.indexOf('Todo'));
-    expect(second.rendered.html).toContain('max-width:680px');
+    expect(second.rendered.html).toContain('max-width:790px');
     expect(second.rendered.html).not.toContain('background-color:#111827');
     expect(weatherProvider.fetchDailyForecast).toHaveBeenCalledTimes(2);
     expect(loadCalendarEvents).toHaveBeenCalledTimes(2);

@@ -88,7 +88,7 @@ describe('Daily Summary generation', () => {
     expect(result.rendered.html).toContain('href="https://daily.example/"');
   });
 
-  test('renders validated Weather facts and an optional Luna sentence without leaking location data', async () => {
+  test('renders validated Weather facts and an optional Luna sentence while keeping location out of the summary provider request', async () => {
     const summaryInput = {
       units: {
         temperature: 'celsius' as const,
@@ -158,15 +158,16 @@ describe('Daily Summary generation', () => {
     const rendered = renderDailySummary(input);
 
     expect(weatherProvider.weatherSummaryProvider.summarize).toHaveBeenCalledWith(summaryInput);
-    expect(rendered.html).toContain('>18C</p>');
-    expect(rendered.html).toContain('Low 12C, high 22C');
-    expect(rendered.html).toContain('Wind up to 24 km/h');
+    expect(rendered.html).toContain('18°');
+    expect(rendered.html.replace(/<[^>]*>/g, '')).toContain('↑ 22°');
+    expect(rendered.html.replace(/<[^>]*>/g, '')).toContain('↓ 12°');
+    expect(rendered.html).toContain('Wind 24 km/h');
     expect(rendered.html).toContain('Clouds clear by noon.');
-    expect(rendered.html).toContain('https://daily.example.com/weather-icons/partly-cloudy.png');
+    expect(rendered.html).toContain('https://daily.example.com/email-icons/partly-cloudy.png');
     expect(rendered.text).toContain('Clouds clear by noon.');
     expect(rendered.text).toContain('Chance of precipitation 35%.');
-    expect(rendered.html).not.toContain('Private City');
-    expect(rendered.text).not.toContain('Private City');
+    expect(rendered.html).toContain('Private City');
+    expect(rendered.text).toContain('Private City');
   });
 
   test('renders saved baseline estimates without provider requests on the local Commute Day', async () => {
@@ -646,9 +647,9 @@ describe('Daily Summary generation', () => {
     });
     const rendered = renderDailySummary(preview);
 
-    expect(rendered.text).toContain('Calendar\nToday\n08:00 School drop-off (Personal)\n12:00 Team retro (Work)');
-    expect(rendered.text).toContain('Week Ahead\nThu, Jul 9\nAll day Conference (Personal)\n11:00 Planning (Work)');
-    expect(rendered.html).toContain('Today');
+    expect(rendered.text).toContain('Calendar\nWednesday\n08:00 School drop-off\n12:00 Team retro');
+    expect(rendered.text).toContain('Week Ahead\nThursday\nAll day Conference\n11:00 Planning');
+    expect(rendered.html).toContain('Wednesday');
     expect(rendered.html).toContain('08:00');
     expect(rendered.html).toContain('School drop-off');
     expect(rendered.html).toContain('Personal');
@@ -682,7 +683,7 @@ describe('Daily Summary generation', () => {
     expect(calendarSection).not.toBeNull();
     expect([calendarSection?.today, ...(calendarSection?.weekAhead ?? [])]).toHaveLength(7);
     expect(rendered.text).toContain('Calendar\nNothing scheduled\nNo Calendar Events in the Week Ahead.');
-    for (const label of ['Today', 'Thu, Jul 9', 'Fri, Jul 10', 'Sat, Jul 11', 'Sun, Jul 12', 'Mon, Jul 13', 'Tue, Jul 14']) {
+    for (const label of ['Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday', 'Monday', 'Tuesday']) {
       expect(rendered.text).toContain(label);
     }
   });

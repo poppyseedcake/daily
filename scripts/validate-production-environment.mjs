@@ -143,6 +143,24 @@ if (valueFor('SCHEDULED_WORKER_OVERDUE_MINUTES')) {
   requireIntegerBetween('SCHEDULED_WORKER_OVERDUE_MINUTES', 2, 1440);
 }
 
+if (context === 'web' || context === 'worker') {
+  const weatherModel = valueFor('OPENAI_WEATHER_MODEL');
+  if (weatherModel && (weatherModel.length > 200 || /\s/.test(weatherModel))) {
+    errors.push('OPENAI_WEATHER_MODEL');
+  }
+  const effort = valueFor('OPENAI_WEATHER_REASONING_EFFORT');
+  if (effort && !['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'].includes(effort)) {
+    errors.push('OPENAI_WEATHER_REASONING_EFFORT');
+  }
+  for (const [name, minimum, maximum] of [
+    ['OPENAI_WEATHER_MAX_CHARACTERS', 1, 2000],
+    ['OPENAI_WEATHER_MAX_OUTPUT_TOKENS', 16, 128000],
+    ['OPENAI_WEATHER_TIMEOUT_MS', 1, 120000]
+  ]) {
+    if (valueFor(name)) requireIntegerBetween(name, minimum, maximum);
+  }
+}
+
 if (process.env.DAILY_SYSTEMD_BACKUP_UNIT === 'true') {
   if (process.env.DATABASE_URL !== '/var/lib/daily/daily.db') errors.push('DATABASE_URL');
   if (process.env.BACKUP_DIRECTORY !== '/var/backups/daily') {

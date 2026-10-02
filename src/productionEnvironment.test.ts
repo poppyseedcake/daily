@@ -24,6 +24,33 @@ const validate = (environment: NodeJS.ProcessEnv, context?: string) =>
   });
 
 describe('production environment validation', () => {
+  test('accepts optional weather LLM configuration and blank automatic budgets', () => {
+    expect(validate({
+      ...validEnvironment,
+      OPENAI_WEATHER_MODEL: 'gpt-5.6-terra',
+      OPENAI_WEATHER_REASONING_EFFORT: 'high',
+      OPENAI_WEATHER_MAX_CHARACTERS: '200',
+      OPENAI_WEATHER_MAX_OUTPUT_TOKENS: '',
+      OPENAI_WEATHER_TIMEOUT_MS: ''
+    }).status).toBe(0);
+  });
+
+  test.each([
+    ['OPENAI_WEATHER_MODEL', 'invalid model'],
+    ['OPENAI_WEATHER_REASONING_EFFORT', 'unsupported'],
+    ['OPENAI_WEATHER_MAX_CHARACTERS', '0'],
+    ['OPENAI_WEATHER_MAX_CHARACTERS', '2001'],
+    ['OPENAI_WEATHER_MAX_CHARACTERS', '1.5'],
+    ['OPENAI_WEATHER_MAX_CHARACTERS', '1e2'],
+    ['OPENAI_WEATHER_MAX_OUTPUT_TOKENS', '15'],
+    ['OPENAI_WEATHER_TIMEOUT_MS', '120001']
+  ])('rejects invalid %s without exposing its value', (name, value) => {
+    const result = validate({ ...validEnvironment, [name]: value });
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain(name);
+    expect(result.stderr).not.toContain(`: ${value}`);
+  });
+
   test.each([
     undefined,
     '',

@@ -30,6 +30,7 @@ import {
 import type { GoogleMapsRequestGateway } from '../server/googleMapsRequestGateway';
 
 export type DailySummaryGenerationContext = {
+  userName?: string;
   calendarEvents?: LoadedCalendarEvents;
   configuration: SummaryConfiguration;
   todoCategories: TodoCategory[];
@@ -85,6 +86,7 @@ export type DailySummaryGeneratorDependencies<Request> = {
 };
 
 const buildDailySummaryInput = async ({
+  userName,
   calendarEvents = {
     readiness: calendarReadinessForAuthMode('visitor'),
     selectedCalendars: [],
@@ -133,6 +135,7 @@ const buildDailySummaryInput = async ({
   const todoSection = todoStateUnavailable ? null : buildTodoSection(todoCategories, todoTasks);
 
   return {
+    ...(userName ? { userName } : {}),
     userTimeZone: configuration.userTimeZone,
     generatedAt: new Date(now),
     openDailyUrl,
@@ -494,7 +497,7 @@ const buildWeatherGenerationState = async ({
       : displayWeatherSection;
 
     return content
-      ? { status: 'active', detail: state.detail, content }
+      ? { status: 'active', detail: state.detail, content: { ...content, locationLabel: weatherLocation.label } }
       : { status: 'active', detail: state.detail };
   } catch {
     return {

@@ -1,10 +1,12 @@
+import { Temporal } from '@js-temporal/polyfill';
 import { calendarSectionHasEvents, type CalendarSection } from './calendar';
 import {
   commuteTrafficDescription,
   type CommuteTrafficLevel
 } from './commuteTraffic';
 import type { SummarySection, UserTimeZone } from './summaryConfiguration';
-import type { WeatherDisplayForecast } from './weatherForecast';
+import { weatherPrecipitationIntensityForCode, type WeatherDisplayForecast } from './weatherForecast';
+import { workspaceGreeting } from './workspaceGreeting';
 import type {
   SummarySectionPresentationState,
   SummarySectionPresentationStateFor
@@ -46,6 +48,7 @@ type CalendarSummarySectionInput =
     >>;
 
 export type DailySummaryInput = {
+  userName?: string;
   userTimeZone: UserTimeZone;
   generatedAt: Date;
   openDailyUrl: string;
@@ -79,11 +82,14 @@ export type RenderedDailySummary = {
 
 export type DailySummaryDeliveryKind = 'scheduled' | 'test';
 
-export const dailySummarySubject = (
+export function dailySummarySubject(kind: 'scheduled', generatedAt: Date, userTimeZone: string): string;
+export function dailySummarySubject(kind: 'test', generatedAt: Date, userTimeZone: string, attemptId: string): string;
+export function dailySummarySubject(
   kind: DailySummaryDeliveryKind,
   generatedAt: Date,
-  userTimeZone: string
-) => {
+  userTimeZone: string,
+  attemptId?: string
+) {
   const weekday = new Intl.DateTimeFormat('en-US', {
     weekday: 'long',
     timeZone: userTimeZone
@@ -94,8 +100,16 @@ export const dailySummarySubject = (
     timeZone: userTimeZone
   }).format(generatedAt);
 
-  return `${kind === 'test' ? 'Test · ' : ''}Your Daily Summary · ${weekday}, ${dayAndMonth}`;
-};
+  const testTime = kind === 'test' ? ` · ${new Intl.DateTimeFormat('en-GB', {
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23',
+    timeZone: userTimeZone
+  }).format(generatedAt)}` : '';
+
+  // Repeated test messages must start separate Gmail conversations, otherwise
+  // Gmail hides unchanged sections as quoted content behind its ellipsis.
+  const testReference = kind === 'test' ? ` · #${attemptId}` : '';
+  return `${kind === 'test' ? 'Test · ' : ''}Your Daily Summary · ${weekday}, ${dayAndMonth}${testTime}${testReference}`;
+}
 
 type SummarySectionContent = {
   weather: WeatherDisplayForecast;
@@ -128,16 +142,16 @@ const fixedSectionLabels: Record<SummarySection, string> = {
 };
 
 const sectionAccentColors: Record<SummarySection, string> = {
-  weather: '#4d733e',
-  commute: '#3568ad',
-  calendar: '#70519a',
-  todo: '#4d733e'
+  weather: '#5b7750',
+  commute: '#63799b',
+  calendar: '#5b7750',
+  todo: '#5b7750'
 };
 
 const commuteTrafficColors: Record<CommuteTrafficLevel, string> = {
-  light: '#4d7a53',
-  moderate: '#c18b24',
-  heavy: '#b24b3f'
+  light: '#4f8a57',
+  moderate: '#c08a2c',
+  heavy: '#c55d50'
 };
 
 const stateLabels = {
@@ -152,17 +166,21 @@ export const renderDailySummary = (input: DailySummaryInput): RenderedDailySumma
   const generatedAt = input.generatedAt;
   const generatedTimestamp = formatGeneratedTimestamp(generatedAt, input.userTimeZone);
   const openDailyUrl = canonicalOpenDailyUrl(input.openDailyUrl);
+  const { greeting } = workspaceGreeting(generatedAt, input.userTimeZone, input.userName);
 
   return {
     html: renderHtml({
       sections,
       generatedAt,
+      greeting,
       generatedTimestamp,
       userTimeZone: input.userTimeZone,
       openDailyUrl
     }),
     text: renderText({
       sections,
+      generatedAt,
+      greeting,
       generatedTimestamp,
       userTimeZone: input.userTimeZone,
       openDailyUrl
@@ -195,250 +213,300 @@ const resolveSection = (input: DailySummaryInput, key: SummarySection): Rendered
   } as RenderedSection;
 };
 
-const renderHtml = ({
-  sections,
-  generatedAt,
-  generatedTimestamp,
-  userTimeZone,
-  openDailyUrl
-}: {
+// Critical presentation and hidden text stay inline: Gmail can discard head CSS.
+const hiddenText = (value: string) => `<span class="daily-screen-reader-only" style="display:inline-block;width:0;height:0;max-height:0;max-width:0;padding:0;margin:0;overflow:hidden;font-size:0;line-height:0;white-space:nowrap;vertical-align:top;">${escapeHtml(value)}</span>`;
+
+const emailIcon = (name: string, size: number, openDailyUrl: string) => {
+  const url = openDailyUrl.startsWith('/') ? `/email-icons/${name}.png`
+    : new URL(`email-icons/${name}.png`, openDailyUrl).toString();
+  return `<img src="${escapeHtml(url)}" alt="" width="${size}" height="${size}" style="display:block;border:0;width:${size}px;height:${size}px;" />`;
+};
+
+type EmailContext = { generatedAt: Date; userTimeZone: string; openDailyUrl: string };
+
+const localGenerationDate = (context: EmailContext) =>
+  Temporal.Instant.fromEpochMilliseconds(context.generatedAt.getTime())
+    .toZonedDateTimeISO(context.userTimeZone).toPlainDate();
+
+const renderHtml = (context: EmailContext & {
   sections: RenderedSection[];
-  generatedAt: Date;
   generatedTimestamp: string;
-  userTimeZone: string;
-  openDailyUrl: string;
-}) => `<!doctype html>
+  greeting: string;
+}) => {
+  const { sections, generatedAt, userTimeZone, openDailyUrl } = context;
+  const weekday = new Intl.DateTimeFormat('en-GB', { weekday: 'long', timeZone: userTimeZone }).format(generatedAt);
+  const dayMonth = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'long', timeZone: userTimeZone }).format(generatedAt);
+  const date = `${weekday}, ${dayMonth}`;
+  const time = new Intl.DateTimeFormat('en-GB', {
+    hour: '2-digit', minute: '2-digit', hour12: false, timeZone: userTimeZone
+  }).format(generatedAt);
+  return `<!doctype html>
 <html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <style>
-      @media only screen and (max-width: 620px) {
-        .daily-grid-cell { display: block !important; width: 100% !important; }
+      @media only screen and (min-width: 701px) {
+        .daily-grid-row { display:table !important; width:100% !important; table-layout:fixed !important; }
+        .daily-grid-cell { display:table-cell !important; width:50% !important; max-width:none !important; }
+        .daily-grid-cell-left { border-right:1px solid #dfe5dc !important; }
+        .daily-commute-stop-text { max-width:72px !important; }
+      }
+      @media only screen and (max-width: 700px) {
+        .daily-grid-cell { display: block !important; width: 100% !important; max-width:none !important; box-sizing: border-box !important; border-right:0 !important; }
         .daily-grid-cell-inner { min-height: 0 !important; }
         .daily-summary-shell { width: 100% !important; }
-      }
-      .daily-screen-reader-only {
-        position: absolute !important;
-        width: 1px !important;
-        height: 1px !important;
-        padding: 0 !important;
-        margin: -1px !important;
-        overflow: hidden !important;
-        clip: rect(0, 0, 0, 0) !important;
-        white-space: nowrap !important;
-        border: 0 !important;
+        .daily-header { padding:24px 22px !important; }
+        .daily-header-table { display:block !important; position:relative !important; }
+        .daily-header-table > tbody, .daily-header-table > tbody > tr { display:block !important; }
+        .daily-brand { display:block !important; width:100% !important; }
+        .daily-greeting { display:block !important; width:100% !important; text-align:left !important; padding-top:20px !important; }
+        .daily-time { display:block !important; position:absolute !important; top:0 !important; right:0 !important; width:auto !important; }
+        .daily-grid-row { border-bottom:0 !important; }
+        .daily-grid-cell { padding:24px 22px !important; border-bottom:1px solid #dfe5dc !important; }
+        .daily-footer { padding:20px 22px !important; }
       }
     </style>
   </head>
-  <body style="margin:0;padding:0;background-color:#f7f8f5;color:#172019;font-family:Arial,Helvetica,sans-serif;">
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;border-collapse:collapse;background-color:#f7f8f5;">
-      <tr>
-        <td align="center" style="padding:24px 12px;">
-          <table class="daily-summary-shell" role="presentation" width="680" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:680px;border-collapse:collapse;background-color:#ffffff;border:1px solid #d9ded8;">
-            <tr>
-              <td style="padding:34px 34px 27px;border-bottom:1px solid #d9ded8;background-color:#ffffff;">
-                <p style="margin:0 0 14px;color:#172019;font-size:30px;line-height:1.1;font-weight:700;letter-spacing:-0.03em;">Good morning</p>
-                <p style="margin:0;color:#68756a;font-size:14px;line-height:1.5;">Generated: <time datetime="${escapeHtml(generatedAt.toISOString())}">${escapeHtml(generatedTimestamp)}</time></p>
-              </td>
-            </tr>
-            <tr>
-              <td style="padding:0;background-color:#d9ded8;">
-                <table role="presentation" width="100%" cellpadding="0" cellspacing="1" border="0" style="width:100%;border-collapse:separate;background-color:#d9ded8;">
-                  <tr>
-                    ${renderSectionCell(sections[0]!)}
-                    ${renderSectionCell(sections[1]!)}
-                  </tr>
-                  <tr>
-                    ${renderSectionCell(sections[2]!)}
-                    ${renderSectionCell(sections[3]!)}
-                  </tr>
-                </table>
-              </td>
-            </tr>
-            <tr>
-              <td style="padding:22px 34px 25px;border-top:1px solid #d9ded8;background-color:#ffffff;color:#68756a;font-size:13px;line-height:1.5;">
-                <p style="margin:0 0 10px;">Daily · ${escapeHtml(userTimeZone)}</p>
-                <p style="margin:0;"><a href="${escapeHtml(openDailyUrl)}" style="color:#356b38;text-decoration:underline;">Open Daily</a></p>
-              </td>
-            </tr>
-          </table>
-        </td>
-      </tr>
+  <body style="margin:0;padding:0;background-color:#ffffff;color:#243025;font-family:Inter,Arial,Helvetica,sans-serif;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;border-collapse:collapse;background-color:#ffffff;">
+      <tr><td align="center" style="padding:24px 0;">
+        <!--[if mso]><table role="presentation" width="790" cellpadding="0" cellspacing="0" border="0"><tr><td><![endif]-->
+        <table class="daily-summary-shell" role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:790px;table-layout:fixed;border-collapse:collapse;background-color:#fbfcfa;">
+          <tr><td class="daily-header" style="padding:28px 40px;border-bottom:1px solid #dfe5dc;">
+            <table class="daily-header-table" role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;border-collapse:collapse;">
+              <tr>
+                <td class="daily-brand" width="22%" valign="top" style="width:22%;padding-top:2px;">
+                  <table data-daily-brand role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
+                    <td align="center" width="25" height="25" style="width:25px;height:25px;border-radius:7px;background-color:#587542;color:#ffffff;font-size:14px;line-height:25px;font-weight:800;">D</td>
+                    <td style="padding-left:9px;color:#243025;font-size:14px;line-height:25px;font-weight:800;">Daily</td>
+                  </tr></table>
+                </td>
+                <td class="daily-greeting" width="56%" valign="top" align="center" style="width:56%;text-align:center;">
+                  <h1 style="margin:0;color:#243025;font-size:25px;line-height:1.15;font-weight:500;letter-spacing:-0.04em;overflow-wrap:anywhere;word-break:break-word;word-wrap:break-word;">${escapeHtml(context.greeting)}</h1>
+                  <p style="margin:6px 0 0;color:#748074;font-size:11px;line-height:1.5;"><time datetime="${escapeHtml(generatedAt.toISOString())}">${escapeHtml(date)}</time></p>
+                </td>
+                <td class="daily-time" width="22%" valign="top" align="right" style="width:22%;color:#8b9489;font-size:10px;line-height:1.5;">${escapeHtml(time)}</td>
+              </tr>
+            </table>
+          </td></tr>
+          <tr><td style="padding:0;">
+            ${renderGridRow(sections.slice(0, 2), context)}
+            ${renderGridRow(sections.slice(2, 4), context)}
+          </td></tr>
+          <tr><td class="daily-footer" style="padding:20px 40px 23px;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;border-collapse:collapse;"><tr>
+              <td style="color:#748074;font-size:10px;line-height:1.5;">Daily · ${escapeHtml(userTimeZone)}</td>
+              <td align="right" style="font-size:10px;line-height:1.5;"><a href="${escapeHtml(openDailyUrl)}" style="color:#587542;font-weight:700;text-decoration:none;">Open Daily &#8599;</a></td>
+            </tr></table>
+          </td></tr>
+        </table>
+        <!--[if mso]></td></tr></table><![endif]-->
+      </td></tr>
     </table>
   </body>
 </html>`;
+};
 
-const renderSectionCell = (section: RenderedSection) => {
+// Column width stacks without media queries; row-owned separators remain continuous.
+// These column properties are supported by Gmail; Outlook gets conditional tables.
+const renderGridRow = (sections: RenderedSection[], context: EmailContext) =>
+  `<div class="daily-grid-row" style="width:100%;column-count:2;column-width:395px;column-gap:0;column-rule:1px solid #dfe5dc;border-bottom:1px solid #dfe5dc;">
+    <!--[if mso]><table role="presentation" width="790" cellpadding="0" cellspacing="0" border="0" style="table-layout:fixed;"><tr><![endif]-->
+    ${sections.map((section, index) => `<!--[if mso]><td width="395" valign="top"${index === 0 ? ' style="border-right:1px solid #dfe5dc;"' : ''}><![endif]-->${renderSectionCell(section, context, index === 0)}<!--[if mso]></td><![endif]-->`).join('')}
+    <!--[if mso]></tr></table><![endif]-->
+  </div>`;
+
+const renderSectionCell = (section: RenderedSection, context: EmailContext, left: boolean) => {
   const accentColor = sectionAccentColors[section.key];
-  const content = renderSectionHtmlContent(section);
-
-  return `<td class="daily-grid-cell" width="50%" valign="top" data-summary-section="${section.key}" style="width:50%;padding:0;background-color:#ffffff;">
-      <div class="daily-grid-cell-inner" role="region" aria-labelledby="daily-${section.key}-heading" style="min-height:250px;padding:25px 24px 24px;background-color:#ffffff;overflow-wrap:anywhere;word-break:break-word;">
-        <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;">
-          <tr>
-            <td aria-hidden="true" valign="top" style="padding:0 10px 0 0;color:${accentColor};font-size:18px;line-height:1;">${sectionGlyph(section.key)}</td>
-            <td valign="top"><h2 id="daily-${section.key}-heading" style="margin:0;color:${accentColor};font-size:18px;line-height:1.2;font-weight:700;">${escapeHtml(section.label)}</h2></td>
-          </tr>
-        </table>
-        <div style="padding-top:22px;color:#172019;font-size:14px;line-height:1.5;">${content}</div>
-      </div>
-    </td>`;
+  const week = section.key === 'calendar'
+    ? `<td align="right" style="color:#8c958a;font-size:8px;line-height:18px;font-weight:800;letter-spacing:0.08em;">WEEK ${localGenerationDate(context).weekOfYear}</td>`
+    : '';
+  const contentGap = section.key === 'weather' || section.key === 'commute' ? 31 : 24;
+  return `<div class="daily-grid-cell${left ? ' daily-grid-cell-left' : ''}" data-summary-section="${section.key}" style="display:block;break-inside:avoid;vertical-align:top;width:100%;box-sizing:border-box;padding:27px 30px;font-size:11px;line-height:1.5;background-color:transparent;">
+    <div class="daily-grid-cell-inner" role="region" aria-labelledby="daily-${section.key}-heading" style="min-height:182px;overflow-wrap:anywhere;word-break:break-word;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;border-collapse:collapse;"><tr>
+        <td width="18" style="width:18px;padding-right:8px;">${emailIcon(section.key, 18, context.openDailyUrl)}</td>
+        <td><h2 id="daily-${section.key}-heading" style="margin:0;color:${accentColor};font-size:10px;line-height:18px;font-weight:800;letter-spacing:0.1em;text-transform:uppercase;">${escapeHtml(section.label)}</h2></td>${week}
+      </tr></table>
+      <div style="padding-top:${contentGap}px;color:#243025;font-size:11px;line-height:1.5;">${renderSectionHtmlContent(section, context)}</div>
+    </div>
+  </div>`;
 };
 
-const renderSectionHtmlContent = (section: RenderedSection): string => {
+const renderSectionHtmlContent = (section: RenderedSection, context: EmailContext): string => {
   if (section.status !== 'active') {
-    if (section.key === 'calendar' && section.status === 'empty' && section.content) {
-      return `${renderStateHtml(section)}${renderCalendarHtml(section.content)}`;
-    }
-
-    return renderStateHtml(section);
+    return section.key === 'calendar' && section.status === 'empty' && section.content
+      ? `${renderCalendarStrip(context)}${renderStateHtml(section)}`
+      : renderStateHtml(section);
   }
-
-  const detail = section.detail ? `<p style="margin:0 0 13px;color:#68756a;font-size:13px;line-height:1.5;">${escapeHtml(section.detail)}</p>` : '';
-
+  if (!section.content) {
+    return section.detail ? `<p style="margin:0;color:#748074;font-size:11px;line-height:1.5;">${escapeHtml(section.detail)}</p>` : '';
+  }
   switch (section.key) {
-    case 'weather':
-      return section.content
-        ? renderWeatherHtml(section.content)
-        : detail;
-    case 'commute':
-      return `${detail}${section.content ? renderCommuteHtml(section.content) : ''}`;
-    case 'calendar':
-      return `${detail}${section.content && calendarSectionHasEvents(section.content) ? renderCalendarHtml(section.content) : ''}`;
-    case 'todo':
-      return `${detail}${section.content ? renderTodoHtml(section.content) : ''}`;
+    case 'weather': return renderWeatherHtml(section.content, context);
+    case 'commute': return renderCommuteHtml(section.content, context);
+    case 'calendar': return renderCalendarHtml(section.content, context);
+    case 'todo': return renderTodoHtml(section.content);
   }
 };
 
-const renderWeatherHtml = (weather: WeatherDisplayForecast) => `
-      <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;width:100%;">
-        <tr>
-          <td width="68" valign="middle" style="width:68px;padding:0 12px 0 0;">
-            <img src="${escapeHtml(weather.iconUrl)}" alt="" width="56" height="56" style="display:block;width:56px;height:56px;" />
-          </td>
-          <td valign="middle" style="padding:0;">
-            <p style="margin:0;color:#172019;font-size:26px;line-height:1.1;font-weight:700;"><span class="daily-screen-reader-only">Current </span>${escapeHtml(formatMetric(weather.currentTemperatureCelsius))}C</p>
-            <p style="margin:4px 0 0;color:#68756a;font-size:13px;line-height:1.4;">${escapeHtml(weather.conditionText)}</p>
-          </td>
-        </tr>
-        <tr>
-          <td colspan="2" style="padding:17px 0 0;color:#68756a;font-size:13px;line-height:1.5;">
-            Low ${escapeHtml(formatMetric(weather.minimumTemperatureCelsius))}C, high ${escapeHtml(formatMetric(weather.maximumTemperatureCelsius))}C. Chance of precipitation ${escapeHtml(formatMetric(weather.maximumPrecipitationProbabilityPercent))}%. Wind up to ${escapeHtml(formatMetric(weather.maximumWindSpeedKmh))} km/h.
-          </td>
-        </tr>
-        ${weather.summary ? `<tr><td colspan="2" style="padding:13px 0 0;color:#172019;font-size:13px;line-height:1.5;">${escapeHtml(weather.summary)}</td></tr>` : ''}
-      </table>`;
+const weatherTemperatureFontSize = (temperature: number) => {
+  const length = formatMetric(temperature).length;
+  return length > 5 ? 30 : length > 4 ? 36 : length > 3 ? 40 : 45;
+};
+
+const weatherTemperatureWidth = (temperature: number) => {
+  const value = formatMetric(temperature);
+  return Math.ceil([...value].reduce((width, character) => width + (character === '.' ? 12 : character === '-' ? 16 : 25), 30) * weatherTemperatureFontSize(temperature) / 45);
+};
+
+const weatherPrecipitationIntensitySuffix = (weather: WeatherDisplayForecast) => {
+  const intensity = weatherPrecipitationIntensityForCode(weather.dailyWeatherCode);
+  return weather.maximumPrecipitationProbabilityPercent > 0 && intensity !== 'None' && intensity !== 'Unknown'
+    ? ` (${intensity})` : '';
+};
+
+// Stored locations retain the full address; summaries need only the first label.
+const compactLocationLabel = (label: string) => {
+  const trimmed = label.trim();
+  if (/^(?:Selected map point near )?-?\d+(?:\.\d+)?,\s*-?\d+(?:\.\d+)?$/.test(trimmed)) return trimmed;
+  return label.split(',').map((part) => part.trim()).find(Boolean) ?? trimmed;
+};
+
+const temperatureArrow = (direction: '↑' | '↓') =>
+  `<span aria-hidden="true" style="display:inline-block;font-size:18px;line-height:1;font-weight:900;vertical-align:middle;">${direction}</span>`;
+
+const renderWeatherHtml = (weather: WeatherDisplayForecast, context: EmailContext) => `
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;table-layout:fixed;border-collapse:collapse;">
+    <tr>
+      <td width="52" valign="middle" style="width:52px;padding-right:10px;">${emailIcon(weather.conditionCategory, 46, context.openDailyUrl)}</td>
+      <td width="${weatherTemperatureWidth(weather.currentTemperatureCelsius)}" valign="middle" aria-label="Current ${escapeHtml(formatMetric(weather.currentTemperatureCelsius))} degrees Celsius" style="width:${weatherTemperatureWidth(weather.currentTemperatureCelsius)}px;padding-right:13px;white-space:nowrap;color:#263923;font-size:${weatherTemperatureFontSize(weather.currentTemperatureCelsius)}px;line-height:1.15;font-weight:700;letter-spacing:-0.04em;">${hiddenText('Current ')}${escapeHtml(formatMetric(weather.currentTemperatureCelsius))}°${hiddenText(' Celsius')}</td>
+      <td valign="middle" style="padding-left:13px;border-left:1px solid #d8e0d6;">
+        ${weather.locationLabel ? `<p style="margin:0 0 5px;font-size:12px;line-height:1.3;font-weight:700;">${escapeHtml(compactLocationLabel(weather.locationLabel))}</p>` : ''}
+        <p style="margin:0 0 5px;color:#798479;font-size:10px;line-height:1.4;">Wind ${escapeHtml(formatMetric(weather.maximumWindSpeedKmh))} km/h</p>
+        <p style="margin:0 0 5px;color:#798479;font-size:10px;line-height:1.4;">${escapeHtml(weather.conditionText)}</p>
+        <p style="margin:0;color:#798479;font-size:10px;line-height:1.4;">Precip. ${escapeHtml(formatMetric(weather.maximumPrecipitationProbabilityPercent))}%${weatherPrecipitationIntensitySuffix(weather)}</p>
+      </td>
+    </tr>
+    <tr><td colspan="2" align="center" style="padding-top:8px;font-size:11px;line-height:1.4;font-weight:700;">
+      <span aria-label="High ${escapeHtml(formatMetric(weather.maximumTemperatureCelsius))} degrees Celsius" style="color:#b96553;">${hiddenText('High ')}${temperatureArrow('↑')} ${escapeHtml(formatMetric(weather.maximumTemperatureCelsius))}°</span>
+      &nbsp;&nbsp;&nbsp; <span aria-label="Low ${escapeHtml(formatMetric(weather.minimumTemperatureCelsius))} degrees Celsius" style="color:#657ea6;">${hiddenText('Low ')}${temperatureArrow('↓')} ${escapeHtml(formatMetric(weather.minimumTemperatureCelsius))}°</span>
+    </td><td></td></tr>
+  </table>
+  ${weather.summary ? `<p style="margin:8px 0 0;color:#748074;font-size:11px;line-height:1.5;">${escapeHtml(weather.summary)}</p>` : ''}`;
 
 const renderStateHtml = (section: RenderedSection) => {
   if (section.status === 'active') return '';
-
-  return `<p style="margin:0 0 8px;color:#68756a;font-size:11px;line-height:1.3;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;">${escapeHtml(stateLabels[section.status])}</p><p style="margin:0;color:#172019;font-size:14px;line-height:1.5;">${escapeHtml(section.message)}</p>`;
+  return `<p style="margin:0 0 8px;color:#748074;font-size:9px;line-height:1.3;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;">${escapeHtml(stateLabels[section.status])}</p><p style="margin:0;color:#243025;font-size:11px;line-height:1.5;">${escapeHtml(section.message)}</p>`;
 };
 
-const renderCommuteHtml = (section: CommuteSection) => {
-  if (section.estimates.length === 0) {
-    return '<p style="margin:0;color:#68756a;">No Commute Estimates.</p>';
-  }
-
-  const routeHierarchy = section.estimates
-    .filter((estimate) => estimate.originLabel || estimate.destinationLabel)
-    .map(renderCommuteRouteHierarchyHtml)
-    .join('');
-  const estimates = section.estimates.map((estimate) => {
-    if (estimate.outcome !== 'available') {
-      return `<li style="margin:0 0 9px;padding:0;">${escapeHtml(estimate.routeName)}: Commute estimate unavailable.</li>`;
-    }
-
-    const minutes = formatMinutes(estimate.durationMinutes);
-    const trafficDescription = trafficDescriptionFor(estimate);
-    const trafficLevel = estimate.trafficLevel;
-    const duration = trafficLevel
-      ? `<span style="color:${commuteTrafficColors[trafficLevel]};">${minutes}</span>`
-      : minutes;
-    const accessibleRouteResult = `${estimate.routeName}: ${minutes}`;
-    const hiddenTraffic = trafficDescription
-      ? `<span class="daily-screen-reader-only">${escapeHtml(trafficDescription)}</span>`
-      : '';
-
-    return `<li style="margin:0 0 9px;padding:0;"><span aria-label="${escapeHtml(accessibleRouteResult)}">${escapeHtml(estimate.routeName)}: ${duration}</span>${hiddenTraffic}</li>`;
+const renderCommuteHtml = (section: CommuteSection, context: EmailContext) => {
+  if (section.estimates.length === 0) return '<p style="margin:0;color:#748074;">No Commute Estimates.</p>';
+  return section.estimates.map((estimate, index) => {
+    const color = estimate.trafficLevel ? commuteTrafficColors[estimate.trafficLevel] : '#354239';
+    const result = estimate.outcome === 'available'
+      ? `<p style="margin:6px 0 8px;color:${color};white-space:nowrap;line-height:1;" aria-label="${escapeHtml(`${estimate.routeName}: ${formatMinutes(estimate.durationMinutes)}${trafficDescriptionFor(estimate) ? ` — ${trafficDescriptionFor(estimate)}` : ''}`)}"><strong style="font-size:50px;line-height:0.85;font-weight:700;letter-spacing:-0.04em;">${Number.isFinite(estimate.durationMinutes) ? Math.round(estimate.durationMinutes!) : '—'}</strong><span style="font-size:13px;font-weight:700;"> min</span>${hiddenText(trafficDescriptionFor(estimate) ?? '')}</p>`
+      : `<p aria-label="${escapeHtml(estimate.routeName)}: Commute estimate unavailable." style="margin:0 0 8px;color:#748074;font-size:11px;line-height:1.5;">Commute estimate unavailable.</p>`;
+    return `<div style="${index > 0 ? 'margin-top:22px;padding-top:16px;border-top:1px solid #dfe5dc;' : ''}">${result}${renderCommuteRouteHierarchyHtml(estimate, context)}</div>`;
   }).join('');
-
-  return `${routeHierarchy}<ul style="margin:0;padding:0 0 0 18px;">${estimates}</ul>`;
 };
 
-const renderCommuteRouteHierarchyHtml = (estimate: CommuteSection['estimates'][number]) => {
-  const originLabel = estimate.originLabel ?? 'Home';
-  const destinationLabel = estimate.destinationLabel ?? estimate.routeName;
-  const routeHierarchyLabel = `Home: ${originLabel} → ${estimate.routeName}: ${destinationLabel}`;
-
-  return `<div role="group" aria-label="${escapeHtml(routeHierarchyLabel)}" style="margin:0 0 12px;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;width:100%;"><tr><td valign="top" style="width:46%;padding:0 10px 0 0;"><p style="margin:0;color:#68756a;font-size:11px;line-height:1.3;font-weight:700;letter-spacing:0.05em;text-transform:uppercase;">Home</p><p style="margin:3px 0 0;color:#172019;font-size:13px;line-height:1.4;">${escapeHtml(originLabel)}</p></td><td aria-hidden="true" valign="middle" style="width:8%;padding:0;color:#68756a;text-align:center;font-size:14px;line-height:1;">→</td><td valign="top" style="width:46%;padding:0 0 0 10px;"><p style="margin:0;color:#68756a;font-size:11px;line-height:1.3;font-weight:700;letter-spacing:0.05em;text-transform:uppercase;">${escapeHtml(estimate.routeName)}</p><p style="margin:3px 0 0;color:#172019;font-size:13px;line-height:1.4;">${escapeHtml(destinationLabel)}</p></td></tr></table></div>`;
+const renderCommuteRouteHierarchyHtml = (estimate: CommuteSection['estimates'][number], context: EmailContext) => {
+  const originLabel = compactLocationLabel(estimate.originLabel ?? 'Home');
+  const destinationLabel = compactLocationLabel(estimate.destinationLabel ?? estimate.routeName);
+  const arrowUrl = context.openDailyUrl.startsWith('/') ? '/email-icons/commute-arrow.png'
+    : new URL('email-icons/commute-arrow.png', context.openDailyUrl).toString();
+  const stop = (name: string, address: string, icon: string) => `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="width:auto;border-collapse:collapse;"><tr><td width="28" valign="middle" style="width:28px;padding-right:7px;">${emailIcon(icon, 21, context.openDailyUrl)}</td><td style="white-space:nowrap;"><div class="daily-commute-stop-text" style="display:inline-block;max-width:50px;white-space:normal;word-break:normal;word-wrap:break-word;"><p style="margin:0;color:#354239;font-size:11px;line-height:1.3;font-weight:700;">${escapeHtml(name)}</p><p style="margin:3px 0 0;color:#8b958b;font-size:9px;line-height:1.4;">${escapeHtml(address)}</p></div></td></tr></table>`;
+  return `<div role="group" aria-label="${escapeHtml(`Home: ${originLabel} → ${estimate.routeName}: ${destinationLabel}`)}"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;table-layout:auto;border-collapse:collapse;"><tr>
+    <td width="1%" valign="middle" style="width:1%;">${stop('Home', originLabel, 'house')}</td>
+    <td width="98%" align="center" valign="middle" style="width:98%;padding:0 10px;"><img src="${escapeHtml(arrowUrl)}" alt="→" width="64" height="12" style="display:block;border:0;width:64px;max-width:100%;height:auto;" /></td>
+    <td width="1%" valign="middle" style="width:1%;">${stop(estimate.routeName, destinationLabel, 'destination')}</td>
+  </tr></table></div>`;
 };
 
-const renderCalendarHtml = (section: CalendarSection) => {
-  const today = section.today ? renderCalendarDayHtml(section.today) : '';
-  const weekAhead = section.weekAhead.length > 0
-    ? `<h3 style="margin:0 0 7px;color:#68756a;font-size:12px;line-height:1.3;font-weight:700;">Week Ahead</h3>${section.weekAhead.map(renderCalendarDayHtml).join('')}`
-    : '';
-
-  return `${today}${weekAhead}`;
+const renderCalendarStrip = (context: EmailContext) => {
+  const today = localGenerationDate(context);
+  const days = Array.from({ length: 7 }, (_, index) => {
+    const date = today.add({ days: index });
+    const label = date.toLocaleString('en-US', { weekday: 'short' }).toUpperCase();
+    return `<td data-calendar-date="${date.toString()}" align="center" width="14.28%" style="width:14.28%;padding:0;color:${index === 0 ? '#587542' : '#8c958a'};font-size:8px;line-height:1.3;font-weight:800;letter-spacing:0.08em;">${label}<table role="presentation" align="center" cellpadding="0" cellspacing="0" border="0" style="margin:5px auto 0;"><tr><td align="center" width="25" height="25" ${index === 0 ? 'aria-current="date"' : ''} style="width:25px;height:25px;line-height:25px;letter-spacing:0;font-size:11px;${index === 0 ? 'border-radius:50%;background-color:#587542;color:#ffffff;' : 'color:#697568;'}">${date.day}</td></tr></table></td>`;
+  });
+  return `<table data-calendar-strip role="presentation" aria-label="Next seven days" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;table-layout:fixed;border-collapse:collapse;margin-bottom:19px;"><tr>${days.join('')}</tr></table>`;
 };
 
-const renderCalendarDayHtml = (day: NonNullable<CalendarSection['today']>) => {
+const renderCalendarHtml = (section: CalendarSection, context: EmailContext) =>
+  `${renderCalendarStrip(context)}${[...(section.today ? [section.today] : []), ...section.weekAhead].filter((day) => day.allDayEvents.length + day.timedEvents.length > 0).map((day, index, days) => renderCalendarDayHtml(day, index === days.length - 1, context)).join('')}`;
+
+const calendarWeekdayLabel = (label: string, context: EmailContext) => {
+  if (label === 'Today' || label === 'Tomorrow') {
+    return localGenerationDate(context).add({ days: label === 'Tomorrow' ? 1 : 0 })
+      .toLocaleString('en-US', { weekday: 'long' });
+  }
+  const weekdays: Record<string, string> = {
+    Mon: 'Monday', Tue: 'Tuesday', Wed: 'Wednesday', Thu: 'Thursday',
+    Fri: 'Friday', Sat: 'Saturday', Sun: 'Sunday'
+  };
+  const name = compactLocationLabel(label);
+  return Object.hasOwn(weekdays, name) ? weekdays[name]! : name;
+};
+
+const renderCalendarDayHtml = (day: NonNullable<CalendarSection['today']>, last: boolean, context: EmailContext) => {
   const events = [
-    ...day.allDayEvents.map(
-      (event) => `<li style="margin:0 0 4px;">${calendarEventMarkerHtml(event.calendarColor)}All day ${escapeHtml(event.title)} <span style="color:#68756a;">(${escapeHtml(event.calendarLabel)})</span></li>`
-    ),
-    ...day.timedEvents.map(
-      (event) => `<li style="margin:0 0 4px;">${calendarEventMarkerHtml(event.calendarColor)}<time>${escapeHtml(event.localStartTime)}</time> ${escapeHtml(event.title)} <span style="color:#68756a;">(${escapeHtml(event.calendarLabel)})</span></li>`
-    )
+    ...day.allDayEvents.map((event) => ({ ...event, time: 'All day' })),
+    ...day.timedEvents.map((event) => ({ ...event, time: event.localStartTime }))
   ];
-
-  return `<div style="margin:0 0 13px;"><h3 style="margin:0 0 5px;color:#68756a;font-size:12px;line-height:1.3;font-weight:700;">${escapeHtml(day.label)}</h3><ul style="margin:0;padding:0 0 0 18px;">${events.join('')}</ul></div>`;
+  if (events.length === 0) return '';
+  return `<div style="margin:0 0 ${last ? 0 : 12}px;"><h3 style="margin:0 0 4px;color:#8c958a;font-size:8px;line-height:1.3;font-weight:800;letter-spacing:0.08em;text-transform:uppercase;">${escapeHtml(calendarWeekdayLabel(day.label, context))}</h3><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;table-layout:fixed;border-collapse:collapse;">${events.map((event) => `<tr><td width="42" valign="top" style="width:42px;padding:0 8px 0 0;color:#7b877a;font-size:9px;line-height:1.5;white-space:nowrap;"><time>${escapeHtml(event.time)}</time></td><td valign="top" style="padding:0;font-size:10px;line-height:1.5;">${calendarEventMarkerHtml(event.calendarColor, event.calendarLabel)}<strong style="font-weight:600;">${escapeHtml(event.title)}</strong></td></tr>`).join('')}</table></div>`;
 };
 
 const renderTodoHtml = (section: TodoSection) => {
   const groups = [
-    ...(section.uncategorizedTasks.length > 0
-      ? [{ label: 'Uncategorized', tasks: section.uncategorizedTasks }]
-      : []),
+    ...(section.uncategorizedTasks.length > 0 ? [{ label: 'Uncategorized', tasks: section.uncategorizedTasks }] : []),
     ...section.categoryGroups.map((group) => ({ label: group.category.name, tasks: group.tasks }))
   ];
-
-  return groups.map((group) => `<div style="margin:0 0 13px;">
-      <h3 style="margin:0 0 5px;color:#68756a;font-size:12px;line-height:1.3;font-weight:700;">${escapeHtml(group.label)}</h3>
-      <ul style="margin:0;padding:0 0 0 18px;">${group.tasks.map((task) => `<li style="margin:0 0 5px;">${escapeHtml(task.title)}${renderUrgencyHtml(task.urgency)}</li>`).join('')}</ul>
-    </div>`).join('');
+  return groups.map((group) => `<div style="margin:0 0 10px;">
+    <h3 style="margin:0;color:#7a8679;font-size:9px;line-height:1.3;font-weight:800;letter-spacing:0.08em;text-transform:uppercase;">${escapeHtml(group.label)}</h3>
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;table-layout:fixed;border-collapse:collapse;margin-top:-6px;">${group.tasks.map((task, index) => `<tr>
+      <td width="28" style="width:28px;padding:0;"></td>
+      <td width="18" valign="top" style="width:18px;padding:7px 9px 7px 0;${index < group.tasks.length - 1 ? 'border-bottom:1px solid #e5e9e3;' : ''}">${renderUrgencyHtml(task.urgency)}</td>
+      <td valign="top" style="padding:7px 0;font-size:10px;line-height:1.5;font-weight:600;${index < group.tasks.length - 1 ? 'border-bottom:1px solid #e5e9e3;' : ''}">${escapeHtml(task.title)}</td>
+    </tr>`).join('')}</table>
+  </div>`).join('');
 };
 
 const renderUrgencyHtml = (urgency: TodoUrgency) =>
-  ` <span aria-hidden="true" style="color:${urgencyDotColors[urgency]};">${urgencyDotGlyphs[urgency]}</span><span class="daily-screen-reader-only">${escapeHtml(urgencyLabel(urgency))}</span>`;
+  `<span data-urgency="${urgency}" aria-hidden="true" style="color:${urgencyDotColors[urgency]};font-size:12px;line-height:15px;">${urgencyDotGlyphs[urgency]}</span>${hiddenText(urgencyLabel(urgency))}`;
 
 const renderText = ({
   sections,
+  greeting,
   generatedTimestamp,
+  generatedAt,
   userTimeZone,
   openDailyUrl
 }: {
   sections: RenderedSection[];
+  greeting: string;
   generatedTimestamp: string;
+  generatedAt: Date;
   userTimeZone: string;
   openDailyUrl: string;
 }) => [
-  'Good morning',
+  greeting,
   `Generated: ${generatedTimestamp} (${userTimeZone})`,
   '',
-  ...sections.flatMap((section) => [section.label, renderSectionTextContent(section), '']),
+  ...sections.flatMap((section) => [section.label, renderSectionTextContent(section, { generatedAt, userTimeZone, openDailyUrl }), '']),
   `Daily · ${userTimeZone}`,
   `Open Daily: ${openDailyUrl}`
 ].join('\n').trim();
 
-const renderSectionTextContent = (section: RenderedSection): string => {
+const renderSectionTextContent = (section: RenderedSection, context: EmailContext): string => {
   if (section.status !== 'active') {
     const stateText = renderStateText(section);
 
     return section.key === 'calendar' && section.status === 'empty' && section.content
-      ? `${stateText}\n\n${renderCalendarText(section.content)}`
+      ? `${stateText}\n\n${renderCalendarText(section.content, context)}`
       : stateText;
   }
 
@@ -458,7 +526,7 @@ const renderSectionTextContent = (section: RenderedSection): string => {
       return [
         ...detail,
         section.content && calendarSectionHasEvents(section.content)
-          ? renderCalendarText(section.content)
+          ? renderCalendarText(section.content, context)
           : ''
       ].filter(Boolean).join('\n');
     case 'todo':
@@ -470,9 +538,10 @@ const renderSectionTextContent = (section: RenderedSection): string => {
 };
 
 const renderWeatherText = (weather: WeatherDisplayForecast) => [
+  ...(weather.locationLabel ? [compactLocationLabel(weather.locationLabel)] : []),
   `Current ${formatMetric(weather.currentTemperatureCelsius)}C · ${weather.conditionText}`,
   `Low ${formatMetric(weather.minimumTemperatureCelsius)}C, high ${formatMetric(weather.maximumTemperatureCelsius)}C.`,
-  `Chance of precipitation ${formatMetric(weather.maximumPrecipitationProbabilityPercent)}%.`,
+  `Chance of precipitation ${formatMetric(weather.maximumPrecipitationProbabilityPercent)}%${weatherPrecipitationIntensitySuffix(weather)}.`,
   `Wind up to ${formatMetric(weather.maximumWindSpeedKmh)} km/h.`,
   ...(weather.summary ? [weather.summary] : [])
 ].join('\n');
@@ -484,10 +553,10 @@ const renderCommuteText = (section: CommuteSection) => {
   const routeHierarchy = section.estimates
     .filter((estimate) => estimate.originLabel || estimate.destinationLabel)
     .map((estimate) => [
-      `Home: ${estimate.originLabel ?? 'Home'}`,
+      `Home: ${compactLocationLabel(estimate.originLabel ?? 'Home')}`,
       '→',
       estimate.routeName,
-      estimate.destinationLabel ?? estimate.routeName
+      compactLocationLabel(estimate.destinationLabel ?? estimate.routeName)
     ].join('\n'));
 
   return [
@@ -496,17 +565,17 @@ const renderCommuteText = (section: CommuteSection) => {
   ].join('\n');
 };
 
-const renderCalendarText = (section: CalendarSection) => [
-  ...(section.today ? [renderCalendarDayText(section.today)] : []),
+const renderCalendarText = (section: CalendarSection, context: EmailContext) => [
+  ...(section.today ? [renderCalendarDayText(section.today, context)] : []),
   ...(section.weekAhead.length > 0
-    ? [`Week Ahead\n${section.weekAhead.map(renderCalendarDayText).join('\n\n')}`]
+    ? [`Week Ahead\n${section.weekAhead.map((day) => renderCalendarDayText(day, context)).join('\n\n')}`]
     : [])
 ].join('\n\n');
 
-const renderCalendarDayText = (day: NonNullable<CalendarSection['today']>) => [
-    day.label,
-    ...day.allDayEvents.map((event) => `All day ${event.title} (${event.calendarLabel})`),
-    ...day.timedEvents.map((event) => `${event.localStartTime} ${event.title} (${event.calendarLabel})`)
+const renderCalendarDayText = (day: NonNullable<CalendarSection['today']>, context: EmailContext) => [
+    calendarWeekdayLabel(day.label, context),
+    ...day.allDayEvents.map((event) => `All day ${event.title}`),
+    ...day.timedEvents.map((event) => `${event.localStartTime} ${event.title}`)
   ].join('\n');
 
 const renderStateText = (section: RenderedSection) => {
@@ -548,13 +617,10 @@ const urgencyDotGlyphs: Record<TodoUrgency, string> = {
   low: '○'
 };
 
-const calendarEventMarkerHtml = (calendarColor: string | null | undefined) => {
+const calendarEventMarkerHtml = (calendarColor: string | null | undefined, calendarLabel: string) => {
   const color = /^#[0-9a-f]{6}$/i.test(calendarColor ?? '') ? calendarColor : '#d9ded8';
-  return `<span aria-hidden="true" style="display:inline-block;width:8px;height:8px;background-color:${color};"></span> `;
+  return `<span role="img" aria-label="Calendar: ${escapeHtml(calendarLabel)}" title="${escapeHtml(calendarLabel)}" style="display:inline-block;width:8px;height:8px;background-color:${color};"></span> `;
 };
-
-const sectionGlyph = (section: SummarySection) =>
-  section === 'weather' ? '☼' : section === 'commute' ? '→' : section === 'calendar' ? '□' : '○';
 
 const formatGeneratedTimestamp = (date: Date, userTimeZone: string) => {
   const localDate = new Intl.DateTimeFormat('en-US', {
