@@ -8,7 +8,6 @@ import {
 } from '$lib/legalConfirmation';
 
 type LegalConfirmationCookiePayload = LegalConfirmation & {
-  ageConfirmed: true;
   expiresAt: number;
 };
 
@@ -66,8 +65,6 @@ const isValidIsoDate = (value: unknown) => {
 
 export const issueLegalConfirmationCookie = (now = new Date()) => {
   const payload: LegalConfirmationCookiePayload = {
-    ageConfirmed: true,
-    ageConfirmedAt: now.toISOString(),
     termsAcceptedAt: now.toISOString(),
     termsVersion: dailyTermsVersion,
     expiresAt: now.getTime() + legalConfirmationCookieMaxAgeSeconds * 1000
@@ -99,24 +96,20 @@ export const parseLegalConfirmationCookie = (
   try {
     const payload = JSON.parse(decode(encoded)) as Partial<LegalConfirmationCookiePayload>;
     if (
-      payload.ageConfirmed !== true ||
       payload.termsVersion !== dailyTermsVersion ||
       typeof payload.expiresAt !== 'number' ||
       payload.expiresAt < now.getTime() ||
-      !isValidIsoDate(payload.ageConfirmedAt) ||
       !isValidIsoDate(payload.termsAcceptedAt)
     ) {
       return null;
     }
 
-    const ageConfirmedAt = Date.parse(payload.ageConfirmedAt!);
     const termsAcceptedAt = Date.parse(payload.termsAcceptedAt!);
-    if (ageConfirmedAt > now.getTime() || termsAcceptedAt > now.getTime()) {
+    if (termsAcceptedAt > now.getTime()) {
       return null;
     }
 
     return {
-      ageConfirmedAt: payload.ageConfirmedAt!,
       termsAcceptedAt: payload.termsAcceptedAt!,
       termsVersion: payload.termsVersion
     };

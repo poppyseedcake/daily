@@ -24,7 +24,7 @@ type DailyUserIdentityDatabase = typeof db;
 export const createDailyUserIdentityStore = (
   database: DailyUserIdentityDatabase
 ): DailyUserIdentityStore => ({
-  async upsertGoogleUser(identity, initialNextSummaryAt) {
+  async upsertGoogleUser(identity, initialNextSummaryAt, confirmation) {
     try {
       await database
         .insert(users)
@@ -32,7 +32,9 @@ export const createDailyUserIdentityStore = (
           id: identity.id,
           googleSubject: identity.googleSubject,
           email: identity.email,
-          nextSummaryAt: initialNextSummaryAt
+          nextSummaryAt: initialNextSummaryAt,
+          termsAcceptedAt: confirmation?.termsAcceptedAt,
+          termsVersion: confirmation?.termsVersion
         })
         .onConflictDoUpdate({
           target: users.googleSubject,

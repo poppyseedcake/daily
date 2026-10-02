@@ -385,7 +385,7 @@ test.describe('Visitor system time zone', () => {
 
 test('bottom rail offers sign-in in Visitor mode', async ({ page }) => {
   await expect(page.locator('.daily-rail').getByRole('link', { name: 'Sign in with Google' }))
-    .toHaveAttribute('href', '/auth/google');
+    .toHaveAttribute('href', '/?auth=signin');
 });
 
 test('Todo board omits redundant persistence and Ungrouped helper copy', async ({ page }) => {
@@ -488,7 +488,7 @@ test('Visitor Calendar tile explains the Google handoff without exposing a main-
   await expect(calendarDialog.getByText('Daily cannot create, edit or delete events.')).toBeVisible();
   await expect(calendarDialog.getByRole('link', { name: 'Continue with Google' })).toHaveAttribute(
     'href',
-    '/auth/google'
+    '/?auth=signin'
   );
 });
 

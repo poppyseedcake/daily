@@ -13,7 +13,8 @@ describe('Daily Better Auth configuration', () => {
     expect(googleProviderOptions({ GOOGLE_CLIENT_ID: 'client', GOOGLE_CLIENT_SECRET: 'secret' })).toMatchObject({
       clientId: 'client',
       clientSecret: 'secret',
-      scopes: ['openid', 'email', 'profile']
+      scopes: ['openid', 'email', 'profile'],
+      disableImplicitSignUp: true
     });
     expect(googleIdentityScopes.some((scope) => scope.includes('calendar'))).toBe(false);
   });

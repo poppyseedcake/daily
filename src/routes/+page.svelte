@@ -93,7 +93,17 @@
   import { accountDeletionConfirmation } from '$lib/accountDeletion';
   import DailyLogo from '$lib/components/DailyLogo.svelte';
   import DailyOnboarding from '$lib/components/onboarding/DailyOnboarding.svelte';
+  import AuthModal from '$lib/components/AuthModal.svelte';
   import { workspaceGreeting } from '$lib/workspaceGreeting';
+
+  let authModal: AuthModal;
+  const openSignIn = (event: MouseEvent) => {
+    event.preventDefault();
+    const trigger = event.currentTarget instanceof HTMLElement ? event.currentTarget : undefined;
+    closeCalendarDialog();
+    closeSecondaryPanel();
+    authModal.open('signin', trigger);
+  };
 
   const visitorAuthState = { mode: 'visitor' } as const;
   type CommuteAddressSuggestion = { placeId: string; label: string };
@@ -327,7 +337,10 @@
   });
 
   onMount(() => {
-    try { onboardingOpen = localStorage.getItem(onboardingStorageKey) !== 'seen'; } catch { /* Manual replay works when browser storage is blocked. */ }
+    const requestedAuth = new URL(window.location.href).searchParams.get('auth');
+    try {
+      onboardingOpen = requestedAuth !== 'signin' && requestedAuth !== 'signup' && localStorage.getItem(onboardingStorageKey) !== 'seen';
+    } catch { /* Manual replay works when browser storage is blocked. */ }
     const closeAccountMenuOnOutsideClick = (event: PointerEvent) => {
       if (accountMenu?.open && !accountMenu.contains(event.target as Node)) accountMenu.open = false;
     };
@@ -2028,6 +2041,7 @@
 {/snippet}
 
 {#if onboardingOpen}<DailyOnboarding onfinish={finishOnboarding} isVisitor={authState.mode === 'visitor'} />{/if}
+<AuthModal bind:this={authModal} />
 
 <main class="daily-board-shell">
   <aside class="daily-rail" aria-label="Primary navigation">
@@ -2043,7 +2057,7 @@
           disabled={!localSetupHydrated}
           onclick={() => void openSecondaryPanel()}
         ><Settings size={20} /></button>
-        <a href="/auth/google" aria-label="Sign in with Google" title="Sign in with Google">
+        <a href="/?auth=signin" onclick={openSignIn} aria-label="Sign in with Google" title="Sign in with Google">
           <LogIn size={19} />
         </a>
       {:else}
@@ -2118,7 +2132,7 @@
           <p>Explore and configure Daily here. Sign in with Google to receive Daily Summaries by email.</p>
         </div>
         <div class="daily-visitor-banner__actions">
-          <a class="daily-visitor-banner__action" href="/auth/google">
+          <a class="daily-visitor-banner__action" href="/?auth=signin" onclick={openSignIn}>
             Sign in with Google <ArrowRight size={15} aria-hidden="true" />
           </a>
           <span class="daily-visitor-banner__links">
@@ -5605,7 +5619,8 @@
       <div class="daily-calendar-scope"><CalendarDays size={18} /><span><strong>View calendar events</strong><small>Daily cannot create, edit or delete events.</small></span></div>
       <footer>
         <button type="button" aria-label="Close calendar" onclick={closeCalendarDialog}><X size={20} /></button>
-        <a class="daily-google-button" href={authState.mode === 'user' ? '/auth/google/calendar' : '/auth/google'}>
+        <a class="daily-google-button" href={authState.mode === 'user' ? '/auth/google/calendar' : '/?auth=signin'}
+          onclick={(event) => { if (authState.mode === 'visitor') openSignIn(event); }}>
           Continue with Google <ArrowRight size={17} />
         </a>
       </footer>
@@ -5776,7 +5791,7 @@
         <section class="daily-settings-section">
           <h3>Visitor preview</h3>
           <p>Local Setup is saved in this browser only. Sign in with Google to receive Daily Summaries by email.</p>
-          <a class="daily-google-button" href="/auth/google"><Mail size={17} />Sign in with Google</a>
+          <a class="daily-google-button" href="/?auth=signin" onclick={openSignIn}><Mail size={17} />Sign in with Google</a>
         </section>
       {/if}
   </dialog>

@@ -3,7 +3,7 @@ import { describe, expect, test } from 'vitest';
 const { GET } = await import('./+server');
 
 describe('Google sign-in route', () => {
-  test('requires the legal confirmation step before Google sign-in', async () => {
-    await expect(GET()).rejects.toMatchObject({ status: 303, location: '/auth/google/confirm' });
+  test('opens the sign-in modal without starting OAuth or asking for Terms', async () => {
+    expect(GET).toThrow(expect.objectContaining({ status: 303, location: '/?auth=signin' }));
   });
 });

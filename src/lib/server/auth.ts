@@ -7,6 +7,7 @@ import { env } from '$env/dynamic/private';
 import { db } from '$lib/server/db';
 import { dailyUserIdentityStore } from '$lib/server/db/dailyUserIdentityStore';
 import { parseLegalConfirmationCookie } from '$lib/server/legalConfirmation';
+import type { LegalConfirmation } from '$lib/legalConfirmation';
 import {
   persistDailyUserIdentity,
   type DailyUserIdentityOutcome
@@ -24,7 +25,8 @@ type GoogleProviderEnvironment = {
 export const googleProviderOptions = (environment: GoogleProviderEnvironment) => ({
   clientId: environment.GOOGLE_CLIENT_ID ?? 'missing-google-client-id',
   clientSecret: environment.GOOGLE_CLIENT_SECRET ?? 'missing-google-client-secret',
-  scopes: [...googleIdentityScopes]
+  scopes: [...googleIdentityScopes],
+  disableImplicitSignUp: true
 });
 
 export const requireStoredDailyUserIdentity = (outcome: DailyUserIdentityOutcome) => {
@@ -32,6 +34,10 @@ export const requireStoredDailyUserIdentity = (outcome: DailyUserIdentityOutcome
     throw new Error(`Failed to persist Daily user identity: ${outcome}`);
   }
 };
+
+// Better Auth passes the same endpoint context to the User and Account hooks.
+// Keep the validated registration acceptance until its atomic Daily User insert.
+const registrationConfirmations = new WeakMap<object, LegalConfirmation>();
 
 export const authOptions = {
   appName: 'Daily',
@@ -100,13 +106,15 @@ export const authOptions = {
     user: {
       create: {
         async before(_user, context) {
-          return parseLegalConfirmationCookie(context?.headers) ? undefined : false;
+          const confirmation = parseLegalConfirmationCookie(context?.headers);
+          if (!confirmation || !context) return false;
+          registrationConfirmations.set(context, confirmation);
         }
       }
     },
     account: {
       create: {
-        async after(account) {
+        async after(account, context) {
           if (account.providerId !== 'google') {
             return;
           }
@@ -128,10 +136,12 @@ export const authOptions = {
               googleSubject: account.accountId,
               email: user.email
             },
-            Temporal.Now.instant()
+            Temporal.Now.instant(),
+            context ? registrationConfirmations.get(context) : undefined
           );
 
           requireStoredDailyUserIdentity(result.outcome);
+          if (context) registrationConfirmations.delete(context);
         }
       }
     }

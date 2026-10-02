@@ -18,6 +18,7 @@ export const users = sqliteTable(
     lifecycleState: text('lifecycle_state', { enum: ['active', 'deleting'] })
       .notNull()
       .default('active'),
+    // Historical self-declarations only; current registration never reads or writes this field.
     ageConfirmedAt: text('age_confirmed_at'),
     termsVersion: text('terms_version'),
     termsAcceptedAt: text('terms_accepted_at')

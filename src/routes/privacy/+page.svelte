@@ -8,7 +8,7 @@
   intro="This Privacy Policy explains how Daily handles personal data when you use the free Daily service."
 >
   {#snippet children()}
-    <p>Last updated: 28 September 2026.</p>
+    <p>Last updated: 2 October 2026.</p>
 
     <h2>Who runs Daily</h2>
     <p>
@@ -49,9 +49,10 @@
         supplied, and the account identifier.
       </li>
       <li>
-        <strong>Legal confirmations:</strong> Daily stores the statement that you confirmed the
-        minimum age, the accepted Terms version, and the confirmation times. Daily does not ask
-        for a full date of birth or an identity document for this step.
+        <strong>Terms acceptance:</strong> Daily stores the accepted Terms version and the
+        acceptance time when you create an account. Older accounts may retain historical access
+        confirmations from the previous registration flow. Daily does not collect new age
+        confirmations, dates of birth, or identity documents.
       </li>
     </ul>
 
@@ -70,7 +71,7 @@
         account deletion controls: Daily's legitimate interests under Article 6(1)(f) GDPR.
       </li>
       <li>
-        Age and Terms records: contract administration and Daily's legitimate interest in keeping
+        Terms acceptance and historical access records: contract administration and Daily's legitimate interest in keeping
         a record of the access condition that you accepted.
       </li>
     </ul>
@@ -253,12 +254,10 @@
       <a href="https://uodo.gov.pl/en/680/1402">uodo.gov.pl/en/680/1402</a>.
     </p>
 
-    <h2>Age requirement</h2>
+    <h2>Account registration</h2>
     <p>
-      Daily is for people aged 16 or older. A new account must include an unchecked confirmation
-      that the person is at least 16 and an acceptance of the Daily Terms of Service. Existing
-      accounts must complete the same step before continued use. This is a self-declaration, not
-      verified proof of age.
+      Creating a Daily account requires acceptance of the Terms of Service. Returning users do
+      not need to repeat this step when signing in. Daily does not require an age declaration.
     </p>
 
     <h2>Contact</h2>

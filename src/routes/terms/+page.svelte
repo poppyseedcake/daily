@@ -8,6 +8,7 @@
   intro="These Terms describe the free Daily service and the rules for using it."
 >
   {#snippet children()}
+    <p>Last updated: 2 October 2026.</p>
     <div class="public-callout">
       <p>
         These Terms do not remove rights that the law gives you and do not make a blanket exclusion
@@ -28,11 +29,10 @@
 
     <h2>2. Eligibility and account</h2>
     <p>
-      You must be at least 16 years old to use Daily. Before a new account is created, you must
-      confirm that you are at least 16 and accept these Terms. Existing accounts must complete the
-      same confirmation before continued use. The confirmation is a self-declaration, not verified
-      proof of age. Daily does not ask for a full date of birth or an identity document for this
-      step.
+      Before creating a Daily account, you must accept these Terms. Returning users do not need
+      to accept them again each time they sign in. Daily does not impose a minimum age or require
+      an age declaration. You must be able to enter the service agreement under the law that
+      applies to you, with a parent or guardian's involvement where required.
     </p>
     <p>
       You sign in with Google. You must provide accurate information, keep control of your Google
@@ -47,7 +47,7 @@
       <li>access an account, data, provider, or system without permission;</li>
       <li>interfere with Daily, its providers, or another person's use of the service;</li>
       <li>use Daily to send unwanted or unlawful messages; or</li>
-      <li>attempt to bypass age, access, rate, or security controls.</li>
+      <li>attempt to bypass access, rate, or security controls.</li>
     </ul>
     <p>
       You decide which calendar, location, Todo, and delivery data to connect. Do not connect data
