@@ -92,6 +92,7 @@
   import type { SelectedCalendarConfiguration, SelectedCalendarOption } from '$lib/selectedCalendars';
   import { accountDeletionConfirmation } from '$lib/accountDeletion';
   import DailyLogo from '$lib/components/DailyLogo.svelte';
+  import DailyOnboarding from '$lib/components/onboarding/DailyOnboarding.svelte';
   import { workspaceGreeting } from '$lib/workspaceGreeting';
 
   const visitorAuthState = { mode: 'visitor' } as const;
@@ -289,6 +290,16 @@
   let calendarSettingsOpen = $state(false);
   let calendarSettingsDialog = $state<HTMLDialogElement>();
   let secondaryPanel = $state(false);
+  let onboardingOpen = $state(false);
+  const onboardingStorageKey = 'daily.onboarding.v1';
+  const finishOnboarding = () => {
+    onboardingOpen = false;
+    try { localStorage.setItem(onboardingStorageKey, 'seen'); } catch { /* Storage may be unavailable; the board remains usable. */ }
+  };
+  const replayOnboarding = () => {
+    closeSecondaryPanel();
+    onboardingOpen = true;
+  };
   let secondaryDialog = $state<HTMLDialogElement>();
   let accountMenu = $state<HTMLDetailsElement>();
   let categoryComposerOpen = $state(false);
@@ -316,6 +327,7 @@
   });
 
   onMount(() => {
+    try { onboardingOpen = localStorage.getItem(onboardingStorageKey) !== 'seen'; } catch { /* Manual replay works when browser storage is blocked. */ }
     const closeAccountMenuOnOutsideClick = (event: PointerEvent) => {
       if (accountMenu?.open && !accountMenu.contains(event.target as Node)) accountMenu.open = false;
     };
@@ -2015,6 +2027,8 @@
   </ul>
 {/snippet}
 
+{#if onboardingOpen}<DailyOnboarding onfinish={finishOnboarding} isVisitor={authState.mode === 'visitor'} />{/if}
+
 <main class="daily-board-shell">
   <aside class="daily-rail" aria-label="Primary navigation">
     <a class="daily-brand" href="/" aria-label="Daily home">
@@ -2218,6 +2232,7 @@
       </div>
       <button
         class="daily-context-tile daily-context-summary"
+        data-onboarding-target="delivery"
         type="button"
         aria-label={`Mail delivery. ${authState.mode === 'visitor' ? 'Sign in is required to receive Daily Summaries' : summaryDeliveryEnabled ? `${summaryTime}, ${userTimeZone}` : 'Paused'}`}
         aria-haspopup="dialog"
@@ -2245,6 +2260,7 @@
 
       <form
         class="daily-capture"
+        data-onboarding-target="todo"
         onsubmit={(event) => {
           event.preventDefault();
           void openTaskPlacement();
@@ -5711,6 +5727,9 @@
           {/if}
         </section>
       {/if}
+      <section class="daily-settings-section">
+        <button type="button" onclick={replayOnboarding}>Show me around</button>
+      </section>
       <section class="daily-settings-section">
         <h3>Summary Sections</h3>
         {#each summarySections as section}
