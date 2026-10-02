@@ -148,7 +148,7 @@
   .secondary:hover { background: #f2f5ee; color: #18201c; }
   button:focus-visible { outline: 2px solid #587542; outline-offset: 3px; }
   .spotlight { position: fixed; border: 2px solid #587542; border-radius: 10px; box-shadow: 0 0 0 300vmax #18201c66; pointer-events: none; }
-  .guide { position: fixed; width: 420px; max-width: calc(100vw - 32px); padding: 24px; background: #fff; border-radius: 12px; box-shadow: 0 12px 40px #18201c29; }
+  .guide { position: fixed; width: 420px; max-width: calc(100vw - 32px); max-height: calc(100dvh - 32px); overflow: auto; padding: 24px; background: #fff; border-radius: 12px; box-shadow: 0 12px 40px #18201c29; }
   .guide h2 { font-size: 23px; margin-bottom: 12px; }
   .guide p { font-size: 14px; }
   .guide__example { margin-top: 16px; }

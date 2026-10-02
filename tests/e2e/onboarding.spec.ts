@@ -69,3 +69,21 @@ test.describe('mobile introduction', () => {
     expect(errors).toEqual([]);
   });
 });
+
+test.describe('short landscape introduction', () => {
+  test.use({ viewport: { width: 844, height: 390 } });
+  test('keeps each guide inside the viewport and its navigation reachable', async ({ page }) => {
+    await page.goto('/');
+    await page.getByRole('button', { name: 'Show me', exact: true }).click();
+    for (const [index, title] of ['Todo', 'Weather', 'Commute', 'Calendar', 'Mail delivery'].entries()) {
+      const tour = page.getByRole('dialog', { name: title, exact: true });
+      const guide = tour.locator('.guide');
+      await expect.poll(async () => {
+        const bounds = await guide.boundingBox();
+        return bounds ? bounds.y >= 0 && bounds.y + bounds.height <= 390 : false;
+      }).toBe(true);
+      await tour.getByRole('button', { name: index === 4 ? 'Done' : 'Next', exact: true }).click();
+    }
+    await expect(page.locator('dialog.daily-onboarding')).toHaveCount(0);
+  });
+});
