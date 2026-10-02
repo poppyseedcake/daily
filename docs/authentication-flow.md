@@ -56,3 +56,9 @@ performed in the automated tests.
 
 Google's unchanged G mark is from its official pre-approved sign-in asset bundle:
 https://developers.google.com/identity/branding-guidelines
+
+## Visual evidence
+
+![Sign-in modal on desktop](images/auth-modal-signin.png)
+
+![Registration modal at 320px](images/auth-modal-signup-mobile.png)
