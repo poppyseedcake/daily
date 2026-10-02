@@ -7,4 +7,3 @@ export type LegalConfirmation = {
   termsAcceptedAt: string;
   termsVersion: string;
 };
-
