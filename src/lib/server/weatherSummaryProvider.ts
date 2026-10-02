@@ -49,8 +49,8 @@ type OpenAiWeatherSummaryProviderOptions = {
 };
 
 const openAiResponsesUrl = 'https://api.openai.com/v1/responses';
-const defaultWeatherModel = 'gpt-5.6-luna';
-const defaultSummaryTimeoutMilliseconds = 3_000;
+const defaultWeatherModel = 'gpt-6-luna';
+const defaultSummaryTimeoutMilliseconds = 5_000;
 const defaultSummaryMaxCharacters = 160;
 const reasoningEfforts = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'] as const;
 const configurationSchema = z.object({

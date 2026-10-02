@@ -228,10 +228,10 @@ describe('OpenAI Weather Summary provider', () => {
       const onDiagnostic = vi.fn();
       const provider = createOpenAiWeatherSummaryProvider({ apiKey: 'test-key', fetcher, onDiagnostic });
       const result = provider.summarize(normalizedInput);
-      await vi.advanceTimersByTimeAsync(3_000);
+      await vi.advanceTimersByTimeAsync(5_000);
       await expect(result).resolves.toEqual({ outcome: 'unavailable' });
       expect(fetcher).toHaveBeenCalledTimes(1);
-      expect(onDiagnostic).toHaveBeenCalledWith({ reason: 'timeout', attempt: 1, durationMilliseconds: 3_000 });
+      expect(onDiagnostic).toHaveBeenCalledWith({ reason: 'timeout', attempt: 1, durationMilliseconds: 5_000 });
       expect(vi.getTimerCount()).toBe(0);
     } finally {
       vi.useRealTimers();
@@ -318,7 +318,7 @@ describe('OpenAI Weather Summary provider', () => {
 
     const body = JSON.parse(String(init?.body));
     expect(body).toEqual(expect.objectContaining({
-      model: 'gpt-5.6-luna',
+      model: 'gpt-6-luna',
       reasoning: { effort: 'none' },
       store: false,
       tools: [],
