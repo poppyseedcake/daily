@@ -1,8 +1,6 @@
 import { env } from '$env/dynamic/private';
 import { z } from 'zod';
 import {
-  weatherConditionCategoryForCode,
-  type WeatherConditionCategory,
   type NormalizedWeatherSummaryInput,
   type WeatherSummaryProvider as WeatherSummaryProviderContract
 } from '$lib/weatherForecast';
@@ -103,29 +101,6 @@ const weatherSummaryDeveloperInstruction = (prompt: string, maxCharacters: numbe
   prompt.includes('{{maxCharacters}}')
     ? prompt.replaceAll('{{maxCharacters}}', String(maxCharacters))
     : `${prompt} Use at most ${maxCharacters} characters, including spaces and punctuation.`;
-
-const weatherSummaryLeadPattern = /^(?:a|an|the|this|it|there|during|throughout|overall|after|around|at|before|becomes?|by|chance|clear(?:er|ing)?|cloud(?:y|s)?|cold|conditions?|cool|drizzle|dry|expect(?:ed)?|fog(?:gy)?|freezing|gusts?|hail|heavy|hot|later|likely|light|mainly|mild|mostly|no|overcast|partly|possible|precipitation|rain(?:y)?|showers?|snow(?:y)?|some|storms?|strong|sun(?:ny)?|temperatures?|thunderstorms?|today|unsettled|variable|visibility|warm|weather|wet|winds?)\b/i;
-const weatherSummaryTopicPattern = /\b(?:weather|conditions?|temperatures?|winds?|gusts?|clear|cloud(?:y|s)?|overcast|sun(?:ny|shine)?|rain(?:y)?|drizzle|showers?|snow(?:y|fall)?|flurr(?:y|ies)|fog(?:gy)?|mist(?:y)?|hail|lightning|storms?|thunderstorms?|precipitation|dry|wet|cold|cool|mild|warm|hot|freezing|visibility)\b/i;
-const unsupportedSummaryTermsPattern = /\b(?:advised|avoid|bring|carry|coat|grab|jacket|pack|recommend(?:ed)?|should|suggest(?:ed)?|sunscreen|take|umbrella|wear)\b/i;
-
-type WeatherClaimFamily = Exclude<WeatherConditionCategory, 'unknown'>;
-
-const weatherClaimPatterns: ReadonlyArray<{
-  pattern: RegExp;
-  families: readonly WeatherClaimFamily[];
-}> = [
-  { pattern: /\b(?:clear|sun(?:ny|shine)?)\b/i, families: ['clear'] },
-  { pattern: /\b(?:partly(?:[ -]+cloudy)?|mainly clear)\b/i, families: ['partly-cloudy', 'clear'] },
-  { pattern: /\b(?:cloud(?:y|s)?|overcast)\b/i, families: ['partly-cloudy', 'cloudy'] },
-  { pattern: /\b(?:fog|foggy|mist|misty)\b/i, families: ['fog'] },
-  { pattern: /\b(?:drizzle|rain(?:y)?|shower(?:s)?|wet)\b/i, families: ['rain'] },
-  { pattern: /\b(?:flurr(?:y|ies)|snow(?:fall|y)?)\b/i, families: ['snow'] },
-  { pattern: /\b(?:hail|lightning|storm(?:s)?|thunder(?:storm)?s?)\b/i, families: ['thunderstorm'] }
-];
-
-// Negation applies to the adjacent condition or a coordinated list, not a whole sentence.
-const negativeWeatherClaimPrefix = /\b(?:no|without)\s+(?:(?:any|light|heavy|moderate|persistent|significant|and|or|nor|rain|showers?|drizzle|snow|flurries|fog|mist|hail|lightning|storms?|thunderstorms?|clouds?)\s+)*$/i;
-const negativeWeatherClaimSuffix = /^(?:[- ]free\b|\s+(?:(?:is|are|will be)\s+)?(?:not\s+(?:expected|forecast|likely|present)|unlikely|absent)\b)/i;
 
 export const createOpenAiWeatherSummaryProvider = ({
   apiKey = env.OPENAI_API_KEY,
@@ -257,7 +232,7 @@ export const createOpenAiWeatherSummaryProvider = ({
           return { outcome: 'unavailable' };
         }
 
-        const sentence = validateWeatherSummarySentence(parsedSummary.data.summary, normalizedInput.data, maxCharacters);
+        const sentence = validateWeatherSummarySentence(parsedSummary.data.summary, maxCharacters);
         report(sentence ? 'available' : 'sentence-rejected', response.status);
         return sentence ? { outcome: 'available', sentence } : { outcome: 'unavailable' };
       }
@@ -291,9 +266,9 @@ const responseTextFrom = (payload: z.infer<typeof responsePayloadSchema>) => {
   return null;
 };
 
+// Content constraints are currently enforced through the configured prompt only.
 const validateWeatherSummarySentence = (
   value: string,
-  input: NormalizedWeatherSummaryInput,
   maxCharacters: number
 ) => {
   const sentence = value.trim();
@@ -302,59 +277,12 @@ const validateWeatherSummarySentence = (
     /[\r\n]/.test(sentence) ||
     Array.from(sentence).length > maxCharacters ||
     !/[.!?]$/.test(sentence) ||
-    sentence.split(/[.!?]+(?=\s|$)/).filter(Boolean).length !== 1 ||
-    !weatherSummaryLeadPattern.test(sentence) ||
-    !weatherSummaryTopicPattern.test(sentence) ||
-    unsupportedSummaryTermsPattern.test(sentence) ||
-    !hasGroundedWeatherClaims(sentence, input)
+    sentence.split(/[.!?]+(?=\s|$)/).filter(Boolean).length !== 1
   ) {
     return null;
   }
 
-  const supportedNumbers = new Set(
-    JSON.stringify(input).match(/-?\d+(?:\.\d+)?/g) ?? []
-  );
-  const sentenceNumbers = sentence.match(/-?\d+(?:\.\d+)?/g) ?? [];
-
-  if (sentenceNumbers.some((number) => !supportedNumbers.has(number))) {
-    return null;
-  }
-
   return sentence;
-};
-
-const hasGroundedWeatherClaims = (
-  sentence: string,
-  input: NormalizedWeatherSummaryInput
-) => {
-  const supportedFamilies = new Set(
-    [input.day.weatherCode, ...input.remainingHours.map((hour) => hour.weatherCode)]
-      .flatMap(weatherClaimFamiliesForCode)
-  );
-
-  return weatherClaimPatterns.every(({ pattern, families }) => {
-    const matches = sentence.matchAll(new RegExp(pattern.source, 'gi'));
-    return Array.from(matches).every((match) => {
-      const negated = negativeWeatherClaimPrefix.test(sentence.slice(0, match.index)) ||
-        negativeWeatherClaimSuffix.test(sentence.slice(match.index + match[0].length));
-      const supported = families.some((family) => supportedFamilies.has(family));
-      if (!negated) return supported;
-
-      // Codes and measured precipitation can both contradict an absence claim.
-      const precipitationContradicts = input.remainingHours.some((hour) =>
-        (families.includes('rain') && hour.precipitation > 0 && hour.snowfall === 0) ||
-        (families.includes('snow') && hour.snowfall > 0)
-      );
-      return !supported && !precipitationContradicts;
-    });
-  });
-};
-
-const weatherClaimFamiliesForCode = (code: number): WeatherClaimFamily[] => {
-  if (code === 1) return ['clear'];
-
-  const category = weatherConditionCategoryForCode(code);
-  return category === 'unknown' ? [] : [category];
 };
 
 const sanitizeWeatherSummaryInput = (input: NormalizedWeatherSummaryInput): NormalizedWeatherSummaryInput => ({

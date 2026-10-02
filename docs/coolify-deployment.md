@@ -212,8 +212,11 @@ OPENAI_WEATHER_PROMPT="Write one factual English sentence using only the supplie
 The placeholder is replaced for each request, including the shorter retry. Without
 it, the character target is appended. Forecast values remain in the separate user
 message; do not embed them in the prompt. JSON output, character limits and local
-factual/sentence validation still apply. Redeploy after editing the variable;
-changing the prompt does not require a code change or image rebuild.
+sentence-format validation still apply. Content checks for opening words, weather
+terms, recommendations, weather claims, negation and forecast numbers are currently
+disabled; those content constraints rely on the configured prompt. Redeploy after
+editing the variable; changing the prompt does not require a code change or image
+rebuild.
 
 With `none`, the automatic timeout is 3000 ms and the output budget is at least
 256 tokens, increasing with the character limit. With reasoning enabled, the
