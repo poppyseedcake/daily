@@ -22,6 +22,7 @@ test.describe('public legal pages', () => {
 
   test('links public policy pages near the public Google sign-in action', async ({ page }) => {
     await page.goto('/');
+    await page.getByRole('dialog', { name: 'Your daily summary, by email.' }).getByRole('button', { name: 'Skip', exact: true }).click();
     await expect(page.getByRole('link', { name: 'Sign in with Google' }).first()).toHaveAttribute(
       'href',
       '/auth/google'
