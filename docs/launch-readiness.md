@@ -6,7 +6,7 @@ Operator: Wojciech Makowiec, individual, Poland<br>
 Contact: `daily@dailykickoff.eu`  
 Website: <https://dailykickoff.eu>  
 Service price: free  
-Minimum age: 16
+No product minimum age or age self-declaration. Registration requires Terms acceptance.
 
 The contact mailbox is not active. This is a launch blocker. This document records what the
 repository shows. Code that can call a provider does not prove that the provider is active in
@@ -16,7 +16,7 @@ production.
 
 | Source or feature | Data handled | Purpose and destination | Code reference and production note |
 | --- | --- | --- | --- |
-| Google sign-in | `openid`, `email`, `profile`; Google account ID, name, email, verification state, optional image | Create and use a Daily account. The email is the Daily Summary recipient. | [`auth.ts`](../src/lib/server/auth.ts), [`auth/google/confirm/submit/+server.ts`](../src/routes/auth/google/confirm/submit/+server.ts). Production OAuth status is unknown. |
+| Google sign-in | `openid`, `email`, `profile`; Google account ID, name, email, verification state, optional image | Create and use a Daily account. The email is the Daily Summary recipient. | [`auth.ts`](../src/lib/server/auth.ts), [`googleAuthentication.ts`](../src/lib/server/googleAuthentication.ts). Production OAuth status is unknown. |
 | OAuth storage | Google account ID, access token, refresh token, ID token, scope, and expiry values | Better Auth session and account operation; refresh live Calendar access. | [`schema.ts`](../src/lib/server/db/schema.ts), [`googleCalendarList.ts`](../src/lib/server/googleCalendarList.ts). Production encryption at rest is an open question. |
 | Calendar connection | One connection status, provider account ID, granted scopes, token-availability flags, expiry, and selected calendar IDs and labels | Read the selected calendars and show a live Calendar Section. | [`auth/google/calendar/+server.ts`](../src/routes/auth/google/calendar/+server.ts), [`calendarConnectionStore.ts`](../src/lib/server/db/calendarConnectionStore.ts), [`userCalendarEvents.ts`](../src/lib/server/userCalendarEvents.ts). |
 | Calendar events | Live event IDs, titles, start/end or all-day dates, calendar IDs, and calendar labels | Build the Calendar Section and the generated Daily Summary. Event content is not stored in the Daily database. | [`googleCalendarList.ts`](../src/lib/server/googleCalendarList.ts), summary generation modules. An email can contain the generated Calendar Section. |
@@ -86,7 +86,7 @@ Google Cloud OAuth configuration verification.
 
 - [ ] Activate and test `daily@dailykickoff.eu`.
 - [ ] Resolve the missing operator details and all legal and operational questions.
-- [ ] Obtain legal review of the Privacy Policy, Terms of Service, and the age-confirmation approach.
+- [ ] Obtain legal review of the Privacy Policy, Terms of Service, and registration and any requirements for users who are children.
 - [ ] Verify ownership of `dailykickoff.eu` in Google Search Console.
 - [ ] Confirm the final scope set and classifications in Google Cloud and test consent with a live
       Google account before verification submission.
@@ -107,11 +107,11 @@ Google Cloud OAuth configuration verification.
 
 The focused unit tests pass for:
 
-- public sign-in route redirection to the confirmation step;
+- sign-in and registration modal with registration-only Terms acceptance;
 - signed confirmation cookie creation and tamper/expiry rejection;
 - server-side Better Auth account-creation enforcement;
-- valid and invalid confirmation form submissions;
-- existing-account completion without changing saved account data, including Local Setup return;
+- valid and invalid registration form submissions;
+- returning-account sign-in without a consent gate, including Local Setup return;
 - Google sign-in scope handling;
 - Google Calendar connection scope handling;
 - account deletion and Calendar disconnection route behaviour; and

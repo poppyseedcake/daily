@@ -12,7 +12,6 @@ export const createUserLegalConfirmationStore = (database: typeof db): UserLegal
   async load(userId) {
     const [row] = await database
       .select({
-        ageConfirmedAt: users.ageConfirmedAt,
         termsAcceptedAt: users.termsAcceptedAt,
         termsVersion: users.termsVersion
       })
@@ -20,12 +19,11 @@ export const createUserLegalConfirmationStore = (database: typeof db): UserLegal
       .where(eq(users.id, userId))
       .limit(1);
 
-    if (!row?.ageConfirmedAt || !row.termsAcceptedAt || !row.termsVersion) {
+    if (!row?.termsAcceptedAt || !row.termsVersion) {
       return null;
     }
 
     return {
-      ageConfirmedAt: row.ageConfirmedAt,
       termsAcceptedAt: row.termsAcceptedAt,
       termsVersion: row.termsVersion
     };
@@ -35,7 +33,6 @@ export const createUserLegalConfirmationStore = (database: typeof db): UserLegal
     await database
       .update(users)
       .set({
-        ageConfirmedAt: confirmation.ageConfirmedAt,
         termsAcceptedAt: confirmation.termsAcceptedAt,
         termsVersion: confirmation.termsVersion,
         updatedAt: sql`CURRENT_TIMESTAMP`

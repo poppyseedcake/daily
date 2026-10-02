@@ -9,7 +9,7 @@ resolved. The application code and the local environment do not prove the final 
 
 - Activate and test `daily@dailykickoff.eu`. The supplied contact mailbox is not active.
 - Obtain legal review of [`/privacy`](../src/routes/privacy/+page.svelte), [`/terms`](../src/routes/terms/+page.svelte),
-  the proposed GDPR legal bases, and the age and Terms confirmation flow.
+  the proposed GDPR legal bases, and the registration Terms acceptance flow.
 - Confirm that the operator has supplied every address, notice, tax, consumer, and business detail
   required for the final public documents. No physical address is invented in the draft.
 - Decide and implement, or formally accept, the lack of an automated live-database purge for old
@@ -27,13 +27,15 @@ resolved. The application code and the local environment do not prove the final 
    intended users? Add it only after the operator supplies and verifies it.
 3. Are the free-service terms about suspension, service change, information errors, user duties,
    complaints, and account deletion suitable without removing mandatory user rights?
-4. Is the age-16 self-declaration suitable for the intended users and the operator's legal duties?
-   Confirm whether another notice or parental process is required. Daily does not collect a date of
-   birth or an identity document in this implementation.
+4. Daily no longer imposes a product age limit or collects age self-declarations. Confirm the
+   intended audience, the service-agreement basis, and whether contract or parental processes are
+   required for users who are children. The absence of unsuitable content does not resolve these
+   questions. Historical declarations remain in the nullable legacy database column; no new
+   declaration is recorded.
 5. Confirm the controller contact and complaint wording, including the current route to the Polish
    UODO. The public draft provides the contact email and a UODO link.
 6. Confirm the Terms versioning rule. The current application version is
-   `2026-09-21`, stored with the acceptance time.
+   `2026-10-02`, stored with the acceptance time.
 7. Confirm whether the wording about provider-held email copies and immutable backups is correct
    for the final legal notice.
 

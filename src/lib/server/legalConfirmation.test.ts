@@ -15,9 +15,8 @@ describe('legal confirmation cookie', () => {
     });
 
     expect(parseLegalConfirmationCookie(headers, now)).toEqual({
-      ageConfirmedAt: now.toISOString(),
       termsAcceptedAt: now.toISOString(),
-      termsVersion: '2026-09-21'
+      termsVersion: '2026-10-02'
     });
   });
 

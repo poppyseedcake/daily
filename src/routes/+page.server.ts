@@ -44,9 +44,7 @@ import { createTestDailySummaryDelivery } from '$lib/server/testDailySummaryDeli
 import { defaultCommuteDays } from '$lib/commuteRoute';
 import { env } from '$env/dynamic/private';
 import { fail } from '@sveltejs/kit';
-import { redirect } from '@sveltejs/kit';
 import {
-  isLegalConfirmationComplete,
   legalConfirmationCookieName
 } from '$lib/legalConfirmation';
 import { userLegalConfirmationStore } from '$lib/server/db/userLegalConfirmationStore';
@@ -134,21 +132,13 @@ export const load = async ({ request, cookies }) => {
   }
 
   if (authState.mode === 'user') {
-    const storedLegalConfirmation = await userLegalConfirmationStore.load(authState.userId);
     const pendingLegalConfirmation = parseLegalConfirmationCookie(request.headers);
-
-    if (!isLegalConfirmationComplete(storedLegalConfirmation)) {
-      if (pendingLegalConfirmation) {
+    if (pendingLegalConfirmation) {
+      const storedLegalConfirmation = await userLegalConfirmationStore.load(authState.userId);
+      if (!storedLegalConfirmation) {
         await userLegalConfirmationStore.save(authState.userId, pendingLegalConfirmation);
-        cookies.delete(legalConfirmationCookieName, { path: '/' });
-      } else {
-        const currentUrl = new URL(request.url);
-        const returnTo = `${currentUrl.pathname}${currentUrl.search}${currentUrl.hash}`;
-        throw redirect(
-          303,
-          `/account/confirm?returnTo=${encodeURIComponent(returnTo.startsWith('/') ? returnTo : '/')}`
-        );
       }
+      cookies.delete(legalConfirmationCookieName, { path: '/' });
     }
   }
 

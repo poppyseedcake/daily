@@ -24,7 +24,8 @@ type GoogleProviderEnvironment = {
 export const googleProviderOptions = (environment: GoogleProviderEnvironment) => ({
   clientId: environment.GOOGLE_CLIENT_ID ?? 'missing-google-client-id',
   clientSecret: environment.GOOGLE_CLIENT_SECRET ?? 'missing-google-client-secret',
-  scopes: [...googleIdentityScopes]
+  scopes: [...googleIdentityScopes],
+  disableImplicitSignUp: true
 });
 
 export const requireStoredDailyUserIdentity = (outcome: DailyUserIdentityOutcome) => {
