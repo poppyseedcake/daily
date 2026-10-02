@@ -1,5 +1,9 @@
 import { expect, test } from '@playwright/test';
 
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('daily.onboarding.v1', 'seen'));
+});
+
 test('sign-in stays above the workspace and preserves an unfinished task', async ({ page }) => {
   await page.goto('/');
   await page.getByLabel('New Todo Task').fill('Unfinished draft');
@@ -108,6 +112,21 @@ test('registration remains available without JavaScript', async ({ browser, base
     await dialog.getByRole('checkbox', { name: /accept the Terms/i }).check();
     await expect(dialog.getByRole('button', { name: 'Sign up with Google' })).toBeEnabled();
     await expect(dialog.locator('form')).toHaveAttribute('action', /(?:^|\/)auth\/google$/);
+  } finally {
+    await context.close();
+  }
+});
+
+
+test('authentication callbacks take priority over the first-visit welcome screen', async ({ browser, baseURL }) => {
+  const context = await browser.newContext({ baseURL });
+  const page = await context.newPage();
+  try {
+    await page.goto('/?auth=signin&error=access_denied');
+    await expect(page).toHaveURL(/\/$/);
+    await expect(page.getByRole('dialog', { name: 'Welcome back' })).toBeVisible();
+    await expect(page.locator('dialog[open]')).toHaveCount(1);
+    await expect(page.locator('.daily-onboarding')).toHaveCount(0);
   } finally {
     await context.close();
   }

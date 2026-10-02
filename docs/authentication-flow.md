@@ -4,7 +4,7 @@
 
 Source: the user's approved prototype B on `prototype/auth-modal` (refinement commit
 `d7af2ee`), followed by the explicit request to implement it and prepare a PR.
-Review baseline: `2fb238b` (the `main` commit used for the implementation branch).
+Review baseline: `e84d899` (the `main` commit including the new welcome screen).
 
 - Open authentication in a popup over the existing Daily workspace.
 - Offer Sign in and Create account in the same two-column modal (stacked on mobile).
@@ -37,7 +37,9 @@ permission flow retain their existing behavior. New consent records hold Terms t
 and version; the old nullable age column is retained as historical data and receives
 no new values. There is no destructive database migration.
 
-Legacy confirmation routes redirect to the new modal or workspace. Public Terms and
+Authentication callback/query links take priority over the automatic first-visit welcome
+screen, so two modals cannot cover one another. Legacy confirmation routes redirect
+to the new modal or workspace. Public Terms and
 Privacy copy describe signup-only acceptance and no product minimum age. Existing
 launch/legal-review documentation still records questions requiring separate review;
 this change does not claim legal certification.

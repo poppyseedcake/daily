@@ -337,7 +337,10 @@
   });
 
   onMount(() => {
-    try { onboardingOpen = localStorage.getItem(onboardingStorageKey) !== 'seen'; } catch { /* Manual replay works when browser storage is blocked. */ }
+    const requestedAuth = new URL(window.location.href).searchParams.get('auth');
+    try {
+      onboardingOpen = requestedAuth !== 'signin' && requestedAuth !== 'signup' && localStorage.getItem(onboardingStorageKey) !== 'seen';
+    } catch { /* Manual replay works when browser storage is blocked. */ }
     const closeAccountMenuOnOutsideClick = (event: PointerEvent) => {
       if (accountMenu?.open && !accountMenu.contains(event.target as Node)) accountMenu.open = false;
     };
