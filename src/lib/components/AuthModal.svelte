@@ -140,7 +140,7 @@
   dialog { margin: auto; padding: 0; border: 0; border-radius: 14px; width: min(720px, calc(100vw - 32px)); max-width: none; max-height: calc(100dvh - 32px); color: #263024; background: #fff; box-shadow: 0 24px 90px rgb(24 32 28 / 22%); font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; }
   dialog::backdrop { background: rgb(24 32 28 / 25%); }
   .auth-surface { position: relative; display: grid; grid-template-columns: 260px minmax(0, 1fr); max-height: calc(100dvh - 32px); overflow: auto; border-radius: inherit; scrollbar-color: #b7c6ac #f0f4ec; scrollbar-width: thin; }
-  .close { position: absolute; top: 14px; right: 14px; width: 36px; height: 36px; display: grid; place-items: center; z-index: 1; border: 0; border-radius: 8px; background: transparent; color: #586150; cursor: pointer; }
+  .close { position: absolute; top: 14px; right: 14px; width: 36px; height: 36px; display: grid; place-items: center; z-index: 1; border: 0; border-radius: 8px; background: transparent; color: #586150; cursor: pointer; transition: background var(--duration-quick, 150ms) var(--ease-smooth-out, cubic-bezier(0.22, 1, 0.36, 1)); }
   .close:hover { background: #edf1e8; }
   .intent-panel { background: #eef3e7; padding: 32px 22px; display: flex; flex-direction: column; }
   .aside-message { color: #294424; font-size: 30px; line-height: 1.2; letter-spacing: -0.025em; margin: 30px 0; }
@@ -151,7 +151,7 @@
   .provider-panel { padding: 68px 32px 36px; }
   h2 { margin: 0 0 10px; font-size: 27px; font-weight: 650; line-height: 1.15; letter-spacing: -0.025em; text-wrap: balance; color: #172d52; }
   .intro { color: #5c6657; font-size: 14px; line-height: 1.65; margin: 0 0 26px; }
-  .google-button { width: 100%; min-height: 44px; display: flex; align-items: center; justify-content: center; gap: 10px; padding: 10px 12px; border: 1px solid #747775; border-radius: 4px; background: #fff; color: #1f1f1f; font-family: Arial, sans-serif; font-size: 14px; font-weight: 500; cursor: pointer; }
+  .google-button { width: 100%; min-height: 44px; display: flex; align-items: center; justify-content: center; gap: 10px; padding: 10px 12px; border: 1px solid #747775; border-radius: 4px; background: #fff; color: #1f1f1f; font-family: Arial, sans-serif; font-size: 14px; font-weight: 500; cursor: pointer; transition: background var(--duration-quick, 150ms) var(--ease-smooth-out, cubic-bezier(0.22, 1, 0.36, 1)); }
   .google-button img { flex-shrink: 0; }
   .google-button:hover { background: #f2f2f2; }
   button:disabled { opacity: 0.5; cursor: not-allowed; }
