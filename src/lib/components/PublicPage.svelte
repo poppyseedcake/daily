@@ -93,6 +93,12 @@
     color: #173d25;
   }
 
+  @media (prefers-reduced-motion: reduce) {
+    a {
+      transition: none;
+    }
+  }
+
   :global(.public-page) a:focus-visible {
     outline: 2px solid #1769ed;
     outline-offset: 3px;
