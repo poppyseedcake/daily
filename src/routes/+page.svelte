@@ -92,6 +92,7 @@
   import type { SelectedCalendarConfiguration, SelectedCalendarOption } from '$lib/selectedCalendars';
   import { accountDeletionConfirmation } from '$lib/accountDeletion';
   import DailyLogo from '$lib/components/DailyLogo.svelte';
+  import PageMetadata from '$lib/components/PageMetadata.svelte';
   import DailyOnboarding from '$lib/components/onboarding/DailyOnboarding.svelte';
   import AuthModal from '$lib/components/AuthModal.svelte';
   import { workspaceGreeting } from '$lib/workspaceGreeting';
@@ -1898,13 +1899,7 @@
   });
 </script>
 
-<svelte:head>
-  <title>Daily</title>
-  <meta
-    name="description"
-    content="Daily walking skeleton with Visitor mode, Local Setup, and Daily Summary preview."
-  />
-</svelte:head>
+<PageMetadata />
 
 {#snippet SummarySectionToggle(section: SummarySection, statusId: string)}
   <button

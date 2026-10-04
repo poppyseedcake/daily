@@ -1,0 +1,9 @@
+User-agent: *
+Allow: /
+Disallow: /admin
+Disallow: /api/
+Disallow: /auth/
+Disallow: /account/
+
+# Prototypes remain crawlable so their noindex metadata can be read.
+Sitemap: https://dailykickoff.eu/sitemap.xml
