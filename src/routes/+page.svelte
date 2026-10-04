@@ -1676,6 +1676,7 @@
   });
 
   $effect(() => {
+    if (!localSetupHydrated) return;
     const status = localSetupHandoff.save(currentLocalSetup());
     if (!status) return;
     localSetupStatus = status.message;

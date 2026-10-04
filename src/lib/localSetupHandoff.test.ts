@@ -1,4 +1,4 @@
-import { expect, test } from 'vitest';
+import { expect, test, vi } from 'vitest';
 import { createDefaultLocalSetup, localSetupStorageKey } from './localSetup';
 import { createLocalSetupHandoff } from './localSetupHandoff';
 
@@ -70,6 +70,20 @@ test('a lost import response reloads saved User setup without repeating the impo
   const ready = await nextDocument.initialize({ mode: 'user', initialSetup: savedSetup, systemTimeZone: 'UTC', hasSavedSummaryConfiguration: true });
   expect(ready).toMatchObject({ outcome: 'ready', setup: { summaryConfiguration: { summaryTime: '10:00' } }, importStatus: { tone: 'error' } });
   expect(navigation.currentUrl().searchParams.has('localSetupImport')).toBe(false);
+});
+
+test('an invalid import draft returned with HTTP 200 keeps its warning outcome after reload', async () => {
+  vi.stubGlobal('fetch', async () => new Response(JSON.stringify({ outcome: 'invalid-draft' })));
+  try {
+    const storage = memoryStorage(JSON.stringify(createDefaultLocalSetup()));
+    const navigation = memoryNavigation('https://daily.example.com/?localSetupImport=1');
+    const handoff = createLocalSetupHandoff({ storage, navigation });
+    expect(await handoff.initialize({ mode: 'user', initialSetup: createDefaultLocalSetup(), systemTimeZone: 'UTC' })).toEqual({ outcome: 'reloading' });
+    const nextDocument = createLocalSetupHandoff({ storage, navigation });
+    expect(await nextDocument.initialize({ mode: 'user', initialSetup: createDefaultLocalSetup(), systemTimeZone: 'UTC' })).toMatchObject({ outcome: 'ready', importStatus: { tone: 'warning' } });
+  } finally {
+    vi.unstubAllGlobals();
+  }
 });
 
 test.each(['{invalid', null])('invalid or absent Local Setup never replaces saved User setup', async (stored) => {

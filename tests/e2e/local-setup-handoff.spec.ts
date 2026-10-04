@@ -56,6 +56,23 @@ const test = base.extend<{ signedInUser: { database: Database.Database; userId: 
   }
 });
 
+test('Visitor hydration restores existing Local Setup without writing to browser storage', async ({ page }) => {
+  await page.addInitScript((setup) => {
+    localStorage.setItem('daily.onboarding.v1', 'seen');
+    localStorage.setItem('daily.visitorLocalSetup.v3', JSON.stringify(setup));
+    const writes: string[] = [];
+    (window as Window & { handoffWrites?: string[] }).handoffWrites = writes;
+    const setItem = Storage.prototype.setItem;
+    Storage.prototype.setItem = function (key: string, value: string) {
+      if (key === 'daily.visitorLocalSetup.v3') writes.push(value);
+      setItem.call(this, key, value);
+    };
+  }, visitorSetup());
+  await page.goto('/');
+  await expect(page.getByRole('list', { name: 'No Category Todo Tasks' }).getByText('Visitor task')).toBeVisible();
+  expect(await page.evaluate(() => (window as Window & { handoffWrites?: string[] }).handoffWrites)).toEqual([]);
+});
+
 test('User can delete an imported Commute Route before a manual refresh', async ({ page, signedInUser }) => {
   await page.goto('/?localSetupImport=1');
   await page.getByRole('button', { name: 'Commute. 1 route' }).click();

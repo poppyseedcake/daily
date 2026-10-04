@@ -45,7 +45,7 @@ const importBrowserSetup = async (setup: LocalSetupInput): Promise<ImportOutcome
   });
   const result: unknown = await response.json();
   const outcome = result && typeof result === 'object' && 'outcome' in result ? result.outcome : undefined;
-  if (response.ok && (outcome === 'imported' || outcome === 'skipped-existing-setup')) return outcome;
+  if (response.ok && (outcome === 'imported' || outcome === 'skipped-existing-setup' || outcome === 'invalid-draft')) return outcome;
   if (response.status === 400 && (outcome === 'invalid-local-setup' || outcome === 'invalid-draft')) return outcome;
   return 'import-failed';
 };
