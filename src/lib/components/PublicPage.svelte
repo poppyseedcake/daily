@@ -86,10 +86,17 @@
   a {
     color: #315b39;
     font-weight: 650;
+    transition: color var(--duration-quick, 150ms) var(--ease-smooth-out, cubic-bezier(0.22, 1, 0.36, 1));
   }
 
   a:hover {
     color: #173d25;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    a {
+      transition: none;
+    }
   }
 
   :global(.public-page) a:focus-visible {
