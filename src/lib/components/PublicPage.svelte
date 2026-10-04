@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
   import DailyLogo from './DailyLogo.svelte';
+  import PageMetadata from './PageMetadata.svelte';
 
   let {
     eyebrow,
@@ -15,10 +16,7 @@
   } = $props();
 </script>
 
-<svelte:head>
-  <title>{title} · Daily</title>
-  <meta name="description" content={intro} />
-</svelte:head>
+<PageMetadata title={`${title} · Daily`} description={intro} />
 
 <div class="public-page">
   <header class="public-page-header">
