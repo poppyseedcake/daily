@@ -6,6 +6,7 @@ import {
   type ScheduledDailySummaryWorkerCounts
 } from './scheduledDailySummaryWorker';
 import { createTechnicalEventRecorder } from './technicalEventRecorder';
+import { logScheduledDailySummaryWorkerTerminalEvent } from './posthogLogs';
 import type {
   ScheduledWorkerRun,
   ScheduledWorkerRunStore
@@ -191,6 +192,7 @@ export const executeScheduledDailySummaryWorkerCommand = async ({
       }
     }
 
+    await logScheduledDailySummaryWorkerTerminalEvent(finalEvent);
     emit?.(finalEvent);
     if (!emit || recordTechnicalEvent) {
       const record = await resolveTechnicalEventRecord(

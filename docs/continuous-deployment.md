@@ -52,6 +52,26 @@ readiness, not a real Google login or email delivery; it sends no test email.
 
 ## Install and activate
 
+### PostHog configuration
+
+Set `PUBLIC_POSTHOG_PROJECT_TOKEN` and `PUBLIC_POSTHOG_HOST` as GitHub repository
+Actions variables before publishing an image with PostHog. The EU ingestion host is
+`https://eu.i.posthog.com`. These are public browser configuration values, not
+OpenAI, Resend, or PostHog administrative credentials.
+
+The publishing job passes both values through the container acceptance script to
+Docker build arguments. SvelteKit embeds them in the browser bundle at build time.
+Publication fails if either repository variable is empty. Quality checks use empty
+static exports and Playwright uses a fake project with a loopback host, so tests do
+not send data to the production PostHog project.
+
+Set the same two values as runtime environment variables in Coolify for server AI
+Observability and Logs, including the scheduled worker. Changing only the Coolify
+values does not change the browser project; changing the GitHub variables requires
+a new image build. Keep private service credentials in Coolify at runtime.
+
+### Host installation
+
 Review and merge the repository changes first. The publishing job uses the standard
 `GITHUB_TOKEN` with `packages: write`; no repository secrets are required. For an
 existing GHCR package, grant this repository Actions write access in the package

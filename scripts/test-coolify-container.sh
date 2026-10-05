@@ -17,7 +17,9 @@ cleanup() {
 
 trap cleanup EXIT INT TERM
 
-docker build --tag "$IMAGE" .
+docker build --tag "$IMAGE" \
+  --build-arg "PUBLIC_POSTHOG_PROJECT_TOKEN=${PUBLIC_POSTHOG_PROJECT_TOKEN:-}" \
+  --build-arg "PUBLIC_POSTHOG_HOST=${PUBLIC_POSTHOG_HOST:-}" .
 image_environment=$(docker image inspect --format '{{json .Config.Env}}' "$IMAGE")
 case "$image_environment" in
   *BETTER_AUTH_SECRET*|*GOOGLE_CLIENT_SECRET*|*RESEND_API_KEY*|*OPENAI_API_KEY*)

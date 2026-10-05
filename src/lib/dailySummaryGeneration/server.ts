@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { createWeatherSectionGenerator } from './weatherSection';
 import type { WeatherSummaryDiagnostic } from '$lib/weatherSummaryContract';
 import type { LoadedCalendarEvents } from '$lib/calendar';
@@ -75,6 +76,7 @@ export const createUserDailySummaryGenerator = ({
   UserDailySummaryRequest,
   UserDailySummaryGenerationOptions
 > => {
+  const weatherSummarySessionId = `daily-summary-${process.pid}-${randomUUID()}`;
   const weatherSectionGenerator = createWeatherSectionGenerator({
     forecastProvider: weatherProvider,
     summaryProvider: weatherSummaryProvider,
@@ -141,6 +143,9 @@ export const createUserDailySummaryGenerator = ({
             weatherLocation: weatherContext.location,
             weatherLocationUnavailable: weatherContext.unavailable,
             weatherSectionGenerator,
+            ...(weatherSummaryProvider
+              ? { weatherSummaryObservability: { distinctId: userId, sessionId: weatherSummarySessionId } }
+              : {}),
             commuteRoutes: commuteContext.setup.routes,
             commuteDays: commuteContext.setup.days,
             commuteSetupUnavailable: commuteContext.unavailable,

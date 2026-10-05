@@ -1,6 +1,6 @@
 import { afterEach, expect, test, vi } from 'vitest';
 import { createWeatherSectionGenerator } from './weatherSection';
-import type { DailyWeatherForecast, NormalizedWeatherSummaryInput } from '../weatherForecast';
+import type { DailyWeatherForecast, NormalizedWeatherSummaryInput, WeatherSummaryProvider } from '../weatherForecast';
 import { defaultSummaryConfiguration } from '../summaryConfiguration';
 import { createOpenAiWeatherSummaryProvider } from '../server/weatherSummaryProvider';
 import type { WeatherSummaryDiagnostic } from '../weatherSummaryContract';
@@ -88,6 +88,30 @@ test('adds an accepted sentence to the same forecast facts and detail', async ()
     detail: 'Current 18C. Partly cloudy. Low 12C, high 22C. Chance of precipitation 35%. Wind up to 24 km/h. Clouds clear by noon.',
     content: { summary: 'Clouds clear by noon.', currentTemperatureCelsius: 18, maximumTemperatureCelsius: 22 }
   });
+});
+
+test('correlates AI generations with diagnostics without adding identity or location to weather input', async () => {
+  const diagnostics: Array<WeatherSummaryDiagnostic & { traceId: string }> = [];
+  const summarize = vi.fn<WeatherSummaryProvider['summarize']>(async (_input, options) => {
+    options?.onDiagnostic?.({ reason: 'available', durationMilliseconds: 1, attempt: 1 });
+    return { outcome: 'available', sentence: 'Clouds clear by noon.' };
+  });
+  const generator = createWeatherSectionGenerator({
+    forecastProvider: { async fetchDailyForecast() { return { outcome: 'available', forecast: { ...forecast(), summaryInput } }; } },
+    summaryProvider: { summarize },
+    onDiagnostic: (event) => diagnostics.push(event)
+  });
+  const observability = { distinctId: 'verified-user', sessionId: 'daily-summary-session' };
+
+  for (let index = 0; index < 2; index++) {
+    await expect(generator.generate({ ...request(), observability })).resolves.toMatchObject({
+      status: 'active', content: { summary: 'Clouds clear by noon.' }
+    });
+    const [input, options] = summarize.mock.calls[index];
+    expect(input).toEqual(summaryInput);
+    expect(options?.observability).toEqual({ ...observability, traceId: diagnostics[index].traceId });
+  }
+  expect(diagnostics[0].traceId).not.toBe(diagnostics[1].traceId);
 });
 
 test('retains facts after sentence rejection and gives each generation its own private diagnostic trace', async () => {

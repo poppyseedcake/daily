@@ -9,6 +9,7 @@ import {
   type DailyWeatherForecast,
   type WeatherDisplayForecast,
   type WeatherForecastProvider,
+  type WeatherSummaryObservability,
   type WeatherSummaryProvider
 } from '../weatherForecast';
 import type { WeatherSummaryDiagnostic } from '../weatherSummaryContract';
@@ -19,6 +20,7 @@ type WeatherSectionRequest = {
   locationUnavailable?: boolean;
   now: Date;
   assetOrigin?: string;
+  observability?: Omit<WeatherSummaryObservability, 'traceId'>;
 };
 
 export type WeatherSectionGenerator = {
@@ -30,7 +32,7 @@ export const createWeatherSectionGenerator = ({ forecastProvider, summaryProvide
   summaryProvider?: WeatherSummaryProvider;
   onDiagnostic?: (diagnostic: WeatherSummaryDiagnostic & { traceId: string }) => void;
 }): WeatherSectionGenerator => ({
-  async generate({ configuration, location, locationUnavailable = false, now, assetOrigin }) {
+  async generate({ configuration, location, locationUnavailable = false, now, assetOrigin, observability }) {
     if (configuration.sectionPauses.weather) {
       return { status: 'paused', detail: 'Weather is paused.' };
     }
@@ -81,9 +83,15 @@ export const createWeatherSectionGenerator = ({ forecastProvider, summaryProvide
       let summary: string | undefined;
       if (result.forecast.summaryInput && summaryProvider) {
         try {
+          const summaryObservability = observability && traceId ? { ...observability, traceId } : undefined;
           const sentence = await summaryProvider.summarize(
             result.forecast.summaryInput,
-            onDiagnostic ? { onDiagnostic: report } : undefined
+            onDiagnostic || summaryObservability
+              ? {
+                  ...(onDiagnostic ? { onDiagnostic: report } : {}),
+                  ...(summaryObservability ? { observability: summaryObservability } : {})
+                }
+              : undefined
           );
           if (sentence.outcome === 'available') summary = sentence.sentence;
         } catch {
