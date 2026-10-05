@@ -37,4 +37,3 @@ export const test = base.extend<{ signedInUser: { database: Database.Database; u
     }
   }
 });
-
