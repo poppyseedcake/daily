@@ -21,20 +21,8 @@ export const createProductionUserDailySummaryGenerator = (
     weatherLocationStore: userWeatherLocationStore,
     commuteSetupStore: userCommuteSetupStore,
     calendarEvents,
-    weatherProvider: {
-      async fetchDailyForecast(request) {
-        const startedAt = performance.now();
-        const result = await openMeteoWeatherForecastProvider.fetchDailyForecast(request);
-        if (result.outcome === 'available' && !result.forecast.summaryInput) {
-          writeWeatherSummaryDiagnostic({
-            reason: 'missing-weather-context',
-            durationMilliseconds: Math.round(performance.now() - startedAt),
-            attempt: 0
-          });
-        }
-        return result;
-      }
-    },
+    weatherProvider: openMeteoWeatherForecastProvider,
+    weatherDiagnostic: writeWeatherSummaryDiagnostic,
     weatherSummaryProvider: openAiWeatherSummaryProvider,
     commuteEstimateProvider: (userId) =>
       googleMapsOperations.requestGateway({ mode: 'user', userId })

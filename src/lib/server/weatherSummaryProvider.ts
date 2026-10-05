@@ -4,29 +4,11 @@ import {
   type NormalizedWeatherSummaryInput,
   type WeatherSummaryProvider as WeatherSummaryProviderContract
 } from '$lib/weatherForecast';
-import { normalizedWeatherSummaryInputSchema } from '$lib/weatherSummaryContract';
+import { normalizedWeatherSummaryInputSchema, type WeatherSummaryDiagnostic } from '$lib/weatherSummaryContract';
 
 export type WeatherSummaryProvider = WeatherSummaryProviderContract;
 
-export type WeatherSummaryDiagnostic = {
-  reason:
-    | 'missing-api-key'
-    | 'missing-weather-context'
-    | 'invalid-configuration'
-    | 'invalid-input'
-    | 'http-error'
-    | 'incomplete-response'
-    | 'missing-output'
-    | 'invalid-response'
-    | 'sentence-too-long'
-    | 'sentence-rejected'
-    | 'available'
-    | 'timeout'
-    | 'request-failed';
-  durationMilliseconds: number;
-  attempt: number;
-  httpStatus?: number;
-};
+export type { WeatherSummaryDiagnostic } from '$lib/weatherSummaryContract';
 
 export const writeWeatherSummaryDiagnostic = (diagnostic: WeatherSummaryDiagnostic) => {
   try {
@@ -115,13 +97,13 @@ export const createOpenAiWeatherSummaryProvider = ({
   prompt = env.OPENAI_WEATHER_PROMPT,
   onDiagnostic = () => {}
 }: OpenAiWeatherSummaryProviderOptions = {}): WeatherSummaryProvider => ({
-  async summarize(input) {
+  async summarize(input, diagnosticOptions) {
     const startedAt = Date.now();
     let attempt = 0;
     let readingResponse = false;
     const report = (reason: WeatherSummaryDiagnostic['reason'], httpStatus?: number) => {
       try {
-        onDiagnostic({
+        (diagnosticOptions?.onDiagnostic ?? onDiagnostic)({
           reason,
           durationMilliseconds: Date.now() - startedAt,
           attempt,

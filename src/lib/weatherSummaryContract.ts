@@ -43,3 +43,24 @@ export const normalizedWeatherSummaryInputSchema = z.object({
 }).strict();
 
 export type NormalizedWeatherSummaryInput = z.infer<typeof normalizedWeatherSummaryInputSchema>;
+
+export type WeatherSummaryDiagnostic = {
+  reason:
+    | 'missing-api-key'
+    | 'missing-weather-context'
+    | 'invalid-configuration'
+    | 'invalid-input'
+    | 'http-error'
+    | 'incomplete-response'
+    | 'missing-output'
+    | 'invalid-response'
+    | 'sentence-too-long'
+    | 'sentence-rejected'
+    | 'available'
+    | 'timeout'
+    | 'request-failed';
+  durationMilliseconds: number;
+  attempt: number;
+  httpStatus?: number;
+  traceId?: string;
+};

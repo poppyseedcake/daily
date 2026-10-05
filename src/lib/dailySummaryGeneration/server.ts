@@ -1,3 +1,5 @@
+import { createWeatherSectionGenerator } from './weatherSection';
+import type { WeatherSummaryDiagnostic } from '$lib/weatherSummaryContract';
 import type { LoadedCalendarEvents } from '$lib/calendar';
 import { calendarReadinessForAuthMode } from '$lib/calendarReadiness';
 import {
@@ -47,6 +49,7 @@ export type UserDailySummaryGenerationDependencies = {
   calendarEvents: Pick<UserCalendarEventsModule, 'load'>;
   weatherProvider: WeatherForecastProvider;
   weatherSummaryProvider?: WeatherSummaryProvider;
+  weatherDiagnostic?: (diagnostic: WeatherSummaryDiagnostic) => void;
   commuteEstimateProvider: (
     userId: string
   ) => Pick<GoogleMapsRequestGateway, 'estimateCommute'> | undefined;
@@ -64,6 +67,7 @@ export const createUserDailySummaryGenerator = ({
   calendarEvents,
   weatherProvider,
   weatherSummaryProvider,
+  weatherDiagnostic,
   commuteEstimateProvider,
   openDailyUrl = process.env.ORIGIN ?? process.env.BETTER_AUTH_URL ?? 'http://localhost:5174/',
   now = () => new Date()
@@ -71,6 +75,11 @@ export const createUserDailySummaryGenerator = ({
   UserDailySummaryRequest,
   UserDailySummaryGenerationOptions
 > => {
+  const weatherSectionGenerator = createWeatherSectionGenerator({
+    forecastProvider: weatherProvider,
+    summaryProvider: weatherSummaryProvider,
+    onDiagnostic: weatherDiagnostic
+  });
   const generator = createDailySummaryGenerator<UserDailySummaryRequest>({
     openDailyUrl,
     now,
@@ -131,8 +140,7 @@ export const createUserDailySummaryGenerator = ({
             todoStateUnavailable: todoContext.unavailable,
             weatherLocation: weatherContext.location,
             weatherLocationUnavailable: weatherContext.unavailable,
-            weatherProvider,
-            weatherSummaryProvider,
+            weatherSectionGenerator,
             commuteRoutes: commuteContext.setup.routes,
             commuteDays: commuteContext.setup.days,
             commuteSetupUnavailable: commuteContext.unavailable,
