@@ -1,0 +1,99 @@
+@font-face {
+  font-family: 'Daily Fraunces';
+  src: url('/fonts/fraunces-variable.ttf') format('truetype');
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Daily Manrope';
+  src: url('/fonts/manrope-variable.ttf') format('truetype');
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+}
+.error-page {
+  --error-ground: #f7f8f5;
+  --error-ink: #172d52;
+  --error-pale-blue: #eff2f6;
+  --error-sage: #c7d6b8;
+  --error-olive: #587542;
+  --error-muted: #3f4d44;
+  box-sizing: border-box;
+  min-height: 100svh;
+  display: flex;
+  flex-direction: column;
+  background: var(--error-ground);
+  color: var(--error-ink);
+  font-family: 'Daily Manrope', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+.error-page *, .error-page *::before, .error-page *::after { box-sizing: border-box; }
+.error-page ::selection { color: var(--error-ink); background: var(--error-sage); }
+.error-page :where(a) { color: inherit; }
+.error-page a:focus-visible { outline: 2px solid var(--error-ink); outline-offset: 5px; }
+.error-page__container { width: min(calc(100% - 96px), 880px); margin-inline: auto; }
+.error-page__header { min-height: 112px; display: flex; align-items: center; }
+.error-page__brand { display: inline-flex; align-items: center; min-height: 44px; text-decoration: none; }
+.error-page__main { flex: 1; display: grid; grid-template-columns: 480px 400px; align-items: center; align-content: center; padding-block: 16px 56px; }
+.error-page h1 { margin: 0; font-family: 'Daily Fraunces', Georgia, serif; font-size: 84px; font-weight: 500; font-optical-sizing: none; font-variation-settings: 'opsz' 48, 'SOFT' 100, 'WONK' 1; line-height: 1.03; letter-spacing: -.02em; }
+.error-page h1 span { display: block; }
+.error-page__period { font-size: .88em; font-style: normal; }
+.error-page__comma { font-style: normal; }
+.error-page--server h1 { font-size: 80px; }
+.error-page--other h1 { font-size: 48px; }
+.error-page__description { margin: 24px 0 0; max-width: 380px; color: var(--error-muted); font-size: 16px; font-weight: 500; line-height: 1.75; }
+.error-page__description span { display: block; }
+.error-page__actions { display: flex; align-items: center; flex-wrap: wrap; gap: 24px; margin-top: 16px; }
+.error-page__primary { display: inline-flex; align-items: center; width: fit-content; min-height: 44px; gap: 6px; color: var(--error-ink); font-size: 18px; font-weight: 650; line-height: 1.3; text-decoration: none; }
+.error-page__primary span { white-space: nowrap; text-decoration: underline; text-decoration-thickness: 1.5px; text-underline-offset: 5px; }
+.error-page__primary svg { flex-shrink: 0; width: 20px; height: 20px; transform: translateY(-1px); }
+.error-page__primary:hover, .error-page__secondary:hover { color: var(--error-olive); }
+.error-page__primary:active { color: #3e562e; }
+.error-page__secondary { display: inline-flex; align-items: center; min-height: 44px; color: var(--error-muted); font-size: 16px; font-weight: 450; line-height: 1.3; text-decoration: underline; text-decoration-thickness: 1px; text-decoration-color: #a0ad94; text-underline-offset: 5px; }
+.error-page__visual { width: 320px; justify-self: center; }
+.error-page__visual svg { display: block; width: 100%; height: auto; overflow: visible; }
+.error-page__code { fill: var(--error-ground); font-family: 'Daily Manrope', sans-serif; font-size: 42px; font-weight: 600; letter-spacing: -.025em; }
+.error-page__code--missing, .error-page--server .error-page__code { fill: var(--error-ink); }
+.error-page__footer { min-height: 96px; display: flex; align-items: flex-start; padding-block: 8px 44px; color: #526247; font-size: 13px; font-weight: 450; line-height: 1.4; }
+.error-page__footer nav { display: flex; gap: 24px; }
+.error-page__footer a { display: inline-flex; align-items: center; min-width: 44px; min-height: 44px; text-decoration: none; text-underline-offset: 4px; }
+.error-page__footer a:hover { color: var(--error-ink); text-decoration: underline; text-decoration-thickness: 1px; }
+.error-page--preview + .error-page--preview { border-top: 1px solid #dfe3dc; }
+@media (max-width: 1056px) {
+  .error-page__main { grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); column-gap: 48px; }
+  .error-page h1 { font-size: 72px; }
+  .error-page--server h1 { font-size: 70px; }
+  .error-page--other h1 { font-size: 40px; }
+  .error-page__visual { width: min(100%, 320px); }
+  .error-page--not-found .error-page__visual { width: min(73%, 236px); justify-self: start; }
+}
+@media (min-width: 761px) and (max-height: 780px) {
+  .error-page__header { min-height: 88px; }
+  .error-page__main { padding-block: 16px 32px; }
+  .error-page__footer { min-height: 72px; padding-bottom: 28px; }
+}
+@media (max-width: 760px) {
+  .error-page__container { width: calc(100% - 48px); max-width: 420px; }
+  .error-page__header { min-height: 86px; }
+  .error-page__main { grid-template-columns: minmax(0, 1fr); row-gap: 28px; padding-block: 20px 32px; }
+  .error-page__visual, .error-page--not-found .error-page__visual { grid-row: 1; width: 160px; justify-self: start; }
+  .error-page h1 { font-size: 56px; }
+  .error-page--server h1 { font-size: 54px; }
+  .error-page--other h1 { font-size: 36px; }
+  .error-page__description { margin-top: 20px; font-size: 15px; }
+  .error-page__actions { gap: 24px; margin-top: 12px; }
+  .error-page__primary { font-size: 16px; }
+  .error-page__secondary { font-size: 15px; }
+  .error-page__footer { min-height: 68px; padding-block: 0 24px; }
+}
+@media (max-width: 760px) and (max-height: 650px) {
+  .error-page__header { min-height: 68px; }
+  .error-page__main { row-gap: 20px; padding-block: 12px 24px; }
+  .error-page--not-found .error-page__main { padding-top: 60px; }
+  .error-page__visual, .error-page--not-found .error-page__visual { width: 112px; }
+  .error-page h1 { font-size: 44px; }
+  .error-page--server h1 { font-size: 42px; }
+  .error-page--other h1 { font-size: 32px; }
+  .error-page__description { margin-top: 16px; font-size: 14px; }
+}
