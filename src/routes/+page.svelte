@@ -346,12 +346,20 @@
     return `${words[0]?.[0] ?? ''}${words.length > 1 ? words.at(-1)?.[0] ?? '' : ''}`.toUpperCase();
   });
 
-  onMount(() => {
-    if (authState.mode !== 'user') return;
+  $effect(() => {
+    const currentAuthState = authState;
+    untrack(() => {
+      const identifiedUserId = posthog.get_property('$user_id');
+      if (currentAuthState.mode !== 'user') {
+        if (identifiedUserId) posthog.reset();
+        return;
+      }
 
-    posthog.identify(authState.userId, {
-      email: authState.summaryRecipient,
-      ...(authState.name ? { name: authState.name } : {})
+      if (identifiedUserId && identifiedUserId !== currentAuthState.userId) posthog.reset();
+      posthog.identify(currentAuthState.userId, {
+        email: currentAuthState.summaryRecipient,
+        ...(currentAuthState.name ? { name: currentAuthState.name } : {})
+      });
     });
   });
 

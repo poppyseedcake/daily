@@ -1,4 +1,5 @@
 import { PostHog } from 'posthog-node';
+import { telemetryRequestTimeoutMilliseconds } from './posthogDeliveryBudget';
 
 let posthogClient: PostHog | null = null;
 
@@ -29,6 +30,8 @@ export const getServerPostHogClient = () => {
     host,
     flushAt: 1,
     flushInterval: 0,
+    requestTimeout: telemetryRequestTimeoutMilliseconds,
+    fetchRetryCount: 0,
     enableExceptionAutocapture: true,
     privacyMode: false
   });

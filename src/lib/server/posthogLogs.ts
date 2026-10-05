@@ -2,6 +2,7 @@ import { OTLPLogExporter } from '@opentelemetry/exporter-logs-otlp-http';
 import { resourceFromAttributes } from '@opentelemetry/resources';
 import { BatchLogRecordProcessor, LoggerProvider } from '@opentelemetry/sdk-logs';
 import type { ScheduledDailySummaryWorkerEvent } from './scheduledDailySummaryWorker';
+import { flushTelemetryWithinBudget, telemetryRequestTimeoutMilliseconds } from './posthogDeliveryBudget';
 
 let posthogLogProvider: LoggerProvider | null = null;
 
@@ -33,6 +34,7 @@ const getPostHogLogProvider = () => {
     processors: [
       new BatchLogRecordProcessor({
         exporter: new OTLPLogExporter({
+          timeoutMillis: telemetryRequestTimeoutMilliseconds,
           url: new URL('/i/v1/logs', host).toString(),
           headers: { Authorization: `Bearer ${token}` }
         })
@@ -78,7 +80,7 @@ export const logScheduledDailySummaryWorkerTerminalEvent = async (event: WorkerT
       attributes
     });
 
-    await provider.forceFlush();
+    await flushTelemetryWithinBudget(() => provider.forceFlush());
   } catch {
     // Export failures must not change the scheduled delivery result.
   }

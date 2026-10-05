@@ -7,6 +7,7 @@ import {
 } from '$lib/weatherForecast';
 import { normalizedWeatherSummaryInputSchema, type WeatherSummaryDiagnostic } from '$lib/weatherSummaryContract';
 import { getServerPostHogClient } from './posthog';
+import { flushTelemetryWithinBudget } from './posthogDeliveryBudget';
 
 export type WeatherSummaryProvider = WeatherSummaryProviderContract;
 
@@ -108,6 +109,9 @@ export const createOpenAiWeatherSummaryProvider = ({
     const startedAt = Date.now();
     let attempt = 0;
     let readingResponse = false;
+    let attemptStartedAt: number | undefined;
+    let attemptHttpStatus: number | undefined;
+    let generationCaptured = false;
     const report = (reason: WeatherSummaryDiagnostic['reason'], httpStatus?: number) => {
       try {
         (options?.onDiagnostic ?? onDiagnostic)({
@@ -142,6 +146,9 @@ export const createOpenAiWeatherSummaryProvider = ({
 
       for (attempt = 1; attempt <= 2; attempt += 1) {
         readingResponse = false;
+        attemptStartedAt = Date.now();
+        attemptHttpStatus = undefined;
+        generationCaptured = false;
         const inputMessages = [
           {
             role: 'developer',
@@ -191,14 +198,16 @@ export const createOpenAiWeatherSummaryProvider = ({
           }
         );
 
+        attemptHttpStatus = response.status;
         if (!response.ok) {
+          generationCaptured = true;
           await captureOpenAiWeatherGeneration({
             observability,
             model: configuration.data.model,
             maxOutputTokens: configuration.data.maxOutputTokens,
             input: inputMessages,
             httpStatus: response.status,
-            latencySeconds: (Date.now() - startedAt) / 1_000,
+            latencySeconds: (Date.now() - attemptStartedAt) / 1_000,
             error: `OpenAI Responses request returned HTTP ${response.status}.`
           });
           report('http-error', response.status);
@@ -208,6 +217,7 @@ export const createOpenAiWeatherSummaryProvider = ({
         readingResponse = true;
         const payload = responsePayloadSchema.parse(await response.json());
         const responseText = responseTextFrom(payload);
+        generationCaptured = true;
         await captureOpenAiWeatherGeneration({
           observability,
           model: configuration.data.model,
@@ -217,7 +227,7 @@ export const createOpenAiWeatherSummaryProvider = ({
           inputTokens: payload.usage?.input_tokens,
           outputTokens: payload.usage?.output_tokens,
           httpStatus: response.status,
-          latencySeconds: (Date.now() - startedAt) / 1_000,
+          latencySeconds: (Date.now() - attemptStartedAt) / 1_000,
           error: payload.status === 'completed' && responseText
             ? undefined
             : 'OpenAI Responses response was incomplete or did not contain output.'
@@ -251,9 +261,21 @@ export const createOpenAiWeatherSummaryProvider = ({
       }
       return { outcome: 'unavailable' };
     } catch (error) {
-      report(error instanceof Error && error.name === 'AbortError'
+      const reason = error instanceof Error && error.name === 'AbortError'
         ? 'timeout'
-        : readingResponse ? 'invalid-response' : 'request-failed');
+        : readingResponse ? 'invalid-response' : 'request-failed';
+      if (attemptStartedAt !== undefined && !generationCaptured) {
+        await captureOpenAiWeatherGeneration({
+          observability,
+          model,
+          maxOutputTokens,
+          input: [],
+          httpStatus: attemptHttpStatus,
+          latencySeconds: (Date.now() - attemptStartedAt) / 1_000,
+          error: `OpenAI Responses generation failed: ${reason}.`
+        });
+      }
+      report(reason);
       return { outcome: 'unavailable' };
     }
   }
@@ -282,7 +304,7 @@ const captureOpenAiWeatherGeneration = async ({
   output?: string | null;
   inputTokens?: number;
   outputTokens?: number;
-  httpStatus: number;
+  httpStatus?: number;
   latencySeconds: number;
   error?: string;
 }) => {
@@ -304,7 +326,7 @@ const captureOpenAiWeatherGeneration = async ({
         $ai_input: input,
         $ai_output_choices: output ? [{ role: 'assistant', content: output }] : [],
         $ai_max_tokens: maxOutputTokens,
-        $ai_http_status: httpStatus,
+        ...(httpStatus === undefined ? {} : { $ai_http_status: httpStatus }),
         $ai_latency: latencySeconds,
         $ai_is_error: Boolean(error),
         ...(error ? { $ai_error: error } : {}),
@@ -312,7 +334,7 @@ const captureOpenAiWeatherGeneration = async ({
         ...(outputTokens === undefined ? {} : { $ai_output_tokens: outputTokens })
       }
     });
-    await posthog.flush();
+    await flushTelemetryWithinBudget(() => posthog.flush());
   } catch {
     // AI observability must not change weather-summary delivery.
   }
