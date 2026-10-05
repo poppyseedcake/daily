@@ -955,6 +955,7 @@ describe('Daily page server load', () => {
       },
       isAdministrator: false,
       calendarReadiness: userCalendarReadiness,
+      userSetupEditing: { summaryConfiguration: true, todoState: true, weatherLocation: true, commuteSetup: true, savedWeatherCities: true, savedCommuteAddresses: true },
       hasSavedSummaryConfiguration: true,
       summaryConfiguration: savedConfiguration,
       todoState: savedTodoState,
@@ -1019,6 +1020,9 @@ describe('Daily page server load', () => {
     const result = await loadPage();
 
     expect(result.todoState.todoTasks).toEqual([]);
+    expect(result).toMatchObject({
+      userSetupEditing: { todoState: false, summaryConfiguration: true, commuteSetup: true }
+    });
     expect(sentForecastRequests).toHaveLength(0);
     expect(console.warn).toHaveBeenCalledWith(
       'Failed to load User Todo state.',
@@ -1127,6 +1131,7 @@ describe('Daily page server load', () => {
       },
       isAdministrator: false,
       calendarReadiness: userCalendarReadiness,
+      userSetupEditing: { summaryConfiguration: true, todoState: true, weatherLocation: true, commuteSetup: true, savedWeatherCities: true, savedCommuteAddresses: true },
       hasSavedSummaryConfiguration: false,
       summaryConfiguration: defaultSummaryConfiguration,
       todoState: {
@@ -1168,6 +1173,7 @@ describe('Daily page server load', () => {
         detail: 'Calendar data cannot be loaded right now.',
         unavailableReason: 'Live Calendar is unavailable right now.'
       },
+      userSetupEditing: { summaryConfiguration: false, todoState: false, weatherLocation: false, commuteSetup: false, savedWeatherCities: false, savedCommuteAddresses: false },
       summaryConfiguration: null,
       todoState: {
         todoCategories: [],
@@ -1205,6 +1211,7 @@ describe('Daily page server load', () => {
       },
       isAdministrator: true,
       calendarReadiness: userCalendarReadiness,
+      userSetupEditing: { summaryConfiguration: true, todoState: true, weatherLocation: true, commuteSetup: true, savedWeatherCities: true, savedCommuteAddresses: true },
       hasSavedSummaryConfiguration: false,
       summaryConfiguration: defaultSummaryConfiguration,
       todoState: {
