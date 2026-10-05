@@ -24,6 +24,10 @@ _Avoid_: Anonymous user, guest account, trial user
 The configuration, Todo data, Weather Location, and Commute Routes a Visitor creates in their browser before signing in. Local Setup is automatically saved to the User after Google sign-in only when the User has no existing saved setup.
 _Avoid_: Demo data, guest account data
 
+**Local Setup Handoff**:
+The transition from a Visitor's Local Setup to the User's saved setup after Google sign-in. The saved User setup is authoritative for what the User can continue editing, including any existing data preserved during import.
+_Avoid_: Browser migration, setup synchronization
+
 **Demo Calendar**:
 Clearly labeled sample Calendar Events shown to a Visitor so they can understand the Calendar Section before connecting their own Google Calendar.
 _Avoid_: Selected Calendar, imported calendar

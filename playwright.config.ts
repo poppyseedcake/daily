@@ -23,7 +23,7 @@ export default defineConfig({
       env: {
         BETTER_AUTH_SECRET: authSecret,
         DATABASE_URL: databaseURL,
-        ADMINISTRATOR_EMAIL_ALLOWLIST: 'admin@example.com',
+        ADMINISTRATOR_EMAIL_ALLOWLIST: 'admin@example.com,handoff-admin@example.com',
         SCHEDULED_WORKER_OVERDUE_MINUTES: '5',
         GOOGLE_CALENDAR_API_BASE_URL: `${calendarFixtureURL}/calendar/v3`,
         GOOGLE_ROUTES_GLOBAL_DAILY_CAP: '100',

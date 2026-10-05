@@ -40,13 +40,9 @@
   import type { DeliveryHistoryRecord, DeliveryStatus } from '$lib/deliveryRecords';
   import {
     createDefaultLocalSetup,
-    loadLocalSetup,
-    saveLocalSetup,
-    type LocalSetup,
-    type LocalSetupInput,
-    type LocalSetupLoadOutcome,
-    type LocalSetupSaveOutcome
+    type LocalSetupInput
   } from '$lib/localSetup';
+  import { createLocalSetupHandoff } from '$lib/localSetupHandoff';
   import {
     defaultSummaryConfiguration,
     summaryConfigurationSchema,
@@ -198,8 +194,7 @@
   let localSetupHydrated = $state(false);
   let localSetupStatus = $state('Not saved in this browser yet.');
   let localSetupStatusTone = $state<'success' | 'warning' | 'error' | 'neutral'>('neutral');
-  let lastLocalSetupSnapshot: string | null = null;
-  let hydratedLocalSetupSnapshot: string | null = null;
+  const localSetupHandoff = createLocalSetupHandoff();
   let userSummaryConfigurationStatus = $state('Saved to your account.');
   let userSummaryConfigurationStatusTone = $state<'success' | 'warning' | 'error' | 'neutral'>(
     'success'
@@ -255,8 +250,8 @@
       initialState,
       adapter: createJsonPutSaveAdapter<UserTodoState>({ url: '/todo-state' })
     });
-  let userSummaryConfigurationSave = createSummaryConfigurationSave(initialSummaryConfiguration);
-  let userTodoStateSave = createTodoStateSave(initialTodoState);
+  const userSummaryConfigurationSave = createSummaryConfigurationSave(initialSummaryConfiguration);
+  const userTodoStateSave = createTodoStateSave(initialTodoState);
   const createSavedWeatherCitiesSave = (initialState: SavedWeatherCity[]) =>
     createBrowserSaveCoordinator({
       initialState,
@@ -273,8 +268,8 @@
         body: (addresses) => ({ addresses })
       })
     });
-  let savedWeatherCitiesSave = createSavedWeatherCitiesSave(initialSavedWeatherCities);
-  let savedCommuteAddressesSave = createSavedCommuteAddressesSave(initialSavedCommuteAddresses);
+  const savedWeatherCitiesSave = createSavedWeatherCitiesSave(initialSavedWeatherCities);
+  const savedCommuteAddressesSave = createSavedCommuteAddressesSave(initialSavedCommuteAddresses);
   const selectedCalendarsSave = createBrowserSaveCoordinator({
     initialState: initialSelectedCalendarConfiguration?.calendars ?? [],
     adapter: createJsonPutSaveAdapter<SelectedCalendarOption[]>({
@@ -360,41 +355,28 @@
   });
 
   onMount(() => {
-    if (authState.mode === 'user') {
-      if (new URL(globalThis.location.href).searchParams.get('localSetupImport') === '1') {
-        void importVisitorLocalSetupAfterSignIn();
-        return;
+    const lifetime = new AbortController();
+    void localSetupHandoff.initialize({
+      mode: authState.mode,
+      initialSetup: currentLocalSetup(),
+      systemTimeZone: systemTimeZone(),
+      hasSavedSummaryConfiguration: data?.hasSavedSummaryConfiguration,
+      signal: lifetime.signal
+    }).then((result) => {
+      if (lifetime.signal.aborted || result.outcome !== 'ready') return;
+      applyLocalSetup(result.setup);
+      if (result.storageStatus) {
+        localSetupStatus = result.storageStatus.message;
+        localSetupStatusTone = result.storageStatus.tone;
       }
-
-      if (data?.hasSavedSummaryConfiguration === false) {
-        useSystemTimeZone();
+      if (result.importStatus) {
+        localSetupImportStatus = result.importStatus.message;
+        localSetupImportStatusTone = result.importStatus.tone;
       }
       localSetupHydrated = true;
       todoControlsReady = true;
-      return;
-    }
-
-    const loadOutcome = restoreVisitorLocalSetup();
-    if (loadOutcome === 'empty') {
-      useSystemTimeZone();
-    }
-    const restoredSetup = currentLocalSetup();
-    hydratedLocalSetupSnapshot = localSetupSnapshot(restoredSetup);
-
-    if (loadOutcome === 'loaded') {
-      lastLocalSetupSnapshot = hydratedLocalSetupSnapshot;
-    }
-
-    if (loadOutcome === 'empty') {
-      const saveOutcome = persistVisitorLocalSetup(restoredSetup);
-
-      if (saveOutcome === 'saved') {
-        lastLocalSetupSnapshot = hydratedLocalSetupSnapshot;
-      }
-    }
-
-    localSetupHydrated = true;
-    todoControlsReady = true;
+    });
+    return () => lifetime.abort();
   });
 
   const currentSummaryTime = () => {
@@ -449,57 +431,10 @@
     return result.success ? result.data : 'UTC';
   };
 
-  const useSystemTimeZone = () => {
-    patchSummaryConfiguration({ userTimeZone: systemTimeZone() });
-  };
-
   const readInputChecked = (event: Event) => (event.currentTarget as HTMLInputElement).checked;
   const readInputValue = (event: Event) => (event.currentTarget as HTMLInputElement).value;
   const nextId = (prefix: string) => `${prefix}-${nextTodoId++}`;
-  const browserLocalSetupStorage = () => ({
-    getItem: (key: string) => globalThis.localStorage.getItem(key),
-    setItem: (key: string, value: string) => {
-      globalThis.localStorage.setItem(key, value);
-    }
-  });
-  const localSetupLoadStatus = (outcome: LocalSetupLoadOutcome) => {
-    if (outcome === 'loaded') {
-      return {
-        message: 'Restored from this browser. Saved in this browser only',
-        tone: 'success' as const
-      };
-    }
-
-    if (outcome === 'empty') {
-      return {
-        message: 'Not saved in this browser yet.',
-        tone: 'neutral' as const
-      };
-    }
-
-    if (outcome === 'read-failed') {
-      return {
-        message: 'Browser storage is unavailable. Changes are not saved.',
-        tone: 'error' as const
-      };
-    }
-
-    return {
-      message: 'Invalid browser data was ignored. Defaults are active.',
-      tone: 'warning' as const
-    };
-  };
-  const localSetupSaveStatus = (outcome: LocalSetupSaveOutcome) =>
-    outcome === 'saved'
-      ? {
-          message: 'Saved in this browser only',
-          tone: 'success' as const
-        }
-      : {
-          message: 'Browser storage is unavailable. Changes are not saved.',
-          tone: 'error' as const
-        };
-  const applyLocalSetup = (setup: LocalSetup) => {
+  const applyLocalSetup = (setup: LocalSetupInput) => {
     updateSummaryConfiguration(setup.summaryConfiguration);
     weatherLocation = setup.weatherLocation;
     savedWeatherCities = setup.savedWeatherCities;
@@ -515,7 +450,9 @@
     commuteSearchSessionTokens = { origin: '', destination: '' };
     weatherLocationSearchQuery = setup.weatherLocation?.label ?? '';
     weatherLocationStatus = setup.weatherLocation
-      ? 'Weather Location saved in this browser only.'
+      ? authState.mode === 'user'
+        ? 'Weather Location saved to your account.'
+        : 'Weather Location saved in this browser only.'
       : 'No Weather Location saved yet.';
     weatherLocationStatusTone = setup.weatherLocation ? 'success' : 'neutral';
     todoCategories = setup.todoCategories;
@@ -539,126 +476,6 @@
     todoTasks,
     nextTodoId
   });
-  const localSetupSnapshot = (setup: LocalSetupInput) => JSON.stringify(setup);
-  const restoreVisitorLocalSetup = () => {
-    const result = loadLocalSetup(browserLocalSetupStorage());
-
-    applyLocalSetup(result.setup);
-    const status = localSetupLoadStatus(result.outcome);
-    localSetupStatus = status.message;
-    localSetupStatusTone = status.tone;
-
-    return result.outcome;
-  };
-  const persistVisitorLocalSetup = (setup: LocalSetupInput) => {
-    const result = saveLocalSetup(browserLocalSetupStorage(), setup);
-
-    const status = localSetupSaveStatus(result.outcome);
-    localSetupStatus = status.message;
-    localSetupStatusTone = status.tone;
-
-    return result.outcome;
-  };
-  const localSetupImportMessage = (outcome: string) => {
-    if (outcome === 'imported') {
-      return {
-        message: 'Imported Local Setup from this browser.',
-        tone: 'success' as const
-      };
-    }
-
-    if (outcome === 'skipped-existing-setup') {
-      return {
-        message: 'Saved User setup kept. Browser Local Setup was not imported.',
-        tone: 'success' as const
-      };
-    }
-
-    if (outcome === 'invalid-local-setup' || outcome === 'invalid-draft') {
-      return {
-        message: 'Browser Local Setup could not be imported. Saved User setup is unchanged.',
-        tone: 'warning' as const
-      };
-    }
-
-    if (outcome === 'empty') {
-      return {
-        message: 'No browser Local Setup was found for import.',
-        tone: 'neutral' as const
-      };
-    }
-
-    if (outcome === 'unsupported-version' || outcome === 'schema-invalid' || outcome === 'invalid-json') {
-      return {
-        message: 'Invalid browser Local Setup was ignored. Saved User setup is unchanged.',
-        tone: 'warning' as const
-      };
-    }
-
-    if (outcome === 'read-failed' || outcome === 'import-failed') {
-      return {
-        message: 'Browser Local Setup import is unavailable. Saved User setup is unchanged.',
-        tone: 'error' as const
-      };
-    }
-
-    return {
-      message: 'Browser Local Setup was not imported. Saved User setup is unchanged.',
-      tone: 'neutral' as const
-    };
-  };
-  const updateLocalSetupImportStatus = (outcome: string) => {
-    const status = localSetupImportMessage(outcome);
-    localSetupImportStatus = status.message;
-    localSetupImportStatusTone = status.tone;
-  };
-  const removeLocalSetupImportUrlFlag = () => {
-    const url = new URL(globalThis.location.href);
-    url.searchParams.delete('localSetupImport');
-    globalThis.history.replaceState(globalThis.history.state, '', `${url.pathname}${url.search}${url.hash}`);
-  };
-  const markCurrentUserStateSaved = () => {
-    userSummaryConfigurationSave = createSummaryConfigurationSave(currentSummaryConfiguration());
-    userTodoStateSave = createTodoStateSave(currentTodoState());
-    savedWeatherCitiesSave = createSavedWeatherCitiesSave(savedWeatherCities);
-    savedCommuteAddressesSave = createSavedCommuteAddressesSave(savedCommuteAddresses);
-  };
-  const importVisitorLocalSetupAfterSignIn = async () => {
-    const result = loadLocalSetup(browserLocalSetupStorage());
-
-    if (result.outcome !== 'loaded') {
-      updateLocalSetupImportStatus(result.outcome);
-      localSetupHydrated = true;
-      todoControlsReady = true;
-      removeLocalSetupImportUrlFlag();
-      return;
-    }
-
-    try {
-      const response = await fetch('/local-setup-import', {
-        method: 'PUT',
-        headers: {
-          'content-type': 'application/json'
-        },
-        body: JSON.stringify(result.setup)
-      });
-      const importResult = (await response.json()) as { outcome?: string };
-      const outcome = importResult.outcome ?? 'import-failed';
-
-      updateLocalSetupImportStatus(outcome);
-
-      if (response.ok && outcome === 'imported') {
-        applyLocalSetup(result.setup);
-      }
-    } catch {
-      updateLocalSetupImportStatus('import-failed');
-    }
-
-    markCurrentUserStateSaved();
-    localSetupHydrated = true;
-    todoControlsReady = true;
-    removeLocalSetupImportUrlFlag();
-  };
   const cancelPendingWeatherLocationSearch = () => {
     clearTimeout(weatherLocationSearchTimer);
     weatherLocationSearchTimer = undefined;
@@ -1862,22 +1679,11 @@
   });
 
   $effect(() => {
-    if (authState.mode === 'user') {
-      return;
-    }
-
-    const setup = currentLocalSetup();
-    const snapshot = localSetupSnapshot(setup);
-
-    if (!localSetupHydrated || snapshot === lastLocalSetupSnapshot || snapshot === hydratedLocalSetupSnapshot) {
-      return;
-    }
-
-    const saveOutcome = persistVisitorLocalSetup(setup);
-
-    if (saveOutcome === 'saved') {
-      lastLocalSetupSnapshot = snapshot;
-    }
+    if (!localSetupHydrated) return;
+    const status = localSetupHandoff.save(currentLocalSetup());
+    if (!status) return;
+    localSetupStatus = status.message;
+    localSetupStatusTone = status.tone;
   });
 
   $effect(() => {
@@ -2076,7 +1882,7 @@
     </nav>
   </aside>
 
-  <section class="daily-board-main" id="task-board">
+  <section class="daily-board-main" id="task-board" inert={authState.mode === 'user' && !localSetupHydrated}>
     {#if form?.accountDeletionSucceeded}
       <div class="daily-notice daily-notice--success" role="status">
         Your Daily account and locally held User data were deleted. You are now in Visitor mode.
