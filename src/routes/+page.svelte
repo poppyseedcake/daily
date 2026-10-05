@@ -355,13 +355,15 @@
   });
 
   onMount(() => {
+    const lifetime = new AbortController();
     void localSetupHandoff.initialize({
       mode: authState.mode,
       initialSetup: currentLocalSetup(),
       systemTimeZone: systemTimeZone(),
-      hasSavedSummaryConfiguration: data?.hasSavedSummaryConfiguration
+      hasSavedSummaryConfiguration: data?.hasSavedSummaryConfiguration,
+      signal: lifetime.signal
     }).then((result) => {
-      if (result.outcome !== 'ready') return;
+      if (lifetime.signal.aborted || result.outcome !== 'ready') return;
       applyLocalSetup(result.setup);
       if (result.storageStatus) {
         localSetupStatus = result.storageStatus.message;
@@ -374,6 +376,7 @@
       localSetupHydrated = true;
       todoControlsReady = true;
     });
+    return () => lifetime.abort();
   });
 
   const currentSummaryTime = () => {

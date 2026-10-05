@@ -165,3 +165,37 @@ test('User can sign out while Local Setup import remains pending', async ({ page
   await expect(page.getByRole('link', { name: 'Sign in with Google', exact: true }).first()).toBeVisible();
   await expect(page.getByLabel('Open account menu')).toHaveCount(0);
 });
+
+test('Administrator stays in the Admin Panel when an import response arrives after leaving the workspace', async ({ page, signedInUser: { database, userId } }) => {
+  database.prepare('update auth_user set email = ? where id = ?').run('handoff-admin@example.com', userId);
+  database.prepare('update users set email = ? where id = ?').run('handoff-admin@example.com', userId);
+  let release!: () => void;
+  const pending = new Promise<void>((resolve) => { release = resolve; });
+  await page.route('**/local-setup-import', async (route) => {
+    const response = await route.fetch();
+    expect(await response.json()).toMatchObject({ outcome: 'imported' });
+    await pending;
+    await route.fulfill({ response });
+  });
+  const importing = page.waitForRequest((request) => new URL(request.url()).pathname === '/local-setup-import');
+  try {
+    await page.goto('/?localSetupImport=1');
+    await importing;
+    await page.evaluate(() => { document.documentElement.dataset.handoffDocument = 'original'; });
+    await page.getByLabel('Open account menu').click();
+    await page.getByRole('link', { name: 'Admin Panel', exact: true }).click();
+    await expect(page.getByRole('heading', { name: 'Admin Panel', exact: true })).toBeVisible();
+    await expect(page.locator('html')).toHaveAttribute('data-handoff-document', 'original');
+
+    const imported = page.waitForResponse((response) => new URL(response.url()).pathname === '/local-setup-import');
+    release();
+    const response = await imported;
+    expect(response.ok()).toBe(true);
+    await page.waitForLoadState('networkidle');
+    await expect(page).toHaveURL('/admin');
+    await expect(page.getByRole('heading', { name: 'Admin Panel', exact: true })).toBeVisible();
+    await expect(page.locator('html')).toHaveAttribute('data-handoff-document', 'original');
+  } finally {
+    release();
+  }
+});

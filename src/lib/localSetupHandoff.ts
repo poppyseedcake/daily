@@ -21,6 +21,7 @@ type Navigation = {
 };
 
 type HandoffResult =
+  | { outcome: 'cancelled' }
   | { outcome: 'reloading' }
   | { outcome: 'ready'; setup: LocalSetupInput; storageStatus?: Status; importStatus?: Status };
 
@@ -72,15 +73,18 @@ export const createLocalSetupHandoff = ({
       mode: requestedMode,
       initialSetup,
       systemTimeZone,
-      hasSavedSummaryConfiguration
+      hasSavedSummaryConfiguration,
+      signal
     }: {
       mode: 'visitor' | 'user';
       initialSetup: LocalSetupInput;
       systemTimeZone: UserTimeZone;
       hasSavedSummaryConfiguration?: boolean;
+      signal?: AbortSignal;
     }): Promise<HandoffResult> {
       mode = requestedMode;
       ready = false;
+      if (signal?.aborted) return { outcome: 'cancelled' };
       if (mode === 'visitor') {
         const loaded = loadLocalSetup(storage);
         const setup = loaded.outcome === 'empty'
@@ -110,6 +114,7 @@ export const createLocalSetupHandoff = ({
           } catch {
             outcome = 'import-failed';
           }
+          if (signal?.aborted) return { outcome: 'cancelled' };
           // Import can remap IDs, retain existing data, or commit before its response
           // is lost. A fresh document loads authoritative User data and save baselines.
           url.searchParams.set(callbackParameter, outcome);

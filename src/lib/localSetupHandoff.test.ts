@@ -72,6 +72,25 @@ test('a lost import response reloads saved User setup without repeating the impo
   expect(navigation.currentUrl().searchParams.has('localSetupImport')).toBe(false);
 });
 
+test.each(['imported', 'lost-response'] as const)('leaving the page cancels handoff navigation after %s', async (outcome) => {
+  const storage = memoryStorage(JSON.stringify(createDefaultLocalSetup()));
+  const navigation = memoryNavigation('https://daily.example.com/?localSetupImport=1');
+  const lifetime = new AbortController();
+  let finish!: () => void;
+  const pending = new Promise<void>((resolve) => { finish = resolve; });
+  const handoff = createLocalSetupHandoff({ storage, navigation, importSetup: async () => {
+    await pending;
+    if (outcome === 'lost-response') throw new Error('Response lost after leaving the page');
+    return 'imported';
+  } });
+  const initialized = handoff.initialize({ mode: 'user', initialSetup: createDefaultLocalSetup(), systemTimeZone: 'UTC', signal: lifetime.signal });
+  lifetime.abort();
+  navigation.replaceUrl(new URL('https://daily.example.com/admin'));
+  finish();
+  expect(await initialized).toEqual({ outcome: 'cancelled' });
+  expect(navigation.currentUrl().href).toBe('https://daily.example.com/admin');
+});
+
 test('an invalid import draft returned with HTTP 200 keeps its warning outcome after reload', async () => {
   vi.stubGlobal('fetch', async () => new Response(JSON.stringify({ outcome: 'invalid-draft' })));
   try {

@@ -18,7 +18,11 @@ storage, import transport, and navigation adapters stay behind the seam.
   the original Visitor snapshot is never applied as saved User state.
 - Keep navigation and sign-out available while import is pending; only the data
   workspace is inert, and Settings stays disabled until initialization completes.
-- Reload even when the import response is lost: the transaction may have committed.
+- Tie initialization to the page lifetime with an AbortSignal. After the page is
+  unmounted, return a cancelled outcome without navigating or applying setup.
+  A submitted server import may still finish and remains authoritative on return.
+- While the page remains mounted, reload even when the import response is lost:
+  the transaction may have committed.
 - Carry only a recognized outcome in the `localSetupImport` query parameter during
   reload, then consume it and remove the parameter without repeating the import.
   Preserve unrelated query parameters and the fragment.
