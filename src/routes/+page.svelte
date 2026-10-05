@@ -29,7 +29,7 @@
     X
   } from '@lucide/svelte';
   import { dragHandle, dragHandleZone, SHADOW_ITEM_MARKER_PROPERTY_NAME, TRIGGERS } from 'svelte-dnd-action';
-  import { onMount, tick } from 'svelte';
+  import { onMount, tick, untrack } from 'svelte';
   import { invalidateAll } from '$app/navigation';
   import type { ActionData, PageData } from './$types';
   import { calendarReadinessForAuthMode } from '$lib/calendarReadiness';
@@ -43,6 +43,7 @@
     type LocalSetupInput
   } from '$lib/localSetup';
   import { createLocalSetupHandoff } from '$lib/localSetupHandoff';
+  import { userSetupPartLabels, type UserSetupPart } from '$lib/userSetup';
   import {
     defaultSummaryConfiguration,
     summaryConfigurationSchema,
@@ -115,6 +116,16 @@
     data?.calendarReadiness ?? calendarReadinessForAuthMode(authState.mode)
   );
   const isAdministrator = $derived(data?.isAdministrator ?? false);
+  // Permissions belong to the data that initialized this document's save baselines.
+  const initialUserSetupEditing = untrack(() => data?.userSetupEditing);
+  const canEditSetup = (part: UserSetupPart) =>
+    authState.mode === 'visitor' || initialUserSetupEditing?.[part] === true;
+  const unavailableSetupLabels = $derived(
+    (Object.keys(userSetupPartLabels) as UserSetupPart[])
+      .filter((part) => !canEditSetup(part))
+      .map((part) => userSetupPartLabels[part])
+  );
+  const retrySetupLoading = () => window.location.reload();
 
   const summarySections: Array<{ key: SummarySection; label: string }> = [
     { key: 'weather', label: 'Weather' },
@@ -374,7 +385,7 @@
         localSetupImportStatusTone = result.importStatus.tone;
       }
       localSetupHydrated = true;
-      todoControlsReady = true;
+      todoControlsReady = canEditSetup('todoState');
     });
     return () => lifetime.abort();
   });
@@ -407,6 +418,7 @@
   };
 
   const patchSummaryConfiguration = (patch: Partial<SummaryConfiguration>) => {
+    if (!canEditSetup('summaryConfiguration')) return;
     updateSummaryConfiguration({
       ...currentSummaryConfiguration(),
       ...patch
@@ -414,6 +426,7 @@
   };
 
   const toggleSectionPause = (section: SummarySection, paused: boolean) => {
+    if (!canEditSetup('summaryConfiguration')) return;
     const result = summaryConfigurationSchema.safeParse({
       ...currentSummaryConfiguration(),
       sectionPauses: { ...sectionPauses, [section]: paused }
@@ -503,6 +516,7 @@
     weatherLocationStatusTone = 'neutral';
   };
   const persistSavedWeatherCities = async (nextCities: SavedWeatherCity[]) => {
+    if (!canEditSetup('savedWeatherCities')) return;
     const request = savedWeatherCitiesSave.save(nextCities);
     if (request.outcome === 'unchanged') return;
 
@@ -522,6 +536,7 @@
     weatherLocationStatusTone = result.reason === 'invalid' ? 'warning' : 'error';
   };
   const persistSavedCommuteAddresses = async (nextAddresses: SavedCommuteAddress[]) => {
+    if (!canEditSetup('savedCommuteAddresses')) return;
     const request = savedCommuteAddressesSave.save(nextAddresses);
     if (request.outcome === 'unchanged') return;
 
@@ -537,6 +552,7 @@
     commuteRouteStatusTone = result.reason === 'invalid' ? 'warning' : 'error';
   };
   const toggleSavedWeatherCity = async (city: SavedWeatherCity) => {
+    if (!canEditSetup('savedWeatherCities')) return;
     const normalizedCity = savedWeatherCitySchema.parse(city);
     const nextCities = isSavedWeatherCity(normalizedCity)
       ? savedWeatherCities.filter(
@@ -558,6 +574,7 @@
     await persistSavedWeatherCities(nextCities);
   };
   const toggleSavedCommuteAddress = async (address: SavedCommuteAddress) => {
+    if (!canEditSetup('savedCommuteAddresses')) return;
     const normalizedAddress = savedCommuteAddressSchema.parse(address);
     const nextAddresses = isSavedCommuteAddress(normalizedAddress)
       ? savedCommuteAddresses.filter(
@@ -648,6 +665,7 @@
     }, 300);
   };
   const saveWeatherLocation = async (location: WeatherLocation) => {
+    if (!canEditSetup('weatherLocation')) return;
     cancelPendingWeatherLocationSearch();
 
     if (authState.mode !== 'user') {
@@ -852,6 +870,7 @@
       : null;
   };
   const saveCommuteRoute = async () => {
+    if (!canEditSetup('commuteSetup')) return;
     if (!editingCommuteRouteId && commuteRoutes.length >= 5) {
       commuteRouteStatus = 'You can save at most five Commute Routes.';
       commuteRouteStatusTone = 'warning';
@@ -932,6 +951,7 @@
     commuteRouteStatusTone = 'success';
   };
   const editCommuteRoute = (route: CommuteRoute) => {
+    if (!canEditSetup('commuteSetup')) return;
     commuteEditorOpen = true;
     editingCommuteRouteId = route.id;
     commuteRouteName = route.name;
@@ -944,6 +964,7 @@
     commuteRouteStatusTone = 'neutral';
   };
   const deleteCommuteRoute = (route: CommuteRoute) => {
+    if (!canEditSetup('commuteSetup')) return;
     if (authState.mode === 'user') {
       void deleteUserCommuteRoute(route);
       return;
@@ -954,6 +975,7 @@
     commuteRouteStatusTone = 'success';
   };
   const toggleCommuteRoute = (route: CommuteRoute) => {
+    if (!canEditSetup('commuteSetup')) return;
     if (authState.mode === 'user') {
       void saveUserCommuteRoute(route.id, { ...route, enabled: !route.enabled });
       return;
@@ -971,6 +993,7 @@
     commuteRouteDays = nextDays;
   };
   const createUserCommuteRoute = async (draft: Omit<CommuteRoute, 'id' | 'enabled'>) => {
+    if (!canEditSetup('commuteSetup')) return;
     commuteRouteStatus = 'Saving Commute Route to your account...';
     commuteRouteStatusTone = 'neutral';
     try {
@@ -997,6 +1020,7 @@
     }
   };
   const saveUserCommuteRoute = async (routeId: string, route: Omit<CommuteRoute, 'id'>) => {
+    if (!canEditSetup('commuteSetup')) return;
     commuteRouteStatus = 'Saving Commute Route to your account...';
     commuteRouteStatusTone = 'neutral';
     try {
@@ -1023,6 +1047,7 @@
     }
   };
   const deleteUserCommuteRoute = async (route: CommuteRoute) => {
+    if (!canEditSetup('commuteSetup')) return;
     commuteRouteStatus = 'Deleting Commute Route from your account...';
     commuteRouteStatusTone = 'neutral';
     try {
@@ -1079,6 +1104,7 @@
     await invalidateAll();
   };
   const queueUserSummaryConfigurationSave = (configuration: SummaryConfiguration) => {
+    if (!canEditSetup('summaryConfiguration')) return;
     const request = userSummaryConfigurationSave.save(configuration);
     if (request.outcome === 'unchanged') return;
 
@@ -1096,6 +1122,7 @@
     });
   };
   const queueUserTodoStateSave = (todoState: ReturnType<typeof currentTodoState>) => {
+    if (!canEditSetup('todoState')) return;
     const request = userTodoStateSave.save(todoState);
     if (request.outcome === 'unchanged') return;
 
@@ -1223,6 +1250,7 @@
   };
 
   const createTodoTask = () => {
+    if (!canEditSetup('todoState')) return;
     const nextTasks = addTodoTask({
       tasks: todoTasks,
       input: {
@@ -1244,6 +1272,7 @@
   };
 
   const openTaskPlacement = async () => {
+    if (!canEditSetup('todoState')) return;
     if (!newTodoTitle.trim()) {
       return;
     }
@@ -1262,6 +1291,7 @@
   };
 
   const openTodoDialog = async () => {
+    if (!canEditSetup('todoState')) return;
     todoDialogOpen = true;
     await tick();
     if (!todoDialog?.open) todoDialog?.showModal();
@@ -1354,6 +1384,7 @@
   };
 
   const startNewCommuteRoute = () => {
+    if (!canEditSetup('commuteSetup')) return;
     clearCommuteRouteDraft();
     commuteEditorOpen = true;
   };
@@ -1408,6 +1439,7 @@
   };
 
   const openSummaryDeliveryDialog = async () => {
+    if (!canEditSetup('summaryConfiguration')) return;
     summaryTimeDraft = summaryTime;
     userTimeZoneDraft = userTimeZone;
     activeSummaryTimePart = 'hours';
@@ -1475,6 +1507,7 @@
   };
 
   const saveSummaryDeliveryTime = () => {
+    if (!canEditSetup('summaryConfiguration')) return;
     const result = summaryConfigurationSchema.safeParse({
       ...currentSummaryConfiguration(),
       summaryTime: summaryTimeDraft,
@@ -1487,6 +1520,7 @@
   };
 
   const openCategoryComposer = async () => {
+    if (!canEditSetup('todoState')) return;
     categoryComposerOpen = true;
     await tick();
     newCategoryInput?.focus();
@@ -1528,6 +1562,7 @@
   };
 
   const createTodoCategory = () => {
+    if (!canEditSetup('todoState')) return;
     const nextCategories = addTodoCategory({
       categories: todoCategories,
       input: { name: newCategoryName },
@@ -1711,7 +1746,7 @@
   <button
     class="daily-context-tile__toggle"
     type="button"
-    disabled={!localSetupHydrated}
+    disabled={!localSetupHydrated || !canEditSetup('summaryConfiguration')}
     aria-label={sectionPauses[section] ? 'Resume section' : 'Pause section'}
     aria-describedby={statusId}
     aria-pressed={sectionPauses[section]}
@@ -1906,7 +1941,7 @@
             id="summary-delivery"
             type="checkbox"
             bind:checked={summaryDeliveryEnabled}
-            disabled={!localSetupHydrated}
+            disabled={!localSetupHydrated || !canEditSetup('summaryConfiguration')}
             onchange={(event) => {
               patchSummaryConfiguration({ summaryDeliveryEnabled: readInputChecked(event) });
             }}
@@ -1917,8 +1952,8 @@
               <strong>{summaryDeliveryEnabled ? 'Preview only' : 'Delivery paused'}</strong>
               <small>Sign in to receive emails</small>
             {:else}
-              <strong>{summaryDeliveryEnabled ? 'Delivery on' : 'Delivery paused'}</strong>
-              <small>{summaryDeliveryEnabled ? `Daily at ${summaryTime}` : 'No emails will be sent'}</small>
+              <strong>{canEditSetup('summaryConfiguration') ? summaryDeliveryEnabled ? 'Delivery on' : 'Delivery paused' : 'Delivery unavailable'}</strong>
+              <small>{canEditSetup('summaryConfiguration') ? summaryDeliveryEnabled ? `Daily at ${summaryTime}` : 'No emails will be sent' : 'Retry loading your setup'}</small>
             {/if}
           </span>
         </label>
@@ -1945,6 +1980,13 @@
       </aside>
     {/if}
 
+    {#if unavailableSetupLabels.length > 0}
+      <div class="daily-notice daily-setup-recovery" role="status">
+        <p>{unavailableSetupLabels.join(', ')} could not be loaded. Editing is paused for these parts to protect your saved setup.</p>
+        <button type="button" onclick={retrySetupLoading}>Retry loading</button>
+      </div>
+    {/if}
+
     <section class="daily-context-zone" aria-labelledby="daily-context-title">
       <header class="daily-zone-heading">
         <div>
@@ -1962,14 +2004,14 @@
           class="daily-context-tile__main"
           type="button"
           disabled={!localSetupHydrated}
-          aria-label={`Weather. ${weatherLocation?.label ?? 'Choose a city'}`}
+          aria-label={`Weather. ${canEditSetup('weatherLocation') ? weatherLocation?.label ?? 'Choose a city' : 'Unavailable'}`}
           aria-haspopup="dialog"
           onclick={() => void showDialog('weather')}
         >
           <CloudSun size={18} aria-hidden="true" />
           <span>
             <small id="weather-section-status">Weather · {sectionPauses.weather ? 'Paused' : 'Active'}</small>
-            <strong>{weatherLocation?.label ?? 'Choose a city'}</strong>
+            <strong>{canEditSetup('weatherLocation') ? weatherLocation?.label ?? 'Choose a city' : 'Unavailable'}</strong>
           </span>
           <span class="daily-context-tile__arrow" aria-hidden="true"><ChevronRight size={15} /></span>
         </button>
@@ -1991,7 +2033,7 @@
           <MapPin size={18} aria-hidden="true" />
           <span>
             <small id="commute-section-status">Commute · {sectionPauses.commute ? 'Paused' : 'Active'}</small>
-            <strong>{commuteRoutes.length === 0 ? 'Add a route' : `${commuteRoutes.length} ${commuteRoutes.length === 1 ? 'route' : 'routes'}`}</strong>
+            <strong>{canEditSetup('commuteSetup') ? commuteRoutes.length === 0 ? 'Add a route' : `${commuteRoutes.length} ${commuteRoutes.length === 1 ? 'route' : 'routes'}` : 'Unavailable'}</strong>
           </span>
           <span class="daily-context-tile__arrow" aria-hidden="true"><ChevronRight size={15} /></span>
         </button>
@@ -2031,7 +2073,7 @@
         <button
           class="daily-context-tile__main"
           type="button"
-          disabled={!localSetupHydrated}
+          disabled={!localSetupHydrated || !canEditSetup('todoState')}
           aria-label="Todo. Open task list"
           aria-haspopup="dialog"
           onclick={() => void openTodoDialog()}
@@ -2039,7 +2081,7 @@
           <ListTodo size={18} aria-hidden="true" />
           <span>
             <small id="todo-section-status">Todo · {sectionPauses.todo ? 'Paused' : 'Active'}</small>
-            <strong>{todoTasks.length} {todoTasks.length === 1 ? 'task' : 'tasks'}</strong>
+            <strong>{canEditSetup('todoState') ? `${todoTasks.length} ${todoTasks.length === 1 ? 'task' : 'tasks'}` : 'Unavailable'}</strong>
           </span>
           <span class="daily-context-tile__arrow" aria-hidden="true"><ChevronRight size={15} /></span>
         </button>
@@ -2049,6 +2091,7 @@
         class="daily-context-tile daily-context-summary"
         data-onboarding-target="delivery"
         type="button"
+        disabled={!localSetupHydrated || !canEditSetup('summaryConfiguration')}
         aria-label={`Mail delivery. ${authState.mode === 'visitor' ? 'Sign in is required to receive Daily Summaries' : summaryDeliveryEnabled ? `${summaryTime}, ${userTimeZone}` : 'Paused'}`}
         aria-haspopup="dialog"
         onclick={() => void openSummaryDeliveryDialog()}
@@ -2095,13 +2138,13 @@
             }
           }}
         />
-        <button type="submit" aria-label="Add Todo Task" disabled={!newTodoTitle.trim()}>Continue</button>
+        <button type="submit" aria-label="Add Todo Task" disabled={!todoControlsReady || !newTodoTitle.trim()}>Continue</button>
       </form>
 
       <div class="daily-groups-toolbar">
         <div><h2>Groups</h2><span>{todoCategories.length} active</span></div>
         {#if !categoryComposerOpen}
-          <button type="button" onclick={() => void openCategoryComposer()}><Plus size={15} />New group</button>
+          <button type="button" disabled={!todoControlsReady} onclick={() => void openCategoryComposer()}><Plus size={15} />New group</button>
         {/if}
       </div>
 
@@ -2482,6 +2525,33 @@
     padding: 12px 14px;
     color: #425637;
     font-size: 12px;
+  }
+
+  .daily-setup-recovery {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px;
+    border-color: #d8cdb5;
+    background: #faf7f0;
+    color: #615139;
+  }
+
+  .daily-setup-recovery p {
+    flex: 1 1 280px;
+    margin: 0;
+  }
+
+  .daily-setup-recovery button {
+    flex-shrink: 0;
+    border: 1px solid #d8cdb5;
+    border-radius: 6px;
+    background: #fff;
+    padding: 7px 10px;
+    color: inherit;
+    cursor: pointer;
+    font: inherit;
   }
 
   .daily-board-header {
@@ -5176,6 +5246,7 @@
         <div class="daily-location-suggestion" class:is-highlighted={index === activeWeatherLocationSuggestion}>
           <button
             id={`weather-location-option-${index}`}
+            disabled={!canEditSetup('weatherLocation')}
             class="daily-location-pick"
             type="button"
             role="option"
@@ -5196,6 +5267,7 @@
             class:is-saved={isSavedWeatherCity(result)}
             type="button"
             aria-label={savedWeatherCityButtonLabel(result)}
+            disabled={!canEditSetup('savedWeatherCities')}
             aria-pressed={isSavedWeatherCity(result)}
             title={savedWeatherCityButtonLabel(result)}
             onclick={() => void toggleSavedWeatherCity(result)}
@@ -5204,7 +5276,7 @@
       {/each}
     </div>
     {#if weatherLocationSearchQuery.trim().length === 0 && savedWeatherCities.length === 0}
-      <div class="daily-dialog-empty daily-saved-location-empty"><Star size={20} /><strong>No Saved Weather Cities yet</strong><span>Choose a city, then save it with the star.</span></div>
+      <div class="daily-dialog-empty daily-saved-location-empty"><Star size={20} /><strong>{canEditSetup('savedWeatherCities') ? 'No Saved Weather Cities yet' : 'Saved Weather Cities unavailable'}</strong><span>{canEditSetup('savedWeatherCities') ? 'Choose a city, then save it with the star.' : 'Retry loading to edit your saved cities.'}</span></div>
     {/if}
     {#if weatherLocationStatusTone === 'error' || weatherLocationStatusTone === 'warning'}
       <p class="daily-dialog-status" role="alert">{weatherLocationStatus}</p>
@@ -5242,10 +5314,10 @@
             <Pencil size={15} />
           </button>
         {:else}
-          <div class="daily-dialog-empty"><MapPin size={20} /><strong>No routes yet</strong><span>Add a route to include commute updates.</span></div>
+          <div class="daily-dialog-empty"><MapPin size={20} /><strong>{canEditSetup('commuteSetup') ? 'No routes yet' : 'Commute setup unavailable'}</strong><span>{canEditSetup('commuteSetup') ? 'Add a route to include commute updates.' : 'Retry loading to edit your routes.'}</span></div>
         {/each}
       </div>
-      <button class="daily-add-route" type="button" onclick={startNewCommuteRoute}><Plus size={17} />Add route</button>
+      <button class="daily-add-route" type="button" disabled={!canEditSetup('commuteSetup')} onclick={startNewCommuteRoute}><Plus size={17} />Add route</button>
       <footer><button type="button" aria-label="Close commute routes" onclick={closeCommuteDialog}><X size={20} /></button></footer>
     {:else}
       <header class="daily-dialog-heading">
@@ -5306,6 +5378,7 @@
                   class:is-saved={isSavedCommuteAddress(selectedPoint)}
                   type="button"
                   aria-label={savedCommuteAddressButtonLabel(selectedPoint)}
+                  disabled={!canEditSetup('savedCommuteAddresses')}
                   aria-pressed={isSavedCommuteAddress(selectedPoint)}
                   title={savedCommuteAddressButtonLabel(selectedPoint)}
                   onclick={() => void toggleSavedCommuteAddress(selectedPoint)}
@@ -5340,6 +5413,7 @@
                     class:is-saved={isSavedCommuteAddress(location)}
                     type="button"
                     aria-label={savedCommuteAddressButtonLabel(location)}
+                    disabled={!canEditSetup('savedCommuteAddresses')}
                     aria-pressed="true"
                     title={savedCommuteAddressButtonLabel(location)}
                     onclick={() => void toggleSavedCommuteAddress(location)}
@@ -5554,6 +5628,7 @@
             <input
               id={`${section.key}-section-board`}
               type="checkbox"
+              disabled={!canEditSetup('summaryConfiguration')}
               checked={sectionPauses[section.key]}
               onchange={(event) => toggleSectionPause(section.key, readInputChecked(event))}
             />

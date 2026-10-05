@@ -25,9 +25,7 @@ import {
 } from '$lib/server/googleCalendarList';
 import { createUserCalendarEvents } from '$lib/server/userCalendarEvents';
 import { loadUserSummaryConfiguration } from '$lib/server/summaryConfigurationPersistence';
-import { loadUserTodoStateSafely } from '$lib/server/todoPersistence';
-import { loadUserWeatherLocation } from '$lib/server/weatherLocationPersistence';
-import { loadUserCommuteSetup } from '$lib/server/commuteSetupPersistence';
+import { loadUserSetup } from '$lib/server/userSetupLoading';
 import {
   defaultSummaryConfiguration,
   summaryConfigurationSchema
@@ -41,7 +39,6 @@ import { deleteDailyAccount } from '$lib/server/accountDeletion';
 import { createProductionUserDailySummaryGenerator } from '$lib/server/productionUserDailySummaryGeneration';
 import { UserDailySummaryNotActiveError } from '$lib/dailySummaryGeneration/server';
 import { createTestDailySummaryDelivery } from '$lib/server/testDailySummaryDelivery';
-import { defaultCommuteDays } from '$lib/commuteRoute';
 import { env } from '$env/dynamic/private';
 import { fail } from '@sveltejs/kit';
 import {
@@ -78,31 +75,6 @@ const testDailySummaryDelivery = createTestDailySummaryDelivery({
   senderAddress: dailySummarySenderAddress,
   recordAttempt: (userId, record) => deliveryRecordStore.recordAttempt(userId, record)
 });
-
-type LoadedCommuteSetup = Awaited<ReturnType<typeof loadUserCommuteSetup>>;
-
-const defaultLoadedCommuteSetup: LoadedCommuteSetup = {
-  routes: [],
-  days: [...defaultCommuteDays]
-};
-
-const loadPageCommuteSetup = async (userId: string): Promise<{
-  setup: LoadedCommuteSetup;
-  unavailable: boolean;
-}> => {
-  try {
-    return {
-      setup: await loadUserCommuteSetup(userCommuteSetupStore, userId),
-      unavailable: false
-    };
-  } catch {
-    console.warn('Failed to load User Commute setup.', {
-      userId,
-      classification: 'commute-setup-unavailable'
-    });
-    return { setup: defaultLoadedCommuteSetup, unavailable: true };
-  }
-};
 
 export const load = async ({ request, cookies }) => {
   const session = await auth.api.getSession({
@@ -148,38 +120,24 @@ export const load = async ({ request, cookies }) => {
   if (authState.mode === 'user' && calendarConnectionResult === 'failed') {
     await userCalendarConnectionStore.markFailed(authState.userId);
   }
-  let summaryConfigurationLoadFailed = false;
-  const savedSummaryConfiguration =
-    authState.mode === 'user'
-      ? await userSummaryConfigurationStore.load(authState.userId).catch(() => {
-          summaryConfigurationLoadFailed = true;
-          console.warn('Failed to load User Summary Configuration.', {
-            userId: authState.userId,
-            classification: 'summary-configuration-unavailable'
-          });
-
-          return null;
-        })
-      : null;
-  const summaryConfiguration =
-    authState.mode === 'user'
-      ? summaryConfigurationLoadFailed
-        ? null
-        : savedSummaryConfiguration ?? defaultSummaryConfiguration
-      : null;
-  const todoStateContext =
-    authState.mode === 'user'
-      ? await loadUserTodoStateSafely(userTodoStore, authState.userId)
-      : { state: createDefaultTodoState(), unavailable: false };
-  const todoState = todoStateContext.state;
-  const todoStateLoadFailed = todoStateContext.unavailable;
-
-  if (todoStateLoadFailed && authState.mode === 'user') {
-    console.warn('Failed to load User Todo state.', {
-      userId: authState.userId,
-      classification: 'todo-state-unavailable'
-    });
-  }
+  const userSetup = authState.mode === 'user'
+    ? await loadUserSetup({
+        summaryConfiguration: userSummaryConfigurationStore,
+        todoState: userTodoStore,
+        weatherLocation: userWeatherLocationStore,
+        commuteSetup: userCommuteSetupStore,
+        savedWeatherCities: userSavedWeatherCityStore,
+        savedCommuteAddresses: userSavedCommuteAddressStore
+      }, authState.userId)
+    : {
+        summaryConfiguration: null,
+        todoState: createDefaultTodoState(),
+        weatherLocation: null,
+        commuteSetup: null,
+        savedWeatherCities: [],
+        savedCommuteAddresses: []
+      };
+  const { summaryConfiguration } = userSetup;
   const deliveryRecords =
     authState.mode === 'user'
       ? await deliveryRecordStore
@@ -193,42 +151,6 @@ export const load = async ({ request, cookies }) => {
 
             return [];
           })
-      : [];
-  const weatherLocation =
-    authState.mode === 'user'
-      ? await loadUserWeatherLocation(userWeatherLocationStore, authState.userId).catch(() => {
-          console.warn('Failed to load User Weather Location.', {
-            userId: authState.userId,
-            classification: 'weather-location-unavailable'
-          });
-
-          return null;
-        })
-      : null;
-  const commuteContext =
-    authState.mode === 'user' ? await loadPageCommuteSetup(authState.userId) : null;
-  const commuteSetup = commuteContext?.setup ?? null;
-  const savedWeatherCities =
-    authState.mode === 'user'
-      ? await userSavedWeatherCityStore.load(authState.userId).catch(() => {
-          console.warn('Failed to load User Saved Weather Cities.', {
-            userId: authState.userId,
-            classification: 'saved-weather-cities-unavailable'
-          });
-
-          return [];
-        })
-      : [];
-  const savedCommuteAddresses =
-    authState.mode === 'user'
-      ? await userSavedCommuteAddressStore.load(authState.userId).catch(() => {
-          console.warn('Failed to load User Saved Commute Addresses.', {
-            userId: authState.userId,
-            classification: 'saved-commute-addresses-unavailable'
-          });
-
-          return [];
-        })
       : [];
   const calendarNow = new Date();
   const loadedPageCalendar =
@@ -260,15 +182,7 @@ export const load = async ({ request, cookies }) => {
     currentTime: new Date().toISOString(),
     isAdministrator: isAdministratorAuthState(authState),
     calendarReadiness,
-    summaryConfiguration,
-    ...(authState.mode === 'user' && !summaryConfigurationLoadFailed
-      ? { hasSavedSummaryConfiguration: savedSummaryConfiguration !== null }
-      : {}),
-    todoState,
-    weatherLocation,
-    commuteSetup,
-    savedWeatherCities,
-    savedCommuteAddresses,
+    ...userSetup,
     deliveryRecords,
     selectedCalendarConfiguration,
     calendarSection
