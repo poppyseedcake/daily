@@ -16,6 +16,8 @@ storage, import transport, and navigation adapters stay behind the seam.
 - After any submitted import, load a fresh document before enabling editing.
   Saved User data supplies the Commute Route IDs and all browser save baselines;
   the original Visitor snapshot is never applied as saved User state.
+- Keep navigation and sign-out available while import is pending; only the data
+  workspace is inert, and Settings stays disabled until initialization completes.
 - Reload even when the import response is lost: the transaction may have committed.
 - Carry only a recognized outcome in the `localSetupImport` query parameter during
   reload, then consume it and remove the parameter without repeating the import.

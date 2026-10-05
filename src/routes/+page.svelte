@@ -1841,7 +1841,7 @@
 {#if onboardingOpen}<DailyOnboarding onfinish={finishOnboarding} isVisitor={authState.mode === 'visitor'} />{/if}
 <AuthModal bind:this={authModal} />
 
-<main class="daily-board-shell" inert={authState.mode === 'user' && !localSetupHydrated}>
+<main class="daily-board-shell">
   <aside class="daily-rail" aria-label="Primary navigation">
     <a class="daily-brand" href="/" aria-label="Daily home">
       <DailyLogo compact />
@@ -1879,7 +1879,7 @@
     </nav>
   </aside>
 
-  <section class="daily-board-main" id="task-board">
+  <section class="daily-board-main" id="task-board" inert={authState.mode === 'user' && !localSetupHydrated}>
     {#if form?.accountDeletionSucceeded}
       <div class="daily-notice daily-notice--success" role="status">
         Your Daily account and locally held User data were deleted. You are now in Visitor mode.

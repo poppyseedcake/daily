@@ -144,3 +144,24 @@ test('User editing stays blocked while Local Setup import is pending', async ({ 
   await expect(page.getByLabel('New Todo Task')).toBeEnabled();
   await expect(page.getByRole('list', { name: 'No Category Todo Tasks' }).getByText('Visitor task')).toBeVisible();
 });
+
+test('User can sign out while Local Setup import remains pending', async ({ page, signedInUser }) => {
+  await page.route('**/local-setup-import', () => {});
+  const importing = page.waitForRequest((request) => new URL(request.url()).pathname === '/local-setup-import');
+  await page.goto('/?localSetupImport=1');
+  await importing;
+
+  const accountMenu = page.getByLabel('Open account menu');
+  await accountMenu.evaluate((control: HTMLElement) => control.focus());
+  await expect(accountMenu).toBeFocused();
+  await accountMenu.press('Enter');
+  await expect(page.getByRole('button', { name: 'Settings', exact: true })).toBeDisabled();
+  await expect(page.locator('[aria-label="New Todo Task"]')).toBeDisabled();
+
+  const signedOut = page.waitForResponse((response) => new URL(response.url()).pathname === '/auth/sign-out' && response.request().method() === 'POST');
+  await page.getByRole('button', { name: 'Sign out', exact: true }).click();
+  expect((await signedOut).status()).toBe(303);
+  await expect(page).toHaveURL('/');
+  await expect(page.getByRole('link', { name: 'Sign in with Google', exact: true }).first()).toBeVisible();
+  await expect(page.getByLabel('Open account menu')).toHaveCount(0);
+});
