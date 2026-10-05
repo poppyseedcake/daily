@@ -4,6 +4,7 @@
 
   let { children } = $props();
   const excludeFromSearch = $derived(
+    page.status >= 400 ||
     page.url.pathname === '/admin' ||
     page.url.pathname.startsWith('/admin/') ||
     page.url.pathname.startsWith('/prototype/')
