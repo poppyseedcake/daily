@@ -37,5 +37,7 @@ existing behavior. No schema or data migration is required.
 
 Tests cross the User setup loading interface with normal and faulting persistence
 adapters, and the browser workflow with a real signed-in User and SQLite. The
-browser regression covers a failed Todo read, attempted editing, recovery, and
-a subsequent edit retaining the saved Todo Tasks.
+browser regressions cover failed Todo, Saved Weather Cities, and Saved Commute
+Addresses reads, attempted editing, recovery, and a subsequent edit retaining
+the previously saved items. Collection regressions check both disabled controls
+and rejection of save attempts even if a control is accidentally enabled.
