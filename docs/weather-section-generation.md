@@ -29,7 +29,10 @@ context, rejected or failed sentences, forecast failure, paused Weather, local
 date selection, diagnostic correlation, and failed diagnostics. Existing Daily
 Summary and HTML/text rendering checks protect integration and presentation
 parity. Transport contract tests remain with their adapters; orchestration tests
-move to the deeper interface.
+move to the deeper interface. A production composition regression crosses the
+real User generator with SQLite and HTTP response fixtures. It checks that both
+preview and delivery requests emit correlated diagnostics through the configured
+sink; omitting the production diagnostic wiring makes both workflows fail.
 
 No persistence, schema, delivery scheduling, UI, external telemetry integration,
 or provider prompt change is required. This preserves ADR-0002, ADR-0005,
