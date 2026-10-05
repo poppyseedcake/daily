@@ -14,13 +14,8 @@ import type { SummaryConfiguration } from '../summaryConfiguration';
 import { buildTodoSection, type TodoCategory, type TodoTask } from '../todo';
 import type { WeatherLocation } from '../weatherLocation';
 import { calendarReadinessForAuthMode } from '../calendarReadiness';
-import {
-  buildWeatherSection,
-  buildWeatherDisplayForecast,
-  openMeteoWeatherForecastProvider,
-  type WeatherForecastProvider,
-  type WeatherSummaryProvider
-} from '../weatherForecast';
+import { openMeteoWeatherForecastProvider } from '../weatherForecast';
+import { createWeatherSectionGenerator, type WeatherSectionGenerator } from './weatherSection';
 import { Temporal } from '@js-temporal/polyfill';
 import type { CommuteDay, CommuteRoute } from '../commuteRoute';
 import {
@@ -38,8 +33,7 @@ export type DailySummaryGenerationContext = {
   todoStateUnavailable?: boolean;
   weatherLocation?: WeatherLocation | null;
   weatherLocationUnavailable?: boolean;
-  weatherProvider?: WeatherForecastProvider;
-  weatherSummaryProvider?: WeatherSummaryProvider;
+  weatherSectionGenerator?: WeatherSectionGenerator;
   commuteRoutes?: CommuteRoute[];
   commuteDays?: readonly CommuteDay[];
   commuteSetupUnavailable?: boolean;
@@ -85,6 +79,10 @@ export type DailySummaryGeneratorDependencies<Request> = {
   now?: () => Date;
 };
 
+const defaultWeatherSectionGenerator = createWeatherSectionGenerator({
+  forecastProvider: openMeteoWeatherForecastProvider
+});
+
 const buildDailySummaryInput = async ({
   userName,
   calendarEvents = {
@@ -98,8 +96,7 @@ const buildDailySummaryInput = async ({
   todoStateUnavailable = false,
   weatherLocation = null,
   weatherLocationUnavailable = false,
-  weatherProvider = openMeteoWeatherForecastProvider,
-  weatherSummaryProvider,
+  weatherSectionGenerator = defaultWeatherSectionGenerator,
   commuteRoutes = [],
   commuteDays = [],
   commuteSetupUnavailable = false,
@@ -108,12 +105,10 @@ const buildDailySummaryInput = async ({
   openDailyUrl = '/',
   now = new Date()
 }: DailySummaryGenerationContext & DailySummaryGenerationOptions): Promise<DailySummaryInput> => {
-  const weather = await buildWeatherGenerationState({
+  const weather = await weatherSectionGenerator.generate({
     configuration,
-    weatherLocation,
-    weatherLocationUnavailable,
-    weatherProvider,
-    weatherSummaryProvider,
+    location: weatherLocation,
+    locationUnavailable: weatherLocationUnavailable,
     assetOrigin: openDailyUrl,
     now
   });
@@ -392,119 +387,6 @@ const buildCalendarGenerationResult = ({
         detail: 'No Calendar Events in the Week Ahead.',
         content: calendarSection
       };
-};
-
-const buildWeatherGenerationState = async ({
-  configuration,
-  weatherLocation,
-  weatherLocationUnavailable,
-  weatherProvider,
-  weatherSummaryProvider,
-  assetOrigin,
-  now
-}: {
-  configuration: SummaryConfiguration;
-  weatherLocation: WeatherLocation | null;
-  weatherLocationUnavailable: boolean;
-  weatherProvider: WeatherForecastProvider;
-  weatherSummaryProvider?: WeatherSummaryProvider;
-  assetOrigin: string;
-  now: Date;
-}): Promise<DailySummaryInput['sections']['weather']> => {
-  if (configuration.sectionPauses.weather) {
-    return {
-      status: 'paused',
-      detail: 'Weather is paused.'
-    };
-  }
-
-  if (weatherLocationUnavailable) {
-    return {
-      status: 'unavailable',
-      reason: 'Live weather is unavailable right now.'
-    };
-  }
-
-  if (!weatherLocation) {
-    return {
-      status: 'unconfigured',
-      detail: 'Choose a Weather Location to include local weather.'
-    };
-  }
-
-  try {
-    const forecastResult = await weatherProvider.fetchDailyForecast({
-      latitude: weatherLocation.latitude,
-      longitude: weatherLocation.longitude,
-      timeZone: configuration.userTimeZone,
-      targetDate: Temporal.Instant.fromEpochMilliseconds(now.getTime())
-        .toZonedDateTimeISO(configuration.userTimeZone)
-        .toPlainDate()
-        .toString()
-    });
-
-    if (forecastResult.outcome === 'unavailable') {
-      return {
-        status: 'unavailable',
-        reason: forecastResult.reason
-      };
-    }
-
-    const weatherSection = forecastResult.forecast.currentTemperatureCelsius === undefined
-      ? null
-      : buildWeatherDisplayForecast({
-          forecast: forecastResult.forecast,
-          userTimeZone: configuration.userTimeZone,
-          now,
-          assetOrigin
-        });
-
-    if (!weatherSection && forecastResult.forecast.currentTemperatureCelsius !== undefined) {
-      return {
-        status: 'unavailable',
-        reason: 'Live weather is unavailable right now.'
-      };
-    }
-
-    const displayWeatherSection = weatherSection ?? null;
-
-    let summary: string | undefined;
-    if (forecastResult.forecast.summaryInput && weatherSummaryProvider) {
-      try {
-        const summaryResult = await weatherSummaryProvider.summarize(
-          forecastResult.forecast.summaryInput
-        );
-        summary = summaryResult.outcome === 'available' ? summaryResult.sentence : undefined;
-      } catch {
-        summary = undefined;
-      }
-    }
-
-    const state = buildWeatherSection({
-      forecast: forecastResult.forecast,
-      userTimeZone: configuration.userTimeZone,
-      now,
-      summary,
-      assetOrigin
-    });
-
-    if (state.status === 'unavailable') {
-      return { status: 'unavailable', reason: state.reason };
-    }
-
-    const content = summary && displayWeatherSection
-      ? { ...displayWeatherSection, summary }
-      : displayWeatherSection;
-
-    return content
-      ? { status: 'active', detail: state.detail, content: { ...content, locationLabel: weatherLocation.label } }
-      : { status: 'active', detail: state.detail };
-  } catch {
-    return {
-      status: 'unavailable',
-      reason: 'Live weather is unavailable right now.'
-    };
-  }
 };
 
 const buildTodoGenerationSection = ({

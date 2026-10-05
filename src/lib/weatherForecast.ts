@@ -1,7 +1,7 @@
 import { Temporal } from '@js-temporal/polyfill';
 import { z } from 'zod';
 import type { UserTimeZone } from './summaryConfiguration';
-import type { NormalizedWeatherSummaryInput } from './weatherSummaryContract';
+import type { NormalizedWeatherSummaryInput, WeatherSummaryDiagnostic } from './weatherSummaryContract';
 
 export type { NormalizedWeatherSummaryInput } from './weatherSummaryContract';
 
@@ -37,10 +37,6 @@ export type WeatherDisplayForecast = {
   summary?: string;
 };
 
-type WeatherGenerationState =
-  | { status: 'active'; label: 'Weather'; detail: string }
-  | { status: 'unavailable'; label: 'Weather'; reason: string };
-
 export type DailyWeatherForecast = {
   dates: string[];
   weatherCodes: Array<number | null>;
@@ -70,7 +66,8 @@ export type WeatherForecastProvider = {
 
 export type WeatherSummaryProvider = {
   summarize: (
-    input: NormalizedWeatherSummaryInput
+    input: NormalizedWeatherSummaryInput,
+    diagnosticOptions?: { onDiagnostic: (diagnostic: WeatherSummaryDiagnostic) => void }
   ) => Promise<
     | { outcome: 'available'; sentence: string }
     | { outcome: 'unavailable' }
@@ -228,91 +225,6 @@ export const createOpenMeteoWeatherForecastProvider = ({
 });
 
 export const openMeteoWeatherForecastProvider = createOpenMeteoWeatherForecastProvider();
-
-export const buildWeatherDisplayForecast = ({
-  forecast,
-  userTimeZone,
-  now = new Date(),
-  assetOrigin = defaultWeatherAssetOrigin
-}: {
-  forecast: DailyWeatherForecast;
-  userTimeZone: UserTimeZone;
-  now?: Date;
-  assetOrigin?: string;
-}): WeatherDisplayForecast | null => {
-  const localDate = localDateFor(now, userTimeZone);
-  const dayIndex = forecast.dates.indexOf(localDate);
-  const weatherCode = forecast.weatherCodes[dayIndex];
-  const minimumTemperature = forecast.minimumTemperaturesCelsius[dayIndex];
-  const maximumTemperature = forecast.maximumTemperaturesCelsius[dayIndex];
-  const precipitationProbability = forecast.precipitationProbabilities[dayIndex];
-  const maximumWindSpeed = forecast.maximumWindSpeedsKmh?.[dayIndex];
-
-  if (
-    dayIndex === -1 ||
-    !isFiniteNumber(forecast.currentTemperatureCelsius) ||
-    !isFiniteNumber(weatherCode) ||
-    !isFiniteNumber(minimumTemperature) ||
-    !isFiniteNumber(maximumTemperature) ||
-    !isFiniteNumber(precipitationProbability) ||
-    !isFiniteNumber(maximumWindSpeed) ||
-    !forecast.observedAtLocal
-  ) {
-    return null;
-  }
-
-  const conditionCategory = weatherConditionCategoryForCode(weatherCode);
-
-  return {
-    observedAtLocal: forecast.observedAtLocal,
-    currentTemperatureCelsius: forecast.currentTemperatureCelsius,
-    minimumTemperatureCelsius: minimumTemperature,
-    maximumTemperatureCelsius: maximumTemperature,
-    maximumPrecipitationProbabilityPercent: precipitationProbability,
-    maximumWindSpeedKmh: maximumWindSpeed,
-    dailyWeatherCode: weatherCode,
-    conditionText: weatherCodeDescription(weatherCode),
-    conditionCategory,
-    iconUrl: weatherIconUrlForCategory(conditionCategory, assetOrigin)
-  };
-};
-
-export const buildWeatherSection = ({
-  forecast,
-  userTimeZone,
-  now = new Date(),
-  summary,
-  assetOrigin = defaultWeatherAssetOrigin
-}: {
-  forecast: DailyWeatherForecast;
-  userTimeZone: UserTimeZone;
-  now?: Date;
-  summary?: string;
-  assetOrigin?: string;
-}): WeatherGenerationState => {
-  const isLegacyForecast = forecast.currentTemperatureCelsius === undefined;
-
-  if (isLegacyForecast) {
-    return buildLegacyWeatherSection(forecast, userTimeZone, now);
-  }
-
-  const display = buildWeatherDisplayForecast({
-    forecast,
-    userTimeZone,
-    now,
-    assetOrigin
-  });
-
-  if (!display) {
-    return unavailableWeatherSection();
-  }
-
-  return {
-    status: 'active',
-    label: 'Weather',
-    detail: formatWeatherDetail(display, summary)
-  };
-};
 
 export const weatherConditionCategoryForCode = (code: number): WeatherConditionCategory => {
   if (code === 0) return 'clear';
@@ -548,60 +460,6 @@ const hasValidDailyDisplayData = (
     isFiniteNumber(daily.wind_gusts_10m_max[0])
   );
 };
-
-const buildLegacyWeatherSection = (
-  forecast: DailyWeatherForecast,
-  userTimeZone: UserTimeZone,
-  now: Date
-): WeatherGenerationState => {
-  const localDate = localDateFor(now, userTimeZone);
-  const dayIndex = forecast.dates.indexOf(localDate);
-  const weatherCode = forecast.weatherCodes[dayIndex];
-  const minimumTemperature = forecast.minimumTemperaturesCelsius[dayIndex];
-  const maximumTemperature = forecast.maximumTemperaturesCelsius[dayIndex];
-  const precipitationProbability = forecast.precipitationProbabilities[dayIndex];
-
-  if (
-    dayIndex === -1 ||
-    !isFiniteNumber(weatherCode) ||
-    !isFiniteNumber(minimumTemperature) ||
-    !isFiniteNumber(maximumTemperature)
-  ) {
-    return {
-      status: 'unavailable',
-      label: 'Weather',
-      reason: 'Weather forecast is not available for today.'
-    };
-  }
-
-  return {
-    status: 'active',
-    label: 'Weather',
-    detail: [
-      `${weatherCodeDescription(weatherCode)}. Low ${Math.round(minimumTemperature)}C, high ${Math.round(maximumTemperature)}C.`,
-      isFiniteNumber(precipitationProbability)
-        ? `Chance of precipitation ${Math.round(precipitationProbability)}%.`
-        : 'Chance of precipitation unavailable.'
-    ].join(' ')
-  };
-};
-
-const formatWeatherDetail = (display: WeatherDisplayForecast, summary?: string) => [
-  `Current ${formatMetric(display.currentTemperatureCelsius)}C. ${display.conditionText}.`,
-  `Low ${formatMetric(display.minimumTemperatureCelsius)}C, high ${formatMetric(display.maximumTemperatureCelsius)}C.`,
-  `Chance of precipitation ${formatMetric(display.maximumPrecipitationProbabilityPercent)}%.`,
-  `Wind up to ${formatMetric(display.maximumWindSpeedKmh)} km/h.`,
-  ...(summary ? [summary] : [])
-].join(' ');
-
-const formatMetric = (value: number) =>
-  Number.isInteger(value) ? value.toString() : value.toFixed(1).replace(/\.0$/, '');
-
-const unavailableWeatherSection = (): WeatherGenerationState => ({
-  status: 'unavailable',
-  label: 'Weather',
-  reason: 'Live weather is unavailable right now.'
-});
 
 const fetchWithTimeout = async (
   fetcher: typeof fetch,

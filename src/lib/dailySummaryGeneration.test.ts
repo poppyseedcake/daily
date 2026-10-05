@@ -4,7 +4,9 @@ import {
   type DailySummaryGenerationContext,
   type DailySummaryGenerationOptions
 } from './dailySummaryGeneration/internal';
+import type { WeatherForecastProvider, WeatherSummaryProvider } from './weatherForecast';
 import { visitorDailySummaryGenerator } from './dailySummaryGeneration';
+import { createWeatherSectionGenerator } from './dailySummaryGeneration/weatherSection';
 import { renderDailySummary } from './dailySummaryRenderer';
 import { createDefaultLocalSetup } from './localSetup';
 import type { SummaryConfiguration } from './summaryConfiguration';
@@ -61,9 +63,14 @@ const connectedCalendarEvents = (
 });
 
 const generateDailySummaryInput = async (
-  setup: DailySummaryGenerationContext & DailySummaryGenerationOptions
+  setup: DailySummaryGenerationContext & DailySummaryGenerationOptions & { weatherProvider?: WeatherForecastProvider; weatherSummaryProvider?: WeatherSummaryProvider }
 ) => {
-  const { now, openDailyUrl, ...context } = setup;
+  const { now, openDailyUrl, weatherProvider, weatherSummaryProvider, ...context } = setup;
+  if (weatherProvider) {
+    context.weatherSectionGenerator = createWeatherSectionGenerator({
+      forecastProvider: weatherProvider, summaryProvider: weatherSummaryProvider
+    });
+  }
   const generator = createDailySummaryGenerator<void>({
     source: { load: () => context }
   });
@@ -77,6 +84,39 @@ const sectionContent = <Section extends object>(section: Section): SectionConten
   ('content' in section ? section.content : null) as SectionContent<Section> | null;
 
 describe('Daily Summary generation', () => {
+  test('uses the Weather Section result for HTML and text while retaining Todo after sentence failure', async () => {
+    const generator = createDailySummaryGenerator<void>({
+      source: { load: () => ({
+        configuration: { ...configuration, userTimeZone: 'UTC' },
+        todoCategories, todoTasks,
+        weatherLocation: { label: 'Private City', latitude: 52.2297, longitude: 21.0122 },
+        weatherSectionGenerator: createWeatherSectionGenerator({
+          forecastProvider: { async fetchDailyForecast() { return { outcome: 'available', forecast: {
+            dates: ['2026-07-08'], weatherCodes: [2], minimumTemperaturesCelsius: [12],
+            maximumTemperaturesCelsius: [22], precipitationProbabilities: [35],
+            currentTemperatureCelsius: 18, observedAtLocal: '2026-07-08T07:15', maximumWindSpeedsKmh: [24],
+            summaryInput: {
+              units: { temperature: 'celsius', precipitationProbability: 'percent', precipitation: 'millimetres', snowfall: 'centimetres', wind: 'kilometres_per_hour' },
+              current: { temperature: 18 },
+              day: { weatherCode: 2, minimumTemperature: 12, maximumTemperature: 22, maximumPrecipitationProbability: 35, maximumWindSpeed: 24, maximumWindGust: 39 },
+              remainingHours: [{ localTime: '07:00', temperature: 17, precipitationProbability: 5, precipitation: 0, snowfall: 0, weatherCode: 2, windSpeed: 11, windGust: 19 }]
+            }
+          } }; } },
+          summaryProvider: { async summarize() { throw new Error('Private provider failure'); } }
+        })
+      }) }
+    });
+
+    const { rendered } = await generator.generate(undefined, { now: new Date('2026-07-08T07:15:00Z') });
+    expect(rendered.html).toContain('18°');
+    expect(rendered.html).toContain('Wind 24 km/h');
+    expect(rendered.text).toContain('Chance of precipitation 35%.');
+    for (const output of [rendered.html, rendered.text]) {
+      expect(output).toContain('Private City');
+      expect(output).toContain('Buy coffee');
+      expect(output).not.toContain('Private provider failure');
+    }
+  });
   test('generates a rendered Visitor Daily Summary from one Local Setup request', async () => {
     const result = await visitorDailySummaryGenerator.generate(createDefaultLocalSetup(), {
       now: new Date('2026-07-08T10:00:00.000Z'),
@@ -157,7 +197,7 @@ describe('Daily Summary generation', () => {
     });
     const rendered = renderDailySummary(input);
 
-    expect(weatherProvider.weatherSummaryProvider.summarize).toHaveBeenCalledWith(summaryInput);
+    expect(weatherProvider.weatherSummaryProvider.summarize).toHaveBeenCalledWith(summaryInput, undefined);
     expect(rendered.html).toContain('18°');
     expect(rendered.html.replace(/<[^>]*>/g, '')).toContain('↑ 22°');
     expect(rendered.html.replace(/<[^>]*>/g, '')).toContain('↓ 12°');
