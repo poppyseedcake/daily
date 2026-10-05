@@ -1,4 +1,5 @@
-import { expect, test } from '@playwright/test';
+import { expect } from '@playwright/test';
+import { test } from './fixtures/signedInUser';
 
 test('an unknown address returns the Daily 404 page and offers a route home', async ({ page }) => {
   const response = await page.goto('/this/route/does-not-exist');
@@ -98,17 +99,45 @@ test.describe('without JavaScript', () => {
     await expect(page.getByLabel('New Todo Task')).toBeVisible();
   });
 
-  test('500 renders its recovery links and retry works with the query', async ({ page }) => {
-    await page.goto('/prototype/error-pages?status=500');
-    await expect(page.getByRole('heading', { name: 'Daily, on pause.' })).toBeVisible();
-    await expect(page.getByRole('link', { name: 'Back to Daily', exact: true })).toHaveAttribute('href', '/');
-    const reload = page.waitForResponse((response) =>
-      response.request().isNavigationRequest() &&
-      new URL(response.url()).pathname === '/prototype/error-pages'
-    );
-    await page.getByRole('link', { name: 'Try again', exact: true }).click();
-    expect((await reload).status()).toBe(200);
-    await expect(page).toHaveURL(/status=500$/);
+  test('a real server failure returns 500 without diagnostics and retry recovers', async ({
+    page, signedInUser: { database, userId }
+  }) => {
+    const address = '/?section=weather';
+    const diagnostic = 'private-error-page-session-diagnostic';
+    const trigger = `error_page_session_failure_${userId.replaceAll('-', '_')}`;
+    // The fixture's session is due for renewal. Fail only this User's server-side renewal.
+    database.exec(`CREATE TRIGGER "${trigger}" BEFORE UPDATE ON auth_session
+      WHEN OLD.user_id = '${userId.replaceAll("'", "''")}'
+      BEGIN SELECT RAISE(ABORT, '${diagnostic}'); END;`);
+
+    try {
+      const response = await page.goto(address);
+      expect(response?.status()).toBe(500);
+      expect(await response!.text()).not.toContain(diagnostic);
+      await expect(page.getByRole('heading', { name: 'Daily, on pause.' })).toBeVisible();
+      await expect(page).toHaveTitle('Something went wrong · Daily');
+      const robots = page.locator('head meta[name="robots"]');
+      await expect(robots).toHaveCount(1);
+      await expect(robots).toHaveAttribute('content', 'noindex, nofollow');
+      await expect(page.locator('body')).not.toContainText(diagnostic);
+      const retry = page.getByRole('link', { name: 'Try again', exact: true });
+      await expect(retry).toHaveAttribute('href', address);
+      await expect(page.getByRole('link', { name: 'Back to Daily', exact: true })).toHaveAttribute('href', '/');
+
+      database.exec(`DROP TRIGGER "${trigger}"`);
+      const reload = page.waitForResponse((response) =>
+        response.request().isNavigationRequest() &&
+        new URL(response.url()).pathname === '/' &&
+        new URL(response.url()).search === '?section=weather'
+      );
+      await retry.click();
+      expect((await reload).status()).toBe(200);
+      await expect(page).toHaveURL(/\/\?section=weather$/);
+      await expect(page.getByLabel('New Todo Task')).toBeVisible();
+      await expect(robots).toHaveCount(0);
+    } finally {
+      database.exec(`DROP TRIGGER IF EXISTS "${trigger}"`);
+    }
   });
 });
 

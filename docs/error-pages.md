@@ -34,3 +34,7 @@ errors use SvelteKit’s error boundary and preserve the error HTTP status.
 Regression coverage in `tests/e2e/error-pages.spec.ts` exercises a real missing
 address, a failed client page-load request, recovery by full document reload,
 query/fragment preservation, small screens, and rendering without JavaScript.
+The no-JavaScript 500 test makes the fixture User's session renewal fail in the
+real server page load. It checks HTTP 500, the error heading/title, a single
+noindex tag, hidden diagnostics, and successful document retry after recovery.
+The database fault is scoped to that User and removed even if the test fails.
