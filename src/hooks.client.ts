@@ -25,6 +25,19 @@ export function init() {
   posthog.init(PUBLIC_POSTHOG_PROJECT_TOKEN, {
     api_host: PUBLIC_POSTHOG_HOST,
     defaults: '2026-01-30',
+    // Product events are captured explicitly; DOM labels can contain private User content.
+    autocapture: false,
+    capture_dead_clicks: false,
+    mask_all_text: true,
+    mask_all_element_attributes: true,
+    enable_recording_console_log: false,
+    session_recording: {
+      maskAllInputs: true,
+      maskTextSelector: '*',
+      maskAllElementAttributes: true,
+      recordHeaders: false,
+      recordBody: false
+    },
     capture_exceptions: true,
     tracing_headers: [window.location.hostname],
     logs: {

@@ -217,6 +217,7 @@ export const createOpenAiWeatherSummaryProvider = ({
         readingResponse = true;
         const payload = responsePayloadSchema.parse(await response.json());
         const responseText = responseTextFrom(payload);
+        const decision = validateWeatherSummaryResponse(payload.status, responseText, maxCharacters);
         generationCaptured = true;
         await captureOpenAiWeatherGeneration({
           observability,
@@ -228,36 +229,15 @@ export const createOpenAiWeatherSummaryProvider = ({
           outputTokens: payload.usage?.output_tokens,
           httpStatus: response.status,
           latencySeconds: (Date.now() - attemptStartedAt) / 1_000,
-          error: payload.status === 'completed' && responseText
+          error: decision.reason === 'available'
             ? undefined
-            : 'OpenAI Responses response was incomplete or did not contain output.'
+            : `OpenAI Responses generation failed: ${decision.reason}.`
         });
-
-        if (payload.status !== 'completed') {
-          report('incomplete-response', response.status);
-          return { outcome: 'unavailable' };
-        }
-
-        if (!responseText) {
-          report('missing-output', response.status);
-          return { outcome: 'unavailable' };
-        }
-
-        const parsedSummary = structuredSummarySchema.safeParse(JSON.parse(responseText));
-        if (!parsedSummary.success) {
-          report('invalid-response', response.status);
-          return { outcome: 'unavailable' };
-        }
-
-        if (Array.from(parsedSummary.data.summary.trim()).length > maxCharacters) {
-          report('sentence-too-long', response.status);
-          if (attempt === 1) continue;
-          return { outcome: 'unavailable' };
-        }
-
-        const sentence = validateWeatherSummarySentence(parsedSummary.data.summary, maxCharacters);
-        report(sentence ? 'available' : 'sentence-rejected', response.status);
-        return sentence ? { outcome: 'available', sentence } : { outcome: 'unavailable' };
+        report(decision.reason, response.status);
+        if (decision.reason === 'sentence-too-long' && attempt === 1) continue;
+        return decision.reason === 'available'
+          ? { outcome: 'available', sentence: decision.sentence }
+          : { outcome: 'unavailable' };
       }
       return { outcome: 'unavailable' };
     } catch (error) {
@@ -356,7 +336,34 @@ const responseTextFrom = (payload: z.infer<typeof responsePayloadSchema>) => {
   return null;
 };
 
-// Content constraints are currently enforced through the configured prompt only.
+type WeatherSummaryResponseDecision =
+  | { reason: 'available'; sentence: string }
+  | { reason: 'incomplete-response' | 'missing-output' | 'invalid-response' | 'sentence-too-long' | 'sentence-rejected' };
+
+const validateWeatherSummaryResponse = (
+  status: string,
+  responseText: string | null,
+  maxCharacters: number
+): WeatherSummaryResponseDecision => {
+  if (status !== 'completed') return { reason: 'incomplete-response' };
+  if (!responseText) return { reason: 'missing-output' };
+
+  let structuredOutput: unknown;
+  try {
+    structuredOutput = JSON.parse(responseText);
+  } catch {
+    return { reason: 'invalid-response' };
+  }
+  const parsedSummary = structuredSummarySchema.safeParse(structuredOutput);
+  if (!parsedSummary.success) return { reason: 'invalid-response' };
+  if (Array.from(parsedSummary.data.summary.trim()).length > maxCharacters) {
+    return { reason: 'sentence-too-long' };
+  }
+  const sentence = validateWeatherSummarySentence(parsedSummary.data.summary, maxCharacters);
+  return sentence ? { reason: 'available', sentence } : { reason: 'sentence-rejected' };
+};
+
+// Semantic weather constraints remain prompt-driven; this validates sentence format.
 const validateWeatherSummarySentence = (
   value: string,
   maxCharacters: number

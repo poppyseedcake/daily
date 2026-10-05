@@ -55,6 +55,25 @@ test('does not capture an attempted generation twice when structured output pars
   await expect(createOpenAiWeatherSummaryProvider({ apiKey: 'test-key', fetcher }).summarize(input, options))
     .resolves.toEqual({ outcome: 'unavailable' });
   expect(telemetry.capture).toHaveBeenCalledTimes(1);
+  expect(telemetry.capture.mock.calls[0][0].properties.$ai_is_error).toBe(true);
+});
+
+test.each([
+  ['invalid JSON', 'not JSON', 'invalid-response'],
+  ['invalid schema', JSON.stringify({ summary: 123 }), 'invalid-response'],
+  ['multiple sentences', JSON.stringify({ summary: 'Cloudy today. Rain tomorrow.' }), 'sentence-rejected'],
+  ['multiline sentence', JSON.stringify({ summary: 'Cloudy\ntoday.' }), 'sentence-rejected'],
+  ['empty sentence', JSON.stringify({ summary: '' }), 'sentence-rejected']
+])('reports %s as a failed generation after validating the response', async (_case, outputText, reason) => {
+  const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+    status: 'completed', output_text: outputText, usage: { input_tokens: 32, output_tokens: 12 }
+  })));
+  await expect(createOpenAiWeatherSummaryProvider({ apiKey: 'test-key', fetcher }).summarize(input, options))
+    .resolves.toEqual({ outcome: 'unavailable' });
+  expect(telemetry.capture).toHaveBeenCalledTimes(1);
+  expect(telemetry.capture.mock.calls[0][0].properties).toMatchObject({
+    $ai_is_error: true, $ai_error: `OpenAI Responses generation failed: ${reason}.`, $ai_input_tokens: 32, $ai_output_tokens: 12
+  });
 });
 
 test('records a timeout generation without exposing the exception', async () => {
@@ -94,4 +113,5 @@ test('measures each OpenAI attempt independently from retries and telemetry wait
   await expect(pending).resolves.toMatchObject({ outcome: 'available' });
   expect(telemetry.capture.mock.calls.map(([event]) => event.properties.$ai_latency)).toEqual([0.1, 0.2]);
   expect(telemetry.capture.mock.calls.map(([event]) => event.properties.$ai_trace_id)).toEqual(['trace-1', 'trace-1']);
+  expect(telemetry.capture.mock.calls.map(([event]) => event.properties.$ai_is_error)).toEqual([true, false]);
 });
