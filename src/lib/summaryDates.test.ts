@@ -1,6 +1,6 @@
 import { Temporal } from '@js-temporal/polyfill';
 import { describe, expect, test } from 'vitest';
-import { buildWeekAhead, getLocalToday, parseSummaryTime } from './summaryDates';
+import { buildWeekAhead, getLocalToday } from './summaryDates';
 
 describe('Summary date calculations', () => {
   test('calculates local today from an instant and User Time Zone with Temporal', () => {
@@ -26,9 +26,5 @@ describe('Summary date calculations', () => {
       '2027-01-03',
       '2027-01-04'
     ]);
-  });
-
-  test('parses Summary Time as a Temporal PlainTime', () => {
-    expect(parseSummaryTime('18:45').toString()).toBe('18:45:00');
   });
 });

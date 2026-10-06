@@ -71,6 +71,7 @@ describe('Technical Log Store', () => {
         expect.objectContaining({ occurredAt: '2026-07-15T11:00:00.000Z', severity: 'error' })
       ]);
       expect(firstPage.nextCursor).toEqual(expect.any(String));
+      expect(firstPage.records[0]).not.toHaveProperty('id');
 
       const secondPage = await store.list({
         pageSize: 1,
@@ -87,6 +88,7 @@ describe('Technical Log Store', () => {
         ],
         nextCursor: null
       });
+      expect(secondPage.records[0]).not.toHaveProperty('id');
 
       await expect(store.list({ pageSize: 101 })).rejects.toThrow(
         'pageSize must be a positive bounded integer.'

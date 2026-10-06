@@ -25,16 +25,6 @@ export type UserSavedCommuteAddressSaveOutcome =
   | 'invalid-saved-commute-addresses'
   | 'save-failed';
 
-export const loadUserSavedWeatherCities = (
-  store: Pick<UserSavedWeatherCityPersistenceStore, 'load'>,
-  userId: string
-) => store.load(userId);
-
-export const loadUserSavedCommuteAddresses = (
-  store: Pick<UserSavedCommuteAddressPersistenceStore, 'load'>,
-  userId: string
-) => store.load(userId);
-
 export const saveUserSavedWeatherCities = async (
   store: UserSavedWeatherCityPersistenceStore,
   userId: string,

@@ -1,9 +1,6 @@
 import {
-  commuteDaysSchema,
   commuteRouteDraftSchema,
   commuteRouteUpdateSchema,
-  defaultCommuteDays,
-  type CommuteDay,
   type CommuteRoute
 } from '$lib/commuteRoute';
 import type { GoogleMapsRequestGateway } from './googleMapsRequestGateway';
@@ -35,18 +32,17 @@ const withCommuteRouteCreationLock = async <Result>(
 };
 
 export type UserCommuteSetupStore = {
-  load: (userId: string) => Promise<{ routes: CommuteRoute[]; days: CommuteDay[] } | null>;
+  load: (userId: string) => Promise<{ routes: CommuteRoute[] } | null>;
   createRoute: (userId: string, route: NewCommuteRoute) => Promise<CommuteRoute | 'route-limit-reached'>;
   updateRoute: (userId: string, routeId: string, route: Omit<CommuteRoute, 'id'>) => Promise<CommuteRoute | null>;
   deleteRoute: (userId: string, routeId: string) => Promise<boolean>;
-  saveDays: (userId: string, days: CommuteDay[]) => Promise<void>;
 };
 
 export const loadUserCommuteSetup = async (
   store: Pick<UserCommuteSetupStore, 'load'>,
   userId: string
 ) =>
-  (await store.load(userId)) ?? { routes: [], days: [...defaultCommuteDays] };
+  (await store.load(userId)) ?? { routes: [] };
 
 export const createUserCommuteRoute = async (
   store: UserCommuteSetupStore,
@@ -122,19 +118,3 @@ const sameCoordinates = (
   first: CommuteRoute['origin'],
   second: CommuteRoute['origin']
 ) => first.latitude === second.latitude && first.longitude === second.longitude;
-
-export const saveUserCommuteDays = async (
-  store: UserCommuteSetupStore,
-  userId: string,
-  days: unknown
-): Promise<{ outcome: 'saved' | 'invalid-commute-days' | 'save-failed' }> => {
-  const result = commuteDaysSchema.safeParse(days);
-  if (!result.success) return { outcome: 'invalid-commute-days' };
-
-  try {
-    await store.saveDays(userId, result.data);
-    return { outcome: 'saved' };
-  } catch {
-    return { outcome: 'save-failed' };
-  }
-};

@@ -1,8 +1,8 @@
 import { and, eq } from 'drizzle-orm';
 import { db } from '$lib/server/db';
 import {
-  commuteDays,
   commuteRoutes,
+  commuteSetups,
   summaryConfigurations,
   savedCommuteAddresses,
   savedWeatherCities,
@@ -57,9 +57,9 @@ const hasExistingCommuteSetup = (database: Pick<SetupImportDatabase, 'select'>, 
       .where(eq(commuteRoutes.userId, userId))
       .get() ||
       database
-        .select({ userId: commuteDays.userId })
-        .from(commuteDays)
-        .where(eq(commuteDays.userId, userId))
+        .select({ userId: commuteSetups.userId })
+        .from(commuteSetups)
+        .where(eq(commuteSetups.userId, userId))
         .get()
   );
 
@@ -133,14 +133,10 @@ export const createUserSetupImportStore = (
               .insert(commuteRoutes)
               .values(routes.map((route) => ({ ...route, days: JSON.stringify(route.days) })))
               .run();
-          }
-        },
-        saveCommuteDays(userId, days) {
-          if (!isActiveUser(transaction, userId)) return;
-          if (days.length > 0) {
             transaction
-              .insert(commuteDays)
-              .values(days.map((day) => ({ userId, day })))
+              .insert(commuteSetups)
+              .values({ userId: routes[0].userId })
+              .onConflictDoNothing()
               .run();
           }
         }

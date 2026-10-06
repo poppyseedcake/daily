@@ -1,7 +1,7 @@
 import Database from 'better-sqlite3';
 import { readFileSync } from 'node:fs';
 import { drizzle } from 'drizzle-orm/better-sqlite3';
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
 import * as schema from './schema';
 import {
   createDeliveryHealthStore,
@@ -16,6 +16,32 @@ const applyDeliveryHealthMigrations = (sqlite: Database.Database) => {
 };
 
 describe('Delivery Health Store', () => {
+  test('loads current health using the clock and configured overdue threshold by default', async () => {
+    const sqlite = new Database(':memory:');
+    applyDeliveryHealthMigrations(sqlite);
+    const store = createDeliveryHealthStore(drizzle(sqlite, { schema }));
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-07-15T12:00:00.000Z'));
+    vi.stubEnv('SCHEDULED_WORKER_OVERDUE_MINUTES', '10');
+    try {
+      sqlite.prepare(`insert into scheduled_worker_runs (
+        id, started_at, completed_at, duration_milliseconds, outcome,
+        due_count, sent_count, skipped_count, retrying_count, failed_count, isolated_error_count
+      ) values ('run-1', '2026-07-15T11:52:00.000Z', '2026-07-15T11:52:00.010Z', 10, 'succeeded',
+        0, 0, 0, 0, 0, 0)`).run();
+
+      await expect(store.load()).resolves.toMatchObject({
+        worker: { status: 'healthy', overdueThresholdMinutes: 10 }
+      });
+      vi.setSystemTime(new Date('2026-07-15T12:03:00.000Z'));
+      await expect(store.load()).resolves.toMatchObject({ worker: { status: 'overdue' } });
+    } finally {
+      sqlite.close();
+      vi.useRealTimers();
+      vi.unstubAllEnvs();
+    }
+  });
+
   test('calculates worker freshness before, at, and after the configured UTC threshold', async () => {
     const sqlite = new Database(':memory:');
     applyDeliveryHealthMigrations(sqlite);

@@ -2,8 +2,9 @@ import { auth } from '$lib/server/auth';
 import { isAdministratorAuthState } from '$lib/server/adminAuthorization';
 import { authStateFromSession } from '$lib/server/pageAuthState';
 import { googleMapsOperations } from '$lib/server/googleMapsOperations';
-import { deliveryHealthOperations } from '$lib/server/deliveryHealthOperations';
-import { technicalLogOperations } from '$lib/server/technicalLogOperations';
+import { db } from '$lib/server/db';
+import { createDeliveryHealthStore } from '$lib/server/db/deliveryHealthStore';
+import { createTechnicalLogStore } from '$lib/server/db/technicalLogStore';
 import {
   technicalEventCodes,
   technicalEventSeverities,
@@ -17,6 +18,9 @@ import type { Actions, PageServerLoad } from './$types';
 export type AdminPanelAccess = {
   mode: 'allowed';
 };
+
+const deliveryHealthStore = createDeliveryHealthStore(db);
+const technicalLogStore = createTechnicalLogStore(db);
 
 const requireAdministrator = async (request: Request) => {
   const session = await auth.api.getSession({
@@ -82,8 +86,8 @@ export const load: PageServerLoad = async ({ request, url }) => {
   const { cursor, ...visibleFilters } = normalizedFilters;
   const [googleMaps, deliveryHealth, technicalLogs] = await Promise.all([
     googleMapsOperations.currentOperations(),
-    deliveryHealthOperations.current(),
-    technicalLogOperations.list({
+    deliveryHealthStore.load(),
+    technicalLogStore.list({
       pageSize: 25,
       ...(normalizedFilters.from ? { fromUtc: normalizedFilters.from } : {}),
       ...(normalizedFilters.to ? { toUtc: normalizedFilters.to } : {}),

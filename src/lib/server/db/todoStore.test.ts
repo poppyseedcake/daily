@@ -191,6 +191,20 @@ describe('SQLite User Todo store', () => {
     });
   });
 
+  test('loads legacy unprefixed ids, database-default Urgency, and completed state', async () => {
+    sqlite.prepare("insert into todo_categories (id, user_id, name, position) values ('old-category', 'user-1', 'Work', 1)").run();
+    sqlite.prepare(`insert into todo_tasks (id, user_id, category_id, title, position, completed)
+      values ('old-task', 'user-1', 'old-category', 'Existing task', 1, true)`).run();
+
+    await expect(createUserTodoStore(database).load('user-1')).resolves.toEqual({
+      todoCategories: [{ id: 'old-category', name: 'Work', position: 1 }],
+      todoTasks: [{
+        id: 'old-task', title: 'Existing task', categoryId: 'old-category',
+        urgency: 'medium', position: 1, completed: true
+      }]
+    });
+  });
+
   test('rejects Todo Tasks that reference categories outside the saved User Todo state', async () => {
     const store = createUserTodoStore(database);
     await store.save('user-1', {

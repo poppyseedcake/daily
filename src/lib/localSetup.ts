@@ -21,9 +21,7 @@ import {
   type SavedWeatherCity
 } from './savedLocation';
 import {
-  commuteDaysSchema,
   commuteRoutesSchema,
-  defaultCommuteDays,
   type CommuteDay,
   type CommuteRoute
 } from './commuteRoute';
@@ -38,7 +36,6 @@ export type LocalSetup = {
   savedWeatherCities: SavedWeatherCity[];
   savedCommuteAddresses: SavedCommuteAddress[];
   commuteRoutes: CommuteRoute[];
-  commuteDays: CommuteDay[];
 } & TodoState;
 
 export type LocalSetupInput = {
@@ -48,7 +45,6 @@ export type LocalSetupInput = {
   savedWeatherCities: SavedWeatherCity[];
   savedCommuteAddresses: SavedCommuteAddress[];
   commuteRoutes: CommuteRoute[];
-  commuteDays: CommuteDay[];
 } & TodoStateInput;
 
 export type LocalSetupStorageAdapter = {
@@ -130,7 +126,6 @@ export type UserSetupImportDraft = {
     enabled: boolean;
     position: number;
   }>;
-  commuteDays: CommuteDay[];
 };
 
 export type UserSetupImportDraftOptions = {
@@ -151,8 +146,7 @@ const localSetupBaseSchema = z
     weatherLocation: weatherLocationSchema.nullable().default(null),
     savedWeatherCities: savedWeatherCitiesSchema.default([]),
     savedCommuteAddresses: savedCommuteAddressesSchema.default([]),
-    commuteRoutes: commuteRoutesSchema.default([]),
-    commuteDays: commuteDaysSchema.default(defaultCommuteDays)
+    commuteRoutes: commuteRoutesSchema.default([])
   })
   .and(todoStateSchema);
 
@@ -163,7 +157,6 @@ const localSetupSchema = localSetupBaseSchema.transform((setup) => ({
   savedWeatherCities: setup.savedWeatherCities,
   savedCommuteAddresses: setup.savedCommuteAddresses,
   commuteRoutes: setup.commuteRoutes,
-  commuteDays: setup.commuteDays,
   todoCategories: setup.todoCategories,
   todoTasks: setup.todoTasks,
   nextTodoId: setup.nextTodoId
@@ -361,7 +354,6 @@ export const createUserSetupImportDraftFromLocalSetup = (
       days: route.days,
       enabled: route.enabled,
       position: index + 1
-    })),
-    commuteDays: setup.commuteDays
+    }))
   };
 };

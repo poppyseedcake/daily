@@ -7,11 +7,6 @@ export type UserWeatherLocationPersistenceStore = {
 
 export type UserWeatherLocationSaveOutcome = 'saved' | 'invalid-weather-location' | 'save-failed';
 
-export const loadUserWeatherLocation = (
-  store: Pick<UserWeatherLocationPersistenceStore, 'load'>,
-  userId: string
-) => store.load(userId);
-
 export const saveUserWeatherLocation = async (
   store: UserWeatherLocationPersistenceStore,
   userId: string,

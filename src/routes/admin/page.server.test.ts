@@ -39,16 +39,14 @@ vi.mock('$lib/server/googleMapsOperations', () => ({
   }
 }));
 
-vi.mock('$lib/server/deliveryHealthOperations', () => ({
-  deliveryHealthOperations: {
-    current: currentDeliveryHealth
-  }
+vi.mock('$lib/server/db', () => ({ db: {} }));
+
+vi.mock('$lib/server/db/deliveryHealthStore', () => ({
+  createDeliveryHealthStore: () => ({ load: currentDeliveryHealth })
 }));
 
-vi.mock('$lib/server/technicalLogOperations', () => ({
-  technicalLogOperations: {
-    list: listTechnicalLogs
-  }
+vi.mock('$lib/server/db/technicalLogStore', () => ({
+  createTechnicalLogStore: () => ({ list: listTechnicalLogs })
 }));
 
 vi.mock('$lib/server/adminGoogleSession', () => ({
@@ -262,7 +260,6 @@ describe('Admin Panel server load', () => {
     listTechnicalLogs.mockResolvedValue({
       records: [
         {
-          id: 'log-2',
           eventCode: 'scheduled-daily-summary-worker-failed',
           severity: 'error',
           subsystem: 'scheduled-delivery',
