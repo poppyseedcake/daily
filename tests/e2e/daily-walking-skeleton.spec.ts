@@ -91,8 +91,8 @@ test('Visitor Summary Configuration persists through Settings and the delivery d
   await expect(page.getByLabel('New Todo Task')).toBeEnabled();
   await expect(page.getByText('Delivery paused', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: /Mail delivery/ }).click();
-  await expect(page.getByRole('dialog', { name: 'Delivery time' }).getByRole('spinbutton', { name: 'Hours' })).toHaveText('08');
-  await expect(page.getByRole('dialog', { name: 'Delivery time' }).getByRole('spinbutton', { name: 'Minutes' })).toHaveText('01');
+  await expect(page.getByRole('dialog', { name: 'Delivery time' }).getByRole('spinbutton', { name: 'Hours' })).toHaveAttribute('aria-valuenow', '8');
+  await expect(page.getByRole('dialog', { name: 'Delivery time' }).getByRole('spinbutton', { name: 'Minutes' })).toHaveAttribute('aria-valuenow', '1');
   await expect(page.getByRole('dialog', { name: 'Delivery time' })).toContainText('America/New_York');
   await page.getByRole('dialog', { name: 'Delivery time' }).getByRole('button', { name: 'Cancel delivery time' }).click();
   await openSettings(page);
@@ -357,12 +357,12 @@ test('Visitor edits Mail Delivery time with the keyboard and mouse', async ({ pa
   await expect(delivery).toBeVisible();
   await expect(delivery.getByRole('spinbutton', { name: 'Hours' })).toBeFocused();
   await page.keyboard.press('ArrowUp');
-  await expect(delivery.getByRole('spinbutton', { name: 'Hours' })).toHaveText('08');
+  await expect(delivery.getByRole('spinbutton', { name: 'Hours' })).toHaveAttribute('aria-valuenow', '8');
   await page.keyboard.press('ArrowRight');
   await expect(delivery.getByRole('spinbutton', { name: 'Minutes' }))
     .toHaveAttribute('data-active', 'true');
   await delivery.getByRole('button', { name: 'Increase minutes' }).click();
-  await expect(delivery.getByRole('spinbutton', { name: 'Minutes' })).toHaveText('01');
+  await expect(delivery.getByRole('spinbutton', { name: 'Minutes' })).toHaveAttribute('aria-valuenow', '1');
   await expect(delivery.getByRole('spinbutton', { name: 'Minutes' }))
     .toHaveAttribute('data-active', 'true');
   await delivery.getByRole('button', { name: 'Edit time zone' }).click();
@@ -400,6 +400,7 @@ test('Visitor reorders Todo Tasks with the keyboard and keeps the order after re
     await page.getByLabel('New Todo Task').fill(title);
     await page.getByLabel('New Todo Task').press('Enter');
     await page.keyboard.press('Enter');
+    await expect(page.getByRole('dialog', { name: 'Add task' })).toBeHidden();
   }
 
   const ungrouped = page.getByRole('list', { name: 'No Category Todo Tasks' });
@@ -438,6 +439,7 @@ test('Visitor can drop a Todo Task anywhere in an empty stretched group', async 
       await groups.getByRole('button', { name: 'Next group' }).click();
     }
     await groups.getByRole('button', { name: 'Confirm adding task' }).click();
+    await expect(groups).toBeHidden();
   };
 
   await addGroup('Target');

@@ -1,6 +1,9 @@
 @import 'tailwindcss';
 
 :root {
+  --duration-quick: 150ms;
+  --duration-standard: 180ms;
+  --ease-smooth-out: cubic-bezier(0.16, 1, 0.3, 1);
   color: #18201c;
   background: #f6f3ed;
   font-family:
@@ -17,4 +20,25 @@ button,
 input,
 select {
   font: inherit;
+}
+
+dialog[data-motion-dialog][open]::backdrop {
+  animation: daily-backdrop-in 200ms var(--ease-smooth-out) both;
+}
+
+dialog[data-motion-dialog][data-motion-closing]::backdrop {
+  animation: daily-backdrop-out 150ms ease-in both;
+}
+
+@keyframes daily-backdrop-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes daily-backdrop-out { from { opacity: 1; } to { opacity: 0; } }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0s !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0s !important;
+    scroll-behavior: auto !important;
+  }
+  dialog[data-motion-dialog]::backdrop { animation: none !important; }
 }
