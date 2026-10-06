@@ -5,6 +5,7 @@
   import { asset, resolve } from '$app/paths';
   import { LogIn, UserPlus, X } from '@lucide/svelte';
   import DailyLogo from './DailyLogo.svelte';
+  import { animatedDialog, closeAnimatedDialog } from '$lib/motion';
 
   type Intent = 'signin' | 'signup';
   const initialRequest = () => {
@@ -63,8 +64,7 @@
   }
 
   function close() {
-    dialog.close();
-    finishClosing();
+    void closeAnimatedDialog(dialog, finishClosing);
   }
 
   function backdropClick(event: MouseEvent) {
@@ -97,6 +97,7 @@
 </script>
 
 <dialog
+  use:animatedDialog
   bind:this={dialog}
   open={isOpen || (!hydrated && initial.open)}
   aria-labelledby="auth-title"
