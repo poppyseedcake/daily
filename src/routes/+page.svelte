@@ -664,7 +664,10 @@
         return;
       }
 
-      weatherLocationSearchResults = result.locations ?? [];
+      const locations = result.locations ?? [];
+      weatherLocationSearchResults = locations.filter((location, index) =>
+        locations.findIndex(candidate => sameSavedLocationCoordinates(candidate, location)) === index
+      );
       activeWeatherLocationSuggestion = weatherLocationSearchResults.length > 0 ? 0 : -1;
       weatherLocationStatus =
         weatherLocationSearchResults.length > 0

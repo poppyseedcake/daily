@@ -51,9 +51,10 @@ export function collapseTask(node: HTMLElement, { enabled = true }: { enabled?: 
   // A disappearing control must not strand keyboard focus on the document body.
   if (node.contains(document.activeElement)) {
     const list = node.parentElement;
-    const rows = list ? [...list.children] : [];
+    const rows = list ? [...list.children].filter((row): row is HTMLElement => row instanceof HTMLElement) : [];
     const index = rows.indexOf(node);
-    const neighbor = rows[index + 1] ?? rows[index - 1];
+    const neighbor = [...rows.slice(index + 1), ...rows.slice(0, index).reverse()]
+      .find(row => !row.inert && !row.hasAttribute('data-completing') && !row.classList.contains('daily-task--drop-placeholder'));
     const next = neighbor?.querySelector<HTMLElement>('input, button')
       ?? document.querySelector<HTMLElement>('[aria-label="New Todo Task"]');
     next?.focus({ preventScroll: true });
@@ -217,7 +218,11 @@ export function animatedDetails(node: HTMLDetailsElement) {
   const toggle = (event: Event) => {
     if (!panel || preference.matches) return;
     event.preventDefault();
-    if (closing) { animation?.cancel(); closing = false; return; }
+    if (closing) {
+      animation?.cancel();
+      closing = false;
+      if (node.open) return;
+    }
     if (!node.open) {
       node.open = true;
       animation = panel.animate([{ opacity: 0, transform: 'translateY(5px)' }, { opacity: 1, transform: 'translateY(0)' }], { duration: 180, easing: easeOut });
