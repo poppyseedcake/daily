@@ -56,6 +56,9 @@ jobs:
       - name: Run Playwright
         run: bash scripts/run-without-network.sh npm run test:e2e
 
+      - name: Verify production PostHog recording and replay styling
+        run: bash scripts/run-without-network.sh npm run test:e2e:replay
+
       - name: Build production adapter
         run: bash scripts/run-without-network.sh npm run build
 

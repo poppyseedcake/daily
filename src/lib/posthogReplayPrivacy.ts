@@ -11,11 +11,33 @@ function parseAssetUrl(value: string, element: Element): URL | null {
   }
 }
 
+function isApplicationStylesheet(element: Element, href = element.getAttribute('href') ?? ''): boolean {
+  if (element.tagName !== 'LINK' || element.getAttribute('rel') !== 'stylesheet') return false;
+  const url = parseAssetUrl(href, element);
+  return !!url && url.origin === element.ownerDocument.location.origin &&
+    /^\/_app\/immutable\/assets\/[\w.-]+\.css$/.test(url.pathname) && !url.search && !url.hash;
+}
+
 /** Keep presentation metadata; mask content-bearing attributes, including aria-label and data-*. */
 export function maskReplayAttribute(name: string, value: string, element?: Element): string {
   const masked = value.replace(/\S/g, '*');
   if (!element) return masked;
   const attribute = name.toLowerCase();
+  // rrweb replaces production stylesheet links with this synthetic CSS attribute.
+  // Masking it erases the entire stylesheet, even when classes and href survive.
+  // Only allow recorder-generated CSS from Daily's compiled assets, not DOM attributes.
+  if (attribute === '_csstext' && !element.hasAttribute(name) && isApplicationStylesheet(element)) {
+    return value;
+  }
+  // Vite's style elements must retain their CSS MIME type to be applied on replay.
+  if (attribute === 'type' && ['STYLE', 'LINK'].includes(element.tagName) && value === 'text/css') {
+    return value;
+  }
+  // rrweb needs this generated enum to restore a modal and its backdrop.
+  if (attribute === 'rr_open_mode' && element.tagName === 'DIALOG' && !element.hasAttribute(name) &&
+      ['modal', 'non-modal'].includes(value)) {
+    return value;
+  }
   // Daily's classes are application-defined, never derived from User content.
   if (attribute === 'class') return value;
 
@@ -49,12 +71,7 @@ export function maskReplayAttribute(name: string, value: string, element?: Eleme
     return value;
   }
   if (attribute === 'href' && element.tagName === 'LINK' && element.getAttribute('rel') === 'stylesheet') {
-    const url = parseAssetUrl(value, element);
-    if (!url) return masked;
-    if (url.origin === element.ownerDocument.location.origin &&
-        /^\/_app\/immutable\/assets\/[\w.-]+\.css$/.test(url.pathname) && !url.search && !url.hash) {
-      return value;
-    }
+    if (isApplicationStylesheet(element, value)) return value;
   }
   if (attribute === 'src' && element.tagName === 'IMG') {
     const url = parseAssetUrl(value, element);
