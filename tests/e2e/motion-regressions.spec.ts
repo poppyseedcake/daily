@@ -13,7 +13,9 @@ for (const remaining of [0, 1]) {
     setup.todoTasks = (remaining ? ['Remaining task', 'Second task', 'Third task'] : ['Second task', 'Third task'])
       .map((title, index) => ({ id: `rapid-${index}`, title, categoryId: null, urgency: 'low', position: index + 1, completed: false }));
     setup.nextTodoId = 10;
-    await page.addInitScript(({ key, setup }) => localStorage.setItem(key, JSON.stringify(setup)), {
+    await page.addInitScript(({ key, setup }) => {
+      if (!localStorage.getItem(key)) localStorage.setItem(key, JSON.stringify(setup));
+    }, {
       key: localSetupStorageKey, setup
     });
     await page.goto('/');
@@ -81,3 +83,80 @@ test('the account menu reopens on the first click after Escape interrupts its ex
   expect(result.reopenedImmediately).toBe(true);
   expect(result.stayedOpen).toBe(true);
 });
+
+for (const { input, exits } of [
+  { input: 'pointer', exits: 1 },
+  { input: 'keyboard', exits: 1 },
+  { input: 'keyboard', exits: 2 }
+] as const) {
+  test(`task dragging waits for completion exits and resumes afterward (${input}, ${exits} exits)`, async ({ page }) => {
+    const errors: string[] = [];
+    page.on('pageerror', error => errors.push(error.message));
+    const setup = createDefaultLocalSetup();
+    setup.todoTasks = ['First task', ...(exits === 2 ? ['Another task'] : []), 'Second task', 'Third task'].map((title, index) => ({
+      id: `drag-${index}`, title, categoryId: null, urgency: 'low', position: index + 1, completed: false
+    }));
+    setup.nextTodoId = 10;
+    await page.addInitScript(({ key, setup }) => {
+      if (!localStorage.getItem(key)) localStorage.setItem(key, JSON.stringify(setup));
+    }, {
+      key: localSetupStorageKey, setup
+    });
+    await page.goto('/');
+    await expect(page.getByLabel('New Todo Task')).toBeEnabled();
+    const list = page.getByRole('list', { name: 'No Category Todo Tasks' });
+    const completeAndPause = async (title: string) => page.getByRole('checkbox', { name: `Complete ${title}` }).evaluate(async checkbox => {
+      (checkbox as HTMLInputElement).click();
+      await new Promise(requestAnimationFrame);
+      // Keep the DOM/items mismatch present for the entire attempted drag.
+      const leaving = checkbox.closest('li')!;
+      for (const animation of leaving.getAnimations()) animation.pause();
+      for (const row of leaving.parentElement!.children) {
+        if (row !== leaving && !row.hasAttribute('inert')) for (const animation of row.getAnimations()) animation.finish();
+      }
+    });
+    await completeAndPause('First task');
+    if (exits === 2) await completeAndPause('Another task');
+    const handle = list.getByRole('button', { name: 'Move Third task' });
+    const dragLastTaskUp = async (enabled = false) => {
+      if (input === 'keyboard') {
+        await handle.focus();
+        await page.keyboard.press('Space');
+        await page.keyboard.press('ArrowUp');
+        await page.keyboard.press('Space');
+      } else {
+        const from = (await handle.boundingBox())!;
+        const to = (await list.getByRole('listitem', { name: 'Second task' }).boundingBox())!;
+        await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+        await page.mouse.down();
+        await page.mouse.move(from.x + from.width / 2, to.y + 2, { steps: 8 });
+        if (enabled) await expect(list.locator('li').first()).toHaveClass(/daily-task--drop-placeholder/);
+        // Drop only after the library has had a frame to process the pointer position.
+        await page.evaluate(() => new Promise(requestAnimationFrame));
+        await page.mouse.up();
+      }
+    };
+    await dragLastTaskUp();
+    expect(errors).toEqual([]);
+    await expect(list.locator('li:not([inert])')).toHaveText([/Second task/, /Third task/]);
+    await list.locator('li[aria-label="First task"]').evaluate(node => {
+      for (const animation of node.getAnimations()) animation.play();
+    });
+    await expect(list.locator('li[aria-label="First task"]')).toHaveCount(0);
+    if (exits === 2) {
+      // One completed exit must not enable dragging while another row is still leaving.
+      await dragLastTaskUp();
+      expect(errors).toEqual([]);
+      await expect(list.locator('li:not([inert])')).toHaveText([/Second task/, /Third task/]);
+      await list.locator('li[aria-label="Another task"]').evaluate(node => {
+        for (const animation of node.getAnimations()) animation.play();
+      });
+      await expect(list.locator('li[aria-label="Another task"]')).toHaveCount(0);
+    }
+    await dragLastTaskUp(true);
+    await expect(list.getByRole('listitem')).toHaveText([/Third task/, /Second task/]);
+    expect(errors).toEqual([]);
+    await page.reload();
+    await expect(list.getByRole('listitem')).toHaveText([/Third task/, /Second task/]);
+  });
+}

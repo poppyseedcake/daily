@@ -63,6 +63,37 @@ export function collapseTask(node: HTMLElement, { enabled = true }: { enabled?: 
   return { ...reveal(node, { duration: completing ? 210 : 160 }), delay: completing ? motionDuration(80) : 0 };
 }
 
+/** Keep drag guards active until outgoing DOM nodes leave, including interrupted exits. */
+export function trackOutro(node: HTMLElement, onChange: (exiting: boolean) => void) {
+  let exiting = false;
+  const start = () => {
+    if (exiting) return;
+    exiting = true;
+    onChange(true);
+  };
+  const finish = () => {
+    if (!exiting) return;
+    exiting = false;
+    onChange(false);
+  };
+  // Svelte marks outgoing nodes inert before the exit delay; outrostart fires after that delay.
+  const observer = new MutationObserver(() => {
+    if (node.inert) start();
+    else finish();
+  });
+  observer.observe(node, { attributes: true, attributeFilter: ['inert'] });
+  node.addEventListener('outroend', finish);
+  node.addEventListener('introstart', finish);
+  return {
+    destroy() {
+      observer.disconnect();
+      finish();
+      node.removeEventListener('outroend', finish);
+      node.removeEventListener('introstart', finish);
+    }
+  };
+}
+
 export function routeView(node: HTMLElement, { direction = 1 }: { direction?: number } = {}) {
   return fly(node, { x: reducedMotion() ? 0 : direction * 10, duration: motionDuration(180), easing: cubicOut });
 }

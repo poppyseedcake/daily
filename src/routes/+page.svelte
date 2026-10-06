@@ -34,7 +34,7 @@
   import { fade } from 'svelte/transition';
   import {
     animatedDialog, closeAnimatedDialog, animatedDetails, selectionFeedback,
-    reveal, collapseTask, favoriteReveal, favoriteExit, routeView, resizeOnChange, motionDuration
+    reveal, collapseTask, trackOutro, favoriteReveal, favoriteExit, routeView, resizeOnChange, motionDuration
   } from '$lib/motion';
   import RollingNumber from '$lib/components/RollingNumber.svelte';
   import { invalidateAll } from '$app/navigation';
@@ -210,6 +210,8 @@
   let editingCategoryName = $state('');
   let todoControlsReady = $state(false);
   let motionReady = $state(false);
+  let todoOutros = $state(0);
+  const trackTodoOutro = (exiting: boolean) => { todoOutros += exiting ? 1 : -1; };
   onMount(() => {
     const frame = requestAnimationFrame(() => { motionReady = true; });
     return () => cancelAnimationFrame(frame);
@@ -1932,6 +1934,8 @@
     aria-label={label}
     use:dragHandleZone={{
       items: visibleTasksForCategory(categoryId),
+      dragDisabled: todoOutros > 0,
+      dropFromOthersDisabled: todoOutros > 0,
       flipDurationMs: motionDuration(150),
       type: 'todo-task',
       useCursorForDetection: true,
@@ -1949,6 +1953,7 @@
         aria-label={task.title}
         animate:flip={{ duration: motionDuration(150) }}
         use:resizeOnChange={editingTaskId === task.id}
+        use:trackOutro={trackTodoOutro}
         in:reveal={{ enabled: motionReady && !isDndShadowTask(task) && Object.keys(todoDragTaskLists).length === 0, duration: 200 }}
         out:collapseTask={{ enabled: Object.keys(todoDragTaskLists).length === 0 }}
       >
@@ -2287,6 +2292,8 @@
         aria-label="Todo Categories"
         use:dragHandleZone={{
           items: visibleTodoCategories(),
+          dragDisabled: todoOutros > 0,
+          dropFromOthersDisabled: todoOutros > 0,
           flipDurationMs: motionDuration(150),
           type: 'todo-category',
           useCursorForDetection: true
@@ -2295,7 +2302,7 @@
         onfinalize={handleTodoCategoryFinalize}
       >
         {#each visibleTodoCategories() as category, categoryIndex (category.id)}
-          <section animate:flip={{ duration: motionDuration(150) }} in:reveal={{ enabled: motionReady }} out:reveal={{ duration: 150 }} class={`daily-column daily-column--${(categoryIndex % 3) + 1}`} aria-label={`${category.name} Todo Category`}>
+          <section use:trackOutro={trackTodoOutro} animate:flip={{ duration: motionDuration(150) }} in:reveal={{ enabled: motionReady && todoDragCategories === null }} out:reveal={{ enabled: todoDragCategories === null, duration: 150 }} class={`daily-column daily-column--${(categoryIndex % 3) + 1}`} aria-label={`${category.name} Todo Category`}>
             <header>
               {#if editingCategoryId === category.id}
                 <input bind:value={editingCategoryName} aria-label="Edit Todo Category" />
