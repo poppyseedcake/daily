@@ -121,7 +121,8 @@
 
 <style>
   .daily-onboarding { position: fixed; inset: 0; width: 100%; max-width: none; height: 100%; max-height: none; padding: 24px; margin: 0; border: 0; background: transparent; color: #18201c; overflow-y: auto; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; }
-  .daily-onboarding[open]:not(.daily-onboarding--tour) { display: grid; place-items: center; }
+  /* Keep the top reachable when the welcome panel is taller than the viewport. */
+  .daily-onboarding[open]:not(.daily-onboarding--tour) { display: grid; place-items: safe center; }
   .daily-onboarding::backdrop { background: #18201c70; }
   .daily-onboarding--tour { padding: 0; overflow: hidden; }
   .daily-onboarding--tour::backdrop { background: transparent; }
