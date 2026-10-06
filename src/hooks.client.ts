@@ -2,6 +2,7 @@ import { dev } from '$app/environment';
 import { PUBLIC_POSTHOG_HOST, PUBLIC_POSTHOG_PROJECT_TOKEN } from '$env/static/public';
 import type { HandleClientError } from '@sveltejs/kit';
 import posthog from 'posthog-js';
+import { maskReplayAttribute } from '$lib/posthogReplayPrivacy';
 
 export function init() {
   if (!PUBLIC_POSTHOG_PROJECT_TOKEN) {
@@ -34,7 +35,9 @@ export function init() {
     session_recording: {
       maskAllInputs: true,
       maskTextSelector: '*',
-      maskAllElementAttributes: true,
+      // Global attribute masking also destroys CSS classes, styles, and stylesheet links.
+      maskAllElementAttributes: false,
+      maskAttributeFn: maskReplayAttribute,
       recordHeaders: false,
       recordBody: false
     },

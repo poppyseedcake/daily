@@ -186,7 +186,9 @@
         status, and the associated User identifier. Calendar events, Todo text, commute
         addresses, email bodies, OAuth tokens, and private service API keys are not included
         in Daily's explicit analytics events or structured logs. Replay text, inputs, and
-        DOM attributes are masked separately before export from the browser.
+        content-bearing DOM attributes are masked separately before export from the browser.
+        Application-defined CSS classes, presentation styles, icon geometry, and approved
+        static assets are retained so the recording preserves the interface layout.
       </li>
       <li>
         <strong>Cloudflare:</strong> the application code has no Cloudflare API integration. A
