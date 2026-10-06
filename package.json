@@ -23,6 +23,7 @@
     "verify:email-client-kit": "vite-node --config vite.worker.config.ts scripts/verify-email-client-kit.ts",
     "pretest:e2e": "svelte-kit sync",
     "test:e2e": "playwright test",
+    "test:e2e:replay": "playwright test --config playwright.replay.config.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:migrate:runtime": "node build/worker/runSqliteMigrateCommand.js",
@@ -57,6 +58,7 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.53.1",
+    "@posthog/rrweb-replay": "0.0.18",
     "@resvg/resvg-js": "^2.6.2",
     "@sveltejs/vite-plugin-svelte": "^5.1.0",
     "@types/better-sqlite3": "^7.6.13",
