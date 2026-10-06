@@ -52,7 +52,7 @@ describe('User setup loading', () => {
       summaryConfiguration: defaultSummaryConfiguration,
       todoState: { todoCategories: [], todoTasks: [], nextTodoId: 1 },
       weatherLocation: null,
-      commuteSetup: { routes: [], days: ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'] },
+      commuteSetup: { routes: [] },
       savedWeatherCities: [],
       savedCommuteAddresses: [],
       userSetupEditing: {

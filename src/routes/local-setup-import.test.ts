@@ -39,7 +39,6 @@ const validLocalSetup = () => ({
       enabled: false
     }
   ],
-  commuteDays: ['monday', 'wednesday', 'sunday'],
   todoCategories: [
     {
       id: 'visitor-category-work',

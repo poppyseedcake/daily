@@ -1,12 +1,5 @@
 import { z } from 'zod';
 
-export const savedSelectedCalendarSchema = z.object({
-  id: z.string().trim().min(1),
-  summary: z.string().trim().min(1),
-  backgroundColor: z.string().nullable(),
-  primary: z.boolean()
-}).strict();
-
 export const selectedCalendarIdSaveSchema = z
   .array(z.string().trim().min(1))
   .refine((calendarIds) => new Set(calendarIds).size === calendarIds.length);

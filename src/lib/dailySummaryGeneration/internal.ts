@@ -17,7 +17,7 @@ import { calendarReadinessForAuthMode } from '../calendarReadiness';
 import { openMeteoWeatherForecastProvider } from '../weatherForecast';
 import { createWeatherSectionGenerator, type WeatherSectionGenerator } from './weatherSection';
 import { Temporal } from '@js-temporal/polyfill';
-import type { CommuteDay, CommuteRoute } from '../commuteRoute';
+import type { CommuteRoute } from '../commuteRoute';
 import {
   classifyCommuteTraffic,
   commuteTrafficDescription
@@ -36,7 +36,6 @@ export type DailySummaryGenerationContext = {
   weatherSectionGenerator?: WeatherSectionGenerator;
   weatherSummaryObservability?: Parameters<WeatherSectionGenerator['generate']>[0]['observability'];
   commuteRoutes?: CommuteRoute[];
-  commuteDays?: readonly CommuteDay[];
   commuteSetupUnavailable?: boolean;
   commuteEstimateProvider?: Pick<GoogleMapsRequestGateway, 'estimateCommute'>;
   commuteEstimateMode?: 'saved' | 'live';
@@ -100,7 +99,6 @@ const buildDailySummaryInput = async ({
   weatherSectionGenerator = defaultWeatherSectionGenerator,
   weatherSummaryObservability,
   commuteRoutes = [],
-  commuteDays = [],
   commuteSetupUnavailable = false,
   commuteEstimateProvider,
   commuteEstimateMode = 'saved',
@@ -123,7 +121,6 @@ const buildDailySummaryInput = async ({
   const commuteGeneration = await buildCommuteGenerationResult({
     configuration,
     routes: commuteRoutes,
-    days: commuteDays,
     setupUnavailable: commuteSetupUnavailable,
     provider: commuteEstimateProvider,
     mode: commuteEstimateMode,
@@ -178,8 +175,7 @@ export const visitorDailySummaryGenerator = createDailySummaryGenerator<LocalSet
         todoCategories: setup.todoCategories,
         todoTasks: setup.todoTasks,
         weatherLocation: setup.weatherLocation,
-        commuteRoutes: setup.commuteRoutes,
-        commuteDays: setup.commuteDays
+        commuteRoutes: setup.commuteRoutes
       };
     }
   }
@@ -195,10 +191,9 @@ const commuteRouteLabels = (route: CommuteRoute) => ({
   destinationLabel: route.destination.label
 });
 
-const buildCommuteGenerationResult = async ({ configuration, routes, days, setupUnavailable, provider, mode, now }: {
+const buildCommuteGenerationResult = async ({ configuration, routes, setupUnavailable, provider, mode, now }: {
   configuration: SummaryConfiguration;
   routes: CommuteRoute[];
-  days: readonly CommuteDay[];
   setupUnavailable: boolean;
   provider: Pick<GoogleMapsRequestGateway, 'estimateCommute'> | undefined;
   mode: 'saved' | 'live';

@@ -161,8 +161,7 @@
     savedCommuteAddressSchema.parse(address)
   );
   const initialCommuteSetup = data?.commuteSetup ?? {
-    routes: [] as CommuteRoute[],
-    days: [...defaultCommuteDays] as CommuteDay[]
+    routes: [] as CommuteRoute[]
   };
   const deliveryRecords = $derived<DeliveryHistoryRecord[]>(data?.deliveryRecords ?? []);
   const initialSelectedCalendarConfiguration = data?.selectedCalendarConfiguration ?? null;
@@ -228,7 +227,6 @@
     initialWeatherLocation ? 'success' : 'neutral'
   );
   let commuteRoutes = $state<CommuteRoute[]>(initialCommuteSetup.routes);
-  let commuteDays = $state<CommuteDay[]>([...initialCommuteSetup.days]);
   let editingCommuteRouteId = $state<string | null>(null);
   let commuteRouteName = $state('');
   let commuteRouteDays = $state<CommuteDay[]>([...defaultCommuteDays]);
@@ -477,7 +475,6 @@
     savedWeatherCities = setup.savedWeatherCities;
     savedCommuteAddresses = setup.savedCommuteAddresses;
     commuteRoutes = setup.commuteRoutes;
-    commuteDays = setup.commuteDays;
     editingCommuteRouteId = null;
     commuteRouteName = '';
     commuteRouteDays = [...defaultCommuteDays];
@@ -503,7 +500,6 @@
     savedWeatherCities,
     savedCommuteAddresses,
     commuteRoutes,
-    commuteDays,
     todoCategories,
     todoTasks,
     nextTodoId

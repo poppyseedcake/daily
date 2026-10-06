@@ -8,7 +8,7 @@ import {
 } from '$lib/commuteRoute';
 import type { UserCommuteSetupStore } from '$lib/server/commuteSetupPersistence';
 import { db } from '$lib/server/db';
-import { commuteDays, commuteRoutes } from './schema';
+import { commuteRoutes, commuteSetups } from './schema';
 
 type CommuteSetupDatabase = typeof db;
 
@@ -54,24 +54,12 @@ export const createUserCommuteSetupStore = (
   database: CommuteSetupDatabase
 ): UserCommuteSetupStore => ({
   async load(userId) {
-    const [routeRows, dayRows] = await Promise.all([
-      database.query.commuteRoutes.findMany({
-        where: eq(commuteRoutes.userId, userId),
-        orderBy: [asc(commuteRoutes.position)]
-      }),
-      database.query.commuteDays.findMany({ where: eq(commuteDays.userId, userId) })
-    ]);
+    const routeRows = await database.query.commuteRoutes.findMany({
+      where: eq(commuteRoutes.userId, userId),
+      orderBy: [asc(commuteRoutes.position)]
+    });
 
-    if (routeRows.length === 0 && dayRows.length === 0) return null;
-
-    return {
-      routes: routeRows.map(routeFromRow),
-      days: defaultCommuteDays.filter((day) => dayRows.some((row) => row.day === day)).concat(
-        dayRows
-          .map((row) => row.day as CommuteDay)
-          .filter((day) => !defaultCommuteDays.includes(day))
-      )
-    };
+    return routeRows.length > 0 ? { routes: routeRows.map(routeFromRow) } : null;
   },
   async createRoute(userId, draft) {
     return database.transaction((transaction) => {
@@ -99,13 +87,7 @@ export const createUserCommuteSetupStore = (
           previewDurationMinutes: route.previewDurationMinutes ?? null
         })
         .run();
-      if (currentCount === 0) {
-        transaction
-          .insert(commuteDays)
-          .values(defaultCommuteDays.map((day) => ({ userId, day })))
-          .onConflictDoNothing()
-          .run();
-      }
+      transaction.insert(commuteSetups).values({ userId }).onConflictDoNothing().run();
       return route;
     });
   },
@@ -126,14 +108,6 @@ export const createUserCommuteSetupStore = (
       .where(and(eq(commuteRoutes.id, routeId), eq(commuteRoutes.userId, userId)))
       .returning({ id: commuteRoutes.id });
     return result.length > 0;
-  },
-  async saveDays(userId, days) {
-    database.transaction((transaction) => {
-      transaction.delete(commuteDays).where(eq(commuteDays.userId, userId)).run();
-      if (days.length > 0) {
-        transaction.insert(commuteDays).values(days.map((day) => ({ userId, day }))).run();
-      }
-    });
   }
 });
 

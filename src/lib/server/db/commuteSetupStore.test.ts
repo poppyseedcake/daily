@@ -12,6 +12,7 @@ const createTestDatabase = () => {
   sqlite.exec(readFileSync('drizzle/0010_add_commute_setup.sql', 'utf8'));
   sqlite.exec(readFileSync('drizzle/0016_add_commute_preview_duration.sql', 'utf8'));
   sqlite.exec(readFileSync('drizzle/0019_add_commute_route_days.sql', 'utf8'));
+  sqlite.exec(readFileSync('drizzle/0023_retire_shared_commute_days.sql', 'utf8'));
   return { sqlite, database: drizzle(sqlite, { schema }) };
 };
 
@@ -47,7 +48,6 @@ describe('SQLite User Commute setup store', () => {
     const first = await store.createRoute('user-1', routeDraft('Morning commute', ['monday', 'wednesday']));
     const second = await store.createRoute('user-1', routeDraft('Evening commute', ['tuesday', 'thursday']));
     await store.createRoute('user-2', routeDraft('Other User route'));
-    await store.saveDays('user-1', ['monday', 'wednesday', 'sunday']);
 
     expect(first).not.toBe('route-limit-reached');
     expect(second).not.toBe('route-limit-reached');
@@ -55,12 +55,10 @@ describe('SQLite User Commute setup store', () => {
       routes: [
         { name: 'Morning commute', days: ['monday', 'wednesday'], enabled: true, previewDurationMinutes: 17 },
         { name: 'Evening commute', days: ['tuesday', 'thursday'], enabled: true, previewDurationMinutes: 17 }
-      ],
-      days: ['monday', 'wednesday', 'sunday']
+      ]
     });
     await expect(store.load('user-2')).resolves.toMatchObject({
-      routes: [{ name: 'Other User route' }],
-      days: ['monday', 'tuesday', 'wednesday', 'thursday', 'friday']
+      routes: [{ name: 'Other User route' }]
     });
 
     if (first === 'route-limit-reached') throw new Error('expected route');

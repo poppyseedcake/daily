@@ -3,7 +3,6 @@ import type { CommuteRoute } from '$lib/commuteRoute';
 import {
   createUserCommuteRoute,
   loadUserCommuteSetup,
-  saveUserCommuteDays,
   updateUserCommuteRoute,
   type UserCommuteSetupStore
 } from './commuteSetupPersistence';
@@ -19,8 +18,7 @@ const createStore = (): UserCommuteSetupStore => ({
   async load() { return null; },
   async createRoute(_userId, draft) { return { id: 'route-1', ...draft, enabled: true }; },
   async updateRoute(_userId, routeId, update) { return { id: routeId, ...update }; },
-  async deleteRoute() { return true; },
-  async saveDays() {}
+  async deleteRoute() { return true; }
 });
 
 describe('User Commute setup persistence', () => {
@@ -31,10 +29,9 @@ describe('User Commute setup persistence', () => {
     })
   };
 
-  test('defaults a new User to weekday Commute Days', async () => {
+  test('defaults a new User to no Commute Routes', async () => {
     await expect(loadUserCommuteSetup(createStore(), 'user-1')).resolves.toEqual({
-      routes: [],
-      days: ['monday', 'tuesday', 'wednesday', 'thursday', 'friday']
+      routes: []
     });
   });
 
@@ -52,8 +49,7 @@ describe('User Commute setup persistence', () => {
         ...route,
         enabled: true,
         previewDurationMinutes: 12
-      })),
-      days: ['monday']
+      }))
     });
     const provider = { estimateCommute: vi.fn() };
 
@@ -71,7 +67,7 @@ describe('User Commute setup persistence', () => {
       previewDurationMinutes: 12
     }));
     const store = createStore();
-    store.load = async () => ({ routes: [...routes], days: ['monday'] });
+    store.load = async () => ({ routes: [...routes] });
     store.createRoute = async (_userId, draft) => {
       if (routes.length >= 5) return 'route-limit-reached';
       const created = { id: `route-${routes.length}`, ...draft, enabled: true };
@@ -104,7 +100,7 @@ describe('User Commute setup persistence', () => {
   test('refreshes the saved baseline only when a route endpoint changes', async () => {
     const store = createStore();
     const existingRoute = { id: 'route-1', ...route, enabled: true, previewDurationMinutes: 12 };
-    store.load = async () => ({ routes: [existingRoute], days: ['monday'] });
+    store.load = async () => ({ routes: [existingRoute] });
     const provider = {
       estimateCommute: vi.fn().mockResolvedValue({
         outcome: 'available' as const,
@@ -132,8 +128,7 @@ describe('User Commute setup persistence', () => {
   test('allows unrelated edits when an existing migrated route has no baseline', async () => {
     const store = createStore();
     store.load = async () => ({
-      routes: [{ id: 'route-1', ...route, enabled: true, previewDurationMinutes: null }],
-      days: ['monday']
+      routes: [{ id: 'route-1', ...route, enabled: true, previewDurationMinutes: null }]
     });
     const provider = {
       estimateCommute: vi.fn().mockResolvedValue({
@@ -155,9 +150,9 @@ describe('User Commute setup persistence', () => {
     expect(provider.estimateCommute).not.toHaveBeenCalled();
   });
 
-  test('validates duplicate and unsupported Commute Days before persistence', async () => {
+  test('validates duplicate and unsupported route days before persistence', async () => {
     const store = createStore();
-    await expect(saveUserCommuteDays(store, 'user-1', ['monday', 'monday'])).resolves.toEqual({ outcome: 'invalid-commute-days' });
-    await expect(saveUserCommuteDays(store, 'user-1', ['weekday'])).resolves.toEqual({ outcome: 'invalid-commute-days' });
+    await expect(createUserCommuteRoute(store, 'user-1', { ...route, days: ['monday', 'monday'] }, estimateProvider)).resolves.toEqual({ outcome: 'invalid-route' });
+    await expect(createUserCommuteRoute(store, 'user-1', { ...route, days: ['weekday'] }, estimateProvider)).resolves.toEqual({ outcome: 'invalid-route' });
   });
 });

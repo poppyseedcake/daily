@@ -77,7 +77,11 @@ describe('Visitor Local Setup module', () => {
       'schema-invalid',
       JSON.stringify({
         ...createDefaultLocalSetup(),
-        commuteDays: ['monday', 'monday']
+        commuteRoutes: [{
+          id: 'route-1', name: 'Office', enabled: true, days: ['monday', 'monday'],
+          origin: { label: 'Home', latitude: 52.2, longitude: 21 },
+          destination: { label: 'Office', latitude: 52.3, longitude: 21.1 }
+        }]
       })
     ],
     ['schema-invalid', JSON.stringify({ ...createDefaultLocalSetup(), version: '2' })],
@@ -153,7 +157,6 @@ describe('Visitor Local Setup module', () => {
       savedWeatherCities: [],
       savedCommuteAddresses: [],
       commuteRoutes: [],
-      commuteDays: ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'],
       todoCategories: setup.todoCategories,
       todoTasks: [{ ...setup.todoTasks[0], completed: false }],
       nextTodoId: setup.nextTodoId
@@ -315,16 +318,34 @@ describe('Visitor Local Setup module', () => {
           origin: { label: 'Office', latitude: 52.2318, longitude: 21.0067 },
           destination: { label: 'Home', latitude: 52.2285, longitude: 21.0037 }
         }
-      ],
-      commuteDays: ['monday', 'wednesday', 'sunday']
+      ]
     };
 
     expect(saveLocalSetup(storage, setup).outcome).toBe('saved');
     expect(loadLocalSetup(storage).setup).toMatchObject({
       weatherLocation: setup.weatherLocation,
-      commuteRoutes: setup.commuteRoutes,
-      commuteDays: setup.commuteDays
+      commuteRoutes: setup.commuteRoutes
     });
+  });
+
+  test('loads existing version 3 Local Setup without retaining obsolete shared Commute Days', () => {
+    const setup = {
+      ...createDefaultLocalSetup(),
+      commuteDays: ['sunday'],
+      commuteRoutes: [{
+        id: 'route-1', name: 'Office', enabled: true, days: ['monday', 'wednesday'],
+        origin: { label: 'Home', latitude: 52.2, longitude: 21 },
+        destination: { label: 'Office', latitude: 52.3, longitude: 21.1 }
+      }]
+    };
+    const storage = memoryStorage(JSON.stringify(setup));
+    const loaded = loadLocalSetup(storage);
+
+    expect(loaded.outcome).toBe('loaded');
+    expect(loaded.setup.commuteRoutes[0]?.days).toEqual(['monday', 'wednesday']);
+    expect(loaded.setup).not.toHaveProperty('commuteDays');
+    expect(saveLocalSetup(storage, loaded.setup).outcome).toBe('saved');
+    expect(JSON.parse(storage.stored!)).not.toHaveProperty('commuteDays');
   });
 
   test('rejects invalid Visitor Commute Route data instead of persisting a partial route', () => {
@@ -421,7 +442,6 @@ describe('Visitor Local Setup module', () => {
           enabled: false
         }
       ],
-      commuteDays: ['monday', 'wednesday', 'sunday'],
       todoCategories: [
         { id: 'visitor-category-work', name: 'Work', position: 2 },
         { id: 'visitor-category-home', name: 'Home', position: 1 }
@@ -579,8 +599,7 @@ describe('Visitor Local Setup module', () => {
           enabled: false,
           position: 1
         }
-      ],
-      commuteDays: ['monday', 'wednesday', 'sunday']
+      ]
     });
     expect(JSON.stringify(draft)).not.toContain('Demo Calendar');
     expect(JSON.stringify(draft)).not.toContain('private-calendar-access-token');

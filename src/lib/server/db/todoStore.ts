@@ -2,10 +2,6 @@ import { eq } from 'drizzle-orm';
 import { db } from '$lib/server/db';
 import type { TodoCategory, TodoStateInput, TodoTask } from '$lib/todo';
 import type { UserTodoPersistenceStore } from '$lib/server/todoPersistence';
-import {
-  mapTodoCategoriesFromRows,
-  mapTodoTasksFromRows
-} from './todoPersistenceMapping';
 import { todoCategories, todoTasks } from './schema';
 
 type TodoDatabase = typeof db;
@@ -32,17 +28,6 @@ const toPersistedTaskRow = (task: TodoTask, userId: string) => ({
   urgency: task.urgency,
   position: task.position,
   completed: task.completed ?? false
-});
-
-const toLocalCategory = (userId: string, category: TodoCategory): TodoCategory => ({
-  ...category,
-  id: localTodoId(userId, category.id)
-});
-
-const toLocalTask = (userId: string, task: TodoTask): TodoTask => ({
-  ...task,
-  id: localTodoId(userId, task.id),
-  categoryId: task.categoryId == null ? null : localTodoId(userId, task.categoryId)
 });
 
 const assertTasksReferenceSavedCategories = (todoState: TodoStateInput) => {
@@ -86,10 +71,19 @@ export const createUserTodoStore = (database: TodoDatabase): UserTodoPersistence
       })
     ]);
 
-    const loadedCategories = mapTodoCategoriesFromRows(categoryRows).map((category) =>
-      toLocalCategory(userId, category)
-    );
-    const loadedTasks = mapTodoTasksFromRows(taskRows).map((task) => toLocalTask(userId, task));
+    const loadedCategories = categoryRows.map((row): TodoCategory => ({
+      id: localTodoId(userId, row.id),
+      name: row.name,
+      position: row.position
+    }));
+    const loadedTasks = taskRows.map((row): TodoTask => ({
+      id: localTodoId(userId, row.id),
+      title: row.title,
+      categoryId: row.categoryId == null ? null : localTodoId(userId, row.categoryId),
+      urgency: row.urgency ?? 'medium',
+      position: row.position,
+      completed: row.completed
+    }));
 
     return {
       todoCategories: loadedCategories,

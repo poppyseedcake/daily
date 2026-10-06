@@ -29,6 +29,7 @@ const applyMigrations = (sqlite: Database.Database) => {
     '0010_add_commute_setup.sql',
     '0016_add_commute_preview_duration.sql',
     '0019_add_commute_route_days.sql',
+    '0023_retire_shared_commute_days.sql',
     '0011_add_next_summary_at.sql',
     '0012_add_scheduled_delivery_claims.sql',
     '0015_add_user_lifecycle.sql'

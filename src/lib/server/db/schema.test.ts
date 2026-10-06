@@ -8,7 +8,7 @@ import {
   authUser,
   authVerification,
   calendarConnections,
-  commuteDays,
+  commuteSetups,
   commuteRoutes,
   deliveryRecords,
   googleMapsCapAlerts,
@@ -40,7 +40,7 @@ describe('Daily database schema', () => {
       getTableName(savedWeatherCities),
       getTableName(savedCommuteAddresses),
       getTableName(commuteRoutes),
-      getTableName(commuteDays),
+      getTableName(commuteSetups),
       getTableName(calendarConnections),
       getTableName(selectedCalendars),
       getTableName(deliveryRecords),
@@ -63,7 +63,7 @@ describe('Daily database schema', () => {
       'saved_weather_cities',
       'saved_commute_addresses',
       'commute_routes',
-      'commute_days',
+      'commute_setups',
       'calendar_connections',
       'selected_calendars',
       'delivery_records',
@@ -400,6 +400,42 @@ describe('Daily database schema', () => {
         { user_id: 'custom-days', days: '["tuesday","thursday"]' },
         { user_id: 'no-days', days: '[]' }
       ]);
+    } finally {
+      sqlite.close();
+    }
+  });
+
+  test('preserves legacy Commute setup intent and route days when retiring shared days', () => {
+    const sqlite = new Database(':memory:');
+    sqlite.pragma('foreign_keys = ON');
+    try {
+      sqlite.exec(readFileSync('drizzle/0000_bootstrap_daily.sql', 'utf8'));
+      sqlite.exec(readFileSync('drizzle/0010_add_commute_setup.sql', 'utf8'));
+      for (const userId of ['saved-route', 'deleted-route', 'new-user']) {
+        sqlite.prepare('insert into users (id, google_subject, email) values (?, ?, ?)')
+          .run(userId, `google-${userId}`, `${userId}@example.com`);
+      }
+      sqlite.prepare(`insert into commute_routes (
+        id, user_id, name, origin_label, origin_latitude, origin_longitude,
+        destination_label, destination_latitude, destination_longitude, enabled, position
+      ) values ('route-1', 'saved-route', 'Office', 'Home', 1, 2, 'Office', 3, 4, true, 1)`).run();
+      sqlite.prepare('insert into commute_days (user_id, day) values (?, ?), (?, ?)')
+        .run('saved-route', 'tuesday', 'deleted-route', 'thursday');
+      sqlite.exec(readFileSync('drizzle/0019_add_commute_route_days.sql', 'utf8'));
+      const daysBeforeUpgrade = sqlite.prepare('select id, days from commute_routes').all();
+
+      sqlite.exec(readFileSync('drizzle/0023_retire_shared_commute_days.sql', 'utf8'));
+
+      expect(sqlite.prepare('select user_id from commute_setups order by user_id').all()).toEqual([
+        { user_id: 'deleted-route' }, { user_id: 'saved-route' }
+      ]);
+      expect(sqlite.prepare('select id, days from commute_routes').all()).toEqual(daysBeforeUpgrade);
+      sqlite.prepare("delete from users where id = 'deleted-route'").run();
+      expect(sqlite.prepare('select user_id from commute_setups').all()).toEqual([
+        { user_id: 'saved-route' }
+      ]);
+      const journal = JSON.parse(readFileSync('drizzle/meta/_journal.json', 'utf8'));
+      expect(journal.entries.at(-1).tag).toBe('0023_retire_shared_commute_days');
     } finally {
       sqlite.close();
     }

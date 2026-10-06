@@ -162,6 +162,13 @@
       "when": 1785446400002,
       "tag": "0022_add_legal_confirmations",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "6",
+      "when": 1791244800000,
+      "tag": "0023_retire_shared_commute_days",
+      "breakpoints": true
     }
   ]
 }

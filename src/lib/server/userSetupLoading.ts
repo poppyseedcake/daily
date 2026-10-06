@@ -1,6 +1,5 @@
 import { defaultSummaryConfiguration } from '$lib/summaryConfiguration';
 import { createDefaultTodoState } from '$lib/todo';
-import { defaultCommuteDays } from '$lib/commuteRoute';
 import { userSetupPartLabels, type UserSetupEditing, type UserSetupPart } from '$lib/userSetup';
 import type { UserSummaryConfigurationStore } from './summaryConfigurationPersistence';
 import { loadUserTodoState, type UserTodoPersistenceStore } from './todoPersistence';
@@ -83,7 +82,7 @@ export const loadUserSetup = async (stores: UserSetupStores, userId: string) => 
       : {}),
     todoState,
     weatherLocation,
-    commuteSetup: commuteSetup ?? { routes: [], days: [...defaultCommuteDays] },
+    commuteSetup: commuteSetup ?? { routes: [] },
     savedWeatherCities,
     savedCommuteAddresses
   };

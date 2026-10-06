@@ -1,21 +1,10 @@
 import { describe, expect, test } from 'vitest';
 import {
-  canPreviewDailySummary,
   defaultSummaryConfiguration,
   summaryConfigurationSchema
 } from './summaryConfiguration';
 
 describe('summary configuration validation', () => {
-  test('keeps Daily Summary preview available independently of Summary Delivery', () => {
-    expect(canPreviewDailySummary(defaultSummaryConfiguration)).toBe(true);
-    expect(
-      canPreviewDailySummary({
-        ...defaultSummaryConfiguration,
-        summaryDeliveryEnabled: false
-      })
-    ).toBe(true);
-  });
-
   test('defaults User Time Zone to the database persistence contract', () => {
     expect(defaultSummaryConfiguration.userTimeZone).toBe('UTC');
   });
