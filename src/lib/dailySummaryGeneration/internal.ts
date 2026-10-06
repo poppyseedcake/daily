@@ -34,6 +34,7 @@ export type DailySummaryGenerationContext = {
   weatherLocation?: WeatherLocation | null;
   weatherLocationUnavailable?: boolean;
   weatherSectionGenerator?: WeatherSectionGenerator;
+  weatherSummaryObservability?: Parameters<WeatherSectionGenerator['generate']>[0]['observability'];
   commuteRoutes?: CommuteRoute[];
   commuteDays?: readonly CommuteDay[];
   commuteSetupUnavailable?: boolean;
@@ -97,6 +98,7 @@ const buildDailySummaryInput = async ({
   weatherLocation = null,
   weatherLocationUnavailable = false,
   weatherSectionGenerator = defaultWeatherSectionGenerator,
+  weatherSummaryObservability,
   commuteRoutes = [],
   commuteDays = [],
   commuteSetupUnavailable = false,
@@ -110,7 +112,8 @@ const buildDailySummaryInput = async ({
     location: weatherLocation,
     locationUnavailable: weatherLocationUnavailable,
     assetOrigin: openDailyUrl,
-    now
+    now,
+    observability: weatherSummaryObservability
   });
   const calendarGeneration = buildCalendarGenerationResult({
     calendarEvents,

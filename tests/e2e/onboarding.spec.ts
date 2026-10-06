@@ -1,9 +1,11 @@
 import { expect, test } from '@playwright/test';
 
-test('first visit explains Daily, then tours real features without changing setup', async ({ page }) => {
+test('first visit explains Daily, then tours real features without changing setup', async ({ page, baseURL }) => {
   const mutations: string[] = [];
+  const applicationOrigin = new URL(baseURL!).origin;
   page.on('request', (request) => {
-    if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(request.method())) mutations.push(request.url());
+    if (new URL(request.url()).origin === applicationOrigin &&
+      ['POST', 'PUT', 'PATCH', 'DELETE'].includes(request.method())) mutations.push(request.url());
   });
   await page.goto('/');
   const intro = page.getByRole('dialog', { name: 'Your daily summary, by email.' });

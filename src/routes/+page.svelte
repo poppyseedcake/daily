@@ -92,6 +92,7 @@
   import PageMetadata from '$lib/components/PageMetadata.svelte';
   import DailyOnboarding from '$lib/components/onboarding/DailyOnboarding.svelte';
   import AuthModal from '$lib/components/AuthModal.svelte';
+  import posthog from 'posthog-js';
   import { workspaceGreeting } from '$lib/workspaceGreeting';
 
   let authModal: AuthModal;
@@ -311,6 +312,8 @@
   const onboardingStorageKey = 'daily.onboarding.v1';
   const finishOnboarding = () => {
     onboardingOpen = false;
+    posthog.capture('onboarding_completed');
+    posthog.logger.info('Onboarding completed', { flow: 'onboarding' });
     try { localStorage.setItem(onboardingStorageKey, 'seen'); } catch { /* Storage may be unavailable; the board remains usable. */ }
   };
   const replayOnboarding = () => {
@@ -342,6 +345,27 @@
     const words = name.split(/\s+/);
     return `${words[0]?.[0] ?? ''}${words.length > 1 ? words.at(-1)?.[0] ?? '' : ''}`.toUpperCase();
   });
+
+  $effect(() => {
+    const currentAuthState = authState;
+    untrack(() => {
+      const identifiedUserId = posthog.get_property('$user_id');
+      if (currentAuthState.mode !== 'user') {
+        if (identifiedUserId) posthog.reset();
+        return;
+      }
+
+      if (identifiedUserId && identifiedUserId !== currentAuthState.userId) posthog.reset();
+      posthog.identify(currentAuthState.userId, {
+        email: currentAuthState.summaryRecipient,
+        ...(currentAuthState.name ? { name: currentAuthState.name } : {})
+      });
+    });
+  });
+
+  const resetPostHogIdentity = () => {
+    posthog.reset();
+  };
 
   onMount(() => {
     const requestedAuth = new URL(window.location.href).searchParams.get('auth');
@@ -674,6 +698,8 @@
       weatherLocationSearchQuery = location.label;
       weatherLocationStatus = 'Weather Location saved in this browser only.';
       weatherLocationStatusTone = 'success';
+      posthog.capture('weather_location_saved', { storage: 'browser' });
+      posthog.logger.info('Weather location saved', { storage: 'browser' });
       closeWeatherDialog();
       return;
     }
@@ -701,6 +727,8 @@
       weatherLocationSearchQuery = location.label;
       weatherLocationStatus = 'Weather Location saved to your account.';
       weatherLocationStatusTone = 'success';
+      posthog.capture('weather_location_saved', { storage: 'account' });
+      posthog.logger.info('Weather location saved', { storage: 'account' });
       closeWeatherDialog();
     } catch {
       weatherLocationStatus = 'Weather Location save failed. Try again.';
@@ -922,6 +950,11 @@
       clearCommuteRouteDraft();
       commuteRouteStatus = 'Commute Route updated in this browser only.';
       commuteRouteStatusTone = 'success';
+      posthog.capture('commute_route_saved', {
+        operation: 'updated',
+        storage: 'browser',
+        weekdays_count: result.data.days.length
+      });
       return;
     }
     const id = `route-${commuteRoutes.reduce((highest, route) => {
@@ -949,6 +982,11 @@
     clearCommuteRouteDraft();
     commuteRouteStatus = 'Commute Route saved in this browser only.';
     commuteRouteStatusTone = 'success';
+    posthog.capture('commute_route_saved', {
+      operation: 'created',
+      storage: 'browser',
+      weekdays_count: result.data.days.length
+    });
   };
   const editCommuteRoute = (route: CommuteRoute) => {
     if (!canEditSetup('commuteSetup')) return;
@@ -973,6 +1011,7 @@
     if (editingCommuteRouteId === route.id) clearCommuteRouteDraft();
     commuteRouteStatus = 'Commute Route deleted from this browser.';
     commuteRouteStatusTone = 'success';
+    posthog.capture('commute_route_deleted', { storage: 'browser' });
   };
   const toggleCommuteRoute = (route: CommuteRoute) => {
     if (!canEditSetup('commuteSetup')) return;
@@ -1004,6 +1043,11 @@
         clearCommuteRouteDraft();
         commuteRouteStatus = 'Commute Route saved to your account.';
         commuteRouteStatusTone = 'success';
+        posthog.capture('commute_route_saved', {
+          operation: 'created',
+          storage: 'account',
+          weekdays_count: result.route.days.length
+        });
         return;
       }
       commuteRouteStatus = result.outcome === 'route-limit-reached'
@@ -1031,6 +1075,11 @@
         clearCommuteRouteDraft();
         commuteRouteStatus = 'Commute Route saved to your account.';
         commuteRouteStatusTone = 'success';
+        posthog.capture('commute_route_saved', {
+          operation: 'updated',
+          storage: 'account',
+          weekdays_count: result.route.days.length
+        });
         return;
       }
       commuteRouteStatus = result.outcome === 'not-found'
@@ -1057,6 +1106,7 @@
         if (editingCommuteRouteId === route.id) clearCommuteRouteDraft();
         commuteRouteStatus = 'Commute Route deleted from your account.';
         commuteRouteStatusTone = 'success';
+        posthog.capture('commute_route_deleted', { storage: 'account' });
         return;
       }
       commuteRouteStatus = 'Commute Route delete failed. Try again.';
@@ -1101,6 +1151,9 @@
 
     selectedCalendarStatus = 'Selected Calendars saved to your account.';
     selectedCalendarStatusTone = 'success';
+    posthog.capture('calendar_selection_updated', {
+      selected_calendars_count: nextCalendars.filter((calendar) => calendar.selected).length
+    });
     await invalidateAll();
   };
   const queueUserSummaryConfigurationSave = (configuration: SummaryConfiguration) => {
@@ -1266,6 +1319,10 @@
     }
 
     todoTasks = nextTasks;
+    posthog.capture('todo_task_created', {
+      urgency: newTodoUrgency,
+      has_category: newTodoCategoryId !== ''
+    });
     newTodoTitle = '';
     newTodoCategoryId = '';
     newTodoUrgency = 'low';
@@ -1516,6 +1573,7 @@
     if (!result.success) return;
 
     updateSummaryConfiguration(result.data);
+    posthog.capture('summary_delivery_schedule_updated');
     closeSummaryDeliveryDialog();
   };
 
@@ -1554,11 +1612,17 @@
   };
 
   const completeTodoTask = (taskId: string) => {
-    todoTasks = completeTodoTaskInModule(todoTasks, taskId);
+    const nextTasks = completeTodoTaskInModule(todoTasks, taskId);
+    if (nextTasks === todoTasks) return;
+    todoTasks = nextTasks;
+    posthog.capture('todo_task_completed');
   };
 
   const deleteTodoTask = (taskId: string) => {
-    todoTasks = deleteTodoTaskInModule(todoTasks, taskId);
+    const nextTasks = deleteTodoTaskInModule(todoTasks, taskId);
+    if (nextTasks === todoTasks) return;
+    todoTasks = nextTasks;
+    posthog.capture('todo_task_deleted');
   };
 
   const createTodoCategory = () => {
@@ -1908,7 +1972,7 @@
             {#if isAdministrator}
               <a href="/admin"><ShieldCheck size={17} />Admin Panel</a>
             {/if}
-            <form method="POST" action="/auth/sign-out">
+            <form method="POST" action="/auth/sign-out" onsubmit={resetPostHogIdentity}>
               <button type="submit"><LogOut size={17} />Sign out</button>
             </form>
           </div>

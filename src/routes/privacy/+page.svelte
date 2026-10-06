@@ -8,7 +8,7 @@
   intro="This Privacy Policy explains how Daily handles personal data when you use the free Daily service."
 >
   {#snippet children()}
-    <p>Last updated: 2 October 2026.</p>
+    <p>Last updated: 5 October 2026.</p>
 
     <h2>Who runs Daily</h2>
     <p>
@@ -47,6 +47,16 @@
         privacy-safe technical logs. Delivery records do not store the full email content. Better
         Auth session records also include expiry, IP address when supplied, user agent when
         supplied, and the account identifier.
+      </li>
+      <li>
+        <strong>Analytics and diagnostics:</strong> when PostHog is configured, Daily sends
+        feature-use events, page visits, browser and device information, connection metadata
+        such as IP addresses, errors, and selected operational logs. Signed-in activity is
+        associated with the verified User identifier, email address, and optional name.
+        Session replay records interface structure and interactions with text, input values,
+        and element attributes masked. Automatic capture of DOM clicks is disabled; explicit
+        feature-use events contain operational metadata rather than task titles, Calendar
+        content, or addresses.
       </li>
       <li>
         <strong>Terms acceptance:</strong> Daily stores the accepted Terms version and the
@@ -169,6 +179,16 @@
         commute route to that endpoint, and requests that the response is not stored.
       </li>
       <li>
+        <strong>PostHog:</strong> product analytics, error tracking, masked session replay,
+        selected browser and scheduled-delivery logs, and weather AI diagnostics. PostHog
+        receives the analytics and diagnostic data described above. Weather AI diagnostics
+        include the normalised weather prompt, generated output, model, token counts, latency,
+        status, and the associated User identifier. Calendar events, Todo text, commute
+        addresses, email bodies, OAuth tokens, and private service API keys are not included
+        in Daily's explicit analytics events or structured logs. Replay text, inputs, and
+        DOM attributes are masked separately before export from the browser.
+      </li>
+      <li>
         <strong>Cloudflare:</strong> the application code has no Cloudflare API integration. A
         production deployment may place Cloudflare or cloudflared in front of Daily. Any proxy
         logs or provider retention depend on the final production configuration and are not
@@ -198,7 +218,14 @@
       Before sign-in, Daily stores the visitor's local setup in browser local storage under
       <code>daily.visitorLocalSetup.v3</code>. This can include the local setup listed above. The
       application does not use the visitor setup cookie, session storage, IndexedDB, or a browser
-      database for this purpose. The application does not add analytics cookies.
+      database for this purpose.
+    </p>
+    <p>
+      When PostHog is configured, its browser SDK also uses local storage and a first-party
+      analytics cookie to keep an analytics identifier and SDK state across visits. This
+      analytics storage is separate from the HTTP-only sign-in cookies and the Visitor's
+      Local Setup. PostHog associates the analytics identifier with the verified User after
+      sign-in and resets that identity on sign-out or when the session becomes a Visitor.
     </p>
 
     <h2>Retention</h2>
@@ -219,6 +246,13 @@
       <li>
         Verified SQLite backups use a configurable retention period with a 30-day default. A
         backup can still contain deleted account data until that backup expires.
+      </li>
+      <li>
+        PostHog analytics, replay, error, log, and AI diagnostic retention is controlled by
+        the PostHog project settings and provider rules. Daily's account deletion does not
+        automatically delete records already stored in PostHog. Contact
+        <a href="mailto:daily@dailykickoff.eu">daily@dailykickoff.eu</a> for a request concerning
+        those records.
       </li>
       <li>
         An email accepted by Resend or delivered to a recipient cannot be recalled by Daily. The

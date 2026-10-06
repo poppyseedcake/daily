@@ -64,10 +64,19 @@ export type WeatherForecastProvider = {
   fetchDailyForecast: (request: DailyWeatherForecastRequest) => Promise<DailyWeatherForecastResult>;
 };
 
+export type WeatherSummaryObservability = {
+  distinctId: string;
+  sessionId: string;
+  traceId: string;
+};
+
 export type WeatherSummaryProvider = {
   summarize: (
     input: NormalizedWeatherSummaryInput,
-    diagnosticOptions?: { onDiagnostic: (diagnostic: WeatherSummaryDiagnostic) => void }
+    options?: {
+      onDiagnostic?: (diagnostic: WeatherSummaryDiagnostic) => void;
+      observability?: WeatherSummaryObservability;
+    }
   ) => Promise<
     | { outcome: 'available'; sentence: string }
     | { outcome: 'unavailable' }

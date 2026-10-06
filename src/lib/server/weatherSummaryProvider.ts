@@ -2,9 +2,12 @@ import { env } from '$env/dynamic/private';
 import { z } from 'zod';
 import {
   type NormalizedWeatherSummaryInput,
+  type WeatherSummaryObservability,
   type WeatherSummaryProvider as WeatherSummaryProviderContract
 } from '$lib/weatherForecast';
 import { normalizedWeatherSummaryInputSchema, type WeatherSummaryDiagnostic } from '$lib/weatherSummaryContract';
+import { getServerPostHogClient } from './posthog';
+import { flushTelemetryWithinBudget } from './posthogDeliveryBudget';
 
 export type WeatherSummaryProvider = WeatherSummaryProviderContract;
 
@@ -63,7 +66,11 @@ const responsePayloadSchema = z.object({
         }).passthrough()
       ).optional()
     }).passthrough()
-  ).optional()
+  ).optional(),
+  usage: z.object({
+    input_tokens: z.number().optional(),
+    output_tokens: z.number().optional()
+  }).optional()
 }).passthrough();
 
 const structuredSummarySchema = z.object({
@@ -97,13 +104,17 @@ export const createOpenAiWeatherSummaryProvider = ({
   prompt = env.OPENAI_WEATHER_PROMPT,
   onDiagnostic = () => {}
 }: OpenAiWeatherSummaryProviderOptions = {}): WeatherSummaryProvider => ({
-  async summarize(input, diagnosticOptions) {
+  async summarize(input, options) {
+    const observability = options?.observability;
     const startedAt = Date.now();
     let attempt = 0;
     let readingResponse = false;
+    let attemptStartedAt: number | undefined;
+    let attemptHttpStatus: number | undefined;
+    let generationCaptured = false;
     const report = (reason: WeatherSummaryDiagnostic['reason'], httpStatus?: number) => {
       try {
-        (diagnosticOptions?.onDiagnostic ?? onDiagnostic)({
+        (options?.onDiagnostic ?? onDiagnostic)({
           reason,
           durationMilliseconds: Date.now() - startedAt,
           attempt,
@@ -135,6 +146,22 @@ export const createOpenAiWeatherSummaryProvider = ({
 
       for (attempt = 1; attempt <= 2; attempt += 1) {
         readingResponse = false;
+        attemptStartedAt = Date.now();
+        attemptHttpStatus = undefined;
+        generationCaptured = false;
+        const inputMessages = [
+          {
+            role: 'developer',
+            content: weatherSummaryDeveloperInstruction(
+              prompt?.trim() || defaultWeatherSummaryPrompt,
+              attempt === 1 ? maxCharacters : Math.max(1, Math.floor(maxCharacters * 0.7))
+            )
+          },
+          {
+            role: 'user',
+            content: JSON.stringify(normalizedInput.data)
+          }
+        ];
         const response = await fetchWithTimeout(
           fetcher,
           openAiResponsesUrl,
@@ -151,19 +178,7 @@ export const createOpenAiWeatherSummaryProvider = ({
               store: false,
               tools: [],
               max_output_tokens: configuration.data.maxOutputTokens,
-              input: [
-                {
-                  role: 'developer',
-                  content: weatherSummaryDeveloperInstruction(
-                    prompt?.trim() || defaultWeatherSummaryPrompt,
-                    attempt === 1 ? maxCharacters : Math.max(1, Math.floor(maxCharacters * 0.7))
-                  )
-                },
-                {
-                  role: 'user',
-                  content: JSON.stringify(normalizedInput.data)
-                }
-              ],
+              input: inputMessages,
               text: {
                 format: {
                   type: 'json_schema',
@@ -183,46 +198,64 @@ export const createOpenAiWeatherSummaryProvider = ({
           }
         );
 
+        attemptHttpStatus = response.status;
         if (!response.ok) {
+          generationCaptured = true;
+          await captureOpenAiWeatherGeneration({
+            observability,
+            model: configuration.data.model,
+            maxOutputTokens: configuration.data.maxOutputTokens,
+            input: inputMessages,
+            httpStatus: response.status,
+            latencySeconds: (Date.now() - attemptStartedAt) / 1_000,
+            error: `OpenAI Responses request returned HTTP ${response.status}.`
+          });
           report('http-error', response.status);
           return { outcome: 'unavailable' };
         }
 
         readingResponse = true;
         const payload = responsePayloadSchema.parse(await response.json());
-
-        if (payload.status !== 'completed') {
-          report('incomplete-response', response.status);
-          return { outcome: 'unavailable' };
-        }
-
         const responseText = responseTextFrom(payload);
-        if (!responseText) {
-          report('missing-output', response.status);
-          return { outcome: 'unavailable' };
-        }
-
-        const parsedSummary = structuredSummarySchema.safeParse(JSON.parse(responseText));
-        if (!parsedSummary.success) {
-          report('invalid-response', response.status);
-          return { outcome: 'unavailable' };
-        }
-
-        if (Array.from(parsedSummary.data.summary.trim()).length > maxCharacters) {
-          report('sentence-too-long', response.status);
-          if (attempt === 1) continue;
-          return { outcome: 'unavailable' };
-        }
-
-        const sentence = validateWeatherSummarySentence(parsedSummary.data.summary, maxCharacters);
-        report(sentence ? 'available' : 'sentence-rejected', response.status);
-        return sentence ? { outcome: 'available', sentence } : { outcome: 'unavailable' };
+        const decision = validateWeatherSummaryResponse(payload.status, responseText, maxCharacters);
+        generationCaptured = true;
+        await captureOpenAiWeatherGeneration({
+          observability,
+          model: configuration.data.model,
+          maxOutputTokens: configuration.data.maxOutputTokens,
+          input: inputMessages,
+          output: responseText,
+          inputTokens: payload.usage?.input_tokens,
+          outputTokens: payload.usage?.output_tokens,
+          httpStatus: response.status,
+          latencySeconds: (Date.now() - attemptStartedAt) / 1_000,
+          error: decision.reason === 'available'
+            ? undefined
+            : `OpenAI Responses generation failed: ${decision.reason}.`
+        });
+        report(decision.reason, response.status);
+        if (decision.reason === 'sentence-too-long' && attempt === 1) continue;
+        return decision.reason === 'available'
+          ? { outcome: 'available', sentence: decision.sentence }
+          : { outcome: 'unavailable' };
       }
       return { outcome: 'unavailable' };
     } catch (error) {
-      report(error instanceof Error && error.name === 'AbortError'
+      const reason = error instanceof Error && error.name === 'AbortError'
         ? 'timeout'
-        : readingResponse ? 'invalid-response' : 'request-failed');
+        : readingResponse ? 'invalid-response' : 'request-failed';
+      if (attemptStartedAt !== undefined && !generationCaptured) {
+        await captureOpenAiWeatherGeneration({
+          observability,
+          model,
+          maxOutputTokens,
+          input: [],
+          httpStatus: attemptHttpStatus,
+          latencySeconds: (Date.now() - attemptStartedAt) / 1_000,
+          error: `OpenAI Responses generation failed: ${reason}.`
+        });
+      }
+      report(reason);
       return { outcome: 'unavailable' };
     }
   }
@@ -231,6 +264,61 @@ export const createOpenAiWeatherSummaryProvider = ({
 export const openAiWeatherSummaryProvider = createOpenAiWeatherSummaryProvider({
   onDiagnostic: writeWeatherSummaryDiagnostic
 });
+
+const captureOpenAiWeatherGeneration = async ({
+  observability,
+  model,
+  maxOutputTokens,
+  input,
+  output,
+  inputTokens,
+  outputTokens,
+  httpStatus,
+  latencySeconds,
+  error
+}: {
+  observability: WeatherSummaryObservability | undefined;
+  model: string;
+  maxOutputTokens: number;
+  input: Array<{ role: string; content: string }>;
+  output?: string | null;
+  inputTokens?: number;
+  outputTokens?: number;
+  httpStatus?: number;
+  latencySeconds: number;
+  error?: string;
+}) => {
+  if (!observability) return;
+
+  try {
+    const posthog = getServerPostHogClient();
+    if (!posthog) return;
+
+    posthog.capture({
+      distinctId: observability.distinctId,
+      event: '$ai_generation',
+      properties: {
+        $ai_trace_id: observability.traceId,
+        $ai_session_id: observability.sessionId,
+        $ai_span_name: 'daily_weather_summary',
+        $ai_model: model,
+        $ai_provider: 'openai',
+        $ai_input: input,
+        $ai_output_choices: output ? [{ role: 'assistant', content: output }] : [],
+        $ai_max_tokens: maxOutputTokens,
+        ...(httpStatus === undefined ? {} : { $ai_http_status: httpStatus }),
+        $ai_latency: latencySeconds,
+        $ai_is_error: Boolean(error),
+        ...(error ? { $ai_error: error } : {}),
+        ...(inputTokens === undefined ? {} : { $ai_input_tokens: inputTokens }),
+        ...(outputTokens === undefined ? {} : { $ai_output_tokens: outputTokens })
+      }
+    });
+    await flushTelemetryWithinBudget(() => posthog.flush());
+  } catch {
+    // AI observability must not change weather-summary delivery.
+  }
+};
 
 const responseTextFrom = (payload: z.infer<typeof responsePayloadSchema>) => {
   if (payload.output_text?.trim()) {
@@ -248,7 +336,34 @@ const responseTextFrom = (payload: z.infer<typeof responsePayloadSchema>) => {
   return null;
 };
 
-// Content constraints are currently enforced through the configured prompt only.
+type WeatherSummaryResponseDecision =
+  | { reason: 'available'; sentence: string }
+  | { reason: 'incomplete-response' | 'missing-output' | 'invalid-response' | 'sentence-too-long' | 'sentence-rejected' };
+
+const validateWeatherSummaryResponse = (
+  status: string,
+  responseText: string | null,
+  maxCharacters: number
+): WeatherSummaryResponseDecision => {
+  if (status !== 'completed') return { reason: 'incomplete-response' };
+  if (!responseText) return { reason: 'missing-output' };
+
+  let structuredOutput: unknown;
+  try {
+    structuredOutput = JSON.parse(responseText);
+  } catch {
+    return { reason: 'invalid-response' };
+  }
+  const parsedSummary = structuredSummarySchema.safeParse(structuredOutput);
+  if (!parsedSummary.success) return { reason: 'invalid-response' };
+  if (Array.from(parsedSummary.data.summary.trim()).length > maxCharacters) {
+    return { reason: 'sentence-too-long' };
+  }
+  const sentence = validateWeatherSummarySentence(parsedSummary.data.summary, maxCharacters);
+  return sentence ? { reason: 'available', sentence } : { reason: 'sentence-rejected' };
+};
+
+// Semantic weather constraints remain prompt-driven; this validates sentence format.
 const validateWeatherSummarySentence = (
   value: string,
   maxCharacters: number

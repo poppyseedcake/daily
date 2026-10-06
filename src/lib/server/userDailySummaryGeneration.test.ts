@@ -6,6 +6,7 @@ import {
 } from '$lib/calendarReadiness';
 import type { SummaryConfiguration } from '$lib/summaryConfiguration';
 import type { DailySummaryDeliveryProvider } from './dailySummaryDelivery';
+import type { NormalizedWeatherSummaryInput, WeatherSummaryProvider } from '$lib/weatherForecast';
 import {
   createUserDailySummaryGenerator,
   UserDailySummaryNotActiveError,
@@ -75,6 +76,32 @@ const createProviderIsolationDependencies = (
 });
 
 describe('User Daily Summary generation', () => {
+  test('isolates AI sessions between concurrent summaries and repeated requests by the same User', async () => {
+    const summaryInput: NormalizedWeatherSummaryInput = {
+      units: { temperature: 'celsius', precipitationProbability: 'percent', precipitation: 'millimetres', snowfall: 'centimetres', wind: 'kilometres_per_hour' },
+      current: { temperature: 18 },
+      day: { weatherCode: 2, minimumTemperature: 12, maximumTemperature: 22, maximumPrecipitationProbability: 35, maximumWindSpeed: 24, maximumWindGust: 39 },
+      remainingHours: [{ localTime: '07:00', temperature: 17, precipitationProbability: 5, precipitation: 0, snowfall: 0, weatherCode: 2, windSpeed: 11, windGust: 19 }]
+    };
+    const summarize = vi.fn<WeatherSummaryProvider['summarize']>().mockResolvedValue({ outcome: 'available', sentence: 'Cloudy today.' });
+    const generator = createUserDailySummaryGenerator(createProviderIsolationDependencies(configuration, {
+      weatherLocationStore: { load: vi.fn().mockResolvedValue({ label: 'Warsaw', latitude: 52.2297, longitude: 21.0122 }) },
+      weatherProvider: { fetchDailyForecast: vi.fn().mockResolvedValue({
+        outcome: 'available', forecast: {
+          dates: ['2026-07-14'], weatherCodes: [2], minimumTemperaturesCelsius: [12], maximumTemperaturesCelsius: [22],
+          precipitationProbabilities: [35], currentTemperatureCelsius: 18, observedAtLocal: '2026-07-14T07:00', maximumWindSpeedsKmh: [24], summaryInput
+        }
+      }) },
+      weatherSummaryProvider: { summarize }
+    }));
+    await Promise.all(['user-1', 'user-2', 'user-1'].map(userId => generator.generate({ userId })));
+    const contexts = summarize.mock.calls.map(([, options]) => options?.observability);
+    expect(contexts).toHaveLength(3);
+    expect(contexts.map(context => context?.distinctId).sort()).toEqual(['user-1', 'user-1', 'user-2']);
+    expect(new Set(contexts.map(context => context?.sessionId)).size).toBe(3);
+    expect(contexts.every(context => context?.sessionId.startsWith('daily-summary-'))).toBe(true);
+  });
+
   test('rejects a deleting User before loading setup or providers', async () => {
     const configurationStore = { load: vi.fn() };
     const dependencies = createProviderIsolationDependencies(configuration, {
