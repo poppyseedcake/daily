@@ -29,7 +29,11 @@ export default defineConfig({
           'src/lib/server/db/runSqliteRestoreContainerCommand.ts'
       },
       output: {
-        entryFileNames: '[name].js'
+        entryFileNames: '[name].js',
+        manualChunks(id) {
+          // Keep shared telemetry out of the executable entry's top-level await cycle.
+          if (id.endsWith('/src/lib/server/posthogLogs.ts')) return 'posthogLogs';
+        }
       }
     }
   }
