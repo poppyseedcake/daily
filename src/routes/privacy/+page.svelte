@@ -53,8 +53,9 @@
         feature-use events, page visits, browser and device information, connection metadata
         such as IP addresses, errors, and selected operational logs. Signed-in activity is
         associated with the verified User identifier, email address, and optional name.
-        Session replay records interface structure and interactions with text, input values,
-        and element attributes masked. Automatic capture of DOM clicks is disabled; explicit
+        Session replay records interface structure and interactions with User content, input values,
+        and content-bearing element attributes masked. Static application labels remain visible.
+        Automatic capture of DOM clicks is disabled; explicit
         feature-use events contain operational metadata rather than task titles, Calendar
         content, or addresses.
       </li>
@@ -185,8 +186,10 @@
         include the normalised weather prompt, generated output, model, token counts, latency,
         status, and the associated User identifier. Calendar events, Todo text, commute
         addresses, email bodies, OAuth tokens, and private service API keys are not included
-        in Daily's explicit analytics events or structured logs. Replay text, inputs, and
-        content-bearing DOM attributes are masked separately before export from the browser.
+        in Daily's explicit analytics events or structured logs. Replay masks User content
+        (including task and group names, account details,
+        Calendar content, locations, and addresses), form values, and content-bearing DOM
+        attributes before export from the browser. Static interface text remains visible.
         Application-defined CSS classes, presentation styles, icon geometry, and approved
         static assets are retained so the recording preserves the interface layout.
       </li>
