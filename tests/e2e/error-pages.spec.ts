@@ -1,5 +1,25 @@
 import { expect } from '@playwright/test';
-import { test } from './fixtures/signedInUser';
+import { test as signedInTest } from './fixtures/signedInUser';
+
+const test = signedInTest.extend<{
+  serverFailure: { diagnostic: string; recover: () => void };
+}>({
+  serverFailure: async ({ signedInUser: { database, userId } }, use) => {
+    const diagnostic = 'private-error-page-session-diagnostic';
+    const trigger = `error_page_session_failure_${userId.replaceAll('-', '_')}`;
+    // The fixture's session is due for renewal. Fail only this User's renewal.
+    database.exec(`CREATE TRIGGER "${trigger}" BEFORE UPDATE ON auth_session
+      WHEN OLD.user_id = '${userId.replaceAll("'", "''")}'
+      BEGIN SELECT RAISE(ABORT, '${diagnostic}'); END;`);
+    const recover = () => database.exec(`DROP TRIGGER IF EXISTS "${trigger}"`);
+
+    try {
+      await use({ diagnostic, recover });
+    } finally {
+      recover();
+    }
+  }
+});
 
 test('an unknown address returns the Daily 404 page and offers a route home', async ({ page }) => {
   const response = await page.goto('/this/route/does-not-exist');
@@ -27,11 +47,8 @@ test('a failed page load shows the 500 state without diagnostics and retry recov
       body: JSON.stringify('Private server diagnostics must never appear in Daily.')
     });
   });
-  await page.goto('/prototype/error-pages?status=500#ready');
-  // The fragment enters this link after hydration; wait before exercising client navigation.
-  await expect(page.getByRole('link', { name: 'Try again', exact: true })).toHaveAttribute(
-    'href', '/prototype/error-pages?status=500#ready'
-  );
+  await page.goto('/privacy');
+  await page.waitForLoadState('networkidle');
   await page.getByRole('link', { name: 'Back to Daily', exact: true }).click();
 
   await expect(page.getByRole('heading', { name: 'Daily, on pause.' })).toBeVisible();
@@ -50,21 +67,26 @@ test('a failed page load shows the 500 state without diagnostics and retry recov
   await expect(page.getByLabel('New Todo Task')).toBeVisible();
 });
 
-test('retry makes a document request and keeps the address, query and fragment', async ({ page }) => {
-  const address = '/prototype/error-pages?status=500&section=weather#summary';
-  await page.goto(address);
+test('retry makes a document request and keeps the address, query and fragment', async ({
+  page, serverFailure
+}) => {
+  const address = '/?section=weather#summary';
+  const response = await page.goto(address);
+  expect(response?.status()).toBe(500);
   await expect(page.getByRole('heading', { name: 'Daily, on pause.' })).toBeVisible();
   await expect(page.getByRole('link', { name: 'Try again', exact: true })).toHaveAttribute('href', address);
   const reload = page.waitForResponse((response) =>
     response.request().isNavigationRequest() &&
-    new URL(response.url()).pathname === '/prototype/error-pages'
+    new URL(response.url()).pathname === '/' &&
+    new URL(response.url()).search === '?section=weather'
   );
 
   await page.getByRole('link', { name: 'Try again', exact: true }).click();
 
-  expect((await reload).status()).toBe(200);
-  await expect(page).toHaveURL(/status=500&section=weather#summary$/);
+  expect((await reload).status()).toBe(500);
+  await expect(page).toHaveURL(/section=weather#summary$/);
   await expect(page.getByRole('heading', { name: 'Daily, on pause.' })).toBeVisible();
+  serverFailure.recover();
 });
 
 test.describe('small screens', () => {
@@ -74,8 +96,12 @@ test.describe('small screens', () => {
     [404, 'A page out of place.', 'Go to Daily'],
     [500, 'Daily, on pause.', 'Try again']
   ] as const) {
-    test(`${status} keeps the recovery action reachable without sideways scrolling`, async ({ page }) => {
-      await page.goto(`/prototype/error-pages?status=${status}`);
+    test(`${status} keeps the recovery action reachable without sideways scrolling`, async ({
+      page, serverFailure
+    }) => {
+      if (status === 404) serverFailure.recover();
+      const response = await page.goto(status === 404 ? '/this-page-is-missing' : '/');
+      expect(response?.status()).toBe(status);
       await expect(page.getByRole('heading', { name: heading })).toBeVisible();
       const recovery = page.getByRole('link', { name: action, exact: true });
       await expect(recovery).toBeInViewport();
@@ -100,51 +126,40 @@ test.describe('without JavaScript', () => {
   });
 
   test('a real server failure returns 500 without diagnostics and retry recovers', async ({
-    page, signedInUser: { database, userId }
+    page, serverFailure: { diagnostic, recover }
   }) => {
     const address = '/?section=weather';
-    const diagnostic = 'private-error-page-session-diagnostic';
-    const trigger = `error_page_session_failure_${userId.replaceAll('-', '_')}`;
-    // The fixture's session is due for renewal. Fail only this User's server-side renewal.
-    database.exec(`CREATE TRIGGER "${trigger}" BEFORE UPDATE ON auth_session
-      WHEN OLD.user_id = '${userId.replaceAll("'", "''")}'
-      BEGIN SELECT RAISE(ABORT, '${diagnostic}'); END;`);
+    const response = await page.goto(address);
+    expect(response?.status()).toBe(500);
+    expect(await response!.text()).not.toContain(diagnostic);
+    await expect(page.getByRole('heading', { name: 'Daily, on pause.' })).toBeVisible();
+    await expect(page).toHaveTitle('Something went wrong · Daily');
+    const robots = page.locator('head meta[name="robots"]');
+    await expect(robots).toHaveCount(1);
+    await expect(robots).toHaveAttribute('content', 'noindex, nofollow');
+    await expect(page.locator('body')).not.toContainText(diagnostic);
+    const retry = page.getByRole('link', { name: 'Try again', exact: true });
+    await expect(retry).toHaveAttribute('href', address);
+    await expect(page.getByRole('link', { name: 'Back to Daily', exact: true })).toHaveAttribute('href', '/');
 
-    try {
-      const response = await page.goto(address);
-      expect(response?.status()).toBe(500);
-      expect(await response!.text()).not.toContain(diagnostic);
-      await expect(page.getByRole('heading', { name: 'Daily, on pause.' })).toBeVisible();
-      await expect(page).toHaveTitle('Something went wrong · Daily');
-      const robots = page.locator('head meta[name="robots"]');
-      await expect(robots).toHaveCount(1);
-      await expect(robots).toHaveAttribute('content', 'noindex, nofollow');
-      await expect(page.locator('body')).not.toContainText(diagnostic);
-      const retry = page.getByRole('link', { name: 'Try again', exact: true });
-      await expect(retry).toHaveAttribute('href', address);
-      await expect(page.getByRole('link', { name: 'Back to Daily', exact: true })).toHaveAttribute('href', '/');
-
-      database.exec(`DROP TRIGGER "${trigger}"`);
-      const reload = page.waitForResponse((response) =>
-        response.request().isNavigationRequest() &&
-        new URL(response.url()).pathname === '/' &&
-        new URL(response.url()).search === '?section=weather'
-      );
-      await retry.click();
-      expect((await reload).status()).toBe(200);
-      await expect(page).toHaveURL(/\/\?section=weather$/);
-      await expect(page.getByLabel('New Todo Task')).toBeVisible();
-      await expect(robots).toHaveCount(0);
-    } finally {
-      database.exec(`DROP TRIGGER IF EXISTS "${trigger}"`);
-    }
+    recover();
+    const reload = page.waitForResponse((response) =>
+      response.request().isNavigationRequest() &&
+      new URL(response.url()).pathname === '/' &&
+      new URL(response.url()).search === '?section=weather'
+    );
+    await retry.click();
+    expect((await reload).status()).toBe(200);
+    await expect(page).toHaveURL(/\/\?section=weather$/);
+    await expect(page.getByLabel('New Todo Task')).toBeVisible();
+    await expect(robots).toHaveCount(0);
   });
 });
 
 test('404 keeps the displaced shape clear of the logo on short mobile screens', async ({ page }) => {
   for (const viewport of [{ width: 320, height: 480 }, { width: 375, height: 400 }]) {
     await page.setViewportSize(viewport);
-    await page.goto('/prototype/error-pages?status=404');
+    await page.goto('/this-page-is-missing');
     await expect(page.getByRole('heading', { name: 'A page out of place.' })).toBeVisible();
     await page.evaluate(() => document.fonts.ready.then(() => undefined));
     await expect.poll(async () => {
