@@ -31,6 +31,7 @@ const createTestDatabase = () => {
   sqlite.exec(readFileSync('drizzle/0015_add_user_lifecycle.sql', 'utf8'));
   sqlite.exec(readFileSync('drizzle/0020_add_saved_locations.sql', 'utf8'));
   sqlite.exec(readFileSync('drizzle/0021_split_saved_locations.sql', 'utf8'));
+  sqlite.exec(readFileSync('drizzle/0023_retire_shared_commute_days.sql', 'utf8'));
 
   return {
     sqlite,
@@ -137,8 +138,7 @@ const validDraft = (): UserSetupImportDraft => ({
       enabled: true,
       position: 2
     }
-  ],
-  commuteDays: ['monday', 'wednesday', 'sunday']
+  ]
 });
 
 describe('SQLite User Setup import store', () => {
@@ -169,7 +169,6 @@ describe('SQLite User Setup import store', () => {
       transaction.saveSavedWeatherCities(draft.savedWeatherCities);
       transaction.saveSavedCommuteAddresses(draft.savedCommuteAddresses);
       transaction.saveCommuteRoutes(draft.commuteRoutes);
-      transaction.saveCommuteDays('user-1', draft.commuteDays);
     });
 
     await expect(store.hasExistingUserSetup('user-1')).resolves.toBe(true);
@@ -220,11 +219,10 @@ describe('SQLite User Setup import store', () => {
         position: 2
       }
     ]);
-    expect(sqlite.prepare('select day from commute_days order by day').all()).toEqual([
-      { day: 'monday' },
-      { day: 'sunday' },
-      { day: 'wednesday' }
+    expect(sqlite.prepare('select user_id from commute_setups').all()).toEqual([
+      { user_id: 'user-1' }
     ]);
+    expect(sqlite.prepare('select day from commute_days').all()).toEqual([]);
   });
 
   test('saves an imported eligible configuration with its schedule in the same transaction', async () => {
@@ -264,7 +262,7 @@ describe('SQLite User Setup import store', () => {
       'todo_tasks',
       'weather_locations',
       'commute_routes',
-      'commute_days'
+      'commute_setups'
     ]) {
       expect(sqlite.prepare(`select count(*) as count from ${table}`).get()).toEqual({ count: 0 });
     }
@@ -280,13 +278,11 @@ describe('SQLite User Setup import store', () => {
     await expect(store.hasExistingUserSetup('user-1')).resolves.toBe(true);
   });
 
-  test('keeps existing Commute Days while importing the remaining browser Local Setup', async () => {
+  test('preserves a previously saved empty Commute setup while importing unrelated Local Setup', async () => {
     const store = createUserSetupImportStore(database);
     const draft = validDraft();
 
-    await store.transaction((transaction) => {
-      transaction.saveCommuteDays('user-1', ['saturday', 'sunday']);
-    });
+    sqlite.prepare('insert into commute_setups (user_id) values (?)').run('user-1');
 
     await expect(store.hasExistingUserSetup('user-1')).resolves.toBe(false);
     await expect(persistUserSetupImportDraftForNewUser(store, 'user-1', draft)).resolves.toEqual({
@@ -296,10 +292,7 @@ describe('SQLite User Setup import store', () => {
       { summary_time: '18:45' }
     ]);
     expect(sqlite.prepare('select id from commute_routes').all()).toEqual([]);
-    expect(sqlite.prepare('select day from commute_days order by day').all()).toEqual([
-      { day: 'saturday' },
-      { day: 'sunday' }
-    ]);
+    expect(sqlite.prepare('select user_id from commute_setups').all()).toEqual([{ user_id: 'user-1' }]);
   });
 
   test('keeps an existing User Commute Route while importing the remaining browser Local Setup', async () => {
@@ -313,7 +306,6 @@ describe('SQLite User Setup import store', () => {
 
     await store.transaction((transaction) => {
       transaction.saveCommuteRoutes([savedRoute]);
-      transaction.saveCommuteDays('user-1', ['tuesday']);
     });
 
     await expect(
@@ -322,13 +314,12 @@ describe('SQLite User Setup import store', () => {
     expect(sqlite.prepare('select id, name, destination_label from commute_routes').all()).toEqual([
       { id: 'saved-route', name: 'Saved user route', destination_label: 'Saved destination' }
     ]);
-    expect(sqlite.prepare('select day from commute_days').all()).toEqual([{ day: 'tuesday' }]);
     expect(sqlite.prepare('select summary_time from summary_configurations').all()).toEqual([
       { summary_time: '18:45' }
     ]);
   });
 
-  test('imports unrelated Visitor setup after a first User route bootstraps Commute Days', async () => {
+  test('imports unrelated Visitor setup without restoring the last route a User deleted', async () => {
     const commuteStore = createUserCommuteSetupStore(database);
     const importStore = createUserSetupImportStore(database);
     const savedRoute = await commuteStore.createRoute('user-1', {
@@ -339,6 +330,8 @@ describe('SQLite User Setup import store', () => {
     });
 
     expect(savedRoute).not.toBe('route-limit-reached');
+    if (savedRoute === 'route-limit-reached') throw new Error('expected route');
+    await commuteStore.deleteRoute('user-1', savedRoute.id);
     await expect(
       persistUserSetupImportDraftForNewUser(importStore, 'user-1', validDraft())
     ).resolves.toEqual({ outcome: 'imported' });
@@ -349,16 +342,8 @@ describe('SQLite User Setup import store', () => {
       { title: 'Pack lunch' },
       { title: 'Send update' }
     ]);
-    expect(sqlite.prepare('select name from commute_routes').all()).toEqual([
-      { name: 'Saved user route' }
-    ]);
-    expect(sqlite.prepare('select day from commute_days order by day').all()).toEqual([
-      { day: 'friday' },
-      { day: 'monday' },
-      { day: 'thursday' },
-      { day: 'tuesday' },
-      { day: 'wednesday' }
-    ]);
+    expect(sqlite.prepare('select name from commute_routes').all()).toEqual([]);
+    expect(sqlite.prepare('select user_id from commute_setups').all()).toEqual([{ user_id: 'user-1' }]);
   });
 
   test('scopes existing setup checks and imported Commute data to the requested User', async () => {
@@ -373,7 +358,6 @@ describe('SQLite User Setup import store', () => {
 
     await store.transaction((transaction) => {
       transaction.saveCommuteRoutes([otherUserRoute]);
-      transaction.saveCommuteDays('user-2', ['friday']);
     });
 
     await expect(
@@ -384,8 +368,8 @@ describe('SQLite User Setup import store', () => {
       { user_id: 'user-1', name: 'Evening commute' },
       { user_id: 'user-2', name: 'Other user private route' }
     ]);
-    expect(sqlite.prepare("select day from commute_days where user_id = 'user-2'").all()).toEqual([
-      { day: 'friday' }
+    expect(sqlite.prepare('select user_id from commute_setups order by user_id').all()).toEqual([
+      { user_id: 'user-1' }, { user_id: 'user-2' }
     ]);
   });
 });

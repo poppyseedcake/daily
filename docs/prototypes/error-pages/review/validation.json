@@ -1,0 +1,411 @@
+{
+  "testedAt": "2026-10-05T11:10:23.264Z",
+  "server": "production",
+  "iteration": 201,
+  "layout": [
+    {
+      "status": 404,
+      "width": 320,
+      "height": 568,
+      "scrollWidth": 320,
+      "scrollHeight": 568,
+      "mainCount": 1,
+      "fontReady": true,
+      "primaryBottom": 451.78125,
+      "actions": [
+        {
+          "text": "Daily",
+          "height": 44
+        },
+        {
+          "text": "Go to Daily",
+          "height": 48
+        },
+        {
+          "text": "Privacy",
+          "height": 44
+        },
+        {
+          "text": "Terms",
+          "height": 44
+        }
+      ]
+    },
+    {
+      "status": 404,
+      "width": 390,
+      "height": 844,
+      "scrollWidth": 390,
+      "scrollHeight": 844,
+      "mainCount": 1,
+      "fontReady": true,
+      "primaryBottom": 644.625,
+      "actions": [
+        {
+          "text": "Daily",
+          "height": 44
+        },
+        {
+          "text": "Go to Daily",
+          "height": 48
+        },
+        {
+          "text": "Privacy",
+          "height": 44
+        },
+        {
+          "text": "Terms",
+          "height": 44
+        }
+      ]
+    },
+    {
+      "status": 404,
+      "width": 768,
+      "height": 1024,
+      "scrollWidth": 768,
+      "scrollHeight": 1024,
+      "mainCount": 1,
+      "fontReady": true,
+      "primaryBottom": 635.953125,
+      "actions": [
+        {
+          "text": "Daily",
+          "height": 44
+        },
+        {
+          "text": "Go to Daily",
+          "height": 48
+        },
+        {
+          "text": "Privacy",
+          "height": 44
+        },
+        {
+          "text": "Terms",
+          "height": 44
+        }
+      ]
+    },
+    {
+      "status": 404,
+      "width": 900,
+      "height": 700,
+      "scrollWidth": 900,
+      "scrollHeight": 700,
+      "mainCount": 1,
+      "fontReady": true,
+      "primaryBottom": 491.953125,
+      "actions": [
+        {
+          "text": "Daily",
+          "height": 44
+        },
+        {
+          "text": "Go to Daily",
+          "height": 48
+        },
+        {
+          "text": "Privacy",
+          "height": 44
+        },
+        {
+          "text": "Terms",
+          "height": 44
+        }
+      ]
+    },
+    {
+      "status": 404,
+      "width": 1280,
+      "height": 800,
+      "scrollWidth": 1280,
+      "scrollHeight": 800,
+      "mainCount": 1,
+      "fontReady": true,
+      "primaryBottom": 531.953125,
+      "actions": [
+        {
+          "text": "Daily",
+          "height": 44
+        },
+        {
+          "text": "Go to Daily",
+          "height": 48
+        },
+        {
+          "text": "Privacy",
+          "height": 44
+        },
+        {
+          "text": "Terms",
+          "height": 44
+        }
+      ]
+    },
+    {
+      "status": 404,
+      "width": 1440,
+      "height": 900,
+      "scrollWidth": 1440,
+      "scrollHeight": 900,
+      "mainCount": 1,
+      "fontReady": true,
+      "primaryBottom": 581.953125,
+      "actions": [
+        {
+          "text": "Daily",
+          "height": 44
+        },
+        {
+          "text": "Go to Daily",
+          "height": 48
+        },
+        {
+          "text": "Privacy",
+          "height": 44
+        },
+        {
+          "text": "Terms",
+          "height": 44
+        }
+      ]
+    },
+    {
+      "status": 500,
+      "width": 320,
+      "height": 568,
+      "scrollWidth": 320,
+      "scrollHeight": 568,
+      "mainCount": 1,
+      "fontReady": true,
+      "primaryBottom": 449.78125,
+      "actions": [
+        {
+          "text": "Daily",
+          "height": 44
+        },
+        {
+          "text": "Try again",
+          "height": 48
+        },
+        {
+          "text": "Back to Daily",
+          "height": 44
+        },
+        {
+          "text": "Privacy",
+          "height": 44
+        },
+        {
+          "text": "Terms",
+          "height": 44
+        }
+      ]
+    },
+    {
+      "status": 500,
+      "width": 390,
+      "height": 844,
+      "scrollWidth": 390,
+      "scrollHeight": 844,
+      "mainCount": 1,
+      "fontReady": true,
+      "primaryBottom": 642.625,
+      "actions": [
+        {
+          "text": "Daily",
+          "height": 44
+        },
+        {
+          "text": "Try again",
+          "height": 48
+        },
+        {
+          "text": "Back to Daily",
+          "height": 44
+        },
+        {
+          "text": "Privacy",
+          "height": 44
+        },
+        {
+          "text": "Terms",
+          "height": 44
+        }
+      ]
+    },
+    {
+      "status": 500,
+      "width": 768,
+      "height": 1024,
+      "scrollWidth": 768,
+      "scrollHeight": 1024,
+      "mainCount": 1,
+      "fontReady": true,
+      "primaryBottom": 633.953125,
+      "actions": [
+        {
+          "text": "Daily",
+          "height": 44
+        },
+        {
+          "text": "Try again",
+          "height": 48
+        },
+        {
+          "text": "Back to Daily",
+          "height": 44
+        },
+        {
+          "text": "Privacy",
+          "height": 44
+        },
+        {
+          "text": "Terms",
+          "height": 44
+        }
+      ]
+    },
+    {
+      "status": 500,
+      "width": 900,
+      "height": 700,
+      "scrollWidth": 900,
+      "scrollHeight": 700,
+      "mainCount": 1,
+      "fontReady": true,
+      "primaryBottom": 489.953125,
+      "actions": [
+        {
+          "text": "Daily",
+          "height": 44
+        },
+        {
+          "text": "Try again",
+          "height": 48
+        },
+        {
+          "text": "Back to Daily",
+          "height": 44
+        },
+        {
+          "text": "Privacy",
+          "height": 44
+        },
+        {
+          "text": "Terms",
+          "height": 44
+        }
+      ]
+    },
+    {
+      "status": 500,
+      "width": 1280,
+      "height": 800,
+      "scrollWidth": 1280,
+      "scrollHeight": 800,
+      "mainCount": 1,
+      "fontReady": true,
+      "primaryBottom": 525.953125,
+      "actions": [
+        {
+          "text": "Daily",
+          "height": 44
+        },
+        {
+          "text": "Try again",
+          "height": 48
+        },
+        {
+          "text": "Back to Daily",
+          "height": 44
+        },
+        {
+          "text": "Privacy",
+          "height": 44
+        },
+        {
+          "text": "Terms",
+          "height": 44
+        }
+      ]
+    },
+    {
+      "status": 500,
+      "width": 1440,
+      "height": 900,
+      "scrollWidth": 1440,
+      "scrollHeight": 900,
+      "mainCount": 1,
+      "fontReady": true,
+      "primaryBottom": 575.953125,
+      "actions": [
+        {
+          "text": "Daily",
+          "height": 44
+        },
+        {
+          "text": "Try again",
+          "height": 48
+        },
+        {
+          "text": "Back to Daily",
+          "height": 44
+        },
+        {
+          "text": "Privacy",
+          "height": 44
+        },
+        {
+          "text": "Terms",
+          "height": 44
+        }
+      ]
+    }
+  ],
+  "navigation": [
+    {
+      "javaScriptEnabled": true,
+      "retry": "passed",
+      "fragment": "preserved",
+      "home": "passed",
+      "keyboardFocus": {
+        "name": "Daily home",
+        "outline": "solid"
+      },
+      "home404": "passed"
+    },
+    {
+      "javaScriptEnabled": false,
+      "retry": "passed",
+      "fragment": "not sent to server",
+      "home": "passed",
+      "keyboardFocus": {
+        "name": "Daily home",
+        "outline": "solid"
+      },
+      "home404": "passed"
+    }
+  ],
+  "fallback": [
+    {
+      "status": 400,
+      "code": "400"
+    },
+    {
+      "status": 403,
+      "code": "403"
+    },
+    {
+      "status": 503,
+      "code": "503"
+    }
+  ],
+  "consoleErrors": [],
+  "real404": {
+    "status": 404,
+    "robots": "noindex, nofollow",
+    "title": "Page not found · Daily"
+  }
+}

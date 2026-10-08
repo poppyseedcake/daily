@@ -21,6 +21,9 @@ export default defineConfig({
     {
       command: `node tests/e2e/setupDatabase.mjs && npm run dev -- --host 127.0.0.1 --port ${port}`,
       env: {
+        // Keep browser analytics off production projects, including when a local .env exists.
+        PUBLIC_POSTHOG_PROJECT_TOKEN: 'phc_daily_e2e_test',
+        PUBLIC_POSTHOG_HOST: 'http://127.0.0.1:9',
         BETTER_AUTH_SECRET: authSecret,
         DATABASE_URL: databaseURL,
         ADMINISTRATOR_EMAIL_ALLOWLIST: 'admin@example.com',

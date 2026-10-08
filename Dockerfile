@@ -14,7 +14,11 @@ COPY package.json package-lock.json ./
 RUN npm ci
 
 COPY . .
-RUN npm run build
+# These public values are compiled into the browser bundle. Service secrets stay at runtime.
+ARG PUBLIC_POSTHOG_PROJECT_TOKEN=""
+ARG PUBLIC_POSTHOG_HOST=""
+RUN PUBLIC_POSTHOG_PROJECT_TOKEN="$PUBLIC_POSTHOG_PROJECT_TOKEN" \
+    PUBLIC_POSTHOG_HOST="$PUBLIC_POSTHOG_HOST" npm run build
 RUN npm prune --omit=dev
 
 FROM node:${NODE_VERSION}-bookworm-slim AS runtime

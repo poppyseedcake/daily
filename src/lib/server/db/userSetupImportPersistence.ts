@@ -75,8 +75,7 @@ const userSetupImportDraftSchema = z.object({
   weatherLocation: persistedWeatherLocationSchema.nullable(),
   savedWeatherCities: z.array(persistedSavedLocationSchema).max(20),
   savedCommuteAddresses: z.array(persistedSavedLocationSchema).max(20),
-  commuteRoutes: z.array(persistedCommuteRouteSchema).max(5),
-  commuteDays: commuteDaysSchema
+  commuteRoutes: z.array(persistedCommuteRouteSchema).max(5)
 });
 
 export type UserSetupImportPersistenceTransaction = {
@@ -92,7 +91,6 @@ export type UserSetupImportPersistenceTransaction = {
   saveSavedWeatherCities: (cities: UserSetupImportDraft['savedWeatherCities']) => void;
   saveSavedCommuteAddresses: (addresses: UserSetupImportDraft['savedCommuteAddresses']) => void;
   saveCommuteRoutes: (routes: UserSetupImportDraft['commuteRoutes']) => void;
-  saveCommuteDays: (userId: string, days: UserSetupImportDraft['commuteDays']) => void;
 };
 
 export type UserSetupImportPersistenceStore = {
@@ -162,7 +160,6 @@ export const persistUserSetupImportDraftForNewUser = async (
       transaction.saveSavedCommuteAddresses(result.data.savedCommuteAddresses);
       if (!preserveExistingCommuteSetup) {
         transaction.saveCommuteRoutes(result.data.commuteRoutes);
-        transaction.saveCommuteDays(userId, result.data.commuteDays);
       }
 
       return { outcome: 'imported' };

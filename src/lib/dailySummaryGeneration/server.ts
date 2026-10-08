@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import type { LoadedCalendarEvents } from '$lib/calendar';
 import { calendarReadinessForAuthMode } from '$lib/calendarReadiness';
 import {
@@ -10,7 +11,6 @@ import { loadUserSummaryConfiguration } from '$lib/server/summaryConfigurationPe
 import type { UserTodoPersistenceStore } from '$lib/server/todoPersistence';
 import { loadUserTodoStateSafely } from '$lib/server/todoPersistence';
 import type { UserWeatherLocationPersistenceStore } from '$lib/server/weatherLocationPersistence';
-import { loadUserWeatherLocation } from '$lib/server/weatherLocationPersistence';
 import type { UserCommuteSetupStore } from '$lib/server/commuteSetupPersistence';
 import { loadUserCommuteSetup } from '$lib/server/commuteSetupPersistence';
 import type { WeatherForecastProvider, WeatherSummaryProvider } from '$lib/weatherForecast';
@@ -71,6 +71,7 @@ export const createUserDailySummaryGenerator = ({
   UserDailySummaryRequest,
   UserDailySummaryGenerationOptions
 > => {
+  const weatherSummarySessionId = `daily-summary-${process.pid}-${randomUUID()}`;
   const generator = createDailySummaryGenerator<UserDailySummaryRequest>({
     openDailyUrl,
     now,
@@ -133,8 +134,16 @@ export const createUserDailySummaryGenerator = ({
             weatherLocationUnavailable: weatherContext.unavailable,
             weatherProvider,
             weatherSummaryProvider,
+            ...(weatherSummaryProvider
+              ? {
+                  weatherSummaryObservability: {
+                    distinctId: userId,
+                    sessionId: weatherSummarySessionId,
+                    traceId: randomUUID()
+                  }
+                }
+              : {}),
             commuteRoutes: commuteContext.setup.routes,
-            commuteDays: commuteContext.setup.days,
             commuteSetupUnavailable: commuteContext.unavailable,
             commuteEstimateMode: 'live',
             commuteEstimateProvider:
@@ -173,7 +182,7 @@ const safelyLoadCommuteEstimateProvider = (
 
 type LoadedCommuteSetup = Awaited<ReturnType<typeof loadUserCommuteSetup>>;
 
-type LoadedWeatherLocation = Awaited<ReturnType<typeof loadUserWeatherLocation>>;
+type LoadedWeatherLocation = Awaited<ReturnType<UserWeatherLocationPersistenceStore['load']>>;
 
 const loadUserWeatherContext = async ({
   userId,
@@ -190,7 +199,7 @@ const loadUserWeatherContext = async ({
 
   try {
     return {
-      location: await loadUserWeatherLocation(locationStore, userId),
+      location: await locationStore.load(userId),
       unavailable: false
     };
   } catch {
@@ -199,8 +208,7 @@ const loadUserWeatherContext = async ({
 };
 
 const emptyCommuteSetup: LoadedCommuteSetup = {
-  routes: [],
-  days: []
+  routes: []
 };
 
 const loadUserCommuteContext = async ({

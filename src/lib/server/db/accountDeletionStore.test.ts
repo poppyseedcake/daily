@@ -43,7 +43,7 @@ describe('SQLite account deletion boundary', () => {
 
     for (const table of [
       'summary_configurations', 'todo_tasks', 'todo_categories', 'weather_locations',
-      'commute_routes', 'commute_days', 'calendar_connections', 'selected_calendars',
+      'commute_routes', 'commute_days', 'commute_setups', 'calendar_connections', 'selected_calendars',
       'delivery_records', 'auth_session', 'auth_account', 'auth_user', 'users'
     ]) {
       expect(sqlite.prepare(`select count(*) as count from ${table}`).get(), table).toEqual({ count: 0 });
@@ -69,6 +69,7 @@ const seedUserData = (sqlite: Database.Database) => {
   sqlite.prepare("insert into weather_locations values ('weather-1','user-1','Private place',1,2)").run();
   sqlite.prepare("insert into commute_routes (id,user_id,name,origin_label,origin_latitude,origin_longitude,destination_label,destination_latitude,destination_longitude,preview_duration_minutes,enabled,position) values ('route-1','user-1','Work','A',1,2,'B',3,4,12,true,0)").run();
   sqlite.prepare("insert into commute_days values ('user-1','monday')").run();
+  sqlite.prepare("insert into commute_setups values ('user-1')").run();
   sqlite.prepare("insert into calendar_connections (id,user_id,connection_status) values ('calendar-1','user-1','connected')").run();
   sqlite.prepare("insert into selected_calendars (id,user_id,calendar_id,position) values ('selected-1','user-1','private-calendar',0)").run();
   sqlite.prepare("insert into delivery_records (id,user_id,attempt_type,requested_at,delivery_status,provider_name) values ('delivery-1','user-1','test','2026-07-16T00:00:00Z','sent','resend')").run();

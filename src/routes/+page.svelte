@@ -30,6 +30,13 @@
   } from '@lucide/svelte';
   import { dragHandle, dragHandleZone, SHADOW_ITEM_MARKER_PROPERTY_NAME, TRIGGERS } from 'svelte-dnd-action';
   import { onMount, tick } from 'svelte';
+  import { flip } from 'svelte/animate';
+  import { fade } from 'svelte/transition';
+  import {
+    animatedDialog, closeAnimatedDialog, animatedDetails, selectionFeedback,
+    reveal, collapseTask, trackOutro, favoriteReveal, favoriteExit, routeView, resizeOnChange, motionDuration
+  } from '$lib/motion';
+  import RollingNumber from '$lib/components/RollingNumber.svelte';
   import { invalidateAll } from '$app/navigation';
   import type { ActionData, PageData } from './$types';
   import { calendarReadinessForAuthMode } from '$lib/calendarReadiness';
@@ -92,16 +99,19 @@
   import type { SelectedCalendarConfiguration, SelectedCalendarOption } from '$lib/selectedCalendars';
   import { accountDeletionConfirmation } from '$lib/accountDeletion';
   import DailyLogo from '$lib/components/DailyLogo.svelte';
+  import PageMetadata from '$lib/components/PageMetadata.svelte';
   import DailyOnboarding from '$lib/components/onboarding/DailyOnboarding.svelte';
   import AuthModal from '$lib/components/AuthModal.svelte';
+  import { analytics } from '$lib/analytics';
+  import CookieSettingsButton from '$lib/components/CookieSettingsButton.svelte';
   import { workspaceGreeting } from '$lib/workspaceGreeting';
 
   let authModal: AuthModal;
-  const openSignIn = (event: MouseEvent) => {
+  const openSignIn = async (event: MouseEvent) => {
     event.preventDefault();
     const trigger = event.currentTarget instanceof HTMLElement ? event.currentTarget : undefined;
-    closeCalendarDialog();
-    closeSecondaryPanel();
+    await closeCalendarDialog();
+    await closeSecondaryPanel();
     authModal.open('signin', trigger);
   };
 
@@ -152,8 +162,7 @@
     savedCommuteAddressSchema.parse(address)
   );
   const initialCommuteSetup = data?.commuteSetup ?? {
-    routes: [] as CommuteRoute[],
-    days: [...defaultCommuteDays] as CommuteDay[]
+    routes: [] as CommuteRoute[]
   };
   const deliveryRecords = $derived<DeliveryHistoryRecord[]>(data?.deliveryRecords ?? []);
   const initialSelectedCalendarConfiguration = data?.selectedCalendarConfiguration ?? null;
@@ -194,6 +203,13 @@
   let editingCategoryId = $state<string | null>(null);
   let editingCategoryName = $state('');
   let todoControlsReady = $state(false);
+  let motionReady = $state(false);
+  let todoOutros = $state(0);
+  const trackTodoOutro = (exiting: boolean) => { todoOutros += exiting ? 1 : -1; };
+  onMount(() => {
+    const frame = requestAnimationFrame(() => { motionReady = true; });
+    return () => cancelAnimationFrame(frame);
+  });
   let localSetupHydrated = $state(false);
   let localSetupStatus = $state('Not saved in this browser yet.');
   let localSetupStatusTone = $state<'success' | 'warning' | 'error' | 'neutral'>('neutral');
@@ -210,6 +226,7 @@
   let savedCommuteAddresses = $state<SavedCommuteAddress[]>(initialSavedCommuteAddresses);
   let weatherLocationSearchQuery = $state('');
   let weatherLocationSearchResults = $state<WeatherLocation[]>([]);
+  let weatherSearchPending = $state(false);
   let activeWeatherLocationSuggestion = $state(-1);
   let weatherLocationSearchTimer: ReturnType<typeof setTimeout> | undefined;
   let weatherLocationSearchRequest = 0;
@@ -220,7 +237,6 @@
     initialWeatherLocation ? 'success' : 'neutral'
   );
   let commuteRoutes = $state<CommuteRoute[]>(initialCommuteSetup.routes);
-  let commuteDays = $state<CommuteDay[]>([...initialCommuteSetup.days]);
   let editingCommuteRouteId = $state<string | null>(null);
   let commuteRouteName = $state('');
   let commuteRouteDays = $state<CommuteDay[]>([...defaultCommuteDays]);
@@ -228,6 +244,7 @@
   let commuteDestination = $state<CommutePoint | null>(null);
   let commuteSearchQueries = $state({ origin: '', destination: '' });
   let commuteSearchResults = $state({ origin: [] as CommuteAddressSuggestion[], destination: [] as CommuteAddressSuggestion[] });
+  let commuteSearchPending = $state({ origin: false, destination: false });
   let activeCommuteSuggestion = $state({ origin: -1, destination: -1 });
   let activeCommuteSearchField = $state<'origin' | 'destination' | null>(null);
   let commuteSearchSessionTokens = { origin: '', destination: '' };
@@ -304,6 +321,7 @@
   const onboardingStorageKey = 'daily.onboarding.v1';
   const finishOnboarding = () => {
     onboardingOpen = false;
+    analytics.capture('onboarding_completed');
     try { localStorage.setItem(onboardingStorageKey, 'seen'); } catch { /* Storage may be unavailable; the board remains usable. */ }
   };
   const replayOnboarding = () => {
@@ -335,6 +353,16 @@
     const words = name.split(/\s+/);
     return `${words[0]?.[0] ?? ''}${words.length > 1 ? words.at(-1)?.[0] ?? '' : ''}`.toUpperCase();
   });
+
+  onMount(() => {
+    if (authState.mode !== 'user') return;
+
+    analytics.identify(authState.userId);
+  });
+
+  const resetPostHogIdentity = () => {
+    analytics.reset();
+  };
 
   onMount(() => {
     const requestedAuth = new URL(window.location.href).searchParams.get('auth');
@@ -504,7 +532,6 @@
     savedWeatherCities = setup.savedWeatherCities;
     savedCommuteAddresses = setup.savedCommuteAddresses;
     commuteRoutes = setup.commuteRoutes;
-    commuteDays = setup.commuteDays;
     editingCommuteRouteId = null;
     commuteRouteName = '';
     commuteRouteDays = [...defaultCommuteDays];
@@ -528,7 +555,6 @@
     savedWeatherCities,
     savedCommuteAddresses,
     commuteRoutes,
-    commuteDays,
     todoCategories,
     todoTasks,
     nextTodoId
@@ -662,6 +688,7 @@
     clearTimeout(weatherLocationSearchTimer);
     weatherLocationSearchTimer = undefined;
     weatherLocationSearchRequest += 1;
+    weatherSearchPending = false;
   };
   const isSavedWeatherCity = (city: SavedWeatherCity) =>
     savedWeatherCities.some((candidate) => sameSavedLocationCoordinates(candidate, city));
@@ -768,6 +795,7 @@
     weatherLocationStatusTone = 'neutral';
 
     try {
+      weatherSearchPending = true;
       const response = await fetch(
         `/weather-location-search?q=${encodeURIComponent(currentSearchQuery)}`
       );
@@ -793,7 +821,10 @@
         return;
       }
 
-      weatherLocationSearchResults = result.locations ?? [];
+      const locations = result.locations ?? [];
+      weatherLocationSearchResults = locations.filter((location, index) =>
+        locations.findIndex(candidate => sameSavedLocationCoordinates(candidate, location)) === index
+      );
       activeWeatherLocationSuggestion = weatherLocationSearchResults.length > 0 ? 0 : -1;
       weatherLocationStatus =
         weatherLocationSearchResults.length > 0
@@ -805,6 +836,8 @@
       weatherLocationSearchResults = [];
       weatherLocationStatus = 'Weather Location search failed. Try again.';
       weatherLocationStatusTone = 'error';
+    } finally {
+      if (request === weatherLocationSearchRequest) weatherSearchPending = false;
     }
   };
   const suggestWeatherLocations = () => {
@@ -824,6 +857,7 @@
       return;
     }
 
+    weatherSearchPending = true;
     weatherLocationSearchTimer = setTimeout(() => {
       weatherLocationSearchTimer = undefined;
       void searchWeatherLocation();
@@ -838,6 +872,7 @@
       weatherLocationSearchQuery = location.label;
       weatherLocationStatus = 'Weather Location saved in this browser only.';
       weatherLocationStatusTone = 'success';
+      analytics.capture('weather_location_saved', { storage: 'browser' });
       closeWeatherDialog();
       return;
     }
@@ -865,6 +900,7 @@
       weatherLocationSearchQuery = location.label;
       weatherLocationStatus = 'Weather Location saved to your account.';
       weatherLocationStatusTone = 'success';
+      analytics.capture('weather_location_saved', { storage: 'account' });
       closeWeatherDialog();
     } catch {
       weatherLocationStatus = 'Weather Location save failed. Try again.';
@@ -875,6 +911,7 @@
     clearTimeout(commuteSearchTimers[kind]);
     commuteSearchRequests[kind] += 1;
     commuteSearchResults[kind] = [];
+    commuteSearchPending[kind] = false;
     activeCommuteSuggestion[kind] = savedCommuteAddresses.length > 0 ? 0 : -1;
   };
   const selectSavedCommuteLocation = (
@@ -886,6 +923,7 @@
     else commuteDestination = location;
     commuteSearchResults[kind] = [];
     commuteSearchSessionTokens[kind] = '';
+    commuteSearchPending[kind] = false;
     activeCommuteSuggestion[kind] = -1;
     commuteRouteStatus = `Commute ${kind === 'origin' ? 'Origin' : 'Destination'} selected from Saved Commute Addresses.`;
     commuteRouteStatusTone = 'success';
@@ -894,6 +932,7 @@
     clearTimeout(commuteSearchTimers[kind]);
     commuteSearchRequests[kind] += 1;
     commuteSearchResults[kind] = [];
+    commuteSearchPending[kind] = false;
     activeCommuteSuggestion[kind] = -1;
     const query = commuteSearchQueries[kind].trim();
     if (query.length === 0) {
@@ -901,6 +940,7 @@
       return;
     }
     if (query.length < 3) return;
+    commuteSearchPending[kind] = true;
     commuteSearchSessionTokens[kind] ||= crypto.randomUUID();
     const request = commuteSearchRequests[kind];
     commuteSearchTimers[kind] = setTimeout(async () => {
@@ -922,6 +962,8 @@
         }
       } catch {
         if (request === commuteSearchRequests[kind]) commuteSearchResults[kind] = [];
+      } finally {
+        if (request === commuteSearchRequests[kind]) commuteSearchPending[kind] = false;
       }
     }, 300);
   };
@@ -944,6 +986,10 @@
         event.preventDefault();
         selectSavedCommuteLocation(kind, savedAddressSuggestions[activeCommuteSuggestion[kind]]);
       } else if (event.key === 'Escape') {
+        clearTimeout(commuteSearchTimers[kind]);
+        commuteSearchRequests[kind] += 1;
+        commuteSearchPending[kind] = false;
+        activeCommuteSearchField = null;
         commuteSearchResults[kind] = [];
         activeCommuteSuggestion[kind] = -1;
       }
@@ -963,6 +1009,10 @@
       event.preventDefault();
       void selectCommuteSuggestion(kind, suggestions[activeCommuteSuggestion[kind]]);
     } else if (event.key === 'Escape') {
+      clearTimeout(commuteSearchTimers[kind]);
+      commuteSearchRequests[kind] += 1;
+      commuteSearchPending[kind] = false;
+      activeCommuteSearchField = null;
       commuteSearchResults[kind] = [];
       activeCommuteSuggestion[kind] = -1;
     }
@@ -971,6 +1021,7 @@
     clearTimeout(commuteSearchTimers[kind]);
     const selectionRequest = ++commuteSearchRequests[kind];
     commuteSearchResults[kind] = [];
+    commuteSearchPending[kind] = false;
     commuteRouteStatus = 'Resolving selected address...';
     commuteRouteStatusTone = 'neutral';
     try {
@@ -1011,6 +1062,7 @@
       commuteSearchRequests[kind] += 1;
     }
     commuteSearchResults = { origin: [], destination: [] };
+    commuteSearchPending = { origin: false, destination: false };
     activeCommuteSuggestion = { origin: -1, destination: -1 };
     activeCommuteSearchField = null;
     commuteRouteName = '';
@@ -1085,6 +1137,11 @@
       clearCommuteRouteDraft();
       commuteRouteStatus = 'Commute Route updated in this browser only.';
       commuteRouteStatusTone = 'success';
+      analytics.capture('commute_route_saved', {
+        operation: 'updated',
+        storage: 'browser',
+        weekdays_count: result.data.days.length
+      });
       return;
     }
     const id = `route-${commuteRoutes.reduce((highest, route) => {
@@ -1112,6 +1169,11 @@
     clearCommuteRouteDraft();
     commuteRouteStatus = 'Commute Route saved in this browser only.';
     commuteRouteStatusTone = 'success';
+    analytics.capture('commute_route_saved', {
+      operation: 'created',
+      storage: 'browser',
+      weekdays_count: result.data.days.length
+    });
   };
   const editCommuteRoute = (route: CommuteRoute) => {
     commuteEditorOpen = true;
@@ -1134,6 +1196,7 @@
     if (editingCommuteRouteId === route.id) clearCommuteRouteDraft();
     commuteRouteStatus = 'Commute Route deleted from this browser.';
     commuteRouteStatusTone = 'success';
+    analytics.capture('commute_route_deleted', { storage: 'browser' });
   };
   const toggleCommuteRoute = (route: CommuteRoute) => {
     if (authState.mode === 'user') {
@@ -1163,6 +1226,11 @@
         clearCommuteRouteDraft();
         commuteRouteStatus = 'Commute Route saved to your account.';
         commuteRouteStatusTone = 'success';
+        analytics.capture('commute_route_saved', {
+          operation: 'created',
+          storage: 'account',
+          weekdays_count: result.route.days.length
+        });
         return;
       }
       commuteRouteStatus = result.outcome === 'route-limit-reached'
@@ -1189,6 +1257,11 @@
         clearCommuteRouteDraft();
         commuteRouteStatus = 'Commute Route saved to your account.';
         commuteRouteStatusTone = 'success';
+        analytics.capture('commute_route_saved', {
+          operation: 'updated',
+          storage: 'account',
+          weekdays_count: result.route.days.length
+        });
         return;
       }
       commuteRouteStatus = result.outcome === 'not-found'
@@ -1214,6 +1287,7 @@
         if (editingCommuteRouteId === route.id) clearCommuteRouteDraft();
         commuteRouteStatus = 'Commute Route deleted from your account.';
         commuteRouteStatusTone = 'success';
+        analytics.capture('commute_route_deleted', { storage: 'account' });
         return;
       }
       commuteRouteStatus = 'Commute Route delete failed. Try again.';
@@ -1258,6 +1332,9 @@
 
     selectedCalendarStatus = 'Selected Calendars saved to your account.';
     selectedCalendarStatusTone = 'success';
+    analytics.capture('calendar_selection_updated', {
+      selected_calendars_count: nextCalendars.filter((calendar) => calendar.selected).length
+    });
     await invalidateAll();
   };
   const queueUserSummaryConfigurationSave = (configuration: SummaryConfiguration) => {
@@ -1420,6 +1497,10 @@
     }
 
     todoTasks = nextTasks;
+    analytics.capture('todo_task_created', {
+      urgency: newTodoUrgency,
+      has_category: newTodoCategoryId !== ''
+    });
     newTodoTitle = '';
     newTodoCategoryId = '';
     newTodoUrgency = 'low';
@@ -1439,8 +1520,7 @@
   };
 
   const closeTaskPlacement = () => {
-    taskPlacementDialog?.close();
-    taskPlacementOpen = false;
+    return closeAnimatedDialog(taskPlacementDialog, () => { taskPlacementOpen = false; });
   };
 
   const openTodoDialog = async () => {
@@ -1451,8 +1531,7 @@
   };
 
   const closeTodoDialog = () => {
-    todoDialog?.close();
-    todoDialogOpen = false;
+    return closeAnimatedDialog(todoDialog, () => { todoDialogOpen = false; });
   };
 
   const confirmTaskPlacement = () => {
@@ -1523,16 +1602,18 @@
 
   const closeWeatherDialog = () => {
     cancelPendingWeatherLocationSearch();
-    weatherLocationSearchResults = [];
-    weatherDialog?.close();
-    weatherDialogOpen = false;
+    return closeAnimatedDialog(weatherDialog, () => {
+      weatherLocationSearchResults = [];
+      weatherDialogOpen = false;
+    });
   };
 
   const closeCommuteDialog = () => {
-    commuteDialog?.close();
-    commuteDialogOpen = false;
-    commuteEditorOpen = false;
-    clearCommuteRouteDraft();
+    return closeAnimatedDialog(commuteDialog, () => {
+      commuteDialogOpen = false;
+      commuteEditorOpen = false;
+      clearCommuteRouteDraft();
+    });
   };
 
   const startNewCommuteRoute = () => {
@@ -1541,24 +1622,24 @@
   };
 
   const closeCalendarDialog = () => {
-    calendarDialog?.close();
-    calendarDialogOpen = false;
+    return closeAnimatedDialog(calendarDialog, () => { calendarDialogOpen = false; });
   };
 
   const openCalendarSettings = async () => {
-    closeCalendarDialog();
+    await closeCalendarDialog();
     calendarDisconnectConfirmation = false;
     await showDialog('calendar-settings');
   };
 
   const closeCalendarSettings = () => {
-    calendarSettingsDialog?.close();
-    calendarSettingsOpen = false;
-    calendarDisconnectConfirmation = false;
+    return closeAnimatedDialog(calendarSettingsDialog, () => {
+      calendarSettingsOpen = false;
+      calendarDisconnectConfirmation = false;
+    });
   };
 
   const returnToCalendarAgenda = async () => {
-    closeCalendarSettings();
+    await closeCalendarSettings();
     await showDialog('calendar');
   };
 
@@ -1571,8 +1652,7 @@
   };
 
   const closeSecondaryPanel = () => {
-    secondaryDialog?.close();
-    secondaryPanel = false;
+    return closeAnimatedDialog(secondaryDialog, () => { secondaryPanel = false; });
   };
 
   const handleDialogBackdropClick = (event: MouseEvent, closeDialog: () => void) => {
@@ -1601,9 +1681,10 @@
   };
 
   const closeSummaryDeliveryDialog = () => {
-    summaryDeliveryDialog?.close();
-    summaryDeliveryDialogOpen = false;
+    return closeAnimatedDialog(summaryDeliveryDialog, () => { summaryDeliveryDialogOpen = false; });
   };
+
+  let summaryTimeDirection = $state({ hours: 1, minutes: 1 });
 
   const summaryTimeParts = () => {
     const [hours = '00', minutes = '00'] = summaryTimeDraft.split(':');
@@ -1612,6 +1693,7 @@
 
   const adjustSummaryTime = (part: 'hours' | 'minutes', direction: 1 | -1) => {
     activeSummaryTimePart = part;
+    summaryTimeDirection = { ...summaryTimeDirection, [part]: direction };
     const current = summaryTimeParts();
     const nextHours = part === 'hours'
       ? (current.hours + direction + 24) % 24
@@ -1665,6 +1747,7 @@
     if (!result.success) return;
 
     updateSummaryConfiguration(result.data);
+    analytics.capture('summary_delivery_schedule_updated');
     closeSummaryDeliveryDialog();
   };
 
@@ -1702,11 +1785,17 @@
   };
 
   const completeTodoTask = (taskId: string) => {
-    todoTasks = completeTodoTaskInModule(todoTasks, taskId);
+    const nextTasks = completeTodoTaskInModule(todoTasks, taskId);
+    if (nextTasks === todoTasks) return;
+    todoTasks = nextTasks;
+    analytics.capture('todo_task_completed');
   };
 
   const deleteTodoTask = (taskId: string) => {
-    todoTasks = deleteTodoTaskInModule(todoTasks, taskId);
+    const nextTasks = deleteTodoTaskInModule(todoTasks, taskId);
+    if (nextTasks === todoTasks) return;
+    todoTasks = nextTasks;
+    analytics.capture('todo_task_deleted');
   };
 
   const createTodoCategory = () => {
@@ -1762,8 +1851,7 @@
     if (newTodoCategoryId === category.id) {
       newTodoCategoryId = '';
     }
-    categoryDeletionDialog?.close();
-    categoryPendingDeletion = null;
+    void closeAnimatedDialog(categoryDeletionDialog, () => { categoryPendingDeletion = null; });
   };
 
   const requestTodoCategoryDeletion = async (category: TodoCategory) => {
@@ -1774,8 +1862,7 @@
   };
 
   const cancelTodoCategoryDeletion = () => {
-    categoryDeletionDialog?.close();
-    categoryPendingDeletion = null;
+    return closeAnimatedDialog(categoryDeletionDialog, () => { categoryPendingDeletion = null; });
   };
   const calendarAgendaDays = $derived(
     authState.mode === 'visitor'
@@ -1898,16 +1985,11 @@
   });
 </script>
 
-<svelte:head>
-  <title>Daily</title>
-  <meta
-    name="description"
-    content="Daily walking skeleton with Visitor mode, Local Setup, and Daily Summary preview."
-  />
-</svelte:head>
+<PageMetadata />
 
 {#snippet SummarySectionToggle(section: SummarySection, statusId: string)}
   <button
+    use:selectionFeedback={{ selected: sectionPauses[section], kind: 'section' }}
     class="daily-context-tile__toggle"
     type="button"
     disabled={!localSetupHydrated}
@@ -1921,17 +2003,11 @@
   </button>
 {/snippet}
 
-{#snippet TodoTaskRow(task: TodoTask)}
-  <li
-    class:daily-task--editing={editingTaskId === task.id}
-    class:daily-task--drop-placeholder={isDndShadowTask(task)}
-    class="daily-task"
-    aria-label={task.title}
-  >
+{#snippet TodoTaskContent(task: TodoTask)}
     {#if editingTaskId === task.id}
       <span class="daily-task-checkbox" aria-hidden="true"></span>
       <span class={`daily-priority daily-priority--${editingTaskUrgency}`} aria-hidden="true"></span>
-      <div class="daily-task-editor">
+      <div class="daily-task-editor" in:reveal={{ duration: 180 }}>
         <input
           bind:value={editingTaskTitle}
           aria-label="Edit Todo Task"
@@ -1996,7 +2072,6 @@
         onclick={() => startEditingTodoTask(task)}
       ><Pencil size={15} aria-hidden="true" /></button>
     {/if}
-  </li>
 {/snippet}
 
 {#snippet TodoTaskList(categoryId: string | null, label: string)}
@@ -2005,7 +2080,9 @@
     aria-label={label}
     use:dragHandleZone={{
       items: visibleTasksForCategory(categoryId),
-      flipDurationMs: 150,
+      dragDisabled: todoOutros > 0,
+      dropFromOthersDisabled: todoOutros > 0,
+      flipDurationMs: motionDuration(150),
       type: 'todo-task',
       useCursorForDetection: true,
       dropTargetStyle: { outline: 'none' },
@@ -2015,7 +2092,19 @@
     onfinalize={(event) => handleTodoFinalize(categoryId, event, categoryId !== null)}
   >
     {#each visibleTasksForCategory(categoryId) as task (task.id)}
-      {@render TodoTaskRow(task)}
+      <li
+        class:daily-task--editing={editingTaskId === task.id}
+        class:daily-task--drop-placeholder={isDndShadowTask(task)}
+        class="daily-task"
+        aria-label={task.title}
+        animate:flip={{ duration: motionDuration(150) }}
+        use:resizeOnChange={editingTaskId === task.id}
+        use:trackOutro={trackTodoOutro}
+        in:reveal={{ enabled: motionReady && !isDndShadowTask(task) && Object.keys(todoDragTaskLists).length === 0, duration: 200 }}
+        out:collapseTask={{ enabled: Object.keys(todoDragTaskLists).length === 0 }}
+      >
+        {@render TodoTaskContent(task)}
+      </li>
     {/each}
   </ul>
 {/snippet}
@@ -2023,7 +2112,7 @@
 {#snippet TodoDialogTaskList(tasks: TodoTask[], label: string)}
   <ul class="daily-todo-dialog__task-list" aria-label={label}>
     {#each tasks as task (task.id)}
-      <li>
+      <li animate:flip={{ duration: motionDuration(150) }} in:reveal out:collapseTask|global>
         <span
           class={`daily-priority daily-priority--${task.urgency}`}
           aria-label={urgencyLabel(task.urgency)}
@@ -2061,7 +2150,7 @@
           <LogIn size={19} />
         </a>
       {:else}
-        <details class="daily-account-menu" bind:this={accountMenu}>
+        <details class="daily-account-menu" bind:this={accountMenu} use:animatedDetails>
           <summary aria-label="Open account menu" title="Account menu">{accountInitials}</summary>
           <div class="daily-account-menu__panel">
             <div class="daily-account-menu__identity">
@@ -2072,7 +2161,7 @@
             {#if isAdministrator}
               <a href="/admin"><ShieldCheck size={17} />Admin Panel</a>
             {/if}
-            <form method="POST" action="/auth/sign-out">
+            <form method="POST" action="/auth/sign-out" onsubmit={resetPostHogIdentity}>
               <button type="submit"><LogOut size={17} />Sign out</button>
             </form>
           </div>
@@ -2306,6 +2395,7 @@
 
       {#if categoryComposerOpen}
         <form
+          transition:reveal
           class="daily-group-composer"
           onsubmit={(event) => {
             event.preventDefault();
@@ -2340,7 +2430,9 @@
         aria-label="Todo Categories"
         use:dragHandleZone={{
           items: visibleTodoCategories(),
-          flipDurationMs: 150,
+          dragDisabled: todoOutros > 0,
+          dropFromOthersDisabled: todoOutros > 0,
+          flipDurationMs: motionDuration(150),
           type: 'todo-category',
           useCursorForDetection: true
         }}
@@ -2348,7 +2440,7 @@
         onfinalize={handleTodoCategoryFinalize}
       >
         {#each visibleTodoCategories() as category, categoryIndex (category.id)}
-          <section class={`daily-column daily-column--${(categoryIndex % 3) + 1}`} aria-label={`${category.name} Todo Category`}>
+          <section use:trackOutro={trackTodoOutro} animate:flip={{ duration: motionDuration(150) }} in:reveal={{ enabled: motionReady && todoDragCategories === null }} out:reveal={{ enabled: todoDragCategories === null, duration: 150 }} class={`daily-column daily-column--${(categoryIndex % 3) + 1}`} aria-label={`${category.name} Todo Category`}>
             <header>
               {#if editingCategoryId === category.id}
                 <input bind:value={editingCategoryName} aria-label="Edit Todo Category" />
@@ -2397,6 +2489,7 @@
       <span>Daily</span>
       <a href="/privacy">Privacy Policy</a>
       <a href="/terms">Terms of Service</a>
+      <CookieSettingsButton />
       <a href="mailto:daily@dailykickoff.eu">daily@dailykickoff.eu</a>
     </footer>
   </section>
@@ -2404,6 +2497,7 @@
 
 {#if todoDialogOpen}
   <dialog
+    use:animatedDialog
     bind:this={todoDialog}
     class="daily-dialog daily-todo-dialog"
     aria-labelledby="todo-dialog-title"
@@ -5134,18 +5228,90 @@
 
   }
 
+  .daily-context-tile,
+  .daily-context-tile__main strong {
+    transition: background-color var(--duration-quick) var(--ease-smooth-out), color var(--duration-quick) var(--ease-smooth-out), border-color var(--duration-quick) var(--ease-smooth-out);
+  }
+
+  .daily-task-checkbox {
+    transition: background-color 100ms ease-out, border-color 100ms ease-out;
+  }
+
+  :global(.daily-task[data-completing]) .daily-task-checkbox {
+    border-color: #587542;
+    background: #587542;
+    color: #fff;
+  }
+
+  :global(.daily-task[data-completing]) .daily-task-checkbox :global(svg) { opacity: 1; }
+  :global(.daily-task[data-completing]) .daily-task-title { color: #75806f; text-decoration: line-through; }
+
+  .daily-location-favorite,
+  .daily-inline-favorite,
+  .daily-location-suggestion,
+  .daily-route-suggestions > button,
+  .daily-time-value,
+  .daily-priority-picker button {
+    transition: background-color var(--duration-quick) var(--ease-smooth-out), border-color var(--duration-quick) var(--ease-smooth-out), color var(--duration-quick) var(--ease-smooth-out);
+  }
+
+  .daily-location-favorite :global(svg),
+  .daily-inline-favorite :global(svg) {
+    transform-origin: center;
+    fill: currentColor;
+    fill-opacity: 0;
+    transition: fill-opacity var(--duration-quick) ease-out;
+  }
+
+  .daily-location-favorite.is-saved :global(svg),
+  .daily-inline-favorite.is-saved :global(svg) { fill-opacity: 1; }
+
+  .daily-weekdays button {
+    position: relative;
+    isolation: isolate;
+    overflow: hidden;
+    transition: border-color var(--duration-quick) ease-out, color var(--duration-quick) ease-out;
+  }
+
+  .daily-weekdays button::before {
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    border-radius: inherit;
+    background: #617d49;
+    content: '';
+    opacity: 0;
+    transform: scale(.55);
+    transition: transform var(--duration-standard) var(--ease-smooth-out), opacity var(--duration-quick) ease-out;
+  }
+
+  .daily-weekdays button.is-selected { background: #fff; }
+  .daily-weekdays button.is-selected::before { opacity: 1; transform: scale(1); }
+  .daily-weekdays button > span { position: relative; }
+
+  .daily-search-pending {
+    margin: 0;
+    min-height: 42px;
+    display: flex;
+    align-items: center;
+    padding: 10px;
+    color: #64715b;
+    font-size: 11px;
+  }
+
   @media (prefers-reduced-motion: reduce) {
     *,
     *::before,
     *::after {
       scroll-behavior: auto !important;
-      transition-duration: 0.01ms !important;
+      transition-duration: 0s !important;
     }
   }
 </style>
 
 {#if categoryPendingDeletion}
   <dialog
+    use:animatedDialog
     bind:this={categoryDeletionDialog}
     class="daily-dialog daily-confirm-dialog"
     aria-labelledby="category-deletion-title"
@@ -5173,6 +5339,7 @@
 
 {#if summaryDeliveryDialogOpen}
   <dialog
+    use:animatedDialog
     bind:this={summaryDeliveryDialog}
     class="daily-dialog daily-delivery-dialog"
     aria-labelledby="summary-delivery-dialog-title"
@@ -5213,7 +5380,7 @@
             data-active={activeSummaryTimePart === 'hours'}
             onclick={() => activateSummaryTimePart('hours')}
             onkeydown={(event) => handleSummaryTimeKeydown('hours', event)}
-          >{String(summaryTimeParts().hours).padStart(2, '0')}</button>
+          ><RollingNumber value={summaryTimeParts().hours} direction={summaryTimeDirection.hours} /></button>
           <button type="button" aria-label="Decrease hours" onclick={() => adjustSummaryTime('hours', -1)}>
             <ArrowDown size={18} />
           </button>
@@ -5236,7 +5403,7 @@
             data-active={activeSummaryTimePart === 'minutes'}
             onclick={() => activateSummaryTimePart('minutes')}
             onkeydown={(event) => handleSummaryTimeKeydown('minutes', event)}
-          >{String(summaryTimeParts().minutes).padStart(2, '0')}</button>
+          ><RollingNumber value={summaryTimeParts().minutes} direction={summaryTimeDirection.minutes} /></button>
           <button type="button" aria-label="Decrease minutes" onclick={() => adjustSummaryTime('minutes', -1)}>
             <ArrowDown size={18} />
           </button>
@@ -5277,6 +5444,7 @@
 
 {#if taskPlacementOpen}
   <dialog
+    use:animatedDialog
     bind:this={taskPlacementDialog}
     class="daily-dialog daily-placement-dialog"
     aria-labelledby="task-placement-title"
@@ -5314,6 +5482,7 @@
 
 {#if weatherDialogOpen}
   <dialog
+    use:animatedDialog
     bind:this={weatherDialog}
     class="daily-dialog daily-city-dialog"
     aria-labelledby="weather-dialog-title"
@@ -5333,7 +5502,7 @@
         aria-label="City Search"
         role="combobox"
         aria-controls="weather-location-suggestions"
-        aria-expanded={weatherLocationSearchResults.length > 0}
+        aria-expanded={weatherLocationSearchResults.length > 0 || weatherSearchPending}
         aria-autocomplete="list"
         aria-activedescendant={activeWeatherLocationSuggestion >= 0
           ? `weather-location-option-${activeWeatherLocationSuggestion}`
@@ -5367,12 +5536,14 @@
     </label>
     {#if weatherLocationSearchQuery.trim().length === 0 && savedWeatherCities.length > 0}
       <p class="daily-suggestions-label">Saved Weather Cities</p>
-    {:else if weatherLocationSearchQuery.trim().length > 0 && weatherLocationSearchResults.length > 0}
+    {:else if weatherLocationSearchQuery.trim().length > 0 && (weatherLocationSearchResults.length > 0 || weatherSearchPending)}
       <p class="daily-suggestions-label">Search results</p>
     {/if}
-    <div class="daily-city-results" id="weather-location-suggestions" role="listbox" aria-label="Weather Location search results">
-      {#each weatherLocationSearchResults as result, index}
-        <div class="daily-location-suggestion" class:is-highlighted={index === activeWeatherLocationSuggestion}>
+    {#if weatherLocationSearchResults.length > 0 || weatherSearchPending}
+    <div transition:reveal class="daily-city-results" id="weather-location-suggestions" role="listbox" aria-busy={weatherSearchPending} aria-label="Weather Location search results">
+      {#if weatherSearchPending}<p class="daily-search-pending" role="status">Searching cities…</p>{/if}
+      {#each weatherLocationSearchResults as result, index (`${result.latitude},${result.longitude}`)}
+        <div in:favoriteReveal out:favoriteExit|global={{ savedList: weatherLocationSearchQuery.trim().length === 0 }} class="daily-location-suggestion" class:is-highlighted={index === activeWeatherLocationSuggestion}>
           <button
             id={`weather-location-option-${index}`}
             class="daily-location-pick"
@@ -5392,6 +5563,7 @@
           </button>
           <button
             class="daily-location-favorite"
+            use:selectionFeedback={{ selected: isSavedWeatherCity(result), kind: 'favorite' }}
             class:is-saved={isSavedWeatherCity(result)}
             type="button"
             aria-label={savedWeatherCityButtonLabel(result)}
@@ -5402,6 +5574,7 @@
         </div>
       {/each}
     </div>
+    {/if}
     {#if weatherLocationSearchQuery.trim().length === 0 && savedWeatherCities.length === 0}
       <div class="daily-dialog-empty daily-saved-location-empty"><Star size={20} /><strong>No Saved Weather Cities yet</strong><span>Choose a city, then save it with the star.</span></div>
     {/if}
@@ -5414,6 +5587,7 @@
 
 {#if commuteDialogOpen}
   <dialog
+    use:animatedDialog
     bind:this={commuteDialog}
     class="daily-dialog daily-commute-dialog"
     aria-labelledby="commute-dialog-title"
@@ -5424,6 +5598,7 @@
     }}
   >
     {#if !commuteEditorOpen}
+      <div class="daily-route-view" in:routeView={{ direction: -1 }}>
       <span class="daily-dialog-kicker">Commute</span>
       <h2 id="commute-dialog-title">Your routes</h2>
       <div class="daily-route-list" aria-label="Saved Commute Routes">
@@ -5446,7 +5621,9 @@
       </div>
       <button class="daily-add-route" type="button" onclick={startNewCommuteRoute}><Plus size={17} />Add route</button>
       <footer><button type="button" aria-label="Close commute routes" onclick={closeCommuteDialog}><X size={20} /></button></footer>
+      </div>
     {:else}
+      <div class="daily-route-view" in:routeView={{ direction: 1 }}>
       <header class="daily-dialog-heading">
         <button type="button" aria-label="Back to routes" onclick={clearCommuteRouteDraft}><ArrowLeft size={18} /></button>
         <div><span class="daily-dialog-kicker">Commute</span><h2 id="commute-dialog-title">{editingCommuteRouteId ? 'Edit route' : 'Add route'}</h2></div>
@@ -5477,7 +5654,7 @@
                 role="combobox"
                 aria-autocomplete="list"
                 aria-controls={`commute-${selection.kind}-suggestions`}
-                aria-expanded={activeCommuteSearchField === selection.kind && (commuteSearchResults[selection.kind].length > 0 || (commuteSearchQueries[selection.kind].trim().length === 0 && savedCommuteAddresses.length > 0))}
+                aria-expanded={activeCommuteSearchField === selection.kind && (commuteSearchResults[selection.kind].length > 0 || commuteSearchPending[selection.kind] || (commuteSearchQueries[selection.kind].trim().length === 0 && savedCommuteAddresses.length > 0))}
                 aria-activedescendant={activeCommuteSuggestion[selection.kind] >= 0
                   ? commuteSearchQueries[selection.kind].trim().length === 0
                     ? `commute-${selection.kind}-saved-option-${activeCommuteSuggestion[selection.kind]}`
@@ -5502,6 +5679,7 @@
                 <small>{selectedPoint.label}</small>
                 <button
                   class="daily-inline-favorite"
+                  use:selectionFeedback={{ selected: isSavedCommuteAddress(selectedPoint), kind: 'favorite' }}
                   class:is-saved={isSavedCommuteAddress(selectedPoint)}
                   type="button"
                   aria-label={savedCommuteAddressButtonLabel(selectedPoint)}
@@ -5512,16 +5690,24 @@
               </div>
             {/if}
           </div>
-          {#if activeCommuteSearchField === selection.kind && commuteSearchQueries[selection.kind].trim().length === 0 && savedCommuteAddresses.length > 0}
-            <p class="daily-suggestions-label">Saved Commute Addresses</p>
+          {#if activeCommuteSearchField === selection.kind && (
+            (commuteSearchQueries[selection.kind].trim().length === 0 && savedCommuteAddresses.length > 0)
+            || commuteSearchResults[selection.kind].length > 0 || commuteSearchPending[selection.kind]
+          )}
             <div
               id={`commute-${selection.kind}-suggestions`}
-              class="daily-city-results"
+              transition:reveal
               role="listbox"
-              aria-label={`${selection.label} Saved Commute Addresses`}
+              aria-busy={commuteSearchPending[selection.kind]}
+              aria-label={commuteSearchQueries[selection.kind].trim().length === 0
+                ? `${selection.label} Saved Commute Addresses`
+                : `${selection.label} suggestions`}
             >
-              {#each savedCommuteAddresses as location, index}
-                <div class="daily-location-suggestion" class:is-highlighted={index === activeCommuteSuggestion[selection.kind]}>
+            {#if commuteSearchQueries[selection.kind].trim().length === 0}
+            <p class="daily-suggestions-label">Saved Commute Addresses</p>
+            <div class="daily-city-results">
+              {#each savedCommuteAddresses as location, index (`${location.latitude},${location.longitude}`)}
+                <div in:favoriteReveal out:favoriteExit|global={{ savedList: true }} class="daily-location-suggestion" class:is-highlighted={index === activeCommuteSuggestion[selection.kind]}>
                   <button
                     id={`commute-${selection.kind}-saved-option-${index}`}
                     class="daily-location-pick"
@@ -5536,6 +5722,7 @@
                   </button>
                   <button
                     class="daily-location-favorite"
+                    use:selectionFeedback={{ selected: isSavedCommuteAddress(location), kind: 'favorite' }}
                     class:is-saved={isSavedCommuteAddress(location)}
                     type="button"
                     aria-label={savedCommuteAddressButtonLabel(location)}
@@ -5546,16 +5733,12 @@
                 </div>
               {/each}
             </div>
-          {/if}
-          {#if commuteSearchResults[selection.kind].length}
-            <div
-              id={`commute-${selection.kind}-suggestions`}
-              class="daily-route-suggestions"
-              role="listbox"
-              aria-label={`${selection.label} suggestions`}
-            >
-              {#each commuteSearchResults[selection.kind] as suggestion, index}
+            {:else}
+            <div class="daily-route-suggestions">
+              {#if commuteSearchPending[selection.kind]}<p class="daily-search-pending" role="status">Searching addresses…</p>{/if}
+              {#each commuteSearchResults[selection.kind] as suggestion, index (suggestion.placeId)}
                 <button
+                  in:fade={{ duration: motionDuration(120) }}
                   id={`commute-${selection.kind}-option-${index}`}
                   type="button"
                   role="option"
@@ -5569,6 +5752,8 @@
                 </button>
               {/each}
             </div>
+            {/if}
+            </div>
           {/if}
         {/each}
         <fieldset class="daily-weekdays" aria-label="Route days">
@@ -5576,12 +5761,13 @@
           <div>
             {#each commuteDayValues as day}
               <button
+                use:selectionFeedback={{ selected: commuteRouteDays.includes(day), kind: 'day' }}
                 class:is-selected={commuteRouteDays.includes(day)}
                 type="button"
                 aria-label={`${day[0]?.toUpperCase()}${day.slice(1)} route day`}
                 aria-pressed={commuteRouteDays.includes(day)}
                 onclick={() => toggleCommuteRouteDay(day, !commuteRouteDays.includes(day))}
-              >{day.slice(0, 1).toUpperCase()}</button>
+              ><span>{day.slice(0, 1).toUpperCase()}</span></button>
             {/each}
           </div>
         </fieldset>
@@ -5596,12 +5782,14 @@
         </div>
       </form>
       <p class={`daily-dialog-status daily-dialog-status--${commuteRouteStatusTone}`}>{commuteRouteStatus}</p>
+      </div>
     {/if}
   </dialog>
 {/if}
 
 {#if calendarDialogOpen}
   <dialog
+    use:animatedDialog
     bind:this={calendarDialog}
     class="daily-dialog daily-calendar-dialog"
     aria-labelledby="calendar-dialog-title"
@@ -5658,6 +5846,7 @@
 
 {#if calendarSettingsOpen}
   <dialog
+    use:animatedDialog
     bind:this={calendarSettingsDialog}
     class="daily-dialog daily-calendar-dialog"
     aria-labelledby="calendar-settings-title"
@@ -5707,6 +5896,7 @@
 
 {#if secondaryPanel}
   <dialog
+    use:animatedDialog
     bind:this={secondaryDialog}
     class="daily-secondary-dialog"
     aria-labelledby="secondary-panel-title"

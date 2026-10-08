@@ -63,5 +63,3 @@ export const defaultSummaryConfiguration = summaryConfigurationSchema.parse({
   summaryDeliveryEnabled: true,
   sectionPauses: defaultSummarySectionPauseSettings
 });
-
-export const canPreviewDailySummary = (_configuration: SummaryConfiguration) => true;

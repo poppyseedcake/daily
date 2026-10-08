@@ -1,0 +1,15 @@
+{
+  "mode": "builtin-imagegen",
+  "use_case": "illustration-story",
+  "approved": false,
+  "role": "Refinement study: lighter Daily ceramic objects",
+  "prompt": "02-geometria-daily-ceramic-v2.prompt.txt",
+  "references": [
+    "02-geometria-daily-ceramic-study.png"
+  ],
+  "source": "/home/wojtek/.codex/generated_images/01a10880-0c92-7cf0-ad75-994d127c260f/exec-46fce526-dd6b-4891-9925-5fbbf7ab5697.png",
+  "width": 1254,
+  "height": 1254,
+  "transparent": true,
+  "project_asset": "/static/art/daily-error-404-ceramic-v2.png"
+}

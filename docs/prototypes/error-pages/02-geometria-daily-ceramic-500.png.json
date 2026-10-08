@@ -1,0 +1,15 @@
+{
+  "mode": "builtin-imagegen",
+  "use_case": "illustration-story",
+  "approved": false,
+  "role": "Refinement study: matching Daily ceramic pause",
+  "prompt": "02-geometria-daily-ceramic-500.prompt.txt",
+  "references": [
+    "02-geometria-daily-ceramic-v2.png"
+  ],
+  "source": "/home/wojtek/.codex/generated_images/01a10880-0c92-7cf0-ad75-994d127c260f/exec-c9769d45-fcbf-457b-9fc2-8a06016a6433.png",
+  "width": 1254,
+  "height": 1254,
+  "transparent": true,
+  "project_asset": null
+}

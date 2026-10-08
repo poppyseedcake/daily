@@ -194,12 +194,12 @@ export const createDeliveryHealthStore = (database: DeliveryHealthDatabase) => {
 
   return {
     async load({
-      now,
-      overdueThresholdMinutes
+      now = new Date().toISOString(),
+      overdueThresholdMinutes = scheduledWorkerOverdueMinutesFromEnvironment()
     }: {
-      now: string;
-      overdueThresholdMinutes: number;
-    }): Promise<DeliveryHealth> {
+      now?: string;
+      overdueThresholdMinutes?: number;
+    } = {}): Promise<DeliveryHealth> {
       const latestRunRows = await database
         .select()
         .from(scheduledWorkerRuns)

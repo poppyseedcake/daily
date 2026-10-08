@@ -9,6 +9,12 @@ let realSignIn: typeof import('$lib/server/auth').auth.api.signInSocial;
 const signInSocial = vi.fn();
 const googleUserInfo = vi.fn();
 let subjectSequence = 0;
+const loadLegalConfirmation = async (userId: string) => {
+  const { db } = await server.ssrLoadModule('/src/lib/server/db/index.ts');
+  return db.$client.prepare(
+    'select terms_version as termsVersion, terms_accepted_at as termsAcceptedAt from users where id = ?'
+  ).get(userId);
+};
 const cookieList = (response: Response) => response.headers.getSetCookie();
 const cookieHeader = (response: Response) => cookieList(response).map(value => value.split(';')[0]).join('; ');
 const submit = (values: Record<string, string>, path = '/auth/google') => fetch(`${serverOrigin}${path}`, {
@@ -76,7 +82,7 @@ describe('Google authentication HTTP flow', () => {
     expect(signInSocial).toHaveBeenCalledWith(expect.objectContaining({ body: expect.objectContaining({ requestSignUp: true, errorCallbackURL: '/?auth=signup' }) }));
     const confirmation = cookies.split('\n').find(value => value.startsWith('daily.legal_confirmation='))!;
     const payload = JSON.parse(Buffer.from(confirmation.split('=')[1].split('.')[0], 'base64url').toString());
-    expect(payload).toMatchObject({ termsVersion: '2026-10-02', termsAcceptedAt: expect.any(String) });
+    expect(payload).toMatchObject({ termsVersion: '2026-10-08', termsAcceptedAt: expect.any(String) });
     expect(payload).not.toHaveProperty('ageConfirmedAt');
     expect(payload).not.toHaveProperty('ageConfirmed');
   });
@@ -120,11 +126,10 @@ describe('Google authentication HTTP flow', () => {
       expect(validated).toHaveBeenCalledOnce();
       expect(registered.headers.get('location')).toBe('/?localSetupImport=1');
       const session = await auth.api.getSession({ headers: new Headers({ cookie: cookieHeader(registered) }) });
-      const { userLegalConfirmationStore } = await server.ssrLoadModule('/src/lib/server/db/userLegalConfirmationStore.ts');
       const { parseLegalConfirmationCookie } = await server.ssrLoadModule('/src/lib/server/legalConfirmation.ts');
       expect(parseLegalConfirmationCookie(new Headers({ cookie: cookieHeader(start) }))).toBeNull();
-      expect(await userLegalConfirmationStore.load(session.user.id)).toEqual({
-        termsVersion: '2026-10-02', termsAcceptedAt: expect.any(String)
+      expect(await loadLegalConfirmation(session.user.id)).toEqual({
+        termsVersion: '2026-10-08', termsAcceptedAt: expect.any(String)
       });
     } finally {
       validated.mockRestore();
@@ -139,14 +144,13 @@ describe('Google authentication HTTP flow', () => {
     expect(cookieList(registered).some(value => value.includes('session_token='))).toBe(true);
     const { auth } = await server.ssrLoadModule('/src/lib/server/auth.ts');
     const session = await auth.api.getSession({ headers: new Headers({ cookie: cookieHeader(registered) }) });
-    const { userLegalConfirmationStore } = await server.ssrLoadModule('/src/lib/server/db/userLegalConfirmationStore.ts');
-    const accepted = await userLegalConfirmationStore.load(session.user.id);
-    expect(accepted).toEqual({ termsVersion: '2026-10-02', termsAcceptedAt: expect.any(String) });
+    const accepted = await loadLegalConfirmation(session.user.id);
+    expect(accepted).toEqual({ termsVersion: '2026-10-08', termsAcceptedAt: expect.any(String) });
     // Never load the workspace; abandon its redirect and discard the Terms cookie.
     // This is also what remains in the browser once that cookie has expired.
     const returned = await finishGoogle(await submit({ intent: 'signin' }));
     expect(returned.headers.get('location')).toBe('/?localSetupImport=1');
     expect(cookieList(returned).some(value => value.includes('session_token='))).toBe(true);
-    expect(await userLegalConfirmationStore.load(session.user.id)).toEqual(accepted);
+    expect(await loadLegalConfirmation(session.user.id)).toEqual(accepted);
   });
 });

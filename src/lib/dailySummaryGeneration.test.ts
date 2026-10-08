@@ -157,7 +157,7 @@ describe('Daily Summary generation', () => {
     });
     const rendered = renderDailySummary(input);
 
-    expect(weatherProvider.weatherSummaryProvider.summarize).toHaveBeenCalledWith(summaryInput);
+    expect(weatherProvider.weatherSummaryProvider.summarize).toHaveBeenCalledWith(summaryInput, undefined);
     expect(rendered.html).toContain('18°');
     expect(rendered.html.replace(/<[^>]*>/g, '')).toContain('↑ 22°');
     expect(rendered.html.replace(/<[^>]*>/g, '')).toContain('↓ 12°');
@@ -185,7 +185,6 @@ describe('Daily Summary generation', () => {
       todoCategories,
       todoTasks,
       commuteRoutes: routes,
-      commuteDays: ['wednesday'],
       commuteEstimateProvider,
       now: new Date('2026-07-09T02:30:00.000Z')
     });
@@ -225,7 +224,6 @@ describe('Daily Summary generation', () => {
       todoCategories: [],
       todoTasks: [],
       commuteRoutes: routes,
-      commuteDays: ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'],
       now: new Date('2026-07-29T06:00:00.000Z')
     });
 
@@ -240,7 +238,6 @@ describe('Daily Summary generation', () => {
       todoCategories,
       todoTasks,
       commuteRoutes: [{ id: 'office', name: 'Office', days: ['wednesday'], enabled: true, origin: { label: 'Home', latitude: 40.1, longitude: -73.9 }, destination: { label: 'Office', latitude: 40.7, longitude: -74 } }],
-      commuteDays: ['wednesday'],
       commuteEstimateMode: 'live',
       commuteEstimateProvider: { estimateCommute: vi.fn().mockResolvedValue({ outcome: 'available', estimate: { durationMinutes: 24, staticDurationMinutes: 20 } }) },
       weatherLocation: { label: 'New York', latitude: 40.7, longitude: -74 },
@@ -273,7 +270,6 @@ describe('Daily Summary generation', () => {
       todoCategories,
       todoTasks,
       commuteRoutes: routes,
-      commuteDays: ['wednesday'],
       commuteEstimateMode: 'live',
       commuteEstimateProvider,
       now: new Date('2026-07-09T02:30:00.000Z')
@@ -509,14 +505,13 @@ describe('Daily Summary generation', () => {
     ['paused section', { sectionPauses: { ...configuration.sectionPauses, commute: true } }, ['wednesday']],
     ['non-Commute Day', {}, ['thursday']],
     ['empty weekday selection', {}, []]
-  ] as const)('keeps the Commute state visible without estimate requests for %s', async (_case, configurationPatch, commuteDays) => {
+  ] as const)('keeps the Commute state visible without estimate requests for %s', async (_case, configurationPatch, routeDays) => {
     const commuteEstimateProvider = { estimateCommute: vi.fn() };
     const preview = await generateDailySummaryInput({
       configuration: { ...configuration, ...configurationPatch },
       todoCategories,
       todoTasks,
-      commuteRoutes: [{ id: 'office', name: 'Office', days: [...commuteDays], enabled: true, origin: { label: 'Home', latitude: 40.1, longitude: -73.9 }, destination: { label: 'Office', latitude: 40.7, longitude: -74 } }],
-      commuteDays,
+      commuteRoutes: [{ id: 'office', name: 'Office', days: [...routeDays], enabled: true, origin: { label: 'Home', latitude: 40.1, longitude: -73.9 }, destination: { label: 'Office', latitude: 40.7, longitude: -74 } }],
       commuteEstimateProvider,
       now: new Date('2026-07-09T02:30:00.000Z')
     });
@@ -532,7 +527,6 @@ describe('Daily Summary generation', () => {
       todoCategories,
       todoTasks,
       commuteRoutes: [{ id: 'office', name: 'Office', days: ['wednesday'], enabled: true, origin: { label: 'Home', latitude: 40.1, longitude: -73.9 }, destination: { label: 'Office', latitude: 40.7, longitude: -74 } }],
-      commuteDays: ['wednesday'],
       commuteEstimateMode: 'live',
       commuteEstimateProvider: { estimateCommute: vi.fn().mockResolvedValue({ outcome: 'unavailable', reason: 'global-daily-cap' }) },
       now: new Date('2026-07-09T02:30:00.000Z')

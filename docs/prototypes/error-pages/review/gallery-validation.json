@@ -1,0 +1,25 @@
+{
+  "testedAt": "2026-10-05T13:13:51.372Z",
+  "count": 85,
+  "criterion": "score > 8",
+  "highestScore": 8.6,
+  "highestIterations": [
+    88,
+    94,
+    189
+  ],
+  "sourceImages": "All files exist; PNG dimensions verified",
+  "offlineImages": 85,
+  "checks": {
+    "filterScore86": [
+      88,
+      94,
+      189
+    ],
+    "modal": "Opened full 1280 × 1600 image",
+    "keyboardNext": "88 to 94",
+    "keyboardEscape": "Closed dialog",
+    "restoreAll": 85
+  },
+  "browser": "T3 collaborative browser; gallery embedded directly because dev-server navigation failed"
+}

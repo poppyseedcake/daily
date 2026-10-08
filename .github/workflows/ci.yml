@@ -18,6 +18,10 @@ jobs:
     if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    env:
+      # Define the static exports without connecting tests to a live project.
+      PUBLIC_POSTHOG_PROJECT_TOKEN: ''
+      PUBLIC_POSTHOG_HOST: ''
     steps:
       - name: Check out repository
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -96,7 +100,11 @@ jobs:
       - name: Build and test the release image
         env:
           DAILY_CONTAINER_TEST_IMAGE: ghcr.io/poppyseedcake/daily:build-${{ github.run_id }}-${{ github.run_attempt }}
+          PUBLIC_POSTHOG_PROJECT_TOKEN: ${{ vars.PUBLIC_POSTHOG_PROJECT_TOKEN }}
+          PUBLIC_POSTHOG_HOST: ${{ vars.PUBLIC_POSTHOG_HOST }}
         run: |
+          : "${PUBLIC_POSTHOG_PROJECT_TOKEN:?Set the PUBLIC_POSTHOG_PROJECT_TOKEN repository variable}"
+          : "${PUBLIC_POSTHOG_HOST:?Set the PUBLIC_POSTHOG_HOST repository variable}"
           # Add release identity after the same container acceptance test used by CI.
           npm run test:container
           release_context=$(mktemp -d)

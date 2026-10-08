@@ -1,0 +1,42 @@
+{
+  "base": 189,
+  "shapeReference": 109,
+  "headline404": "A page out of place.",
+  "headline500": "Daily, on pause.",
+  "svelteCheck": {
+    "errors": 0,
+    "warnings": 10,
+    "warningFiles": 2
+  },
+  "visualChecks": {
+    "404": {
+      "desktop": [
+        1280,
+        800
+      ],
+      "mobile": [
+        320,
+        568
+      ],
+      "horizontalOverflow": false,
+      "mobileVerticalOverflow": false,
+      "codeUnobstructed": true
+    },
+    "500": {
+      "mobile": [
+        320,
+        568
+      ],
+      "horizontalOverflow": false,
+      "mobileVerticalOverflow": false,
+      "actionsVisible": true
+    }
+  },
+  "previewMethod": "Source CSS and server-rendered markup loaded into the collaborative browser; no hydrated interaction checks in this iteration.",
+  "shapeFill": "#EFF2F6",
+  "shapeStroke": "#172D52",
+  "colorsAppliedTo": [
+    404,
+    500
+  ]
+}

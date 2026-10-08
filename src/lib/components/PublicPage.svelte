@@ -1,6 +1,8 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
   import DailyLogo from './DailyLogo.svelte';
+  import PageMetadata from './PageMetadata.svelte';
+  import CookieSettingsButton from './CookieSettingsButton.svelte';
 
   let {
     eyebrow,
@@ -15,10 +17,7 @@
   } = $props();
 </script>
 
-<svelte:head>
-  <title>{title} · Daily</title>
-  <meta name="description" content={intro} />
-</svelte:head>
+<PageMetadata title={`${title} · Daily`} description={intro} />
 
 <div class="public-page">
   <header class="public-page-header">
@@ -41,6 +40,7 @@
     <span>Daily</span>
     <a href="/privacy">Privacy</a>
     <a href="/terms">Terms</a>
+    <CookieSettingsButton />
     <a href="mailto:daily@dailykickoff.eu">daily@dailykickoff.eu</a>
   </footer>
 </div>
@@ -86,6 +86,7 @@
   a {
     color: #315b39;
     font-weight: 650;
+    transition: color var(--duration-quick, 150ms) var(--ease-smooth-out, cubic-bezier(0.22, 1, 0.36, 1));
   }
 
   a:hover {

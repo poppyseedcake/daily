@@ -92,8 +92,7 @@ const validDraft = (): UserSetupImportDraft => ({
       enabled: false,
       position: 1
     }
-  ],
-  commuteDays: ['monday', 'wednesday', 'sunday']
+  ]
 });
 
 const createStore = ({
@@ -113,7 +112,6 @@ const createStore = ({
     savedWeatherCities: UserSetupImportDraft['savedWeatherCities'];
     savedCommuteAddresses: UserSetupImportDraft['savedCommuteAddresses'];
     commuteRoutes: UserSetupImportDraft['commuteRoutes'];
-    commuteDays: UserSetupImportDraft['commuteDays'];
   };
 } => {
   const saved = {
@@ -123,8 +121,7 @@ const createStore = ({
     weatherLocations: [] as NonNullable<UserSetupImportDraft['weatherLocation']>[],
     savedWeatherCities: [] as UserSetupImportDraft['savedWeatherCities'],
     savedCommuteAddresses: [] as UserSetupImportDraft['savedCommuteAddresses'],
-    commuteRoutes: [] as UserSetupImportDraft['commuteRoutes'],
-    commuteDays: [] as UserSetupImportDraft['commuteDays']
+    commuteRoutes: [] as UserSetupImportDraft['commuteRoutes']
   };
 
   return {
@@ -140,8 +137,7 @@ const createStore = ({
         weatherLocations: [...saved.weatherLocations],
         savedWeatherCities: [...saved.savedWeatherCities],
         savedCommuteAddresses: [...saved.savedCommuteAddresses],
-        commuteRoutes: [...saved.commuteRoutes],
-        commuteDays: [...saved.commuteDays]
+        commuteRoutes: [...saved.commuteRoutes]
       };
 
       const failIfNeeded = (step: typeof failAfter) => {
@@ -183,9 +179,6 @@ const createStore = ({
         saveCommuteRoutes(routes) {
           staged.commuteRoutes.push(...routes);
           failIfNeeded('commuteRoutes');
-        },
-        saveCommuteDays(_userId, days) {
-          staged.commuteDays.push(...days);
         }
       });
 
@@ -196,7 +189,6 @@ const createStore = ({
       saved.savedWeatherCities = staged.savedWeatherCities;
       saved.savedCommuteAddresses = staged.savedCommuteAddresses;
       saved.commuteRoutes = staged.commuteRoutes;
-      saved.commuteDays = staged.commuteDays;
 
       return result;
     }
@@ -218,7 +210,6 @@ describe('User Setup import persistence', () => {
     expect(store.saved.savedWeatherCities).toEqual(draft.savedWeatherCities);
     expect(store.saved.savedCommuteAddresses).toEqual(draft.savedCommuteAddresses);
     expect(store.saved.commuteRoutes).toEqual(draft.commuteRoutes);
-    expect(store.saved.commuteDays).toEqual(draft.commuteDays);
   });
 
   test('accepts every Summary Configuration supported user time zone', async () => {
@@ -311,7 +302,6 @@ describe('User Setup import persistence', () => {
     ).resolves.toEqual({ outcome: 'invalid-draft' });
     expect(malformedStore.saved.summaryConfigurations).toEqual([]);
     expect(malformedStore.saved.commuteRoutes).toEqual([]);
-    expect(malformedStore.saved.commuteDays).toEqual([]);
 
     const overLimitStore = createStore();
     const overLimitDraft = validDraft();
@@ -339,6 +329,5 @@ describe('User Setup import persistence', () => {
     expect(store.saved.todoTasks).toEqual([]);
     expect(store.saved.weatherLocations).toEqual([]);
     expect(store.saved.commuteRoutes).toEqual([]);
-    expect(store.saved.commuteDays).toEqual([]);
   });
 });

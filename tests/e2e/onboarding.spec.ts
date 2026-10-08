@@ -1,9 +1,43 @@
 import { expect, test } from '@playwright/test';
 
-test('first visit explains Daily, then tours real features without changing setup', async ({ page }) => {
+for (const viewport of [
+  { width: 1280, height: 800 },
+  { width: 1100, height: 500 },
+  { width: 800, height: 800 },
+  { width: 844, height: 390 },
+  { width: 390, height: 844 }
+]) {
+  test(`welcome remains reachable in a ${viewport.width} × ${viewport.height} window`, async ({ page }) => {
+    await page.setViewportSize(viewport);
+    await page.goto('/');
+    const intro = page.getByRole('dialog', { name: 'Your daily summary, by email.' });
+    await expect(intro).toBeVisible();
+    const logo = intro.locator('.welcome__intro .daily-logo');
+    const heading = intro.getByRole('heading', { name: 'Your daily summary, by email.' });
+    await expect(logo).toBeInViewport({ ratio: 1 });
+    await expect(heading).toBeInViewport({ ratio: 1 });
+    await expect.poll(() => intro.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+
+    // The intro and the entire example must remain reachable, even when taller than the window.
+    await intro.evaluate((el) => { el.scrollTop = el.scrollHeight; });
+    const example = intro.getByRole('article', { name: 'Example Daily Summary' });
+    const bounds = await example.boundingBox();
+    expect(bounds).not.toBeNull();
+    expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(viewport.height);
+    await intro.evaluate((el) => { el.scrollTop = 0; });
+    await expect(logo).toBeInViewport({ ratio: 1 });
+    await expect(heading).toBeInViewport({ ratio: 1 });
+    await intro.getByRole('button', { name: 'Show me', exact: true }).click();
+    await expect(page.getByRole('dialog', { name: 'Todo', exact: true })).toBeVisible();
+  });
+}
+
+test('first visit explains Daily, then tours real features without changing setup', async ({ page, baseURL }) => {
   const mutations: string[] = [];
+  const applicationOrigin = new URL(baseURL!).origin;
   page.on('request', (request) => {
-    if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(request.method())) mutations.push(request.url());
+    if (new URL(request.url()).origin === applicationOrigin &&
+      ['POST', 'PUT', 'PATCH', 'DELETE'].includes(request.method())) mutations.push(request.url());
   });
   await page.goto('/');
   const intro = page.getByRole('dialog', { name: 'Your daily summary, by email.' });

@@ -35,7 +35,8 @@ resolved. The application code and the local environment do not prove the final 
 5. Confirm the controller contact and complaint wording, including the current route to the Polish
    UODO. The public draft provides the contact email and a UODO link.
 6. Confirm the Terms versioning rule. The current application version is
-   `2026-10-02`, stored with the acceptance time.
+   `2026-10-08`, stored with the acceptance time. Browser analytics consent is separate from Terms
+   acceptance and stored per browser, not in the account acceptance record.
 7. Confirm whether the wording about provider-held email copies and immutable backups is correct
    for the final legal notice.
 
@@ -64,6 +65,13 @@ resolved. The application code and the local environment do not prove the final 
    Cloudflare API integration. Review proxy logs, retention, access, and international transfers.
 9. Confirm all provider contracts and international transfer safeguards before the policy claims a
    specific location, contract, or transfer mechanism.
+10. Confirm the PostHog project region, processing agreement, subprocessors, international
+    transfer safeguards, event retention, and deletion procedure. The public policy describes
+    optional browser analytics separately from server diagnostics; a browser opt-out does not
+    disable scheduled-worker or weather-AI diagnostics. Browser analytics does not send names or
+    emails, and disables autocapture, session recordings, surveys, and client log export.
+    Verify the legitimate-interest assessment for weather-generation traces associated with a
+    Daily user identifier. Do not claim an EU region or a specific retention period from code alone.
 
 ## Operations questions
 
@@ -94,3 +102,14 @@ resolved. The application code and the local environment do not prove the final 
 
 The full source review is in
 [`docs/research/google-api-user-data-policy.md`](research/google-api-user-data-policy.md).
+
+## Browser analytics sources reviewed on 8 October 2026
+
+- [PostHog data collection controls](https://posthog.com/docs/privacy/data-collection)
+- [PostHog JavaScript configuration](https://posthog.com/docs/libraries/js/config)
+- [EDPB Cookie Banner Taskforce report](https://www.edpb.europa.eu/system/files/2023-01/edpb_20230118_report_cookie_banner_taskforce_en.pdf)
+
+The implementation uses an explicit, separate analytics choice, equally visible accept and reject
+buttons, and a persistent Cookie settings entry. It loads the browser SDK only after acceptance,
+initialises it opted out, then enables capture. Rejection calls the SDK opt-out controls when the
+SDK has already loaded. These controls do not establish the final production legal or provider setup.

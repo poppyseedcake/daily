@@ -1,0 +1,27 @@
+{
+  "name": "daily-readme-video",
+  "version": "1.0.0",
+  "description": "Daily README demonstration with real application screenshots",
+  "repository": {},
+  "license": "UNLICENSED",
+  "private": true,
+  "dependencies": {
+    "@remotion/cli": "4.0.534",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "remotion": "4.0.534"
+  },
+  "devDependencies": {
+    "@types/react": "19.2.7",
+    "@types/web": "0.0.166",
+    "typescript": "5.9.3"
+  },
+  "scripts": {
+    "dev": "remotion studio",
+    "capture": "node scripts/capture.mjs",
+    "render": "remotion render src/index.ts DailyDemo ../media/daily-demo.mp4 --codec=h264 --crf=23 --concurrency=2",
+    "build": "remotion bundle",
+    "upgrade": "remotion upgrade",
+    "check": "tsc --noEmit"
+  }
+}

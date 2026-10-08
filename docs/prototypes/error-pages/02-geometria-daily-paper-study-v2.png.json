@@ -1,0 +1,13 @@
+{
+  "mode": "builtin-imagegen",
+  "use_case": "precise-object-edit",
+  "approved": false,
+  "role": "Discarded raster study; retained as process evidence",
+  "prompt": "02-geometria-daily-paper-study-v2.prompt.txt",
+  "references": [
+    "02-geometria-daily-paper-study.png"
+  ],
+  "source": "/home/wojtek/.codex/generated_images/01a10880-0c92-7cf0-ad75-994d127c260f/exec-9efb4037-73a3-4fbd-8ac1-d1e29f12bd53.png",
+  "project_asset": null,
+  "superseded_by": "src/lib/components/ErrorPage.svelte (native SVG)"
+}

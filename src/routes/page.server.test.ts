@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import type { CommuteRoute } from '$lib/commuteRoute';
 import { defaultSummaryConfiguration } from '$lib/summaryConfiguration';
 
 const {
@@ -107,16 +108,7 @@ const {
     longitude: 21.0122
   },
   savedCommuteSetup: {
-    routes: [] as Array<{
-      id: string;
-      name: string;
-      origin: { label: string; latitude: number; longitude: number };
-      destination: { label: string; latitude: number; longitude: number };
-      enabled: boolean;
-    }>,
-    days: ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'] as Array<
-      'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday'
-    >
+    routes: [] as CommuteRoute[]
   },
   savedCalendarConnection: {
     status: 'not-connected' as 'not-connected' | 'connected' | 'failed'
@@ -164,12 +156,12 @@ const userCalendarReadiness = {
   unavailableReason: 'Connect Google Calendar to include Calendar Events.'
 } as const;
 
-const commuteRoute = (id: string, name: string, enabled = true, previewDurationMinutes = 26) => ({
+const commuteRoute = (id: string, name: string, enabled = true, previewDurationMinutes = 26): CommuteRoute => ({
   id,
   name,
   origin: { label: `${name} origin`, latitude: 52.1, longitude: 21.1 },
   destination: { label: `${name} destination`, latitude: 52.2, longitude: 21.2 },
-  days: savedCommuteSetup.days,
+  days: ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'],
   previewDurationMinutes,
   enabled
 });
@@ -263,8 +255,7 @@ vi.mock('$lib/server/db/commuteSetupStore', () => ({
     },
     async createRoute() { throw new Error('not implemented'); },
     async updateRoute() { throw new Error('not implemented'); },
-    async deleteRoute() { return false; },
-    async saveDays() {}
+    async deleteRoute() { return false; }
   }
 }));
 
@@ -583,7 +574,6 @@ describe('Daily page server load', () => {
     savedConfiguration.sectionPauses.commute = false;
     savedConfiguration.summaryDeliveryEnabled = true;
     savedCommuteSetup.routes.length = 0;
-    savedCommuteSetup.days.splice(0, savedCommuteSetup.days.length, 'monday', 'tuesday', 'wednesday', 'thursday', 'friday');
     validationFailure.enabled = false;
     savedCalendarConnection.status = 'not-connected';
     savedSelectedCalendars.length = 0;
@@ -1002,7 +992,7 @@ describe('Daily page server load', () => {
 
     const result = await loadPage();
 
-    expect(result.commuteSetup).toEqual({ routes: [], days: expect.any(Array) });
+    expect(result.commuteSetup).toEqual({ routes: [] });
     expect(sentForecastRequests).toHaveLength(0);
     expect(console.warn).toHaveBeenCalledWith(
       'Failed to load User Commute setup.',
@@ -1136,8 +1126,7 @@ describe('Daily page server load', () => {
       },
       weatherLocation: null,
       commuteSetup: {
-        routes: [],
-        days: ['monday', 'tuesday', 'wednesday', 'thursday', 'friday']
+        routes: []
       },
       savedWeatherCities: [],
       savedCommuteAddresses: [],
@@ -1176,8 +1165,7 @@ describe('Daily page server load', () => {
       },
       weatherLocation: null,
       commuteSetup: {
-        routes: [],
-        days: ['monday', 'tuesday', 'wednesday', 'thursday', 'friday']
+        routes: []
       },
       savedWeatherCities: [],
       savedCommuteAddresses: [],
@@ -1214,8 +1202,7 @@ describe('Daily page server load', () => {
       },
       weatherLocation: null,
       commuteSetup: {
-        routes: [],
-        days: ['monday', 'tuesday', 'wednesday', 'thursday', 'friday']
+        routes: []
       },
       savedWeatherCities: [],
       savedCommuteAddresses: [],
@@ -1387,7 +1374,7 @@ describe('Daily page server load', () => {
 
   test.each([
     ['Commute is paused', () => { savedConfiguration.sectionPauses.commute = true; }],
-    ['the local weekday is not a Commute Day', () => { savedCommuteSetup.days.splice(0); }],
+    ['the local weekday is not a Commute Day', () => { savedCommuteSetup.routes[0]!.days.splice(0); }],
     ['there are no enabled routes', () => { savedCommuteSetup.routes[0]!.enabled = false; }]
   ])('makes no Maps estimate call when %s during test delivery', async (_scenario, arrange) => {
     getSession.mockResolvedValue({

@@ -66,7 +66,7 @@ const createProviderIsolationDependencies = (
   configurationStore: { load: vi.fn().mockResolvedValue(summaryConfiguration) },
   todoStore: { load: vi.fn().mockResolvedValue(usefulTodoState) },
   weatherLocationStore: { load: vi.fn().mockResolvedValue(null) },
-  commuteSetupStore: { load: vi.fn().mockResolvedValue({ routes: [], days: [] }) },
+  commuteSetupStore: { load: vi.fn().mockResolvedValue({ routes: [] }) },
   calendarEvents: calendarEventsDependency(),
   weatherProvider: { fetchDailyForecast: vi.fn() },
   commuteEstimateProvider: vi.fn(),
@@ -207,8 +207,7 @@ describe('User Daily Summary generation', () => {
             days: ['tuesday'],
             origin: { label: 'Home', latitude: 52.2, longitude: 21 },
             destination: { label: 'Office', latitude: 52.3, longitude: 21.1 }
-          }],
-          days: ['tuesday']
+          }]
         })
       },
       calendarEvents: { load: loadCalendarEvents },

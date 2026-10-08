@@ -6,8 +6,6 @@ export type LocalTodayInput = {
   userTimeZone: UserTimeZone;
 };
 
-export const parseSummaryTime = (summaryTime: string) => Temporal.PlainTime.from(summaryTime);
-
 export const getLocalToday = ({ instant, userTimeZone }: LocalTodayInput) =>
   instant.toZonedDateTimeISO(userTimeZone).toPlainDate();
 

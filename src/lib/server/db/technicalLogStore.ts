@@ -176,7 +176,10 @@ export const createTechnicalLogStore = (
       const lastRecord = pageRows.at(-1);
 
       return {
-        records: pageRows.map(storedRecord),
+        records: pageRows.map((row) => {
+          const { id: _id, ...event } = storedRecord(row);
+          return event;
+        }),
         nextCursor:
           rows.length > pageSize && lastRecord
             ? encodeCursor({ occurredAt: lastRecord.occurredAt, id: lastRecord.id })

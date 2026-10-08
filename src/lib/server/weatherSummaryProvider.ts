@@ -2,9 +2,11 @@ import { env } from '$env/dynamic/private';
 import { z } from 'zod';
 import {
   type NormalizedWeatherSummaryInput,
+  type WeatherSummaryObservability,
   type WeatherSummaryProvider as WeatherSummaryProviderContract
 } from '$lib/weatherForecast';
 import { normalizedWeatherSummaryInputSchema } from '$lib/weatherSummaryContract';
+import { getServerPostHogClient } from './posthog';
 
 export type WeatherSummaryProvider = WeatherSummaryProviderContract;
 
@@ -81,7 +83,11 @@ const responsePayloadSchema = z.object({
         }).passthrough()
       ).optional()
     }).passthrough()
-  ).optional()
+  ).optional(),
+  usage: z.object({
+    input_tokens: z.number().optional(),
+    output_tokens: z.number().optional()
+  }).optional()
 }).passthrough();
 
 const structuredSummarySchema = z.object({
@@ -115,7 +121,7 @@ export const createOpenAiWeatherSummaryProvider = ({
   prompt = env.OPENAI_WEATHER_PROMPT,
   onDiagnostic = () => {}
 }: OpenAiWeatherSummaryProviderOptions = {}): WeatherSummaryProvider => ({
-  async summarize(input) {
+  async summarize(input, observability) {
     const startedAt = Date.now();
     let attempt = 0;
     let readingResponse = false;
@@ -153,6 +159,19 @@ export const createOpenAiWeatherSummaryProvider = ({
 
       for (attempt = 1; attempt <= 2; attempt += 1) {
         readingResponse = false;
+        const inputMessages = [
+          {
+            role: 'developer',
+            content: weatherSummaryDeveloperInstruction(
+              prompt?.trim() || defaultWeatherSummaryPrompt,
+              attempt === 1 ? maxCharacters : Math.max(1, Math.floor(maxCharacters * 0.7))
+            )
+          },
+          {
+            role: 'user',
+            content: JSON.stringify(normalizedInput.data)
+          }
+        ];
         const response = await fetchWithTimeout(
           fetcher,
           openAiResponsesUrl,
@@ -169,19 +188,7 @@ export const createOpenAiWeatherSummaryProvider = ({
               store: false,
               tools: [],
               max_output_tokens: configuration.data.maxOutputTokens,
-              input: [
-                {
-                  role: 'developer',
-                  content: weatherSummaryDeveloperInstruction(
-                    prompt?.trim() || defaultWeatherSummaryPrompt,
-                    attempt === 1 ? maxCharacters : Math.max(1, Math.floor(maxCharacters * 0.7))
-                  )
-                },
-                {
-                  role: 'user',
-                  content: JSON.stringify(normalizedInput.data)
-                }
-              ],
+              input: inputMessages,
               text: {
                 format: {
                   type: 'json_schema',
@@ -202,19 +209,42 @@ export const createOpenAiWeatherSummaryProvider = ({
         );
 
         if (!response.ok) {
+          await captureOpenAiWeatherGeneration({
+            observability,
+            model: configuration.data.model,
+            maxOutputTokens: configuration.data.maxOutputTokens,
+            input: inputMessages,
+            httpStatus: response.status,
+            latencySeconds: (Date.now() - startedAt) / 1_000,
+            error: `OpenAI Responses request returned HTTP ${response.status}.`
+          });
           report('http-error', response.status);
           return { outcome: 'unavailable' };
         }
 
         readingResponse = true;
         const payload = responsePayloadSchema.parse(await response.json());
+        const responseText = responseTextFrom(payload);
+        await captureOpenAiWeatherGeneration({
+          observability,
+          model: configuration.data.model,
+          maxOutputTokens: configuration.data.maxOutputTokens,
+          input: inputMessages,
+          output: responseText,
+          inputTokens: payload.usage?.input_tokens,
+          outputTokens: payload.usage?.output_tokens,
+          httpStatus: response.status,
+          latencySeconds: (Date.now() - startedAt) / 1_000,
+          error: payload.status === 'completed' && responseText
+            ? undefined
+            : 'OpenAI Responses response was incomplete or did not contain output.'
+        });
 
         if (payload.status !== 'completed') {
           report('incomplete-response', response.status);
           return { outcome: 'unavailable' };
         }
 
-        const responseText = responseTextFrom(payload);
         if (!responseText) {
           report('missing-output', response.status);
           return { outcome: 'unavailable' };
@@ -249,6 +279,61 @@ export const createOpenAiWeatherSummaryProvider = ({
 export const openAiWeatherSummaryProvider = createOpenAiWeatherSummaryProvider({
   onDiagnostic: writeWeatherSummaryDiagnostic
 });
+
+const captureOpenAiWeatherGeneration = async ({
+  observability,
+  model,
+  maxOutputTokens,
+  input,
+  output,
+  inputTokens,
+  outputTokens,
+  httpStatus,
+  latencySeconds,
+  error
+}: {
+  observability: WeatherSummaryObservability | undefined;
+  model: string;
+  maxOutputTokens: number;
+  input: Array<{ role: string; content: string }>;
+  output?: string | null;
+  inputTokens?: number;
+  outputTokens?: number;
+  httpStatus: number;
+  latencySeconds: number;
+  error?: string;
+}) => {
+  if (!observability) return;
+
+  try {
+    const posthog = getServerPostHogClient();
+    if (!posthog) return;
+
+    posthog.capture({
+      distinctId: observability.distinctId,
+      event: '$ai_generation',
+      properties: {
+        $ai_trace_id: observability.traceId,
+        $ai_session_id: observability.sessionId,
+        $ai_span_name: 'daily_weather_summary',
+        $ai_model: model,
+        $ai_provider: 'openai',
+        $ai_input: input,
+        $ai_output_choices: output ? [{ role: 'assistant', content: output }] : [],
+        $ai_max_tokens: maxOutputTokens,
+        $ai_http_status: httpStatus,
+        $ai_latency: latencySeconds,
+        $ai_is_error: Boolean(error),
+        ...(error ? { $ai_error: error } : {}),
+        ...(inputTokens === undefined ? {} : { $ai_input_tokens: inputTokens }),
+        ...(outputTokens === undefined ? {} : { $ai_output_tokens: outputTokens })
+      }
+    });
+    await posthog.flush();
+  } catch {
+    // AI observability must not change weather-summary delivery.
+  }
+};
 
 const responseTextFrom = (payload: z.infer<typeof responsePayloadSchema>) => {
   if (payload.output_text?.trim()) {

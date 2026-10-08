@@ -1,5 +1,6 @@
 <script lang="ts">
   import PublicPage from '$lib/components/PublicPage.svelte';
+  import CookieSettingsButton from '$lib/components/CookieSettingsButton.svelte';
 </script>
 
 <PublicPage
@@ -8,7 +9,7 @@
   intro="This Privacy Policy explains how Daily handles personal data when you use the free Daily service."
 >
   {#snippet children()}
-    <p>Last updated: 2 October 2026.</p>
+    <p>Last updated: 8 October 2026.</p>
 
     <h2>Who runs Daily</h2>
     <p>
@@ -54,6 +55,16 @@
         confirmations from the previous registration flow. Daily does not collect new age
         confirmations, dates of birth, or identity documents.
       </li>
+      <li>
+        <strong>Optional browser analytics:</strong> only after you accept analytics, Daily sends
+        page views, feature-use events, and browser errors to PostHog. Events can include the
+        action name, time, browser and device information, network metadata such as the IP address,
+        page address without query parameters
+        or fragments, a browser identifier, and your Daily user identifier when signed
+        in. Daily does not attach your name or email to browser analytics. Automatic interaction
+        capture and session recordings are disabled; task text, Calendar content, and address
+        search text are not collected as browser analytics.
+      </li>
     </ul>
 
     <h2>Legal bases</h2>
@@ -73,6 +84,10 @@
       <li>
         Terms acceptance and historical access records: contract administration and Daily's legitimate interest in keeping
         a record of the access condition that you accepted.
+      </li>
+      <li>
+        Optional browser analytics and related analytics cookies and storage: your consent under
+        Article 6(1)(a) GDPR. You can refuse or withdraw this consent without losing access to Daily.
       </li>
     </ul>
 
@@ -174,6 +189,17 @@
         logs or provider retention depend on the final production configuration and are not
         determined by this application code.
       </li>
+      <li>
+        <strong>PostHog:</strong> optional browser analytics as described above. Separately, Daily
+        uses PostHog for server diagnostics: scheduled-delivery totals, duration and failure
+        classifications, and, when weather AI is enabled, generation traces containing normalised
+        weather input, the generated weather sentence, model and token usage, timing, status, and
+        the Daily user identifier. These server diagnostics support troubleshooting under the
+        legitimate-interest basis described above, use no browser analytics cookies, and are not
+        controlled by the browser analytics choice. They do not include Calendar events, Todo
+        text, email bodies, or OAuth credentials. See
+        <a href="https://posthog.com/privacy">PostHog's Privacy Policy</a>.
+      </li>
     </ul>
     <p>
       Provider processing locations, contracts, retention, and international transfer safeguards
@@ -182,7 +208,7 @@
       documents.
     </p>
 
-    <h2>Cookies and browser storage</h2>
+    <h2 id="cookies">Cookies and browser storage</h2>
     <p>
       Daily uses the Better Auth session cookie to keep a signed-in session. In the current
       configuration the cookie is normally named <code>better-auth.session_token</code>, with the
@@ -198,8 +224,32 @@
       Before sign-in, Daily stores the visitor's local setup in browser local storage under
       <code>daily.visitorLocalSetup.v3</code>. This can include the local setup listed above. The
       application does not use the visitor setup cookie, session storage, IndexedDB, or a browser
-      database for this purpose. The application does not add analytics cookies.
+      database for this purpose. Daily also stores whether you have seen the introduction under
+      <code>daily.onboarding.v1</code>.
     </p>
+    <p>
+      These cookies and storage support sign-in, security, your saved local setup, and your
+      preferences. They are separate from optional analytics. Daily stores your analytics choice
+      and its timestamp in local storage under <code>daily.cookieConsent.v1</code> for 180 days,
+      after which you are asked again when you revisit. Clearing this storage also resets your
+      choice. If browser storage is blocked, your choice applies only to the current visit.
+    </p>
+    <p>
+      Before you accept analytics, Daily does not initialise PostHog browser tracking or send
+      browser analytics events. After acceptance, PostHog uses a first-party cookie normally
+      named <code>ph_&lt;project-token&gt;_posthog</code>, along with PostHog local and session
+      storage, to recognise a browser and its analytics session. The analytics cookie has a
+      180-day lifetime that can be renewed during use. Daily does not enable session recordings
+      or cookieless tracking as an alternative when you refuse analytics.
+    </p>
+    <p>
+      Select <strong>Cookie settings</strong> in the footer of Daily or below to change your
+      choice. Rejecting analytics stops further browser analytics collection and disables
+      PostHog analytics persistence. Withdrawing consent does not affect the lawfulness of
+      earlier processing or automatically delete events already received by PostHog; contact
+      Daily to request deletion of that data.
+    </p>
+    <CookieSettingsButton />
 
     <h2>Retention</h2>
     <ul>
@@ -224,6 +274,11 @@
         An email accepted by Resend or delivered to a recipient cannot be recalled by Daily. The
         provider's retention and deletion rules must be checked separately.
       </li>
+      <li>
+        PostHog events and server diagnostics are retained according to the configured PostHog
+        project settings and provider terms. Browser cookie expiry and withdrawing consent do
+        not delete stored events. Contact Daily about retention or a deletion request.
+      </li>
     </ul>
 
     <h2>Disconnecting Calendar and deleting an account</h2>
@@ -247,6 +302,10 @@
       correction of, deletion of, restriction of, or portability of your personal data. You may
       also object to processing based on legitimate interests. Contact Daily first at
       <a href="mailto:daily@dailykickoff.eu">daily@dailykickoff.eu</a>.
+    </p>
+    <p>
+      You may withdraw consent to browser analytics at any time through Cookie settings.
+      Acceptance of the Terms of Service and Google authorisation do not give consent to analytics.
     </p>
     <p>
       You have the right to complain to the President of the Polish Personal Data Protection

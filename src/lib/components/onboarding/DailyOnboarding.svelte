@@ -121,7 +121,8 @@
 
 <style>
   .daily-onboarding { position: fixed; inset: 0; width: 100%; max-width: none; height: 100%; max-height: none; padding: 24px; margin: 0; border: 0; background: transparent; color: #18201c; overflow-y: auto; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; }
-  .daily-onboarding[open]:not(.daily-onboarding--tour) { display: grid; place-items: center; }
+  /* Keep the top reachable when the welcome panel is taller than the viewport. */
+  .daily-onboarding[open]:not(.daily-onboarding--tour) { display: grid; place-items: safe center; }
   .daily-onboarding::backdrop { background: #18201c70; }
   .daily-onboarding--tour { padding: 0; overflow: hidden; }
   .daily-onboarding--tour::backdrop { background: transparent; }
@@ -142,9 +143,9 @@
   footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 24px; }
   footer > div { display: flex; align-items: center; gap: 8px; }
   button { min-height: 40px; padding: 10px 14px; border: 0; border-radius: 8px; font-size: 13px; font-weight: 600; line-height: 1.4; cursor: pointer; }
-  .primary { background: #587542; color: #fff; }
+  .primary { background: #587542; color: #fff; transition: background var(--duration-quick, 150ms) var(--ease-smooth-out, cubic-bezier(0.22, 1, 0.36, 1)); }
   .primary:hover { background: #496238; }
-  .secondary { background: transparent; color: #626c5c; }
+  .secondary { background: transparent; color: #626c5c; transition: background var(--duration-quick, 150ms) var(--ease-smooth-out, cubic-bezier(0.22, 1, 0.36, 1)), color var(--duration-quick, 150ms) var(--ease-smooth-out, cubic-bezier(0.22, 1, 0.36, 1)); }
   .secondary:hover { background: #f2f5ee; color: #18201c; }
   button:focus-visible { outline: 2px solid #587542; outline-offset: 3px; }
   .spotlight { position: fixed; border: 2px solid #587542; border-radius: 10px; box-shadow: 0 0 0 300vmax #18201c66; pointer-events: none; }

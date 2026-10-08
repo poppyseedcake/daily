@@ -147,18 +147,12 @@ export const commuteRoutes = sqliteTable(
   })
 );
 
-export const commuteDays = sqliteTable(
-  'commute_days',
-  {
-    userId: text('user_id')
-      .notNull()
-      .references(() => users.id, { onDelete: 'cascade' }),
-    day: text('day', {
-      enum: ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
-    }).notNull()
-  },
-  (table) => [primaryKey({ columns: [table.userId, table.day] })]
-);
+// A saved setup remains explicit after its last route is deleted.
+export const commuteSetups = sqliteTable('commute_setups', {
+  userId: text('user_id')
+    .primaryKey()
+    .references(() => users.id, { onDelete: 'cascade' })
+});
 
 export const calendarConnections = sqliteTable('calendar_connections', {
   id: text('id').primaryKey(),
@@ -442,7 +436,7 @@ export const usersRelations = relations(users, ({ one, many }) => ({
   savedWeatherCities: many(savedWeatherCities),
   savedCommuteAddresses: many(savedCommuteAddresses),
   commuteRoutes: many(commuteRoutes),
-  commuteDays: many(commuteDays),
+  commuteSetup: one(commuteSetups),
   calendarConnection: one(calendarConnections),
   selectedCalendars: many(selectedCalendars),
   deliveryRecords: many(deliveryRecords)
@@ -502,9 +496,9 @@ export const commuteRoutesRelations = relations(commuteRoutes, ({ one }) => ({
   })
 }));
 
-export const commuteDaysRelations = relations(commuteDays, ({ one }) => ({
+export const commuteSetupsRelations = relations(commuteSetups, ({ one }) => ({
   user: one(users, {
-    fields: [commuteDays.userId],
+    fields: [commuteSetups.userId],
     references: [users.id]
   })
 }));

@@ -1,0 +1,11 @@
+Use case: precise-object-edit
+Asset type: transparent standalone 404 illustration.
+Edit target: supplied image.
+Primary request: refine the supplied paper-cut illustration with exact geometric precision and much lighter material treatment. Preserve its missing-piece concept, colors, four pieces, and overall placement.
+Changes:
+1. All four pieces must have IDENTICAL outer bounding-box dimensions. Make the sage circle, navy arch, sage rounded square, outlined leaf slot, and displaced olive leaf each occupy a 220 by 220 square before rotation. Currently the leaf and slot are too small. The empty leaf outline must match the displaced olive leaf EXACTLY in shape and dimensions.
+2. Use a precise 2x2 grid for the three seated pieces and the empty leaf slot. Shared rows, columns, equal 20-unit gutters. Circle top left, empty leaf slot top right, navy arch bottom left, sage rounded square bottom right. Displaced olive leaf moves diagonally up/right by 110 units and rotates clockwise ONLY 8 degrees. Its placement must clearly suggest that it is pulled out of the empty slot.
+3. Make all pieces exceptionally thin uncoated tinted paper, almost flat. Reduce the current heavy shadows by 80 percent; no visible thick side walls. The outlined slot is a precisely die-cut thin paper ring, not a vector line, with the same tiny edge thickness and very soft subtle shadow as the pieces.
+4. Quiet smooth paper with the finest natural texture, not noisy mottling. Clean edges, no colored fringes.
+Invariants: only the four colored geometric pieces and the matching fine empty-slot outline. Circle, arch with semicircular top and flat bottom, rounded square, and leaf with square upper-left corner and three continuously rounded corners. Navy #172d52, sage #c7d6b8, olive #587542. Nearly top-down view. Soft daylight. Square framing with safe clear margins, actual alpha transparency.
+Avoid: page UI, text, numbers, arrows, props, thick cardboard, clay, plastic, bevels, heavy shading, glow, grain overlay.

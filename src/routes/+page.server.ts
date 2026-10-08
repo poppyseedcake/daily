@@ -26,7 +26,6 @@ import {
 import { createUserCalendarEvents } from '$lib/server/userCalendarEvents';
 import { loadUserSummaryConfiguration } from '$lib/server/summaryConfigurationPersistence';
 import { loadUserTodoStateSafely } from '$lib/server/todoPersistence';
-import { loadUserWeatherLocation } from '$lib/server/weatherLocationPersistence';
 import { loadUserCommuteSetup } from '$lib/server/commuteSetupPersistence';
 import {
   defaultSummaryConfiguration,
@@ -41,7 +40,6 @@ import { deleteDailyAccount } from '$lib/server/accountDeletion';
 import { createProductionUserDailySummaryGenerator } from '$lib/server/productionUserDailySummaryGeneration';
 import { UserDailySummaryNotActiveError } from '$lib/dailySummaryGeneration/server';
 import { createTestDailySummaryDelivery } from '$lib/server/testDailySummaryDelivery';
-import { defaultCommuteDays } from '$lib/commuteRoute';
 import { env } from '$env/dynamic/private';
 import { fail } from '@sveltejs/kit';
 import {
@@ -82,8 +80,7 @@ const testDailySummaryDelivery = createTestDailySummaryDelivery({
 type LoadedCommuteSetup = Awaited<ReturnType<typeof loadUserCommuteSetup>>;
 
 const defaultLoadedCommuteSetup: LoadedCommuteSetup = {
-  routes: [],
-  days: [...defaultCommuteDays]
+  routes: []
 };
 
 const loadPageCommuteSetup = async (userId: string): Promise<{
@@ -196,7 +193,7 @@ export const load = async ({ request, cookies }) => {
       : [];
   const weatherLocation =
     authState.mode === 'user'
-      ? await loadUserWeatherLocation(userWeatherLocationStore, authState.userId).catch(() => {
+      ? await userWeatherLocationStore.load(authState.userId).catch(() => {
           console.warn('Failed to load User Weather Location.', {
             userId: authState.userId,
             classification: 'weather-location-unavailable'

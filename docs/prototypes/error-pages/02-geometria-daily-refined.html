@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex, nofollow"><title>Error pages · Daily</title><style>html,body{margin:0;min-width:320px;background:#f7f8f5;font-size:16px;line-height:1.5} .daily-logo{display:inline-flex;align-items:center;gap:10px;color:#172d52;font-family:inherit;font-size:26px;font-weight:760;letter-spacing:-.04em;line-height:1} .daily-logo__mark{width:34px;height:34px;display:block;flex-shrink:0}
+@font-face {
+  font-family: 'Daily Fraunces';
+  src: url('../../../static/fonts/fraunces-variable.ttf') format('truetype');
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Daily Manrope';
+  src: url('../../../static/fonts/manrope-variable.ttf') format('truetype');
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+}
+.error-page {
+  --error-ground: #f7f8f5;
+  --error-ink: #172d52;
+  --error-sage: #c7d6b8;
+  --error-olive: #587542;
+  --error-muted: #3f4d44;
+  box-sizing: border-box;
+  min-height: 100svh;
+  display: flex;
+  flex-direction: column;
+  background: var(--error-ground);
+  color: var(--error-ink);
+  font-family: 'Daily Manrope', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+.error-page *, .error-page *::before, .error-page *::after { box-sizing: border-box; }
+.error-page ::selection { color: var(--error-ink); background: var(--error-sage); }
+.error-page :where(a) { color: inherit; }
+.error-page :is(a, button):focus-visible { outline: 2px solid var(--error-ink); outline-offset: 5px; }
+.error-page__container { width: min(calc(100% - 96px), 760px); margin-inline: auto; }
+.error-page__header { min-height: 112px; display: flex; align-items: center; }
+.error-page__brand { display: inline-flex; align-items: center; min-height: 44px; text-decoration: none; }
+.error-page__brand strong { font-weight: 650; }
+.error-page__main { flex: 1; display: grid; grid-template-columns: 400px 304px; column-gap: 56px; align-items: center; align-content: center; padding-block: 16px 72px; }
+.error-page h1 { margin: 0 0 0 -3px; font-family: 'Daily Fraunces', Georgia, serif; font-size: 80px; font-weight: 450; font-optical-sizing: none; font-variation-settings: 'opsz' 112, 'SOFT' 25, 'WONK' 1; line-height: 1; letter-spacing: -.018em; }
+.error-page h1 span { display: block; }
+.error-page__period { display: inline-block; width: 0; font-size: .72em; font-style: normal; }
+.error-page__comma { font-size: .8em; font-style: normal; margin-left: -.035em; }
+.error-page--server h1 { font-size: 74px; word-spacing: -.01em; }
+.error-page--other h1 { font-size: 48px; }
+.error-page__description { margin: 16px 0 0; max-width: 350px; color: var(--error-muted); font-size: 17px; font-weight: 450; line-height: 1.55; letter-spacing: 0; }
+.error-page__description span { display: block; }
+.error-page__description span:first-child { font-weight: 500; }
+.error-page__description span + span { color: #5c6a58; }
+.error-page__actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 28px; }
+.error-page__primary { position: relative; display: inline-flex; align-items: center; width: fit-content; min-height: 48px; padding: 12px 18px; border-radius: 16px; gap: 10px; color: var(--error-ground); background: var(--error-ink); font-size: 16px; font-weight: 650; line-height: 1.3; text-decoration: none; cursor: pointer; }
+.error-page__primary span { white-space: nowrap; }
+.error-page__primary svg { flex-shrink: 0; width: 20px; height: 20px; transform: translateY(-1px); }
+.error-page__primary:hover { background: var(--error-olive); }
+.error-page__primary:active { background: #3e562e; }
+.error-page__secondary { display: inline-flex; align-items: center; min-height: 44px; padding-inline: 8px; gap: 10px; color: var(--error-muted); font-size: 16px; font-weight: 450; line-height: 1.3; text-decoration: none; text-underline-offset: 5px; }
+.error-page__secondary svg { flex-shrink: 0; transform: translateY(-1px); }
+.error-page__secondary:hover { color: var(--error-olive); }
+.error-page__secondary:hover { text-decoration: underline; text-decoration-thickness: 1px; }
+.error-page__visual { width: 304px; justify-self: center; transform: translateY(20px); }
+.error-page__visual svg { display: block; width: 100%; height: auto; overflow: visible; }
+.error-page__code { fill: var(--error-ground); font-family: 'Daily Manrope', sans-serif; font-size: 42px; font-weight: 600; letter-spacing: -.04em; }
+.error-page__code--missing { fill: var(--error-ink); }
+.error-page--not-found .error-page__code { font-size: 60px; font-weight: 500; letter-spacing: -.05em; }
+.error-page__footer { min-height: 80px; display: flex; align-items: flex-start; padding-block: 8px 28px; color: var(--error-muted); font-size: 13px; font-weight: 450; line-height: 1.4; letter-spacing: .01em; }
+.error-page__footer nav { display: flex; gap: 28px; }
+.error-page__footer a { display: inline-flex; align-items: center; min-width: 44px; min-height: 44px; text-decoration: none; text-underline-offset: 4px; }
+.error-page__footer a:hover { color: var(--error-ink); text-decoration: underline; text-decoration-thickness: 1px; }
+.error-page--preview + .error-page--preview { border-top: 1px solid #dfe3dc; }
+@media (max-width: 1056px) {
+  .error-page__main { grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); column-gap: 48px; }
+  .error-page h1 { font-size: 72px; }
+  .error-page--server h1 { font-size: 70px; }
+  .error-page__visual { width: min(100%, 304px); }
+}
+@media (min-width: 761px) and (max-height: 780px) {
+  .error-page__header { min-height: 88px; }
+  .error-page__main { padding-block: 16px 32px; }
+  .error-page__footer { min-height: 72px; }
+}
+@media (min-width: 761px) and (min-height: 781px) {
+  .error-page__main { padding-bottom: 60px; }
+  .error-page__footer { min-height: 96px; padding-bottom: 44px; }
+}
+@media (max-width: 760px) {
+  .error-page__container { width: calc(100% - 48px); max-width: 420px; }
+  .error-page__header { min-height: 86px; }
+  .error-page__main { grid-template-columns: minmax(0, 1fr); row-gap: 28px; padding-block: 20px 32px; }
+  .error-page__visual { grid-row: 1; width: 168px; justify-self: start; transform: none; }
+  .error-page h1 { font-size: 56px; }
+  .error-page--server h1 { font-size: 54px; }
+  .error-page--other h1 { font-size: 36px; }
+  .error-page__description { margin-top: 20px; font-size: 15px; }
+  .error-page__actions { gap: 12px; margin-top: 12px; }
+  .error-page__primary { font-size: 16px; }
+  .error-page__secondary { padding-inline: 0; font-size: 15px; }
+  .error-page__footer { min-height: 68px; padding-block: 0 24px; }
+}
+@media (max-width: 760px) and (max-height: 650px) {
+  .error-page__header { min-height: 68px; }
+  .error-page__main { row-gap: 20px; padding-block: 12px 24px; }
+  .error-page__visual { width: 115.5px; }
+  .error-page h1 { font-size: 44px; }
+  .error-page--server h1 { font-size: 42px; }
+  .error-page--other h1 { font-size: 32px; }
+  .error-page__description { margin-top: 16px; font-size: 14px; }
+}
+</style></head><body><section class="error-page error-page--preview error-page--not-found" aria-label="Error 404"><header class="error-page__header error-page__container"><a class="error-page__brand" href="/" aria-label="Daily home"><span class="daily-logo s-_9QHR2gjjtbt" aria-hidden="true"><img class="daily-logo__mark s-_9QHR2gjjtbt" src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA2NCI+CiAgPGNpcmNsZSBjeD0iMTUuNSIgY3k9IjE1LjUiIHI9IjE1LjUiIGZpbGw9IiNjN2Q2YjgiIC8+CiAgPHBhdGggZD0iTTQ4LjUgMUg2MmExIDEgMCAwIDEgMSAxdjEzLjVBMTQuNSAxNC41IDAgMSAxIDQ4LjUgMVoiIGZpbGw9IiNmN2Y4ZjUiIHN0cm9rZT0iIzE3MmQ1MiIgc3Ryb2tlLXdpZHRoPSIyIiAvPgogIDxwYXRoIGQ9Ik0wIDQ4LjVhMTUuNSAxNS41IDAgMCAxIDMxIDBWNjJhMiAyIDAgMCAxLTIgMkgyYTIgMiAwIDAgMS0yLTJaIiBmaWxsPSIjMTcyZDUyIiAvPgogIDxyZWN0IHg9IjMzIiB5PSIzMyIgd2lkdGg9IjMxIiBoZWlnaHQ9IjMxIiByeD0iMTAiIGZpbGw9IiM1ODc1NDIiIC8+Cjwvc3ZnPgo=" alt="" width="34" height="34"> <!--[0--><strong class="s-_9QHR2gjjtbt">Daily</strong><!--]--></span><!----></a></header> <main class="error-page__main error-page__container"><div class="error-page__message"><h1><!--[--><span>Not on<!--[-1--><!--]--></span> <span>the plan<!--[0--><i class="error-page__period">.</i><!--]--></span> <!--]--></h1> <p class="error-page__description"><!--[--><span>We couldn’t find this page.</span> <span>Check the address or return to Daily.</span> <!--]--></p> <div class="error-page__actions"><a class="error-page__primary" href="/"><span>Go to Daily</span> <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="square" stroke-linejoin="miter"><!--[-1--><path d="M4 12h16m-6-6 6 6-6 6"></path><!--]--></svg></a> <!--[-1--><!--]--></div></div> <div class="error-page__visual"><svg viewBox="0 0 336 336" fill="none" aria-hidden="true"><circle cx="80" cy="80" r="80" fill="var(--error-sage)" opacity="1"></circle><rect x="176" y="176" width="160" height="160" rx="48" fill="var(--error-olive)" opacity="1"></rect><!--[-1--><path d="M0 256a80 80 0 0 1 160 0v80H0Z" fill="var(--error-ink)"></path><!--]--><!--[0--><g><path d="M256 1H335V80a79 79 0 1 1-79-79Z" stroke="var(--error-olive)" stroke-width="2"></path><text x="252" y="85" text-anchor="middle" dominant-baseline="middle" class="error-page__code error-page__code--missing">404</text></g><!--]--></svg></div></main> <footer class="error-page__footer error-page__container"><nav aria-label="Legal"><a href="/privacy">Privacy</a><a href="/terms">Terms</a></nav></footer></section>
+<section class="error-page error-page--preview error-page--server" aria-label="Error 500"><header class="error-page__header error-page__container"><a class="error-page__brand" href="/" aria-label="Daily home"><span class="daily-logo s-_9QHR2gjjtbt" aria-hidden="true"><img class="daily-logo__mark s-_9QHR2gjjtbt" src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA2NCI+CiAgPGNpcmNsZSBjeD0iMTUuNSIgY3k9IjE1LjUiIHI9IjE1LjUiIGZpbGw9IiNjN2Q2YjgiIC8+CiAgPHBhdGggZD0iTTQ4LjUgMUg2MmExIDEgMCAwIDEgMSAxdjEzLjVBMTQuNSAxNC41IDAgMSAxIDQ4LjUgMVoiIGZpbGw9IiNmN2Y4ZjUiIHN0cm9rZT0iIzE3MmQ1MiIgc3Ryb2tlLXdpZHRoPSIyIiAvPgogIDxwYXRoIGQ9Ik0wIDQ4LjVhMTUuNSAxNS41IDAgMCAxIDMxIDBWNjJhMiAyIDAgMCAxLTIgMkgyYTIgMiAwIDAgMS0yLTJaIiBmaWxsPSIjMTcyZDUyIiAvPgogIDxyZWN0IHg9IjMzIiB5PSIzMyIgd2lkdGg9IjMxIiBoZWlnaHQ9IjMxIiByeD0iMTAiIGZpbGw9IiM1ODc1NDIiIC8+Cjwvc3ZnPgo=" alt="" width="34" height="34"> <!--[0--><strong class="s-_9QHR2gjjtbt">Daily</strong><!--]--></span><!----></a></header> <main class="error-page__main error-page__container"><div class="error-page__message"><h1><!--[--><span>Daily<!--[1--><i class="error-page__comma">,</i><!--]--></span> <span>on pause<!--[0--><i class="error-page__period">.</i><!--]--></span> <!--]--></h1> <p class="error-page__description"><!--[--><span>We couldn’t load this page.</span> <span>Give it a moment, then try again.</span> <!--]--></p> <div class="error-page__actions"><a class="error-page__primary" href="/prototype/error-pages" data-sveltekit-reload="true"><span>Try again</span> <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="square" stroke-linejoin="miter"><!--[0--><path d="M20 12a8 8 0 1 1-2.34-5.66L20 8M20 3v5h-5"></path><!--]--></svg></a> <!--[0--><a class="error-page__secondary" href="/"><span>Back to Daily</span> <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="square" stroke-linejoin="miter"><path d="M4 12h16m-6-6 6 6-6 6"></path></svg></a><!--]--></div></div> <div class="error-page__visual"><svg viewBox="0 0 336 336" fill="none" aria-hidden="true"><circle cx="80" cy="80" r="80" fill="var(--error-sage)" opacity="0.65"></circle><rect x="176" y="176" width="160" height="160" rx="48" fill="var(--error-olive)" opacity="0.5"></rect><!--[0--><path d="M0 212a36 36 0 0 1 72 0v124H0Zm88 0a36 36 0 0 1 72 0v124H88Z" fill="var(--error-ink)"></path><!--]--><!--[-1--><g><path d="M256 0H336V80a80 80 0 1 1-80-80Z" fill="var(--error-sage)"></path><text x="252" y="85" text-anchor="middle" dominant-baseline="middle" class="error-page__code error-page__code--missing">500</text></g><!--]--></svg></div></main> <footer class="error-page__footer error-page__container"><nav aria-label="Legal"><a href="/privacy">Privacy</a><a href="/terms">Terms</a></nav></footer></section></body></html>

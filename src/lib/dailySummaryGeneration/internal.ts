@@ -19,10 +19,11 @@ import {
   buildWeatherDisplayForecast,
   openMeteoWeatherForecastProvider,
   type WeatherForecastProvider,
+  type WeatherSummaryObservability,
   type WeatherSummaryProvider
 } from '../weatherForecast';
 import { Temporal } from '@js-temporal/polyfill';
-import type { CommuteDay, CommuteRoute } from '../commuteRoute';
+import type { CommuteRoute } from '../commuteRoute';
 import {
   classifyCommuteTraffic,
   commuteTrafficDescription
@@ -40,8 +41,8 @@ export type DailySummaryGenerationContext = {
   weatherLocationUnavailable?: boolean;
   weatherProvider?: WeatherForecastProvider;
   weatherSummaryProvider?: WeatherSummaryProvider;
+  weatherSummaryObservability?: WeatherSummaryObservability;
   commuteRoutes?: CommuteRoute[];
-  commuteDays?: readonly CommuteDay[];
   commuteSetupUnavailable?: boolean;
   commuteEstimateProvider?: Pick<GoogleMapsRequestGateway, 'estimateCommute'>;
   commuteEstimateMode?: 'saved' | 'live';
@@ -100,8 +101,8 @@ const buildDailySummaryInput = async ({
   weatherLocationUnavailable = false,
   weatherProvider = openMeteoWeatherForecastProvider,
   weatherSummaryProvider,
+  weatherSummaryObservability,
   commuteRoutes = [],
-  commuteDays = [],
   commuteSetupUnavailable = false,
   commuteEstimateProvider,
   commuteEstimateMode = 'saved',
@@ -114,6 +115,7 @@ const buildDailySummaryInput = async ({
     weatherLocationUnavailable,
     weatherProvider,
     weatherSummaryProvider,
+    weatherSummaryObservability,
     assetOrigin: openDailyUrl,
     now
   });
@@ -125,7 +127,6 @@ const buildDailySummaryInput = async ({
   const commuteGeneration = await buildCommuteGenerationResult({
     configuration,
     routes: commuteRoutes,
-    days: commuteDays,
     setupUnavailable: commuteSetupUnavailable,
     provider: commuteEstimateProvider,
     mode: commuteEstimateMode,
@@ -180,8 +181,7 @@ export const visitorDailySummaryGenerator = createDailySummaryGenerator<LocalSet
         todoCategories: setup.todoCategories,
         todoTasks: setup.todoTasks,
         weatherLocation: setup.weatherLocation,
-        commuteRoutes: setup.commuteRoutes,
-        commuteDays: setup.commuteDays
+        commuteRoutes: setup.commuteRoutes
       };
     }
   }
@@ -197,10 +197,9 @@ const commuteRouteLabels = (route: CommuteRoute) => ({
   destinationLabel: route.destination.label
 });
 
-const buildCommuteGenerationResult = async ({ configuration, routes, days, setupUnavailable, provider, mode, now }: {
+const buildCommuteGenerationResult = async ({ configuration, routes, setupUnavailable, provider, mode, now }: {
   configuration: SummaryConfiguration;
   routes: CommuteRoute[];
-  days: readonly CommuteDay[];
   setupUnavailable: boolean;
   provider: Pick<GoogleMapsRequestGateway, 'estimateCommute'> | undefined;
   mode: 'saved' | 'live';
@@ -400,6 +399,7 @@ const buildWeatherGenerationState = async ({
   weatherLocationUnavailable,
   weatherProvider,
   weatherSummaryProvider,
+  weatherSummaryObservability,
   assetOrigin,
   now
 }: {
@@ -408,6 +408,7 @@ const buildWeatherGenerationState = async ({
   weatherLocationUnavailable: boolean;
   weatherProvider: WeatherForecastProvider;
   weatherSummaryProvider?: WeatherSummaryProvider;
+  weatherSummaryObservability?: WeatherSummaryObservability;
   assetOrigin: string;
   now: Date;
 }): Promise<DailySummaryInput['sections']['weather']> => {
@@ -472,7 +473,8 @@ const buildWeatherGenerationState = async ({
     if (forecastResult.forecast.summaryInput && weatherSummaryProvider) {
       try {
         const summaryResult = await weatherSummaryProvider.summarize(
-          forecastResult.forecast.summaryInput
+          forecastResult.forecast.summaryInput,
+          weatherSummaryObservability
         );
         summary = summaryResult.outcome === 'available' ? summaryResult.sentence : undefined;
       } catch {
