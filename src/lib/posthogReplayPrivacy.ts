@@ -3,6 +3,11 @@ const svgGeometryAttributes = new Set([
   'fill', 'stroke', 'stroke-width', 'stroke-linecap', 'stroke-linejoin', 'fill-rule', 'clip-rule'
 ]);
 
+const applicationPlaceholders = new Set([
+  'Capture a task…', 'e.g. Home', 'Search city or place',
+  'Morning commute', 'Enter starting point', 'Enter destination'
+]);
+
 function parseAssetUrl(value: string, element: Element): URL | null {
   try {
     return new URL(value, element.ownerDocument.baseURI);
@@ -23,6 +28,9 @@ export function maskReplayAttribute(name: string, value: string, element?: Eleme
   const masked = value.replace(/\S/g, '*');
   if (!element) return masked;
   const attribute = name.toLowerCase();
+  if (attribute === 'placeholder' && element.tagName === 'INPUT' && applicationPlaceholders.has(value)) {
+    return value;
+  }
   // rrweb replaces production stylesheet links with this synthetic CSS attribute.
   // Masking it erases the entire stylesheet, even when classes and href survive.
   // Only allow recorder-generated CSS from Daily's compiled assets, not DOM attributes.

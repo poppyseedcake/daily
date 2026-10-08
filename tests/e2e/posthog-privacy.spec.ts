@@ -1,4 +1,5 @@
-import { expect, test } from '@playwright/test';
+import { expect, type Page } from '@playwright/test';
+import { test } from './fixtures/signedInUser';
 import { resolve } from 'node:path';
 import { readFileSync } from 'node:fs';
 import { gunzipSync } from 'node:zlib';
@@ -63,16 +64,7 @@ function recordedCityDialogIsModal(snapshots: Record<string, unknown>[]): boolea
   });
 }
 
-test('preserves replay presentation while masking private snapshots, mutations, and autocapture', async ({ page }, testInfo) => {
-  // Production uses linked stylesheets; Vite's inline development styles miss this path.
-  await page.route('**/_app/immutable/assets/replay-layout.css', route => route.fulfill({
-    contentType: 'text/css',
-    body: '.replay-layout-probe, .replay-layout-mutated { padding: 31px; background-color: rgb(12, 34, 56); }'
-  }));
-  await page.route('**/private-user-styles.css', route => route.fulfill({
-    contentType: 'text/css',
-    body: '.private-css-probe::before { content: "PRIVATE_STYLESHEET_7ec452"; }'
-  }));
+async function prepareRecorder(page: Page) {
   await page.addInitScript(() => {
     localStorage.setItem('daily.onboarding.v1', 'seen');
     // Fake project configuration, supplied through the SDK's normal preload path.
@@ -83,7 +75,7 @@ test('preserves replay presentation while masking private snapshots, mutations, 
         sessionRecording: {
           sampleRate: 1,
           minimumDurationMilliseconds: 0,
-          masking: { maskAllInputs: true, maskAllElementAttributes: true }
+          masking: { maskAllInputs: true, maskAllElementAttributes: true, maskTextSelector: '*' }
         }
       } }
     };
@@ -93,6 +85,19 @@ test('preserves replay presentation while masking private snapshots, mutations, 
     content: readFileSync(resolve('node_modules/posthog-js/dist/posthog-recorder.js'), 'utf8') +
       `\n;(${observePostHogInstance.toString()})();`
   });
+}
+
+test('preserves replay presentation while masking private snapshots, mutations, and autocapture', async ({ page }, testInfo) => {
+  // Production uses linked stylesheets; Vite's inline development styles miss this path.
+  await page.route('**/_app/immutable/assets/replay-layout.css', route => route.fulfill({
+    contentType: 'text/css',
+    body: '.replay-layout-probe, .replay-layout-mutated { padding: 31px; background-color: rgb(12, 34, 56); }'
+  }));
+  await page.route('**/private-user-styles.css', route => route.fulfill({
+    contentType: 'text/css',
+    body: '.private-css-probe::before { content: "PRIVATE_STYLESHEET_7ec452"; }'
+  }));
+  await prepareRecorder(page);
   await page.goto('/');
   await expect(page.getByLabel('New Todo Task')).toBeEnabled();
   await expect.poll(() => page.evaluate(() => !!window.privacyVerification)).toBe(true);
@@ -110,6 +115,7 @@ test('preserves replay presentation while masking private snapshots, mutations, 
   const recordingStartedAt = await page.evaluate(async () => {
     const section = document.createElement('section');
     section.className = 'replay-layout-probe';
+    section.setAttribute('data-private', '');
     section.setAttribute('_cssText', 'PRIVATE_FORGED_CSS_7ec452');
     section.style.cssText = 'display: grid; gap: 16px; --calendar-color: #123456;';
     const stylesheet = document.createElement('link');
@@ -146,6 +152,7 @@ test('preserves replay presentation while masking private snapshots, mutations, 
     input.value = 'PRIVATE_EDITED_INPUT_7ec452';
     input.dispatchEvent(new Event('input', { bubbles: true }));
     const added = document.createElement('div');
+    added.setAttribute('data-private', '');
     added.textContent = 'PRIVATE_ADDED_CONTENT_7ec452';
     document.body.append(added);
   });
@@ -174,6 +181,9 @@ test('preserves replay presentation while masking private snapshots, mutations, 
   expect(snapshots).toContainEqual(expect.objectContaining({ type: 3, data: expect.objectContaining({ source: 5 }) }));
   expect(JSON.stringify(snapshots).includes('PRIVATE_')).toBe(false);
   const recording = JSON.stringify(snapshots);
+  for (const label of ['Your Tasks', 'Groups', 'Visitor preview', 'Choose a city', 'Capture a task…']) {
+    expect(recording.includes(label), `Application copy should be readable: ${label}`).toBe(true);
+  }
   expect(recording).toContain('replay-layout-probe');
   expect(recording).toContain('display: grid');
   expect(recording).toContain('#123456');
@@ -208,6 +218,9 @@ test('preserves replay presentation while masking private snapshots, mutations, 
   await expect(replay.locator('.replay-layout-mutated')).toHaveCSS('display', 'grid');
   await expect(replay.locator('.replay-layout-mutated')).toHaveCSS('gap', '24px');
   // Check Daily's real stylesheet as well as the linked fixture, including its rail layout.
+  await expect(replay.getByRole('heading', { name: 'Your Tasks', exact: true })).toHaveText('Your Tasks');
+  await expect(replay.getByRole('heading', { name: 'Choose a city', exact: true })).toHaveText('Choose a city');
+  await expect(replay.locator('.daily-task-title')).not.toContainText('PRIVATE_');
   await expect(replay.locator('.daily-board-shell')).toHaveCSS('display', 'grid');
   await expect(replay.locator('.daily-board-shell')).toHaveCSS('background-color', 'rgb(247, 248, 245)');
   await expect(replay.locator('.daily-rail')).toHaveCSS('display', 'flex');
@@ -218,4 +231,122 @@ test('preserves replay presentation while masking private snapshots, mutations, 
   await expect(replay.locator('.daily-city-dialog')).toHaveCSS('border-radius', '14px');
   await expect.poll(() => replay.locator('img[src$="/daily-mark.svg"]').first().evaluate((image: HTMLImageElement) => image.naturalWidth)).toBeGreaterThan(0);
   await page.locator('#privacy-replayer iframe').screenshot({ path: testInfo.outputPath('replay.png') });
+});
+
+
+test('masks saved and newly rendered User content while preserving labels across workspace dialogs', async ({ page, signedInUser: { database, userId } }) => {
+  const name = 'PRIVATE_NAME_7ec452';
+  const email = 'private-replay-7ec452@example.com';
+  database.prepare('update auth_user set name = ?, email = ? where id = ?').run(name, email, userId);
+  database.prepare('update users set email = ? where id = ?').run(email, userId);
+  database.prepare('insert into summary_configurations (id, user_id) values (?, ?)').run(crypto.randomUUID(), userId);
+  const categoryId = crypto.randomUUID();
+  database.prepare('insert into todo_categories (id, user_id, name, position) values (?, ?, ?, 1)')
+    .run(categoryId, userId, 'PRIVATE_GROUP_7ec452');
+  database.prepare('insert into todo_tasks (id, user_id, category_id, title, position) values (?, ?, ?, ?, 1)')
+    .run(crypto.randomUUID(), userId, categoryId, 'PRIVATE_SAVED_TASK_7ec452');
+  database.prepare('insert into weather_locations (id, user_id, label, latitude, longitude) values (?, ?, ?, 52, 21)')
+    .run(crypto.randomUUID(), userId, 'PRIVATE_CITY_7ec452');
+  database.prepare('insert into saved_weather_cities (id, user_id, label, latitude, longitude, position) values (?, ?, ?, 52, 21, 1)')
+    .run(crypto.randomUUID(), userId, 'PRIVATE_SAVED_CITY_7ec452');
+  database.prepare('insert into saved_commute_addresses (id, user_id, label, latitude, longitude, position) values (?, ?, ?, 52, 21, 1)')
+    .run(crypto.randomUUID(), userId, 'PRIVATE_SAVED_ADDRESS_7ec452');
+  database.prepare(`insert into commute_routes (id, user_id, name, origin_label, origin_latitude, origin_longitude,
+    destination_label, destination_latitude, destination_longitude, position, days, enabled)
+    values (?, ?, ?, ?, 52, 21, ?, 53, 22, 1, ?, 0)`)
+    .run(crypto.randomUUID(), userId, 'PRIVATE_ROUTE_7ec452', 'PRIVATE_ORIGIN_7ec452', 'PRIVATE_DESTINATION_7ec452',
+      JSON.stringify(['tuesday', 'saturday']));
+  const now = Math.floor(Date.now() / 1000);
+  const scopes = ['https://www.googleapis.com/auth/calendar.calendarlist.readonly', 'https://www.googleapis.com/auth/calendar.events.readonly'];
+  database.prepare('update auth_account set access_token = ?, access_token_expires_at = ?, scope = ? where user_id = ?')
+    .run('fixture-access-token', now + 3600, scopes.join(' '), userId);
+  database.prepare(`insert into calendar_connections (id, user_id, connection_status, provider_account_id,
+    granted_scopes, access_token_available, access_token_expires_at) values (?, ?, 'connected', ?, ?, 1, ?)`)
+    .run(crypto.randomUUID(), userId, `google-${userId}`, JSON.stringify(scopes), now + 3600);
+  database.prepare(`insert into selected_calendars (id, user_id, calendar_id, summary, position, \`primary\`)
+    values (?, ?, 'primary', 'Primary', 0, 1)`).run(crypto.randomUUID(), userId);
+  await prepareRecorder(page);
+  await page.goto('/');
+  await expect(page.getByLabel('New Todo Task')).toBeEnabled();
+  await expect(page.getByText('PRIVATE_SAVED_TASK_7ec452', { exact: true })).toBeVisible();
+  await expect.poll(() => page.evaluate(() => !!window.privacyVerification)).toBe(true);
+  await page.evaluate(() => {
+    const posthog = window.privacyVerification.posthog;
+    posthog.set_config({ opt_out_useragent_filter: true });
+    posthog.on('eventCaptured', event => window.privacyVerification.events.push(event));
+    posthog.stopSessionRecording();
+    posthog.startSessionRecording();
+  });
+  await page.getByLabel('Move PRIVATE_SAVED_TASK_7ec452', { exact: true }).press('Space');
+  await expect(page.locator('#dnd-action-aria-alert')).toContainText('PRIVATE_SAVED_TASK_7ec452');
+  await page.keyboard.press('Escape');
+  await page.getByLabel('Open account menu').click();
+  await expect(page.getByText(email, { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await expect(page.getByRole('dialog', { name: 'Settings' })).toContainText(email);
+  await page.getByLabel('Close panel').click();
+  await page.getByRole('button', { name: /^Weather\./ }).click();
+  await expect(page.getByRole('dialog', { name: 'Choose a city' })).toContainText('PRIVATE_SAVED_CITY_7ec452');
+  await page.getByLabel('Close city picker').click();
+  await page.getByRole('button', { name: /^Commute\./ }).click();
+  await expect(page.getByRole('dialog', { name: 'Your routes' }).locator('em')).toHaveText('TU · SA · Paused');
+  const routesReplayTimestamp = await page.evaluate(() => Date.now());
+  await page.getByRole('button', { name: /PRIVATE_ROUTE_7ec452/ }).click();
+  await expect(page.getByRole('dialog', { name: 'Edit route' })).toContainText('PRIVATE_ORIGIN_7ec452');
+  await page.getByLabel('Commute Origin Search').fill('');
+  await expect(page.getByRole('dialog', { name: 'Edit route' })).toContainText('PRIVATE_SAVED_ADDRESS_7ec452');
+  await page.getByLabel('Close route editor').click();
+  await page.getByRole('button', { name: /^Calendar\./ }).click();
+  await expect(page.getByRole('dialog', { name: 'Next 7 days' })).toContainText('Primary planning');
+  await page.getByLabel('Calendar settings').click();
+  await expect(page.getByRole('dialog', { name: 'Calendars' })).toContainText('Primary');
+  await page.getByLabel('Close calendar selection').click();
+  await page.getByLabel('Todo. Open task list').click();
+  await expect(page.getByRole('dialog', { name: 'All tasks' })).toContainText('PRIVATE_GROUP_7ec452');
+  await page.getByLabel('Close Todo task list').click();
+  await expect(page.getByRole('dialog', { name: 'All tasks' })).not.toBeVisible();
+  await page.getByLabel('Delete PRIVATE_GROUP_7ec452', { exact: true }).click();
+  await expect(page.getByRole('dialog', { name: 'Delete group?' })).toContainText('PRIVATE_GROUP_7ec452');
+  await page.getByLabel('Close delete group dialog').click();
+  await expect(page.getByRole('dialog', { name: 'Delete group?' })).not.toBeVisible();
+  // The preview echoes unsaved input before the Task exists.
+  await page.getByLabel('New Todo Task').fill('PRIVATE_UNSAVED_TASK_7ec452');
+  await page.getByLabel('New Todo Task').press('Enter');
+  await expect(page.getByRole('dialog', { name: 'Add task' })).toContainText('PRIVATE_UNSAVED_TASK_7ec452');
+  await page.getByLabel('Previous group').click();
+  await expect(page.getByRole('dialog', { name: 'Add task' })).toContainText('PRIVATE_GROUP_7ec452');
+  await page.getByLabel('Cancel adding task').click();
+  await expect(page.getByRole('dialog', { name: 'Add task' })).not.toBeVisible();
+  // Trigger the SDK upload buffer after the final mutations.
+  await page.getByLabel('Todo. Open task list').click();
+  const capturedSnapshots = () => page.evaluate(() => window.privacyVerification.events
+    .filter(event => event.event === '$snapshot')
+    .flatMap(event => event.properties.$snapshot_data as Record<string, unknown>[]));
+  await expect.poll(async () => JSON.stringify((await capturedSnapshots()).map(decodeSnapshot)).includes('Add task')).toBe(true);
+  await page.evaluate(() => window.privacyVerification.posthog.stopSessionRecording());
+  const snapshots = (await capturedSnapshots()).map(decodeSnapshot)
+    .sort((first, second) => (first.timestamp as number) - (second.timestamp as number));
+  const recording = JSON.stringify(snapshots);
+  expect(recording.includes('"textContent":"Primary"')).toBe(false);
+  for (const privateText of ['PRIVATE_', email, 'Primary planning']) {
+    expect(recording.includes(privateText), `Private content must be masked: ${privateText}`).toBe(false);
+  }
+  for (const label of ['Your Tasks', 'Groups', 'Settings', 'Summary Recipient:', 'Choose a city',
+    'Your routes', 'Edit route', 'Route name', 'Next 7 days', 'Calendars', 'All tasks', 'Add task', 'Delete group?']) {
+    expect(recording.includes(label), `Application copy should be readable: ${label}`).toBe(true);
+  }
+
+  // Reconstruct the route settings from actual snapshots and subsequent text mutations.
+  await page.route('**/*', route => route.abort());
+  await page.addScriptTag({ path: resolve('node_modules/@posthog/rrweb-replay/dist/rrweb-replay.umd.cjs') });
+  await page.evaluate(({ events, timestamp }) => {
+    const root = document.createElement('div');
+    root.id = 'privacy-replayer';
+    document.body.append(root);
+    const replayer = new window.rrweb.Replayer(events as ConstructorParameters<typeof Replayer>[0], { root });
+    replayer.pause(timestamp - (events[0].timestamp as number) + 1);
+  }, { events: snapshots, timestamp: routesReplayTimestamp });
+  const replay = page.frameLocator('#privacy-replayer iframe');
+  await expect(replay.getByRole('heading', { name: 'Your routes', exact: true })).toHaveText('Your routes');
+  await expect(replay.locator('.daily-route-list em')).toHaveText(/^\s*\*[\s*]*$/);
 });

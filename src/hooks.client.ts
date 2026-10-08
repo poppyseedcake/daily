@@ -34,7 +34,9 @@ export function init() {
     enable_recording_console_log: false,
     session_recording: {
       maskAllInputs: true,
-      maskTextSelector: '*',
+      // Mark User content at its rendering boundary; keep application copy readable.
+      // Form values stay masked even before they are saved or rendered elsewhere.
+      maskTextSelector: '[data-private], #dnd-action-aria-alert, textarea, select, option',
       // Global attribute masking also destroys CSS classes, styles, and stylesheet links.
       maskAllElementAttributes: false,
       maskAttributeFn: maskReplayAttribute,

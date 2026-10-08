@@ -1788,9 +1788,9 @@
   let boardNow = $state<Date>();
   const boardGreeting = $derived(workspaceGreeting(
     boardNow ?? new Date(data?.currentTime ?? Date.now()),
-    userTimeZone,
-    authState.mode === 'user' ? authState.name : undefined
+    userTimeZone
   ));
+  const boardFirstName = $derived(authState.mode === 'user' ? authState.name?.trim().split(/\s+/)[0] : undefined);
   onMount(() => {
     const updateBoardClock = () => { boardNow = new Date(); };
     updateBoardClock();
@@ -1918,7 +1918,7 @@
         class={`daily-priority daily-priority--${task.urgency}`}
         aria-label={urgencyLabel(task.urgency)}
       ></span>
-      <span class="daily-task-title">{task.title}</span>
+      <span data-private class="daily-task-title">{task.title}</span>
       <button
         class="daily-task-edit"
         type="button"
@@ -1971,7 +1971,7 @@
           class={`daily-priority daily-priority--${task.urgency}`}
           aria-label={urgencyLabel(task.urgency)}
         ></span>
-        <span class="daily-todo-dialog__task-title">{task.title}</span>
+        <span data-private class="daily-todo-dialog__task-title">{task.title}</span>
         <button
           type="button"
           aria-label={`Delete ${task.title}`}
@@ -2005,9 +2005,9 @@
         </a>
       {:else}
         <details class="daily-account-menu" bind:this={accountMenu} use:animatedDetails>
-          <summary aria-label="Open account menu" title="Account menu">{accountInitials}</summary>
+          <summary data-private aria-label="Open account menu" title="Account menu">{accountInitials}</summary>
           <div class="daily-account-menu__panel">
-            <div class="daily-account-menu__identity">
+            <div data-private class="daily-account-menu__identity">
               <strong>{authState.name ?? authState.summaryRecipient}</strong>
               {#if authState.name}<span>{authState.summaryRecipient}</span>{/if}
             </div>
@@ -2035,7 +2035,7 @@
       <div class="daily-board-heading">
         <a class="daily-mobile-brand" href="/" aria-label="Daily home"><DailyLogo /></a>
         <div class="daily-greeting">
-          <h1>{boardGreeting.greeting}</h1>
+          <h1>{boardGreeting.greeting}{#if boardFirstName}{', '}<span data-private>{boardFirstName}</span>{/if}</h1>
           <p>{boardGreeting.dateLabel}</p>
         </div>
       </div>
@@ -2060,7 +2060,7 @@
               <small>Sign in to receive emails</small>
             {:else}
               <strong>{canEditSetup('summaryConfiguration') ? summaryDeliveryEnabled ? 'Delivery on' : 'Delivery paused' : 'Delivery unavailable'}</strong>
-              <small>{canEditSetup('summaryConfiguration') ? summaryDeliveryEnabled ? `Daily at ${summaryTime}` : 'No emails will be sent' : 'Retry loading your setup'}</small>
+              <small>{canEditSetup('summaryConfiguration') ? summaryDeliveryEnabled ? 'Daily at' : 'No emails will be sent' : 'Retry loading your setup'}{#if canEditSetup('summaryConfiguration') && summaryDeliveryEnabled}{' '}<span data-private>{summaryTime}</span>{/if}</small>
             {/if}
           </span>
         </label>
@@ -2118,7 +2118,7 @@
           <CloudSun size={18} aria-hidden="true" />
           <span>
             <small id="weather-section-status">Weather · {sectionPauses.weather ? 'Paused' : 'Active'}</small>
-            <strong>{canEditSetup('weatherLocation') ? weatherLocation?.label ?? 'Choose a city' : 'Unavailable'}</strong>
+            <strong data-private={canEditSetup('weatherLocation') && weatherLocation ? '' : undefined}>{canEditSetup('weatherLocation') ? weatherLocation?.label ?? 'Choose a city' : 'Unavailable'}</strong>
           </span>
           <span class="daily-context-tile__arrow" aria-hidden="true"><ChevronRight size={15} /></span>
         </button>
@@ -2206,7 +2206,7 @@
         {#if summaryDeliveryEnabled}<Send size={18} />{:else}<Pause size={18} />{/if}
         <span>
           <small>{authState.mode === 'visitor' ? 'Mail delivery · Sign in required' : 'Mail delivery'}</small>
-          <strong>{summaryDeliveryEnabled ? `${summaryTime} · ${userTimeZone}` : 'Paused'}</strong>
+          <strong data-private={summaryDeliveryEnabled ? '' : undefined}>{summaryDeliveryEnabled ? `${summaryTime} · ${userTimeZone}` : 'Paused'}</strong>
         </span>
         <ChevronRight size={15} />
       </button>
@@ -2316,7 +2316,7 @@
                     aria-label={`Move category ${category.name}`}
                     use:dragHandle
                   >{categoryIndex + 1}</span>
-                  <h2>{category.name}</h2>
+                  <h2 data-private>{category.name}</h2>
                 </div>
                 <div class="daily-column-actions">
                   <span>{tasksForCategory(category.id).length}</span>
@@ -2398,7 +2398,7 @@
           {#each todoSection.categoryGroups as group (group.category.id)}
             <section class="daily-todo-dialog__group" aria-labelledby={`todo-dialog-group-${group.category.id}`}>
               <header>
-                <h3 id={`todo-dialog-group-${group.category.id}`}>{group.category.name}</h3>
+                <h3 data-private id={`todo-dialog-group-${group.category.id}`}>{group.category.name}</h3>
                 <span>{group.tasks.length}</span>
               </header>
               {@render TodoDialogTaskList(group.tasks, `${group.category.name} Todo Tasks`)}
@@ -5211,7 +5211,7 @@
   >
     <h2 id="category-deletion-title">Delete group?</h2>
     <p>
-      “{categoryPendingDeletion.name}” and all tasks inside it will be permanently deleted.
+      “<span data-private>{categoryPendingDeletion.name}</span>” and all tasks inside it will be permanently deleted.
     </p>
     <footer>
       <button
@@ -5258,6 +5258,7 @@
           <button
             bind:this={summaryDeliveryHoursButton}
             type="button"
+            data-private
             class="daily-time-value"
             class:is-active={activeSummaryTimePart === 'hours'}
             role="spinbutton"
@@ -5281,6 +5282,7 @@
           <button
             bind:this={summaryDeliveryMinutesButton}
             type="button"
+            data-private
             class="daily-time-value"
             class:is-active={activeSummaryTimePart === 'minutes'}
             role="spinbutton"
@@ -5314,7 +5316,7 @@
             </select>
           </label>
         {:else}
-          <span><small>Time zone</small><strong>{userTimeZoneDraft}</strong></span>
+          <span><small>Time zone</small><strong data-private>{userTimeZoneDraft}</strong></span>
           <button type="button" aria-label="Edit time zone" onclick={() => void editSummaryTimeZone()}>
             <Pencil size={14} />
           </button>
@@ -5346,7 +5348,7 @@
   >
     <span class="daily-dialog-kicker">New task</span>
     <h2 id="task-placement-title">Add task</h2>
-    <p class="daily-placement-title">{newTodoTitle}</p>
+    <p data-private class="daily-placement-title">{newTodoTitle}</p>
     <div class="daily-placement-controls">
       <fieldset class="daily-placement-priority" aria-label="Urgency">
         <button type="button" aria-label="Previous urgency" onclick={() => cycleTaskPlacementUrgency(-1)}><ArrowLeft size={18} /></button>
@@ -5357,7 +5359,7 @@
       </fieldset>
       <fieldset class="daily-placement-group" aria-label="Group">
         <button type="button" aria-label="Previous group" onclick={() => cycleTaskPlacementCategory(-1)}><ArrowUp size={18} /></button>
-        <output>{selectedTaskCategoryName}</output>
+        <output data-private={newTodoCategoryId ? '' : undefined}>{selectedTaskCategoryName}</output>
         <button type="button" aria-label="Next group" onclick={() => cycleTaskPlacementCategory(1)}><ArrowDown size={18} /></button>
       </fieldset>
     </div>
@@ -5443,9 +5445,9 @@
           >
             <MapPin size={16} />
             <span>
-              <strong>{result.label}</strong>
+              <strong data-private>{result.label}</strong>
               {#if weatherLocationSearchQuery.trim().length > 0}
-                <small>{result.latitude.toFixed(4)}, {result.longitude.toFixed(4)}</small>
+                <small data-private>{result.latitude.toFixed(4)}, {result.longitude.toFixed(4)}</small>
               {/if}
             </span>
             {#if weatherLocation?.label === result.label}<Check size={16} />{/if}
@@ -5469,7 +5471,7 @@
       <div class="daily-dialog-empty daily-saved-location-empty"><Star size={20} /><strong>{canEditSetup('savedWeatherCities') ? 'No Saved Weather Cities yet' : 'Saved Weather Cities unavailable'}</strong><span>{canEditSetup('savedWeatherCities') ? 'Choose a city, then save it with the star.' : 'Retry loading to edit your saved cities.'}</span></div>
     {/if}
     {#if weatherLocationStatusTone === 'error' || weatherLocationStatusTone === 'warning'}
-      <p class="daily-dialog-status" role="alert">{weatherLocationStatus}</p>
+      <p data-private class="daily-dialog-status" role="alert">{weatherLocationStatus}</p>
     {/if}
     <footer><button type="button" aria-label="Close city picker" onclick={closeWeatherDialog}><X size={20} /></button></footer>
   </dialog>
@@ -5496,9 +5498,9 @@
           <button type="button" onclick={() => editCommuteRoute(route)}>
             <span class="daily-route-line"><i></i><i></i></span>
             <span>
-              <strong>{route.name}</strong>
-              <small>{route.origin.label} → {route.destination.label}</small>
-              <em>
+              <strong data-private>{route.name}</strong>
+              <small data-private>{route.origin.label} → {route.destination.label}</small>
+              <em data-private>
                 {route.days.map((day) => day.slice(0, 2).toUpperCase()).join(' · ') || 'No days'}
                 · {route.enabled ? 'Enabled' : 'Paused'}
               </em>
@@ -5566,7 +5568,7 @@
             </label>
             {#if selectedPoint}
               <div class="daily-selected-location">
-                <small>{selectedPoint.label}</small>
+                <small data-private>{selectedPoint.label}</small>
                 <button
                   class="daily-inline-favorite"
                   use:selectionFeedback={{ selected: isSavedCommuteAddress(selectedPoint), kind: 'favorite' }}
@@ -5609,7 +5611,7 @@
                     onclick={() => selectSavedCommuteLocation(selection.kind, location)}
                   >
                     <MapPin size={16} />
-                    <span><strong>{location.label}</strong></span>
+                    <span><strong data-private>{location.label}</strong></span>
                   </button>
                   <button
                     class="daily-location-favorite"
@@ -5639,7 +5641,7 @@
                   aria-label={`Select ${suggestion.label}`}
                   onclick={() => void selectCommuteSuggestion(selection.kind, suggestion)}
                 >
-                  <span>{suggestion.label}</span>
+                  <span data-private>{suggestion.label}</span>
                   <small>Select</small>
                 </button>
               {/each}
@@ -5673,7 +5675,7 @@
           <button type="submit"><Check size={17} />Save route</button>
         </div>
       </form>
-      <p class={`daily-dialog-status daily-dialog-status--${commuteRouteStatusTone}`}>{commuteRouteStatus}</p>
+      <p data-private={commuteRouteStatus.startsWith('Editing route: ') ? '' : undefined} class={`daily-dialog-status daily-dialog-status--${commuteRouteStatusTone}`}>{commuteRouteStatus}</p>
       </div>
     {/if}
   </dialog>
@@ -5721,9 +5723,9 @@
             <h3>{day.label}</h3>
             {#each day.events as event}
               <article>
-                <time>{event.time}</time>
+                <time data-private>{event.time}</time>
                 <i style={`--calendar-color:${event.calendarColor}`}></i>
-                <span><strong>{event.title}</strong><small>{event.calendarLabel}</small></span>
+                <span data-private><strong>{event.title}</strong><small>{event.calendarLabel}</small></span>
               </article>
             {/each}
           </section>
@@ -5757,7 +5759,7 @@
       {#each selectedCalendarConfiguration?.calendars ?? [] as calendar}
         <label for={`selected-calendar-${calendar.id}`}>
           <i style={`--calendar-color:${calendar.backgroundColor ?? '#617d49'}`}></i>
-          <span><strong>{calendar.summary}</strong><small>{calendar.primary ? 'Primary calendar' : 'Google calendar'}</small></span>
+          <span><strong data-private>{calendar.summary}</strong><small>{calendar.primary ? 'Primary calendar' : 'Google calendar'}</small></span>
           <input
             id={`selected-calendar-${calendar.id}`}
             type="checkbox"
@@ -5847,9 +5849,9 @@
         {#if isAdministrator}
           <section class="daily-settings-section">
             <h3>Test delivery</h3>
-            <p>Send a test Daily Summary to {authState.summaryRecipient}.</p>
+            <p>Send a test Daily Summary to <span data-private>{authState.summaryRecipient}</span>.</p>
             {#if testDeliveryStatus}
-              <p role={testDeliveryStatus.tone === 'success' ? 'status' : 'alert'}>
+              <p data-private={form?.outcome === 'failed' ? '' : undefined} role={testDeliveryStatus.tone === 'success' ? 'status' : 'alert'}>
                 {testDeliveryStatus.message}
               </p>
             {/if}
@@ -5860,7 +5862,7 @@
         {/if}
         <section class="daily-settings-section">
           <h3>Account</h3>
-          <p>Summary Recipient: {authState.summaryRecipient}</p>
+          <p>Summary Recipient: <span data-private>{authState.summaryRecipient}</span></p>
           <form class="daily-delete-account" method="POST" action="?/deleteAccount">
             <h4>Delete Daily account</h4>
             <p>This is irreversible.</p>

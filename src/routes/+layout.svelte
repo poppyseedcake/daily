@@ -9,6 +9,9 @@
     page.url.pathname.startsWith('/admin/') ||
     page.url.pathname.startsWith('/prototype/')
   );
+  const maskReplayPage = $derived(
+    page.status >= 400 || !['/', '/privacy', '/terms'].includes(page.url.pathname)
+  );
 </script>
 
 <svelte:head>
@@ -17,4 +20,8 @@
   {/if}
 </svelte:head>
 
-{@render children()}
+<!-- Only the audited workspace and static legal pages expose their application copy.
+     Other routes (including Admin and error pages) retain text masking by default. -->
+<div data-private={maskReplayPage ? '' : undefined} style="display: contents">
+  {@render children()}
+</div>
