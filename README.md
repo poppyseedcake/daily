@@ -1,5 +1,7 @@
 # Daily
 
+Use Daily at [dailykickoff.eu](https://dailykickoff.eu).
+
 Daily helps you plan your day. It combines tasks, weather, driving times, and Google Calendar events in one Daily Summary email.
 
 You can use the task list and change settings without an account. Daily saves this Local Setup in your browser.
@@ -7,7 +9,7 @@ To receive emails, sign in with Google. Google Calendar access is a separate, op
 
 ![Daily task list with fictional tasks in Work, Home, and Personal groups](docs/images/daily-workspace.png)
 
-[Watch the 24-second demo](docs/media/daily-demo.mp4) · [Edit the Remotion video](docs/video/README.md)
+[Watch the 24-second demo](docs/media/daily-demo.mp4)
 
 ## What Daily does
 
@@ -80,7 +82,7 @@ Use the delivery switch to pause emails. Use a section's pause control to pause 
 Pausing all sections does not pause email delivery.
 To repeat the introduction, open **Settings → Show me around**.
 
-<img src="docs/images/daily-mobile.png" alt="Daily task list in a mobile browser" width="300">
+![Daily sign-in dialog with Google sign-in and account creation controls](docs/images/auth-modal-signin.png)
 
 ## Install and run locally
 
@@ -194,7 +196,6 @@ Production uses the SvelteKit Node adapter.
 
 The screenshots show the application with fictional Visitor data.
 The welcome screen contains an example email. It does not show an actual delivered email.
-The [Remotion project](docs/video/README.md) includes screenshot capture and MP4 export commands.
 
 The writing follows [ASD-STE100 Simplified Technical English](https://www.asd-ste100.org/STE_faq.html) principles: short sentences, direct instructions, and consistent words.
 Product names, interface labels, and code identifiers are technical terms.
