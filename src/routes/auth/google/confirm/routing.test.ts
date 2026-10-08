@@ -82,7 +82,7 @@ describe('Google authentication HTTP flow', () => {
     expect(signInSocial).toHaveBeenCalledWith(expect.objectContaining({ body: expect.objectContaining({ requestSignUp: true, errorCallbackURL: '/?auth=signup' }) }));
     const confirmation = cookies.split('\n').find(value => value.startsWith('daily.legal_confirmation='))!;
     const payload = JSON.parse(Buffer.from(confirmation.split('=')[1].split('.')[0], 'base64url').toString());
-    expect(payload).toMatchObject({ termsVersion: '2026-10-02', termsAcceptedAt: expect.any(String) });
+    expect(payload).toMatchObject({ termsVersion: '2026-10-08', termsAcceptedAt: expect.any(String) });
     expect(payload).not.toHaveProperty('ageConfirmedAt');
     expect(payload).not.toHaveProperty('ageConfirmed');
   });
@@ -129,7 +129,7 @@ describe('Google authentication HTTP flow', () => {
       const { parseLegalConfirmationCookie } = await server.ssrLoadModule('/src/lib/server/legalConfirmation.ts');
       expect(parseLegalConfirmationCookie(new Headers({ cookie: cookieHeader(start) }))).toBeNull();
       expect(await loadLegalConfirmation(session.user.id)).toEqual({
-        termsVersion: '2026-10-02', termsAcceptedAt: expect.any(String)
+        termsVersion: '2026-10-08', termsAcceptedAt: expect.any(String)
       });
     } finally {
       validated.mockRestore();
@@ -145,7 +145,7 @@ describe('Google authentication HTTP flow', () => {
     const { auth } = await server.ssrLoadModule('/src/lib/server/auth.ts');
     const session = await auth.api.getSession({ headers: new Headers({ cookie: cookieHeader(registered) }) });
     const accepted = await loadLegalConfirmation(session.user.id);
-    expect(accepted).toEqual({ termsVersion: '2026-10-02', termsAcceptedAt: expect.any(String) });
+    expect(accepted).toEqual({ termsVersion: '2026-10-08', termsAcceptedAt: expect.any(String) });
     // Never load the workspace; abandon its redirect and discard the Terms cookie.
     // This is also what remains in the browser once that cookie has expired.
     const returned = await finishGoogle(await submit({ intent: 'signin' }));

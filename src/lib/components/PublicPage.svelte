@@ -2,6 +2,7 @@
   import type { Snippet } from 'svelte';
   import DailyLogo from './DailyLogo.svelte';
   import PageMetadata from './PageMetadata.svelte';
+  import CookieSettingsButton from './CookieSettingsButton.svelte';
 
   let {
     eyebrow,
@@ -39,6 +40,7 @@
     <span>Daily</span>
     <a href="/privacy">Privacy</a>
     <a href="/terms">Terms</a>
+    <CookieSettingsButton />
     <a href="mailto:daily@dailykickoff.eu">daily@dailykickoff.eu</a>
   </footer>
 </div>
