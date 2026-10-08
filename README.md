@@ -9,9 +9,9 @@ To receive emails, sign in with Google. Google Calendar access is a separate, op
 
 ![Daily task list with fictional tasks in Work, Home, and Personal groups](docs/images/daily-workspace.png)
 
-![Daily demo showing task management, delivery time, and an example email](docs/media/daily-demo.gif)
+![Daily demo showing task entry, a commute route, calendar events, weather settings, and delivery time](docs/media/daily-demo.gif)
 
-[Download the 24-second demo as MP4](docs/media/daily-demo.mp4)
+[Download the demo as MP4](docs/media/daily-demo.mp4)
 
 ## What Daily does
 
@@ -198,6 +198,9 @@ Production uses the SvelteKit Node adapter.
 
 The screenshots show the application with fictional Visitor data.
 The welcome screen contains an example email. It does not show an actual delivered email.
+The demo records use of a local copy of Daily with fictional account data.
+It shows task entry, a Commute Route, Calendar events, a Weather Location, and the delivery time.
+Calendar events, address search results, and travel times are sample data.
 
 The writing follows [ASD-STE100 Simplified Technical English](https://www.asd-ste100.org/STE_faq.html) principles: short sentences, direct instructions, and consistent words.
 Product names, interface labels, and code identifiers are technical terms.

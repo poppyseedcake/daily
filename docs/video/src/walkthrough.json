@@ -1,0 +1,27 @@
+{
+  "fps": 30,
+  "trimBeforeFrames": 44,
+  "durationInFrames": 1553,
+  "chapters": [
+    {
+      "title": "Add a task and choose its group",
+      "from": 0
+    },
+    {
+      "title": "Add a driving route and choose its days",
+      "from": 396
+    },
+    {
+      "title": "Review the week and select a calendar",
+      "from": 822
+    },
+    {
+      "title": "Choose the city for your weather forecast",
+      "from": 1077
+    },
+    {
+      "title": "Set the daily delivery time and time zone",
+      "from": 1217
+    }
+  ]
+}
