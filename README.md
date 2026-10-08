@@ -9,7 +9,9 @@ To receive emails, sign in with Google. Google Calendar access is a separate, op
 
 ![Daily task list with fictional tasks in Work, Home, and Personal groups](docs/images/daily-workspace.png)
 
-[Watch the 24-second demo](docs/media/daily-demo.mp4)
+![Daily demo showing task management, delivery time, and an example email](docs/media/daily-demo.gif)
+
+[Download the 24-second demo as MP4](docs/media/daily-demo.mp4)
 
 ## What Daily does
 
