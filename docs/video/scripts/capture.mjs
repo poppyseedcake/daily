@@ -9,7 +9,7 @@ await mkdir(images, { recursive: true });
 await mkdir(assets, { recursive: true });
 const browser = await chromium.launch({ headless: true });
 const context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, timezoneId: 'Europe/Warsaw' });
-await context.route(/127\.0\.0\.1:9|posthog\.com/, route => route.abort());
+await context.route(/127\.0\.0\.1:9(?:\/|$)|posthog\.com/, route => route.abort());
 const page = await context.newPage();
 const capture = async (name, fullPage = false) => {
   await page.evaluate(() => document.fonts.ready);
