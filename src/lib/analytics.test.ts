@@ -83,13 +83,23 @@ describe('consent-gated browser analytics', () => {
     await vi.waitFor(() => expect(sdk.init).toHaveBeenCalledOnce());
     const config = sdk.init.mock.calls[0][1];
     expect(config).toMatchObject({ autocapture: false, disable_session_recording: true, disable_surveys: true });
-    const event = { event: '$pageview', properties: {
-      $current_url: 'https://daily.example/auth?code=secret#private',
-      $set_once: { $initial_referrer: 'https://daily.example/?token=secret' }
-    } };
-    expect(config.before_send(event).properties).toEqual({
-      $current_url: 'https://daily.example/auth',
-      $set_once: { $initial_referrer: 'https://daily.example/' }
+    const event = {
+      event: '$pageview',
+      properties: {
+        $current_url: 'https://daily.example/auth?code=secret#private',
+        $set_once: { $initial_referrer: 'https://daily.example/?token=secret' }
+      },
+      $set: { $current_url: 'https://daily.example/auth?code=secret#private' },
+      $set_once: { $initial_current_url: 'https://daily.example/auth?code=secret#private' }
+    };
+    expect(config.before_send(event)).toEqual({
+      event: '$pageview',
+      properties: {
+        $current_url: 'https://daily.example/auth',
+        $set_once: { $initial_referrer: 'https://daily.example/' }
+      },
+      $set: { $current_url: 'https://daily.example/auth' },
+      $set_once: { $initial_current_url: 'https://daily.example/auth' }
     });
     cookieConsent.set('rejected');
     expect(config.before_send(event)).toBeNull();

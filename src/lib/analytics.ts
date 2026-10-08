@@ -69,7 +69,9 @@ const enableAnalytics = async () => {
           }
         };
         stripUrlDetails(event.properties);
-        for (const key of ['$set', '$set_once']) {
+        for (const key of ['$set', '$set_once'] as const) {
+          const personProperties = event[key];
+          if (personProperties) stripUrlDetails(personProperties);
           const properties = event.properties[key];
           if (properties && typeof properties === 'object') stripUrlDetails(properties);
         }

@@ -1,6 +1,26 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Request } from '@playwright/test';
+import { gunzipSync } from 'node:zlib';
 
 const consentKey = 'daily.cookieConsent.v1';
+
+type AnalyticsEvent = { event: string; properties: Record<string, unknown> };
+
+function readAnalyticsEvents(request: Request): AnalyticsEvent[] {
+  const body = request.postDataBuffer();
+  expect(body, 'Analytics collection requests must have a payload').not.toBeNull();
+  let payload: string;
+  if (body![0] === 0x1f && body![1] === 0x8b) {
+    payload = gunzipSync(body!).toString('utf8');
+  } else if (new URL(request.url()).searchParams.get('compression') === 'base64') {
+    const data = new URLSearchParams(body!.toString('utf8')).get('data');
+    expect(data, 'Base64 collection requests must contain event data').not.toBeNull();
+    payload = Buffer.from(data!, 'base64').toString('utf8');
+  } else {
+    payload = body!.toString('utf8');
+  }
+  const events = JSON.parse(payload);
+  return Array.isArray(events) ? events : events.batch ?? [events];
+}
 
 // Exercise collection as a normal browser while keeping PostHog's bot filtering enabled.
 test.use({ userAgent: 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36' });
@@ -23,6 +43,9 @@ test('analytics stays off before a choice, after rejection, and on later visits'
   await expect(banner).toBeVisible();
   await page.getByLabel('New Todo Task').fill('Private task without analytics');
   await page.getByLabel('New Todo Task').press('Enter');
+  const addTaskDialog = page.getByRole('dialog', { name: 'Add task' });
+  await addTaskDialog.getByRole('button', { name: 'Confirm adding task' }).click();
+  await expect(addTaskDialog).toBeHidden();
   await expect(page.getByText('Private task without analytics', { exact: true })).toBeVisible();
   await banner.getByRole('button', { name: 'Reject analytics' }).click();
   await expect(banner).toBeHidden();
@@ -37,8 +60,12 @@ test('analytics stays off before a choice, after rejection, and on later visits'
 
 test('accepting starts analytics, settings withdraw it, and another acceptance works', async ({ page }) => {
   const analyticsRequests: string[] = [];
+  const analyticsEvents: AnalyticsEvent[] = [];
   await page.route('http://127.0.0.1:9/**', async route => {
     analyticsRequests.push(route.request().url());
+    if (new URL(route.request().url()).pathname === '/e/') {
+      analyticsEvents.push(...readAnalyticsEvents(route.request()));
+    }
     if (route.request().url().endsWith('.js')) {
       await route.fulfill({ contentType: 'text/javascript', body: '' });
     } else {
@@ -50,7 +77,23 @@ test('accepting starts analytics, settings withdraw it, and another acceptance w
   await banner.getByRole('button', { name: 'Accept analytics' }).click();
   await expect(banner).toBeHidden();
   await expect.poll(async () => (await page.context().cookies()).some(cookie => cookie.name.startsWith('ph_'))).toBe(true);
-  await expect.poll(() => analyticsRequests.some(url => new URL(url).pathname === '/e/')).toBe(true);
+  const origin = new URL(page.url()).origin;
+  const pageviewUrls = () => analyticsEvents
+    .filter(event => event.event === '$pageview')
+    .map(event => event.properties.$current_url);
+  await expect.poll(pageviewUrls, { timeout: 10_000 }).toContain(`${origin}/privacy`);
+  expect(JSON.stringify(analyticsEvents)).not.toContain('private-oauth-code');
+  expect(JSON.stringify(analyticsEvents)).not.toContain('#cookies');
+
+  // Exercise SvelteKit navigation with another sensitive query and fragment.
+  const termsLink = page.getByRole('navigation').getByRole('link', { name: 'Terms', exact: true });
+  await termsLink.evaluate(link => link.setAttribute('href', '/terms?code=private-navigation-code#private-navigation-fragment'));
+  await termsLink.click();
+  await expect(page).toHaveURL(`${origin}/terms?code=private-navigation-code#private-navigation-fragment`);
+  await expect.poll(pageviewUrls, { timeout: 10_000 }).toContain(`${origin}/terms`);
+  for (const sensitiveValue of ['private-oauth-code', '#cookies', 'private-navigation-code', 'private-navigation-fragment', '?code=']) {
+    expect(JSON.stringify(analyticsEvents)).not.toContain(sensitiveValue);
+  }
 
   await page.getByRole('contentinfo').getByRole('button', { name: 'Cookie settings' }).click();
   await expect(banner).toContainText('Analytics is currently on.');
@@ -58,8 +101,8 @@ test('accepting starts analytics, settings withdraw it, and another acceptance w
   await expect(banner).toBeHidden();
   await expect.poll(async () => (await page.context().cookies()).some(cookie => cookie.name.startsWith('ph_'))).toBe(false);
   const requestsAfterRejection = analyticsRequests.length;
-  await page.getByRole('navigation').getByRole('link', { name: 'Terms', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Terms of Service', exact: true })).toBeVisible();
+  await page.getByRole('navigation').getByRole('link', { name: 'Privacy', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Privacy Policy', exact: true })).toBeVisible();
   expect(analyticsRequests).toHaveLength(requestsAfterRejection);
   await page.reload();
   await expect(banner).toBeHidden();
