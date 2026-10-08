@@ -5500,7 +5500,7 @@
             <span>
               <strong data-private>{route.name}</strong>
               <small data-private>{route.origin.label} → {route.destination.label}</small>
-              <em>
+              <em data-private>
                 {route.days.map((day) => day.slice(0, 2).toUpperCase()).join(' · ') || 'No days'}
                 · {route.enabled ? 'Enabled' : 'Paused'}
               </em>

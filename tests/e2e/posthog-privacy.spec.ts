@@ -252,9 +252,10 @@ test('masks saved and newly rendered User content while preserving labels across
   database.prepare('insert into saved_commute_addresses (id, user_id, label, latitude, longitude, position) values (?, ?, ?, 52, 21, 1)')
     .run(crypto.randomUUID(), userId, 'PRIVATE_SAVED_ADDRESS_7ec452');
   database.prepare(`insert into commute_routes (id, user_id, name, origin_label, origin_latitude, origin_longitude,
-    destination_label, destination_latitude, destination_longitude, position)
-    values (?, ?, ?, ?, 52, 21, ?, 53, 22, 1)`)
-    .run(crypto.randomUUID(), userId, 'PRIVATE_ROUTE_7ec452', 'PRIVATE_ORIGIN_7ec452', 'PRIVATE_DESTINATION_7ec452');
+    destination_label, destination_latitude, destination_longitude, position, days, enabled)
+    values (?, ?, ?, ?, 52, 21, ?, 53, 22, 1, ?, 0)`)
+    .run(crypto.randomUUID(), userId, 'PRIVATE_ROUTE_7ec452', 'PRIVATE_ORIGIN_7ec452', 'PRIVATE_DESTINATION_7ec452',
+      JSON.stringify(['tuesday', 'saturday']));
   const now = Math.floor(Date.now() / 1000);
   const scopes = ['https://www.googleapis.com/auth/calendar.calendarlist.readonly', 'https://www.googleapis.com/auth/calendar.events.readonly'];
   database.prepare('update auth_account set access_token = ?, access_token_expires_at = ?, scope = ? where user_id = ?')
@@ -288,6 +289,8 @@ test('masks saved and newly rendered User content while preserving labels across
   await expect(page.getByRole('dialog', { name: 'Choose a city' })).toContainText('PRIVATE_SAVED_CITY_7ec452');
   await page.getByLabel('Close city picker').click();
   await page.getByRole('button', { name: /^Commute\./ }).click();
+  await expect(page.getByRole('dialog', { name: 'Your routes' }).locator('em')).toHaveText('TU · SA · Paused');
+  const routesReplayTimestamp = await page.evaluate(() => Date.now());
   await page.getByRole('button', { name: /PRIVATE_ROUTE_7ec452/ }).click();
   await expect(page.getByRole('dialog', { name: 'Edit route' })).toContainText('PRIVATE_ORIGIN_7ec452');
   await page.getByLabel('Commute Origin Search').fill('');
@@ -321,7 +324,9 @@ test('masks saved and newly rendered User content while preserving labels across
     .flatMap(event => event.properties.$snapshot_data as Record<string, unknown>[]));
   await expect.poll(async () => JSON.stringify((await capturedSnapshots()).map(decodeSnapshot)).includes('Add task')).toBe(true);
   await page.evaluate(() => window.privacyVerification.posthog.stopSessionRecording());
-  const recording = JSON.stringify((await capturedSnapshots()).map(decodeSnapshot));
+  const snapshots = (await capturedSnapshots()).map(decodeSnapshot)
+    .sort((first, second) => (first.timestamp as number) - (second.timestamp as number));
+  const recording = JSON.stringify(snapshots);
   expect(recording.includes('"textContent":"Primary"')).toBe(false);
   for (const privateText of ['PRIVATE_', email, 'Primary planning']) {
     expect(recording.includes(privateText), `Private content must be masked: ${privateText}`).toBe(false);
@@ -330,4 +335,18 @@ test('masks saved and newly rendered User content while preserving labels across
     'Your routes', 'Edit route', 'Route name', 'Next 7 days', 'Calendars', 'All tasks', 'Add task', 'Delete group?']) {
     expect(recording.includes(label), `Application copy should be readable: ${label}`).toBe(true);
   }
+
+  // Reconstruct the route settings from actual snapshots and subsequent text mutations.
+  await page.route('**/*', route => route.abort());
+  await page.addScriptTag({ path: resolve('node_modules/@posthog/rrweb-replay/dist/rrweb-replay.umd.cjs') });
+  await page.evaluate(({ events, timestamp }) => {
+    const root = document.createElement('div');
+    root.id = 'privacy-replayer';
+    document.body.append(root);
+    const replayer = new window.rrweb.Replayer(events as ConstructorParameters<typeof Replayer>[0], { root });
+    replayer.pause(timestamp - (events[0].timestamp as number) + 1);
+  }, { events: snapshots, timestamp: routesReplayTimestamp });
+  const replay = page.frameLocator('#privacy-replayer iframe');
+  await expect(replay.getByRole('heading', { name: 'Your routes', exact: true })).toHaveText('Your routes');
+  await expect(replay.locator('.daily-route-list em')).toHaveText(/^\s*\*[\s*]*$/);
 });
