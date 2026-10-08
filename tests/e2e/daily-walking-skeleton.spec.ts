@@ -50,24 +50,6 @@ test('Dialogs keep near-edge clicks and close on backdrop clicks', async ({ page
   await expect(settingsDialog).not.toBeVisible();
 });
 
-test('Prototype route and calendar dialogs use the same close controls', async ({ page }) => {
-  await page.goto('/prototype/daily?variant=c');
-  await page.waitForLoadState('networkidle');
-  await page.getByRole('button', { name: /Configure commute routes/ }).click();
-  await expect(page.getByRole('dialog', { name: 'Your routes' })).toBeVisible({ timeout: 3000 });
-  await page.getByRole('button', { name: 'Add route' }).click();
-  const routeDialog = page.getByRole('dialog', { name: 'Add route' });
-  await routeDialog.getByRole('button', { name: 'Close route editor' }).click();
-  await expect(routeDialog).not.toBeVisible();
-
-  await page.getByRole('button', { name: 'Connect Google Calendar' }).click();
-  await page.getByRole('button', { name: 'Continue with Google' }).click();
-  await page.getByRole('button', { name: 'Calendar settings' }).click();
-  const calendarsDialog = page.getByRole('dialog', { name: 'Calendars' });
-  await clickBesideDialog(page, calendarsDialog, 36);
-  await expect(calendarsDialog).not.toBeVisible();
-});
-
 test('Visitor Summary Configuration persists through Settings and the delivery dialog', async ({
   page
 }) => {

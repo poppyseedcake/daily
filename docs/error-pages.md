@@ -27,9 +27,8 @@ The layout has desktop and mobile compositions, keyboard focus indicators and
 44px recovery targets. The illustration is decorative; the labeled error region
 and heading provide its meaning to assistive technology. No animation is added.
 
-The `/prototype/error-pages` route shows both states for visual review. Pass
-`?status=404` or `?status=500` for a single state. These previews return 200; actual
-errors use SvelteKit’s error boundary and preserve the error HTTP status.
+The `/prototype/` pages have been retired and now return 404. Error-page
+coverage uses SvelteKit’s real error boundary and preserves the error HTTP status.
 
 Regression coverage in `tests/e2e/error-pages.spec.ts` exercises a real missing
 address, a failed client page-load request, recovery by full document reload,

@@ -4,7 +4,12 @@ import { createDefaultLocalSetup, localSetupStorageKey } from '../../src/lib/loc
 
 test.beforeEach(async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'no-preference' });
-  await page.addInitScript(() => localStorage.setItem('daily.onboarding.v1', 'seen'));
+  await page.addInitScript(() => {
+    localStorage.setItem('daily.onboarding.v1', 'seen');
+    localStorage.setItem(
+      'daily.cookieConsent.v1', JSON.stringify({ analytics: 'rejected', updatedAt: Date.now() })
+    );
+  });
 });
 
 for (const remaining of [0, 1]) {

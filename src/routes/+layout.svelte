@@ -13,8 +13,7 @@
   const excludeFromSearch = $derived(
     page.status >= 400 ||
     page.url.pathname === '/admin' ||
-    page.url.pathname.startsWith('/admin/') ||
-    page.url.pathname.startsWith('/prototype/')
+    page.url.pathname.startsWith('/admin/')
   );
   const maskReplayPage = $derived(
     page.status >= 400 || !['/', '/privacy', '/terms'].includes(page.url.pathname)

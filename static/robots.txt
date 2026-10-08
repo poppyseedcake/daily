@@ -4,5 +4,5 @@ Disallow: /api/
 Disallow: /auth/
 Disallow: /account/
 
-# Admin and prototype URLs remain crawlable; authentication and noindex control access/indexing.
+# Admin remains crawlable; authentication and noindex control access/indexing.
 Sitemap: https://dailykickoff.eu/sitemap.xml

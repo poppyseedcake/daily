@@ -26,6 +26,10 @@ const publicPages = [
 ] as const;
 
 const prototypePaths = [
+  '/prototype',
+  '/prototype/',
+  '/prototype/error-pages',
+  '/prototype/open-graph',
   '/prototype/daily',
   '/prototype/daily-summary',
   '/prototype/context-separation',
@@ -98,9 +102,10 @@ test.describe('server-rendered discovery metadata', () => {
   }
 
   for (const path of prototypePaths) {
-    test(`${path} is excluded before JavaScript runs`, async ({ page }) => {
+    test(`${path} returns 404 before JavaScript runs`, async ({ page }) => {
       const response = await page.goto(path);
-      expect(response?.status()).toBe(200);
+      expect(response?.status()).toBe(404);
+      await expect(page).toHaveTitle('Page not found · Daily');
       await expectNoindex(page);
     });
   }
@@ -152,7 +157,7 @@ test.describe('server-rendered discovery metadata', () => {
   });
 });
 
-test('client navigation removes prototype noindex and updates public tags without duplicates', async ({
+test('client navigation removes error noindex and updates public tags without duplicates', async ({
   page
 }) => {
   await page.addInitScript(() => localStorage.setItem('daily.onboarding.v1', 'seen'));
@@ -163,7 +168,7 @@ test('client navigation removes prototype noindex and updates public tags withou
     document.documentElement.dataset.metadataNavigation = 'same-document';
   });
 
-  await page.getByRole('link', { name: 'Open Daily' }).click();
+  await page.getByRole('link', { name: 'Go to Daily', exact: true }).click();
   await expectPublicMetadata(page, publicPages[0]);
   await page.getByRole('link', { name: 'Privacy', exact: true }).first().click();
   await expectPublicMetadata(page, publicPages[1]);
