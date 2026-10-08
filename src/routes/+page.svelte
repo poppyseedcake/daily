@@ -99,7 +99,8 @@
   import PageMetadata from '$lib/components/PageMetadata.svelte';
   import DailyOnboarding from '$lib/components/onboarding/DailyOnboarding.svelte';
   import AuthModal from '$lib/components/AuthModal.svelte';
-  import posthog from 'posthog-js';
+  import { analytics } from '$lib/analytics';
+  import CookieSettingsButton from '$lib/components/CookieSettingsButton.svelte';
   import { workspaceGreeting } from '$lib/workspaceGreeting';
 
   let authModal: AuthModal;
@@ -326,8 +327,7 @@
   const onboardingStorageKey = 'daily.onboarding.v1';
   const finishOnboarding = () => {
     onboardingOpen = false;
-    posthog.capture('onboarding_completed');
-    posthog.logger.info('Onboarding completed', { flow: 'onboarding' });
+    analytics.capture('onboarding_completed');
     try { localStorage.setItem(onboardingStorageKey, 'seen'); } catch { /* Storage may be unavailable; the board remains usable. */ }
   };
   const replayOnboarding = () => {
@@ -363,22 +363,19 @@
   $effect(() => {
     const currentAuthState = authState;
     untrack(() => {
-      const identifiedUserId = posthog.get_property('$user_id');
+      const identifiedUserId = analytics.getUserId();
       if (currentAuthState.mode !== 'user') {
-        if (identifiedUserId) posthog.reset();
+        if (identifiedUserId) analytics.reset();
         return;
       }
 
-      if (identifiedUserId && identifiedUserId !== currentAuthState.userId) posthog.reset();
-      posthog.identify(currentAuthState.userId, {
-        email: currentAuthState.summaryRecipient,
-        ...(currentAuthState.name ? { name: currentAuthState.name } : {})
-      });
+      if (identifiedUserId && identifiedUserId !== currentAuthState.userId) analytics.reset();
+      analytics.identify(currentAuthState.userId);
     });
   });
 
   const resetPostHogIdentity = () => {
-    posthog.reset();
+    analytics.reset();
   };
 
   onMount(() => {
@@ -718,8 +715,7 @@
       weatherLocationSearchQuery = location.label;
       weatherLocationStatus = 'Weather Location saved in this browser only.';
       weatherLocationStatusTone = 'success';
-      posthog.capture('weather_location_saved', { storage: 'browser' });
-      posthog.logger.info('Weather location saved', { storage: 'browser' });
+      analytics.capture('weather_location_saved', { storage: 'browser' });
       closeWeatherDialog();
       return;
     }
@@ -747,8 +743,7 @@
       weatherLocationSearchQuery = location.label;
       weatherLocationStatus = 'Weather Location saved to your account.';
       weatherLocationStatusTone = 'success';
-      posthog.capture('weather_location_saved', { storage: 'account' });
-      posthog.logger.info('Weather location saved', { storage: 'account' });
+      analytics.capture('weather_location_saved', { storage: 'account' });
       closeWeatherDialog();
     } catch {
       weatherLocationStatus = 'Weather Location save failed. Try again.';
@@ -986,7 +981,7 @@
       clearCommuteRouteDraft();
       commuteRouteStatus = 'Commute Route updated in this browser only.';
       commuteRouteStatusTone = 'success';
-      posthog.capture('commute_route_saved', {
+      analytics.capture('commute_route_saved', {
         operation: 'updated',
         storage: 'browser',
         weekdays_count: result.data.days.length
@@ -1018,7 +1013,7 @@
     clearCommuteRouteDraft();
     commuteRouteStatus = 'Commute Route saved in this browser only.';
     commuteRouteStatusTone = 'success';
-    posthog.capture('commute_route_saved', {
+    analytics.capture('commute_route_saved', {
       operation: 'created',
       storage: 'browser',
       weekdays_count: result.data.days.length
@@ -1047,7 +1042,7 @@
     if (editingCommuteRouteId === route.id) clearCommuteRouteDraft();
     commuteRouteStatus = 'Commute Route deleted from this browser.';
     commuteRouteStatusTone = 'success';
-    posthog.capture('commute_route_deleted', { storage: 'browser' });
+    analytics.capture('commute_route_deleted', { storage: 'browser' });
   };
   const toggleCommuteRoute = (route: CommuteRoute) => {
     if (!canEditSetup('commuteSetup')) return;
@@ -1079,7 +1074,7 @@
         clearCommuteRouteDraft();
         commuteRouteStatus = 'Commute Route saved to your account.';
         commuteRouteStatusTone = 'success';
-        posthog.capture('commute_route_saved', {
+        analytics.capture('commute_route_saved', {
           operation: 'created',
           storage: 'account',
           weekdays_count: result.route.days.length
@@ -1111,7 +1106,7 @@
         clearCommuteRouteDraft();
         commuteRouteStatus = 'Commute Route saved to your account.';
         commuteRouteStatusTone = 'success';
-        posthog.capture('commute_route_saved', {
+        analytics.capture('commute_route_saved', {
           operation: 'updated',
           storage: 'account',
           weekdays_count: result.route.days.length
@@ -1142,7 +1137,7 @@
         if (editingCommuteRouteId === route.id) clearCommuteRouteDraft();
         commuteRouteStatus = 'Commute Route deleted from your account.';
         commuteRouteStatusTone = 'success';
-        posthog.capture('commute_route_deleted', { storage: 'account' });
+        analytics.capture('commute_route_deleted', { storage: 'account' });
         return;
       }
       commuteRouteStatus = 'Commute Route delete failed. Try again.';
@@ -1187,7 +1182,7 @@
 
     selectedCalendarStatus = 'Selected Calendars saved to your account.';
     selectedCalendarStatusTone = 'success';
-    posthog.capture('calendar_selection_updated', {
+    analytics.capture('calendar_selection_updated', {
       selected_calendars_count: nextCalendars.filter((calendar) => calendar.selected).length
     });
     await invalidateAll();
@@ -1355,7 +1350,7 @@
     }
 
     todoTasks = nextTasks;
-    posthog.capture('todo_task_created', {
+    analytics.capture('todo_task_created', {
       urgency: newTodoUrgency,
       has_category: newTodoCategoryId !== ''
     });
@@ -1610,7 +1605,7 @@
     if (!result.success) return;
 
     updateSummaryConfiguration(result.data);
-    posthog.capture('summary_delivery_schedule_updated');
+    analytics.capture('summary_delivery_schedule_updated');
     closeSummaryDeliveryDialog();
   };
 
@@ -1652,14 +1647,14 @@
     const nextTasks = completeTodoTaskInModule(todoTasks, taskId);
     if (nextTasks === todoTasks) return;
     todoTasks = nextTasks;
-    posthog.capture('todo_task_completed');
+    analytics.capture('todo_task_completed');
   };
 
   const deleteTodoTask = (taskId: string) => {
     const nextTasks = deleteTodoTaskInModule(todoTasks, taskId);
     if (nextTasks === todoTasks) return;
     todoTasks = nextTasks;
-    posthog.capture('todo_task_deleted');
+    analytics.capture('todo_task_deleted');
   };
 
   const createTodoCategory = () => {
@@ -2351,6 +2346,7 @@
       <span>Daily</span>
       <a href="/privacy">Privacy Policy</a>
       <a href="/terms">Terms of Service</a>
+      <CookieSettingsButton />
       <a href="mailto:daily@dailykickoff.eu">daily@dailykickoff.eu</a>
     </footer>
   </section>

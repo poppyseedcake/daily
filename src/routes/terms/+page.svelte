@@ -8,7 +8,7 @@
   intro="These Terms describe the free Daily service and the rules for using it."
 >
   {#snippet children()}
-    <p>Last updated: 2 October 2026.</p>
+    <p>Last updated: 8 October 2026.</p>
     <div class="public-callout">
       <p>
         These Terms do not remove rights that the law gives you and do not make a blanket exclusion
@@ -81,6 +81,14 @@
       Daily does not create, edit, or delete Google Calendar events. You can revoke access from
       your Google Account settings at any time. A revocation can make Calendar features stop
       working until you reconnect.
+    </p>
+
+    <p>
+      Daily uses essential cookies and browser storage for sign-in, security, and your local
+      setup and preferences. Optional browser analytics is provided by PostHog only with your
+      separate consent. Accepting these Terms or signing in does not give that consent.
+      You can reject analytics and use Daily, or withdraw consent later through Cookie settings.
+      The Privacy Policy explains the analytics data, storage, server diagnostics, and your rights.
     </p>
 
     <h2>6. Suspension and account deletion</h2>

@@ -16,7 +16,7 @@ declare global {
     privacyVerification: { posthog: PostHog; events: CapturedEvent[] };
     rrweb: { Replayer: typeof Replayer };
     __PosthogExtensions__: {
-      initSessionRecording: (posthog: PostHog, documentWasVisible: boolean) => unknown;
+      loadExternalDependency?: (posthog: PostHog, name: string, callback: (error?: unknown) => void) => void;
     };
   }
 }
@@ -35,13 +35,19 @@ function decodeSnapshot(snapshot: Record<string, unknown>): Record<string, unkno
 }
 
 function observePostHogInstance() {
-  // Observe the real application instance at the SDK's lazy-recorder seam.
-  // Forward startup unchanged; this works with both Vite and the production bundle.
-  const initialize = window.__PosthogExtensions__.initSessionRecording;
-  window.__PosthogExtensions__.initSessionRecording = (posthog, documentWasVisible) => {
-    if (!window.privacyVerification) window.privacyVerification = { posthog, events: [] };
-    return initialize(posthog, documentWasVisible);
-  };
+  // Observe the real instance at exception-extension loading: replay stays disabled by default.
+  // This works with both Vite and production bundles without adding an application test hook.
+  let loadDependency: Window['__PosthogExtensions__']['loadExternalDependency'];
+  Object.defineProperty(window.__PosthogExtensions__, 'loadExternalDependency', {
+    configurable: true,
+    get() { return loadDependency; },
+    set(load: NonNullable<typeof loadDependency>) {
+      loadDependency = (posthog, name, callback) => {
+        if (!window.privacyVerification) window.privacyVerification = { posthog, events: [] };
+        load(posthog, name, callback);
+      };
+    }
+  });
 }
 
 function recordedCityDialogIsModal(snapshots: Record<string, unknown>[]): boolean {
@@ -67,6 +73,8 @@ function recordedCityDialogIsModal(snapshots: Record<string, unknown>[]): boolea
 async function prepareRecorder(page: Page) {
   await page.addInitScript(() => {
     localStorage.setItem('daily.onboarding.v1', 'seen');
+    // Force replay only inside this masking regression test, after explicit analytics consent.
+    localStorage.setItem('daily.cookieConsent.v1', JSON.stringify({ analytics: 'accepted', updatedAt: Date.now() }));
     // Fake project configuration, supplied through the SDK's normal preload path.
     // Deliberately conflict with local attribute masking to exercise SDK precedence.
     (window as unknown as { _POSTHOG_REMOTE_CONFIG: unknown })._POSTHOG_REMOTE_CONFIG = {

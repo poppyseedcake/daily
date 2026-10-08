@@ -1,4 +1,4 @@
-export const dailyTermsVersion = '2026-10-02';
+export const dailyTermsVersion = '2026-10-08';
 
 export const legalConfirmationCookieName = 'daily.legal_confirmation';
 export const legalConfirmationCookieMaxAgeSeconds = 15 * 60;

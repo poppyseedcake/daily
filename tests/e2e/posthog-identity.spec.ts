@@ -2,6 +2,10 @@ import { expect } from '@playwright/test';
 import { test } from './fixtures/signedInUser';
 
 test('resets identified browser telemetry when an expired session becomes a Visitor without remounting', async ({ page, signedInUser }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem('daily.onboarding.v1', 'seen');
+    localStorage.setItem('daily.cookieConsent.v1', JSON.stringify({ analytics: 'accepted', updatedAt: Date.now() }));
+  });
   await page.goto('/');
   let resource: string | undefined;
   await expect.poll(async () => {
