@@ -1,5 +1,11 @@
 import { expect, test } from '@playwright/test';
 
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem(
+    'daily.cookieConsent.v1', JSON.stringify({ analytics: 'rejected', updatedAt: Date.now() })
+  ));
+});
+
 for (const width of [390, 1280]) {
   for (const taskCount of [0, 30]) {
     test(`navigation and footer stay visible at the page bottom at ${width}px with ${taskCount} tasks`, async ({ page }) => {
