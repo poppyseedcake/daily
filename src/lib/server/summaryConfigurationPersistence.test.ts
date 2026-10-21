@@ -56,6 +56,7 @@ describe('User Summary Configuration persistence', () => {
   test('saves valid Summary Configuration changes scoped to the current User', async () => {
     const store = createStore();
     const configuration: SummaryConfiguration = {
+  summaryTimesByDay: null,
       summaryTime: '18:45',
       userTimeZone: 'America/New_York',
       summaryDeliveryEnabled: false,

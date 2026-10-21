@@ -21,6 +21,12 @@ export type {
 
 export const summaryTimeSchema = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/);
 
+export const summaryDayValues = [
+  'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'
+] as const;
+export const summaryTimesByDaySchema = z.record(z.enum(summaryDayValues), summaryTimeSchema);
+export type SummaryTimesByDay = z.infer<typeof summaryTimesByDaySchema>;
+
 export const userTimeZoneSchema = z
   .string()
   .trim()
@@ -48,6 +54,7 @@ export const defaultSummarySectionPauseSettings = summarySectionPauseSettingsSch
 
 export const summaryConfigurationSchema = z.object({
   summaryTime: summaryTimeSchema,
+  summaryTimesByDay: summaryTimesByDaySchema.nullable().default(null),
   userTimeZone: userTimeZoneSchema,
   summaryDeliveryEnabled: z.boolean(),
   sectionPauses: summarySectionPauseSettingsSchema.default(defaultSummarySectionPauseSettings)

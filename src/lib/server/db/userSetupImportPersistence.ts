@@ -2,7 +2,7 @@ import { Temporal } from '@js-temporal/polyfill';
 import { z } from 'zod';
 import { calculateNextSummaryAt } from '$lib/nextSummarySchedule';
 import type { UserSetupImportDraft } from '$lib/localSetup';
-import { summaryTimeSchema, userTimeZoneSchema } from '$lib/summaryConfiguration';
+import { summaryTimeSchema, summaryTimesByDaySchema, userTimeZoneSchema } from '$lib/summaryConfiguration';
 import { commuteDaysSchema, commutePointSchema, commuteRouteNameSchema } from '$lib/commuteRoute';
 import { summaryConfigurationFromFlat } from '../summaryConfigurationPersistence';
 
@@ -10,6 +10,7 @@ const persistedSummaryConfigurationSchema = z.object({
   id: z.string().min(1),
   userId: z.string().min(1),
   summaryTime: summaryTimeSchema,
+  summaryTimesByDay: summaryTimesByDaySchema.nullable().optional(),
   userTimeZone: userTimeZoneSchema,
   summaryDeliveryEnabled: z.boolean(),
   weatherSectionPaused: z.boolean(),

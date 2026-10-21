@@ -507,6 +507,7 @@ describe('Visitor Local Setup module', () => {
         id: 'summary-1',
         userId: 'user-1',
         summaryTime: '18:45',
+        summaryTimesByDay: null,
         userTimeZone: 'UTC',
         summaryDeliveryEnabled: true,
         weatherSectionPaused: false,

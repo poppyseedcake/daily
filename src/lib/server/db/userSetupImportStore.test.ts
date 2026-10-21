@@ -10,6 +10,8 @@ import {
   persistUserSetupImportDraftForNewUser as persistUserSetupImportDraftForNewUserWithClock
 } from './userSetupImportPersistence';
 import { createUserSetupImportStore } from './userSetupImportStore';
+import { createDefaultLocalSetup, createUserSetupImportDraftFromLocalSetup } from '$lib/localSetup';
+import { createUserSummaryConfigurationStore } from './summaryConfigurationStore';
 
 const referenceInstant = Temporal.Instant.from('2026-06-22T00:00:00Z');
 const persistUserSetupImportDraftForNewUser = (
@@ -23,6 +25,7 @@ const createTestDatabase = () => {
   const sqlite = new Database(':memory:');
   sqlite.pragma('foreign_keys = ON');
   sqlite.exec(readFileSync('drizzle/0000_bootstrap_daily.sql', 'utf8'));
+  sqlite.exec(readFileSync('drizzle/0024_add_summary_times_by_day.sql', 'utf8'));
   sqlite.exec(readFileSync('drizzle/0003_add_weather_locations.sql', 'utf8'));
   sqlite.exec(readFileSync('drizzle/0010_add_commute_setup.sql', 'utf8'));
   sqlite.exec(readFileSync('drizzle/0016_add_commute_preview_duration.sql', 'utf8'));
@@ -144,6 +147,30 @@ const validDraft = (): UserSetupImportDraft => ({
 describe('SQLite User Setup import store', () => {
   let sqlite: Database.Database;
   let database: ReturnType<typeof drizzle<typeof schema>>;
+
+  test('imports Visitor weekday times and schedules the matching local day', async () => {
+    const setup = createDefaultLocalSetup();
+    setup.summaryConfiguration.userTimeZone = 'Europe/Warsaw';
+    const times = {
+      monday: '09:00', tuesday: '06:00', wednesday: '07:00', thursday: '07:00',
+      friday: '07:00', saturday: '10:00', sunday: '10:00'
+    };
+    setup.summaryConfiguration.summaryTimesByDay = times;
+    const draft = createUserSetupImportDraftFromLocalSetup({ outcome: 'loaded', setup }, {
+      userId: 'user-1', summaryConfigurationId: 'summary-1',
+      weatherLocationId: 'weather-1',
+      nextTodoCategoryId: (category) => category.id,
+      nextTodoTaskId: (task) => task.id
+    });
+
+    if (!draft) throw new Error('Expected a valid Local Setup import draft');
+    await expect(persistUserSetupImportDraftForNewUser(createUserSetupImportStore(database), 'user-1', draft))
+      .resolves.toEqual({ outcome: 'imported' });
+    await expect(createUserSummaryConfigurationStore(database).load('user-1'))
+      .resolves.toMatchObject({ summaryTimesByDay: times });
+    expect(sqlite.prepare('select next_summary_at from users where id = ?').get('user-1'))
+      .toEqual({ next_summary_at: '2026-06-22T07:00:00Z' });
+  });
 
   beforeEach(() => {
     const testDatabase = createTestDatabase();

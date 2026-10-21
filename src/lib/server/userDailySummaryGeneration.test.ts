@@ -14,6 +14,7 @@ import {
 } from '$lib/dailySummaryGeneration/server';
 
 const configuration: SummaryConfiguration = {
+  summaryTimesByDay: null,
   summaryTime: '07:00',
   userTimeZone: 'Europe/Warsaw',
   summaryDeliveryEnabled: true,

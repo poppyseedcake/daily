@@ -1,5 +1,5 @@
 import { Temporal } from '@js-temporal/polyfill';
-import type { SummaryConfiguration } from './summaryConfiguration';
+import { summaryDayValues, type SummaryConfiguration } from './summaryConfiguration';
 
 export const isSummaryScheduleEligible = (configuration: SummaryConfiguration) =>
   configuration.summaryDeliveryEnabled;
@@ -12,11 +12,14 @@ export const calculateNextSummaryAt = (
     return null;
   }
 
-  const summaryTime = Temporal.PlainTime.from(configuration.summaryTime);
   const localReference = referenceInstant.toZonedDateTimeISO(configuration.userTimeZone);
   let localDate = localReference.toPlainDate();
 
   const occurrenceOn = (date: Temporal.PlainDate) => {
+    const day = summaryDayValues[date.dayOfWeek - 1];
+    const summaryTime = Temporal.PlainTime.from(
+      configuration.summaryTimesByDay?.[day] ?? configuration.summaryTime
+    );
     const requestedLocalTime = date.toPlainDateTime(summaryTime);
     const compatibleOccurrence = requestedLocalTime.toZonedDateTime(configuration.userTimeZone, {
       disambiguation: 'compatible'
