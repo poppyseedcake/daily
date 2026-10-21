@@ -145,7 +145,7 @@ The green, yellow, or red condition of a Commute Route derived from the relative
 _Avoid_: Google Maps traffic color, absolute delay
 
 **Summary Time**:
-The local time when a User's Daily Summary is sent. It defaults to 07:00 and can be changed by the User.
+The local time when a User's Daily Summary is sent. It defaults to 07:00 for every day; the User can choose one shared time or a separate time for each weekday.
 _Avoid_: Morning time, notification time
 
 **User Time Zone**:

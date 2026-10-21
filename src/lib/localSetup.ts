@@ -66,6 +66,7 @@ export type UserSetupImportDraft = {
     id: string;
     userId: string;
     summaryTime: string;
+    summaryTimesByDay?: SummaryConfiguration['summaryTimesByDay'];
     userTimeZone: SummaryConfiguration['userTimeZone'];
     summaryDeliveryEnabled: boolean;
     weatherSectionPaused: boolean;
@@ -289,6 +290,7 @@ export const createUserSetupImportDraftFromLocalSetup = (
       id: options.summaryConfigurationId,
       userId: options.userId,
       summaryTime: setup.summaryConfiguration.summaryTime,
+      summaryTimesByDay: setup.summaryConfiguration.summaryTimesByDay,
       userTimeZone: setup.summaryConfiguration.userTimeZone,
       summaryDeliveryEnabled: setup.summaryConfiguration.summaryDeliveryEnabled,
       weatherSectionPaused: setup.summaryConfiguration.sectionPauses.weather,

@@ -42,6 +42,7 @@ describe('SQLite User Summary Configuration store', () => {
     sqlite = new Database(':memory:');
     sqlite.pragma('foreign_keys = ON');
     sqlite.exec(readFileSync('drizzle/0000_bootstrap_daily.sql', 'utf8'));
+    sqlite.exec(readFileSync('drizzle/0024_add_summary_times_by_day.sql', 'utf8'));
     sqlite.exec(readFileSync('drizzle/0002_add_delivery_records.sql', 'utf8'));
     sqlite.exec(readFileSync('drizzle/0011_add_next_summary_at.sql', 'utf8'));
     sqlite.exec(readFileSync('drizzle/0012_add_scheduled_delivery_claims.sql', 'utf8'));
@@ -54,6 +55,34 @@ describe('SQLite User Summary Configuration store', () => {
   });
 
   afterEach(() => sqlite.close());
+
+  test('keeps weekday times after loading and reschedules changes back to a shared time', async () => {
+    const store = createUserSummaryConfigurationStore(drizzle(sqlite, { schema }));
+    const configuration = {
+      ...defaultSummaryConfiguration,
+      userTimeZone: 'Europe/Warsaw',
+      summaryTimesByDay: {
+        monday: '09:00', tuesday: '06:00', wednesday: '07:00', thursday: '07:00',
+        friday: '07:00', saturday: '10:00', sunday: '10:00'
+      }
+    };
+    const reference = Temporal.Instant.from('2026-06-22T05:00:00Z');
+    await expect(saveUserSummaryConfiguration(store, 'user-1', configuration, reference))
+      .resolves.toEqual({ outcome: 'saved' });
+    await expect(store.load('user-1')).resolves.toEqual(configuration);
+    expect(sqlite.prepare('select next_summary_at from users where id = ?').get('user-1'))
+      .toEqual({ next_summary_at: '2026-06-22T07:00:00Z' });
+
+    const changed = { ...configuration, summaryTimesByDay: { ...configuration.summaryTimesByDay, monday: '10:00' } };
+    await saveUserSummaryConfiguration(store, 'user-1', changed, reference);
+    expect(sqlite.prepare('select next_summary_at from users where id = ?').get('user-1'))
+      .toEqual({ next_summary_at: '2026-06-22T08:00:00Z' });
+
+    await saveUserSummaryConfiguration(store, 'user-1', { ...configuration, summaryTimesByDay: null }, reference);
+    await expect(store.load('user-1')).resolves.toMatchObject({ summaryTimesByDay: null });
+    expect(sqlite.prepare('select next_summary_at from users where id = ?').get('user-1'))
+      .toEqual({ next_summary_at: '2026-06-23T05:00:00Z' });
+  });
 
   test('atomically saves Summary Configuration and its freshly calculated UTC schedule', async () => {
     const database = drizzle(sqlite, { schema });
@@ -77,6 +106,21 @@ describe('SQLite User Summary Configuration store', () => {
     expect(sqlite.prepare('select next_summary_at from users where id = ?').get('user-1')).toEqual({
       next_summary_at: '2026-06-23T16:45:00Z'
     });
+  });
+
+  test.each([
+    {},
+    { monday: '07:00' },
+    { monday: '99:99', tuesday: '07:00', wednesday: '07:00', thursday: '07:00', friday: '07:00', saturday: '07:00', sunday: '07:00' },
+    { monday: '07:00', tuesday: '07:00', wednesday: '07:00', thursday: '07:00', friday: '07:00', saturday: '07:00', sunday: '07:00', holiday: '07:00' }
+  ])('rejects incomplete or invalid weekday times without replacing the saved configuration: %j', async (times) => {
+    const store = createUserSummaryConfigurationStore(drizzle(sqlite, { schema }));
+    const reference = Temporal.Instant.from('2026-06-22T00:00:00Z');
+    await saveUserSummaryConfiguration(store, 'user-1', defaultSummaryConfiguration, reference);
+    await expect(saveUserSummaryConfiguration(store, 'user-1', {
+      ...defaultSummaryConfiguration, summaryTimesByDay: times
+    }, reference)).resolves.toEqual({ outcome: 'invalid-configuration' });
+    await expect(store.load('user-1')).resolves.toEqual(defaultSummaryConfiguration);
   });
 
   test('persists canonical Summary Section pause settings', async () => {

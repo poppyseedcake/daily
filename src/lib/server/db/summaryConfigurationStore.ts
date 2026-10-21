@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { and, eq, sql } from 'drizzle-orm';
 import { db } from '$lib/server/db';
 import { calculateNextSummaryAt } from '$lib/nextSummarySchedule';
-import type { SummaryConfiguration } from '$lib/summaryConfiguration';
+import { summaryDayValues, type SummaryConfiguration } from '$lib/summaryConfiguration';
 import { deliveryRecords, summaryConfigurations, users } from './schema';
 import {
   summaryConfigurationFromFlat,
@@ -19,6 +19,7 @@ const toSummaryConfigurationRow = (
 ): Omit<typeof summaryConfigurations.$inferInsert, 'id'> => ({
   userId,
   summaryTime: configuration.summaryTime,
+  summaryTimesByDay: configuration.summaryTimesByDay,
   userTimeZone: configuration.userTimeZone,
   summaryDeliveryEnabled: configuration.summaryDeliveryEnabled,
   weatherSectionPaused: configuration.sectionPauses.weather,
@@ -50,6 +51,7 @@ export const createUserSummaryConfigurationStore = (
       const schedulingChanged =
         current === null ||
         current.summaryTime !== configuration.summaryTime ||
+        summaryDayValues.some((day) => current.summaryTimesByDay?.[day] !== configuration.summaryTimesByDay?.[day]) ||
         current.userTimeZone !== configuration.userTimeZone ||
         current.summaryDeliveryEnabled !== configuration.summaryDeliveryEnabled;
       const nextSummaryAt = schedulingChanged

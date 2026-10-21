@@ -18,6 +18,7 @@ export type UserSummaryConfigurationSaveOutcome = 'saved' | 'invalid-configurati
 
 export type FlatSummaryConfiguration = {
   summaryTime: string;
+  summaryTimesByDay?: SummaryConfiguration['summaryTimesByDay'];
   userTimeZone: string;
   summaryDeliveryEnabled: boolean;
   weatherSectionPaused: boolean;
@@ -31,6 +32,7 @@ export const summaryConfigurationFromFlat = (
 ): SummaryConfiguration =>
   summaryConfigurationSchema.parse({
     summaryTime: configuration.summaryTime,
+    summaryTimesByDay: configuration.summaryTimesByDay,
     userTimeZone: configuration.userTimeZone,
     summaryDeliveryEnabled: configuration.summaryDeliveryEnabled,
     sectionPauses: {

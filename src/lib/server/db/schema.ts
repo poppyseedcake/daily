@@ -1,6 +1,7 @@
 import { relations, sql } from 'drizzle-orm';
 import { check, index, integer, primaryKey, real, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
 import { deliveryErrorClassifications } from '../../deliveryRecords';
+import type { SummaryTimesByDay } from '../../summaryConfiguration';
 
 export const users = sqliteTable(
   'users',
@@ -36,6 +37,7 @@ export const summaryConfigurations = sqliteTable('summary_configurations', {
     .references(() => users.id, { onDelete: 'cascade' })
     .unique(),
   summaryTime: text('summary_time').notNull().default('07:00'),
+  summaryTimesByDay: text('summary_times_by_day', { mode: 'json' }).$type<SummaryTimesByDay>(),
   userTimeZone: text('user_time_zone').notNull().default('UTC'),
   summaryDeliveryEnabled: integer('summary_delivery_enabled', { mode: 'boolean' })
     .notNull()

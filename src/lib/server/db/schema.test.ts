@@ -435,7 +435,9 @@ describe('Daily database schema', () => {
         { user_id: 'saved-route' }
       ]);
       const journal = JSON.parse(readFileSync('drizzle/meta/_journal.json', 'utf8'));
-      expect(journal.entries.at(-1).tag).toBe('0023_retire_shared_commute_days');
+      expect(journal.entries).toContainEqual(expect.objectContaining({
+        idx: 23, tag: '0023_retire_shared_commute_days'
+      }));
     } finally {
       sqlite.close();
     }

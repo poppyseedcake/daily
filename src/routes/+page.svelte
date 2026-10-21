@@ -55,7 +55,10 @@
     defaultSummaryConfiguration,
     summaryConfigurationSchema,
     summaryTimeSchema,
+    summaryDayValues,
+    summaryTimesByDaySchema,
     type SummaryConfiguration,
+    type SummaryTimesByDay,
     type SummarySection,
     type UserTimeZone
   } from '$lib/summaryConfiguration';
@@ -193,6 +196,8 @@
   );
   let summaryTime = $state(initialSummaryConfiguration.summaryTime);
   let summaryTimeInput = $state(initialSummaryConfiguration.summaryTime);
+  let summaryTimesByDay = $state(initialSummaryConfiguration.summaryTimesByDay);
+  const summaryScheduleLabel = $derived(summaryTimesByDay ? 'Varies by day' : summaryTime);
   let userTimeZone = $state<UserTimeZone>(initialSummaryConfiguration.userTimeZone);
   let summaryDeliveryEnabled = $state(initialSummaryConfiguration.summaryDeliveryEnabled);
   let sectionPauses = $state({ ...initialSummaryConfiguration.sectionPauses });
@@ -347,6 +352,8 @@
   let summaryDeliveryMinutesButton = $state<HTMLButtonElement>();
   let summaryDeliveryTimeZoneSelect = $state<HTMLSelectElement>();
   let summaryTimeDraft = $state('07:00');
+  let summaryTimesByDayDraft = $state<SummaryTimesByDay | null>(null);
+  let summaryDeliveryWeekdayFields = $state<HTMLFieldSetElement>();
   let userTimeZoneDraft = $state<UserTimeZone>('UTC');
   let activeSummaryTimePart = $state<'hours' | 'minutes'>('hours');
   let summaryTimeZoneEditorOpen = $state(false);
@@ -433,6 +440,7 @@
 
   const currentSummaryConfiguration = (): SummaryConfiguration => ({
     summaryTime: currentSummaryTime(),
+    summaryTimesByDay: summaryTimesByDay ? { ...summaryTimesByDay } : null,
     userTimeZone,
     summaryDeliveryEnabled,
     sectionPauses: { ...sectionPauses }
@@ -447,6 +455,7 @@
 
     summaryTime = result.data.summaryTime;
     summaryTimeInput = result.data.summaryTime;
+    summaryTimesByDay = result.data.summaryTimesByDay;
     userTimeZone = result.data.userTimeZone;
     summaryDeliveryEnabled = result.data.summaryDeliveryEnabled;
     sectionPauses = { ...result.data.sectionPauses };
@@ -1528,13 +1537,21 @@
   const openSummaryDeliveryDialog = async () => {
     if (!canEditSetup('summaryConfiguration')) return;
     summaryTimeDraft = summaryTime;
+    summaryTimesByDayDraft = summaryTimesByDay ? { ...summaryTimesByDay } : null;
     userTimeZoneDraft = userTimeZone;
     activeSummaryTimePart = 'hours';
     summaryTimeZoneEditorOpen = false;
     summaryDeliveryDialogOpen = true;
     await tick();
     summaryDeliveryDialog?.showModal();
-    summaryDeliveryHoursButton?.focus();
+    if (summaryTimesByDayDraft) summaryDeliveryWeekdayFields?.querySelector('input')?.focus();
+    else summaryDeliveryHoursButton?.focus();
+  };
+
+  const setWeekdaySchedule = (enabled: boolean) => {
+    summaryTimesByDayDraft = enabled
+      ? summaryTimesByDaySchema.parse(Object.fromEntries(summaryDayValues.map((day) => [day, summaryTimeDraft])))
+      : null;
   };
 
   const closeSummaryDeliveryDialog = () => {
@@ -1600,6 +1617,7 @@
     const result = summaryConfigurationSchema.safeParse({
       ...currentSummaryConfiguration(),
       summaryTime: summaryTimeDraft,
+      summaryTimesByDay: summaryTimesByDayDraft,
       userTimeZone: userTimeZoneDraft
     });
     if (!result.success) return;
@@ -2055,7 +2073,7 @@
               <small>Sign in to receive emails</small>
             {:else}
               <strong>{canEditSetup('summaryConfiguration') ? summaryDeliveryEnabled ? 'Delivery on' : 'Delivery paused' : 'Delivery unavailable'}</strong>
-              <small>{canEditSetup('summaryConfiguration') ? summaryDeliveryEnabled ? 'Daily at' : 'No emails will be sent' : 'Retry loading your setup'}{#if canEditSetup('summaryConfiguration') && summaryDeliveryEnabled}{' '}<span data-private>{summaryTime}</span>{/if}</small>
+              <small>{canEditSetup('summaryConfiguration') ? summaryDeliveryEnabled ? summaryTimesByDay ? 'Daily ·' : 'Daily at' : 'No emails will be sent' : 'Retry loading your setup'}{#if canEditSetup('summaryConfiguration') && summaryDeliveryEnabled}{' '}<span data-private>{summaryScheduleLabel}</span>{/if}</small>
             {/if}
           </span>
         </label>
@@ -2194,14 +2212,14 @@
         data-onboarding-target="delivery"
         type="button"
         disabled={!localSetupHydrated || !canEditSetup('summaryConfiguration')}
-        aria-label={`Mail delivery. ${authState.mode === 'visitor' ? 'Sign in is required to receive Daily Summaries' : summaryDeliveryEnabled ? `${summaryTime}, ${userTimeZone}` : 'Paused'}`}
+        aria-label={`Mail delivery. ${authState.mode === 'visitor' ? 'Sign in is required to receive Daily Summaries' : summaryDeliveryEnabled ? `${summaryScheduleLabel}, ${userTimeZone}` : 'Paused'}`}
         aria-haspopup="dialog"
         onclick={() => void openSummaryDeliveryDialog()}
       >
         {#if summaryDeliveryEnabled}<Send size={18} />{:else}<Pause size={18} />{/if}
         <span>
           <small>{authState.mode === 'visitor' ? 'Mail delivery · Sign in required' : 'Mail delivery'}</small>
-          <strong data-private={summaryDeliveryEnabled ? '' : undefined}>{summaryDeliveryEnabled ? `${summaryTime} · ${userTimeZone}` : 'Paused'}</strong>
+          <strong data-private={summaryDeliveryEnabled ? '' : undefined}>{summaryDeliveryEnabled ? `${summaryScheduleLabel} · ${userTimeZone}` : 'Paused'}</strong>
         </span>
         <ChevronRight size={15} />
       </button>
@@ -3853,6 +3871,67 @@
     gap: 16px;
   }
 
+  .daily-schedule-mode {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 44px;
+    color: #4d5549;
+    font-size: 13px;
+    cursor: pointer;
+  }
+
+  .daily-schedule-mode input {
+    width: 18px;
+    height: 18px;
+    flex-shrink: 0;
+    accent-color: #587542;
+  }
+
+  .daily-weekday-times {
+    display: grid;
+    gap: 6px;
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+  }
+
+  .daily-weekday-times legend {
+    margin-bottom: 10px;
+    color: #4d5549;
+    font-size: 13px;
+    font-weight: 650;
+  }
+
+  .daily-weekday-times label {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    color: #4d5549;
+    font-size: 13px;
+  }
+
+  .daily-weekday-times input {
+    width: 128px;
+    min-width: 0;
+    min-height: 38px;
+    border: 1px solid #d3d9cf;
+    border-radius: 9px;
+    background: #fff;
+    color: #283025;
+    padding: 6px 10px;
+    font: inherit;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .daily-schedule-mode input:focus-visible,
+  .daily-weekday-times input:focus-visible {
+    outline: 2px solid #587542;
+    outline-offset: 3px;
+  }
+
   .daily-time-picker {
     display: grid;
     grid-template-columns: minmax(0, 96px) 20px minmax(0, 96px);
@@ -5242,59 +5321,88 @@
         saveSummaryDeliveryTime();
       }}
     >
-      <div
-        class="daily-time-picker"
-        role="group"
-        aria-label="Mail delivery time"
-      >
-        <div class="daily-time-segment">
-          <button type="button" aria-label="Increase hours" onclick={() => adjustSummaryTime('hours', 1)}>
-            <ArrowUp size={18} />
-          </button>
-          <button
-            bind:this={summaryDeliveryHoursButton}
-            type="button"
-            data-private
-            class="daily-time-value"
-            class:is-active={activeSummaryTimePart === 'hours'}
-            role="spinbutton"
-            aria-label="Hours"
-            aria-valuemin="0"
-            aria-valuemax="23"
-            aria-valuenow={summaryTimeParts().hours}
-            data-active={activeSummaryTimePart === 'hours'}
-            onclick={() => activateSummaryTimePart('hours')}
-            onkeydown={(event) => handleSummaryTimeKeydown('hours', event)}
-          ><RollingNumber value={summaryTimeParts().hours} direction={summaryTimeDirection.hours} /></button>
-          <button type="button" aria-label="Decrease hours" onclick={() => adjustSummaryTime('hours', -1)}>
-            <ArrowDown size={18} />
-          </button>
+      <label class="daily-schedule-mode">
+        <input
+          type="checkbox"
+          checked={summaryTimesByDayDraft !== null}
+          onchange={(event) => setWeekdaySchedule(event.currentTarget.checked)}
+        />
+        <span>Set a different time for each day</span>
+      </label>
+      {#if summaryTimesByDayDraft}
+        <fieldset class="daily-weekday-times" bind:this={summaryDeliveryWeekdayFields}>
+          <legend>Delivery times</legend>
+          {#each summaryDayValues as day}
+            <label>
+              <span>{day.charAt(0).toUpperCase() + day.slice(1)}</span>
+              <input
+                type="time"
+                required
+                data-private
+                aria-label={`${day.charAt(0).toUpperCase() + day.slice(1)} delivery time`}
+                value={summaryTimesByDayDraft[day]}
+                oninput={(event) => {
+                  if (summaryTimesByDayDraft) summaryTimesByDayDraft[day] = event.currentTarget.value;
+                }}
+              />
+            </label>
+          {/each}
+        </fieldset>
+      {:else}
+        <div
+          class="daily-time-picker"
+          role="group"
+          aria-label="Mail delivery time"
+        >
+          <div class="daily-time-segment">
+            <button type="button" aria-label="Increase hours" onclick={() => adjustSummaryTime('hours', 1)}>
+              <ArrowUp size={18} />
+            </button>
+            <button
+              bind:this={summaryDeliveryHoursButton}
+              type="button"
+              data-private
+              class="daily-time-value"
+              class:is-active={activeSummaryTimePart === 'hours'}
+              role="spinbutton"
+              aria-label="Hours"
+              aria-valuemin="0"
+              aria-valuemax="23"
+              aria-valuenow={summaryTimeParts().hours}
+              data-active={activeSummaryTimePart === 'hours'}
+              onclick={() => activateSummaryTimePart('hours')}
+              onkeydown={(event) => handleSummaryTimeKeydown('hours', event)}
+            ><RollingNumber value={summaryTimeParts().hours} direction={summaryTimeDirection.hours} /></button>
+            <button type="button" aria-label="Decrease hours" onclick={() => adjustSummaryTime('hours', -1)}>
+              <ArrowDown size={18} />
+            </button>
+          </div>
+          <span class="daily-time-colon" aria-hidden="true">:</span>
+          <div class="daily-time-segment">
+            <button type="button" aria-label="Increase minutes" onclick={() => adjustSummaryTime('minutes', 1)}>
+              <ArrowUp size={18} />
+            </button>
+            <button
+              bind:this={summaryDeliveryMinutesButton}
+              type="button"
+              data-private
+              class="daily-time-value"
+              class:is-active={activeSummaryTimePart === 'minutes'}
+              role="spinbutton"
+              aria-label="Minutes"
+              aria-valuemin="0"
+              aria-valuemax="59"
+              aria-valuenow={summaryTimeParts().minutes}
+              data-active={activeSummaryTimePart === 'minutes'}
+              onclick={() => activateSummaryTimePart('minutes')}
+              onkeydown={(event) => handleSummaryTimeKeydown('minutes', event)}
+            ><RollingNumber value={summaryTimeParts().minutes} direction={summaryTimeDirection.minutes} /></button>
+            <button type="button" aria-label="Decrease minutes" onclick={() => adjustSummaryTime('minutes', -1)}>
+              <ArrowDown size={18} />
+            </button>
+          </div>
         </div>
-        <span class="daily-time-colon" aria-hidden="true">:</span>
-        <div class="daily-time-segment">
-          <button type="button" aria-label="Increase minutes" onclick={() => adjustSummaryTime('minutes', 1)}>
-            <ArrowUp size={18} />
-          </button>
-          <button
-            bind:this={summaryDeliveryMinutesButton}
-            type="button"
-            data-private
-            class="daily-time-value"
-            class:is-active={activeSummaryTimePart === 'minutes'}
-            role="spinbutton"
-            aria-label="Minutes"
-            aria-valuemin="0"
-            aria-valuemax="59"
-            aria-valuenow={summaryTimeParts().minutes}
-            data-active={activeSummaryTimePart === 'minutes'}
-            onclick={() => activateSummaryTimePart('minutes')}
-            onkeydown={(event) => handleSummaryTimeKeydown('minutes', event)}
-          ><RollingNumber value={summaryTimeParts().minutes} direction={summaryTimeDirection.minutes} /></button>
-          <button type="button" aria-label="Decrease minutes" onclick={() => adjustSummaryTime('minutes', -1)}>
-            <ArrowDown size={18} />
-          </button>
-        </div>
-      </div>
+      {/if}
       <div class="daily-time-zone">
         {#if summaryTimeZoneEditorOpen}
           <label>
@@ -5320,7 +5428,7 @@
       </div>
       <footer>
         <button type="button" aria-label="Cancel delivery time" onclick={closeSummaryDeliveryDialog}><X size={20} /></button>
-        <button type="submit" disabled={!summaryTimeSchema.safeParse(summaryTimeDraft).success}>
+        <button type="submit" disabled={!summaryTimeSchema.safeParse(summaryTimeDraft).success || (summaryTimesByDayDraft !== null && !summaryTimesByDaySchema.safeParse(summaryTimesByDayDraft).success)}>
           Save delivery time
         </button>
       </footer>

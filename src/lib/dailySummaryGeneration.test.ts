@@ -17,6 +17,7 @@ import { calendarReadinessForAuthMode } from './calendarReadiness';
 import type { SavedSelectedCalendar } from './selectedCalendars';
 
 const configuration: SummaryConfiguration = {
+  summaryTimesByDay: null,
   summaryTime: '18:45',
   userTimeZone: 'America/New_York',
   summaryDeliveryEnabled: true,

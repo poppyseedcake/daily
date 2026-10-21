@@ -23,6 +23,7 @@ To receive emails, sign in with Google. Google Calendar access is a separate, op
 | Todo | Your unfinished tasks, in your chosen order and groups. |
 
 Daily sends the email at your Summary Time, in your User Time Zone. The default Summary Time is 07:00.
+In **Mail delivery**, keep one time for every day or select **Set a different time for each day** to choose separate times from Monday to Sunday.
 You can pause email delivery or pause individual sections.
 Each email keeps all four section headings. A paused, empty, unconfigured, or unavailable section shows its status.
 An unavailable section does not stop the other sections or the email.
